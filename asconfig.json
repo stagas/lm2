@@ -1,0 +1,26 @@
+{
+  "targets": {
+    "debug": {
+      "outFile": "as/build/index.wasm",
+      "textFile": "as/build/index.wat",
+      "sourceMap": true,
+      "debug": true
+    },
+    "release": {
+      "outFile": "as/build/index.wasm",
+      "textFile": "as/build/index.wat",
+      "sourceMap": true,
+      "optimizeLevel": 3,
+      "shrinkLevel": 0,
+      "converge": false,
+      "noAssert": false
+    }
+  },
+  "options": {
+    "importMemory": true,
+    "initialMemory": 1024,
+    "maximumMemory": 1024,
+    "sharedMemory": false,
+    "bindings": "esm"
+  }
+}
