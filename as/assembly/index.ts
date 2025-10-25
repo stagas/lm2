@@ -1,8 +1,7 @@
 import { Dsp } from './dsp'
 
 export function createFloat32Buffer(size: i32): usize {
-  const buffer = new StaticArray<f32>(size)
-  return changetype<usize>(buffer)
+  return changetype<usize>(new StaticArray<f32>(size))
 }
 
 export function createDsp(): usize {
