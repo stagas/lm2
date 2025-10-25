@@ -1,12 +1,13 @@
 import type * as WasmExports from '../as/build/index.d.ts'
 import hex from '../as/build/index.wasm?raw-hex'
 import config from '../asconfig.json'
-import { wasmSetup, type WasmSetup } from './wasm-setup.ts'
+import { wasmSetup, type WasmSetup } from './lib/wasm-setup.ts'
 
 class Dsp extends AudioWorkletProcessor {
   state: 'running' | 'stopped' = 'stopped'
   core: WasmSetup<typeof WasmExports> | undefined
   buffers: Float32Array[] = []
+  dspPtr = 0
 
   constructor(options: AudioWorkletNodeOptions) {
     super()
@@ -23,6 +24,7 @@ class Dsp extends AudioWorkletProcessor {
         new Float32Array(this.core.memory.buffer, this.core.wasm.createFloat32Buffer(128), 128),
         new Float32Array(this.core.memory.buffer, this.core.wasm.createFloat32Buffer(128), 128),
       ]
+      this.dspPtr = this.core.wasm.createDsp()
     })()
 
     this.port.onmessage = event => {
@@ -41,7 +43,13 @@ class Dsp extends AudioWorkletProcessor {
   ) {
     if (!this.core || this.state === 'stopped') return true
 
-    this.core.wasm.processAudio(this.buffers[0].byteOffset, this.buffers[1].byteOffset, 0, 128)
+    this.core.wasm.processAudio(
+      this.dspPtr,
+      this.buffers[0].byteOffset,
+      this.buffers[1].byteOffset,
+      0,
+      128,
+    )
 
     outputs[0][0].set(this.buffers[0])
     outputs[0][1].set(this.buffers[1])
