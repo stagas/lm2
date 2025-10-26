@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { type ConfigEnv, defineConfig, loadEnv, type UserConfig } from 'vite'
 import { assemblyScript } from 'vite-plugin-assemblyscript'
 import { coopCoep } from 'vite-plugin-coop-coep'
@@ -31,7 +33,13 @@ export default ({ mode }: ConfigEnv): UserConfig => {
     server: {
       host: '0.0.0.0',
       hmr: {
-        // host: 'localhost',
+        host: 'localhost',
+      },
+      https: {
+        key: fs.readFileSync(
+          path.resolve(__dirname, '/home/stagas/.ssl-certs/devito.test-key.pem'),
+        ),
+        cert: fs.readFileSync(path.resolve(__dirname, '/home/stagas/.ssl-certs/devito.test.pem')),
       },
     },
   })

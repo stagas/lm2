@@ -17,10 +17,17 @@
     }
   },
   "options": {
+    "enable": [
+      "simd",
+      "relaxed-simd",
+      "threads"
+    ],
     "importMemory": true,
     "initialMemory": 1024,
     "maximumMemory": 1024,
     "sharedMemory": false,
-    "bindings": "esm"
+    "bindings": "esm",
+    "runtime": "incremental",
+    "exportRuntime": true
   }
 }

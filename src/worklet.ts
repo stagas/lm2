@@ -7,7 +7,7 @@ class Dsp extends AudioWorkletProcessor {
   state: 'running' | 'stopped' = 'stopped'
   core: WasmSetup<typeof WasmExports> | undefined
   buffers: Float32Array[] = []
-  dspPtr = 0
+  dsp$ = 0
 
   constructor(options: AudioWorkletNodeOptions) {
     super()
@@ -24,7 +24,7 @@ class Dsp extends AudioWorkletProcessor {
         new Float32Array(this.core.memory.buffer, this.core.wasm.createFloat32Buffer(128), 128),
         new Float32Array(this.core.memory.buffer, this.core.wasm.createFloat32Buffer(128), 128),
       ]
-      this.dspPtr = this.core.wasm.createDsp()
+      this.dsp$ = this.core.wasm.createDsp()
     })()
 
     this.port.onmessage = event => {
@@ -44,7 +44,7 @@ class Dsp extends AudioWorkletProcessor {
     if (!this.core || this.state === 'stopped') return true
 
     this.core.wasm.processAudio(
-      this.dspPtr,
+      this.dsp$,
       this.buffers[0].byteOffset,
       this.buffers[1].byteOffset,
       0,
