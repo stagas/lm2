@@ -1,10 +1,24 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { type ConfigEnv, defineConfig, loadEnv, type UserConfig } from 'vite'
+import { type ConfigEnv, defineConfig, loadEnv, type Plugin, type UserConfig } from 'vite'
 import { assemblyScript } from 'vite-plugin-assemblyscript'
 import { coopCoep } from 'vite-plugin-coop-coep'
-import { hexLoader } from 'vite-plugin-hex-loader'
 import { openInEditor } from 'vite-plugin-open-in-editor'
+
+function copyWasmSourcemap(): Plugin {
+  return {
+    name: 'copy-wasm-sourcemap',
+    writeBundle() {
+      const mapSource = path.resolve('as/build/index.wasm.map')
+      const mapDest = path.resolve('dist/as/build/index.wasm.map')
+
+      if (fs.existsSync(mapSource)) {
+        fs.mkdirSync(path.dirname(mapDest), { recursive: true })
+        fs.copyFileSync(mapSource, mapDest)
+      }
+    },
+  }
+}
 
 export default ({ mode }: ConfigEnv): UserConfig => {
   const dirname = process.cwd()
@@ -15,7 +29,6 @@ export default ({ mode }: ConfigEnv): UserConfig => {
     plugins: [
       openInEditor({ cmd: 'cursor' }),
       coopCoep(),
-      hexLoader(),
       assemblyScript({
         configFile: 'asconfig.json',
         projectRoot: '.',
@@ -23,12 +36,23 @@ export default ({ mode }: ConfigEnv): UserConfig => {
         srcEntryFile: 'as/assembly/index.ts',
         mapFile: './as/build/index.wasm.map',
       }),
+      {
+        name: 'exclude-as-build-from-hmr',
+        handleHotUpdate({ file, server }) {
+          if (
+            (file.includes('as/build/index.d.ts') && !file.includes('as/assembly'))
+          ) {
+            return []
+          }
+        },
+      },
+      ...(mode === 'production'
+        ? [
+          copyWasmSourcemap(),
+        ]
+        : []),
     ],
     root: '.',
-    build: {
-      outDir: 'dist',
-      emptyOutDir: true,
-    },
     clearScreen: false,
     server: {
       host: '0.0.0.0',
@@ -37,9 +61,9 @@ export default ({ mode }: ConfigEnv): UserConfig => {
       },
       https: {
         key: fs.readFileSync(
-          path.resolve(__dirname, '/home/stagas/.ssl-certs/devito.test-key.pem'),
+          path.resolve(__dirname, '/home/stagas/.ssl-certs/localhost-key.pem'),
         ),
-        cert: fs.readFileSync(path.resolve(__dirname, '/home/stagas/.ssl-certs/devito.test.pem')),
+        cert: fs.readFileSync(path.resolve(__dirname, '/home/stagas/.ssl-certs/localhost.pem')),
       },
     },
   })

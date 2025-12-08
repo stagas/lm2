@@ -23,11 +23,11 @@
       "threads"
     ],
     "importMemory": true,
-    "initialMemory": 1024,
-    "maximumMemory": 1024,
-    "sharedMemory": false,
+    "initialMemory": 4096,
+    "maximumMemory": 4096,
+    "sharedMemory": true,
     "bindings": "esm",
-    "runtime": "incremental",
+    "runtime": "stub",
     "exportRuntime": true
   }
 }
