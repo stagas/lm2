@@ -182,7 +182,7 @@ async function createProgram() {
   data.arrays[0].data[14] = 783.99 // G5
   data.arrays[0].data[15] = 880.00 // A5
 
-  currentSequenceString = '[c4 e4 [g4 a4]]*2'
+  currentSequenceString = '[c4 e4 a4]'
   currentCompiledSequence = compileSequence(currentSequenceString)
 
   data.arrays[1].raw.set(currentCompiledSequence.bytecode.buffer)
