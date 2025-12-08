@@ -1,5 +1,7 @@
-import { OPS_COUNT } from '../as/assembly/constants.ts'
-import { Op } from '../as/assembly/shared.ts'
+import { OPS_COUNT, SEQ_VOICES } from '../as/assembly/constants.ts'
+import { Op, SeqOp } from '../as/assembly/shared.ts'
+
+export { Op, SEQ_VOICES, SeqOp }
 
 export class Bytecode {
   ops = new Int32Array(OPS_COUNT)
@@ -42,6 +44,29 @@ export class Bytecode {
 
   Dup = () => {
     this.stack.push(this.stack.at(-1)!)
+  }
+
+  Pick = (depth: number) => {
+    // Pick value at depth from top of stack and push copy
+    // depth=0 is top (same as Dup), depth=1 is one below top, etc.
+    if (depth >= this.stack.length) {
+      throw new Error('Stack underflow in Pick')
+    }
+    this.stack.push(this.stack[this.stack.length - 1 - depth]!)
+  }
+
+  SeqVoice = (voiceIndex: number) => {
+    // Extract voice triplet from Seq outputs
+    // Expects Seq outputs at bottom of stack (24 values)
+    // Pushes (trig, velocity, value) for the specified voice
+    const baseDepth = this.stack.length - 24
+    if (baseDepth < 0) {
+      throw new Error('Not enough values on stack for SeqVoice')
+    }
+    const voiceBase = baseDepth + voiceIndex * 3
+    this.stack.push(this.stack[voiceBase]!) // trig
+    this.stack.push(this.stack[voiceBase + 1]!) // velocity
+    this.stack.push(this.stack[voiceBase + 2]!) // value
   }
 
   Out = () => {
@@ -99,6 +124,79 @@ export class Bytecode {
     const decay = this.stack.pop()
     const attack = this.stack.pop()
     this.emit(Op.Ad, out, attack, decay, trig)
+    this.stack.push(out)
+  }
+
+  Seq = (arrayIndex: number) => {
+    const voiceCountOut = this.outsCount++
+    const voiceOuts: number[][] = []
+
+    for (let v = 0; v < SEQ_VOICES; v++) {
+      const outTrig = this.outsCount++
+      const outVelocity = this.outsCount++
+      const outValue = this.outsCount++
+      voiceOuts.push([outTrig, outVelocity, outValue])
+    }
+
+    const emitArgs = [arrayIndex, voiceCountOut]
+    for (const voice of voiceOuts) {
+      emitArgs.push(...voice)
+    }
+
+    this.emit(Op.Seq, ...emitArgs)
+
+    // Push voice outputs first, then voice count last (so it's on top for SeqForEach to pop)
+    for (const voice of voiceOuts) {
+      this.stack.push(voice[0]) // trig
+      this.stack.push(voice[1]) // velocity
+      this.stack.push(voice[2]) // value
+    }
+    this.stack.push(voiceCountOut) // voice count (on top)
+  }
+
+  SeqForEach = (bodyFn: () => void) => {
+    // Runtime loop: execute body for each active voice
+    // Voice count is on top of stack from Seq
+
+    const voiceCount = this.stack.pop()! // Pop voice count
+
+    const seqForEachPc = this.pc
+    this.emit(Op.SeqForEach, voiceCount, 0, 0) // voiceCount buffer, body start, body length
+
+    const bodyStartPc = this.pc
+    bodyFn() // Generate the loop body bytecode once
+    const bodyLength = this.pc - bodyStartPc
+
+    // Patch the offsets
+    this.ops[seqForEachPc + 2] = bodyStartPc // body start offset
+    this.ops[seqForEachPc + 3] = bodyLength // body length
+  }
+
+  SeqVoiceTrig = () => {
+    // Runtime: reads current voice's trig (voice index determined at runtime)
+    const out = this.outsCount++
+    this.emit(Op.SeqVoiceTrig, out)
+    this.stack.push(out)
+  }
+
+  SeqVoiceVelocity = () => {
+    // Runtime: reads current voice's velocity
+    const out = this.outsCount++
+    this.emit(Op.SeqVoiceVelocity, out)
+    this.stack.push(out)
+  }
+
+  SeqVoiceValue = () => {
+    // Runtime: reads current voice's value
+    const out = this.outsCount++
+    this.emit(Op.SeqVoiceValue, out)
+    this.stack.push(out)
+  }
+
+  SeqMap = () => {
+    // Mixes audio from voices (audio indices tracked in runtime by SeqForEach)
+    const out = this.outsCount++
+    this.emit(Op.SeqMap, out)
     this.stack.push(out)
   }
 }

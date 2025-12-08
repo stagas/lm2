@@ -8,4 +8,17 @@ export enum Op {
   Mul,
   Sin,
   Ad,
+  Seq,
+  SeqMap,
+  SeqForEach,
+  SeqVoiceTrig,
+  SeqVoiceVelocity,
+  SeqVoiceValue,
+}
+
+export enum SeqOp {
+  Cycle,
+  Value,
+  Rest,
+  Chord,
 }

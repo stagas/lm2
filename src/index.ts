@@ -13,6 +13,7 @@ import WaveFFT from '../vendor/WaveFFT/WaveFFT.js'
 import { type Dsp, DspStruct, OutsPoolStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
 import { WaveformBuffer } from './lib/waveform-buffer.ts'
+import { compileSequence } from './sequence-compiler.ts'
 import { ControlOp } from './worklet-shared.ts'
 import workletUrl from './worklet.js?worker&url'
 import { type DspProcessor, type DspProcessorOptions } from './worklet.ts'
@@ -27,6 +28,8 @@ let wasmMemory: WebAssembly.Memory | undefined
 let wasmRings: Ring[] | undefined
 let wasmDsp: Dsp | undefined
 let program: Program | undefined
+let currentSequenceString = ''
+let currentCompiledSequence: Awaited<ReturnType<typeof compileSequence>> | undefined
 
 async function fetchWasmBinary() {
   const wasmUrl = new URL('/as/build/index.wasm', location.origin).toString()
@@ -49,6 +52,17 @@ async function updateWasmBinary() {
   program = await createProgram()
   wasmDsp.program = program.ptr$
   arrayVisualizationCanvas = createArrayVisualization(program.data.arrays[0], 400, 130)
+  if (currentCompiledSequence) {
+    sequenceVisualizationCanvas = createSequenceVisualization(
+      program.data.arrays[1],
+      currentSequenceString,
+      currentCompiledSequence,
+      audioContext,
+      bpmValue,
+      600,
+      50,
+    )
+  }
 }
 
 async function creaateWorklet() {
@@ -57,20 +71,28 @@ async function creaateWorklet() {
   const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
   const ringPos = new Uint8Array(new SharedArrayBuffer(4))
   const control = new Uint32Array(new SharedArrayBuffer(4))
+  const bpmValue = new Float32Array(new SharedArrayBuffer(4))
+  bpmValue[0] = 120 // Initialize BPM to 120
   const dsp = new AudioWorkletNode(audioContext, 'dsp', {
     outputChannelCount: [2],
     processorOptions: {
       sourcemapUrl,
       ringPos,
       control,
+      bpmValue,
     },
   } satisfies DspProcessorOptions)
   dsp.connect(audioContext.destination)
   const worklet = rpc<DspProcessor>(dsp.port)
-  return { ringPos, control, worklet }
+  return { ringPos, control, bpmValue, worklet, audioContext }
 }
 
-const { ringPos, control, worklet } = await creaateWorklet()
+const { ringPos, control, bpmValue, worklet, audioContext } = await creaateWorklet()
+
+console.log('Audio Context initialized')
+console.log('  Sample Rate:', audioContext.sampleRate, 'Hz')
+console.log('  Output Latency:', audioContext.outputLatency, 'seconds')
+console.log('  Base Latency:', audioContext.baseLatency, 'seconds')
 
 type Program = Awaited<ReturnType<typeof createProgram>>
 
@@ -86,7 +108,7 @@ async function createProgram() {
   const lock = new Int32Array(wasmMemory.buffer, programData.lock, 1)
   const arrays = new Uint32Array(wasmMemory.buffer, programData.arrays, ARRAYS_COUNT)
   const arrays$ = await worklet.createArrays()
-  const arrayData = new Array<{ length: number; index: number; data: Float32Array }>(ARRAYS_COUNT)
+  const arrayData = new Array<{ length: number; index: number; raw: Float32Array; data: Float32Array }>(ARRAYS_COUNT)
   for (let i = 0; i < ARRAYS_COUNT; i++) {
     arrays[i] = arrays$[i]
     const length = new Float32Array(wasmMemory.buffer, arrays$[i], 1)
@@ -104,6 +126,7 @@ async function createProgram() {
       set index(value: number) {
         index[0] = value
       },
+      raw: new Float32Array(wasmMemory.buffer, arrays$[i], ARRAY_SIZE + ARRAY_HEADER_SIZE),
       data: new Float32Array(
         wasmMemory.buffer,
         arrays$[i] + ARRAY_HEADER_SIZE * Float32Array.BYTES_PER_ELEMENT,
@@ -159,49 +182,92 @@ async function createProgram() {
   data.arrays[0].data[14] = 783.99 // G5
   data.arrays[0].data[15] = 880.00 // A5
 
+  currentSequenceString = '[c4 e4 [g4 a4]]*2'
+  currentCompiledSequence = compileSequence(currentSequenceString)
+
+  data.arrays[1].raw.set(currentCompiledSequence.bytecode.buffer)
+  console.log('✓ Sequence compiled successfully')
+  console.log('  Sequence:', currentSequenceString)
+  console.log('  8 events (4 notes × 2 repeats) in 1 bar (4 beats)')
+  console.log('  Mode: Monophonic latch (each note replaces the previous)')
+
   const bytecode = new Bytecode()
 
-  bytecode.LiteralSmoothed(0)
-  bytecode.Literal(1)
-  bytecode.Sin()
+  // Seq auto-cycles based on globalSampleCount and global BPM
+  bytecode.Seq(1) // This should populate program.lastSeq*Outs arrays
+
+  // Now let's try manually using one of those outputs with Sin
+  // We can't easily access them from here, so let's use SeqForEach
+
+  // Set initial values
+  data.writeLiteral(3, 1 / 4)
+
+  bytecode.SeqForEach(() => {
+    bytecode.SeqVoiceValue() // Get note value (frequency) from current voice
+    bytecode.SeqVoiceTrig() // Get trigger from current voice
+    bytecode.Sin() // Generate audio
+  })
+
+  bytecode.SeqMap() // Mix all voices
   createAnalysers(outs[bytecode.Peek()], 100, 30)
 
-  bytecode.LiteralSmoothed(2)
-  bytecode.Mul()
-
-  bytecode.LiteralSmoothed(3)
-  bytecode.Add()
-
-  bytecode.Literal(4)
-  bytecode.Sin()
-  createAnalysers(outs[bytecode.Peek()], 100, 30)
-  bytecode.Dup()
-  bytecode.Out()
-
-  bytecode.LiteralSmoothed(5)
-  bytecode.ArrayAt(0)
-  bytecode.Literal(1)
-  bytecode.Sin()
-  createAnalysers(outs[bytecode.Peek()], 100, 30)
-
-  bytecode.Literal(6)
-  bytecode.Literal(7)
-
-  bytecode.LiteralSmoothed(8)
-  bytecode.Literal(1)
-  bytecode.Sin()
-  createAnalysers(outs[bytecode.Peek()], 100, 30)
-
-  bytecode.Ad()
-  createAnalysers(outs[bytecode.Peek()], 100, 30)
-  data.writeLiteral(6, 0.001)
-  data.writeLiteral(7, 0.15)
+  bytecode.Literal(2)
+  data.writeLiteral(2, 0.3)
   bytecode.Mul()
 
   bytecode.Dup()
   bytecode.Out()
+
+  // Debug: Log bytecode
+  console.log('Bytecode ops:', Array.from(bytecode.ops.slice(0, bytecode.pc)))
+  console.log('Bytecode PC:', bytecode.pc)
+  console.log('Outs count:', bytecode.outsCount)
+  console.log('\n⚠️  Press the START button to begin audio playback!')
+
+  // Old example code below (commented out)
+  // bytecode.LiteralSmoothed(0)
+  // bytecode.Literal(1)
+  // bytecode.Sin()
+  // createAnalysers(outs[bytecode.Peek()], 100, 30)
+
+  // bytecode.LiteralSmoothed(2)
+  // bytecode.Mul()
+
+  // bytecode.LiteralSmoothed(3)
+  // bytecode.Add()
+
+  // bytecode.Literal(4)
+  // bytecode.Sin()
+  // createAnalysers(outs[bytecode.Peek()], 100, 30)
+  // bytecode.Dup()
+  // bytecode.Out()
+
+  // bytecode.LiteralSmoothed(5)
+  // bytecode.ArrayAt(0)
+  // bytecode.Literal(1)
+  // bytecode.Sin()
+  // createAnalysers(outs[bytecode.Peek()], 100, 30)
+
+  // bytecode.Literal(6)
+  // bytecode.Literal(7)
+
+  // bytecode.LiteralSmoothed(8)
+  // bytecode.Literal(1)
+  // bytecode.Sin()
+  // createAnalysers(outs[bytecode.Peek()], 100, 30)
+
+  // bytecode.Ad()
+  // createAnalysers(outs[bytecode.Peek()], 100, 30)
+  // data.writeLiteral(6, 0.001)
+  // data.writeLiteral(7, 0.15)
+  // bytecode.Mul()
+
+  // bytecode.Dup()
+  // bytecode.Out()
+
   bytecode.End()
   ops.set(bytecode.ops)
+
   return {
     ptr$: program$,
     ops,
@@ -221,6 +287,18 @@ const startButton = Object.assign(
   },
 )
 document.body.appendChild(startButton)
+
+const pauseButton = Object.assign(
+  document.createElement('button'),
+  {
+    textContent: 'Pause',
+    className: 'bg-yellow-500 text-white p-2 rounded-md',
+    onmousedown: () => {
+      Atomics.store(control, 0, ControlOp.Pause)
+    },
+  },
+)
+document.body.appendChild(pauseButton)
 
 const stopButton = Object.assign(
   document.createElement('button'),
@@ -251,14 +329,32 @@ function createFrequencySlider(index: number, min: number, max: number, step: nu
   )
 }
 
-document.body.appendChild(createFrequencySlider(0, 0, 1000, 0.1))
-document.body.appendChild(createFrequencySlider(2, 0, 1000, 0.1))
-document.body.appendChild(createFrequencySlider(3, 0, 1000, 0.1))
-document.body.appendChild(createFrequencySlider(5, 0, 15, 1))
-document.body.appendChild(createFrequencySlider(8, 0, 8, 1))
+// BPM control
+const bpmLabel = document.createElement('div')
+bpmLabel.textContent = 'BPM: 120'
+bpmLabel.className = 'text-white p-2'
+document.body.appendChild(bpmLabel)
+
+const bpmSlider = Object.assign(
+  document.createElement('input'),
+  {
+    type: 'range',
+    min: 1,
+    max: 666,
+    step: 1,
+    value: 120,
+    oninput: (e: InputEvent & { target: HTMLInputElement }) => {
+      const bpm = parseFloat(e.target.value)
+      bpmValue[0] = bpm
+      bpmLabel.textContent = `BPM: ${bpm.toFixed(0)}`
+    },
+  },
+)
+document.body.appendChild(bpmSlider)
 
 let analysers: { canvas: HTMLCanvasElement; fftCanvas: HTMLCanvasElement }[] = []
 let arrayVisualizationCanvas: HTMLCanvasElement | undefined
+let sequenceVisualizationCanvas: HTMLCanvasElement | undefined
 
 function clearAnalysers() {
   analysers.forEach(analyser => {
@@ -269,6 +365,10 @@ function clearAnalysers() {
   if (arrayVisualizationCanvas) {
     arrayVisualizationCanvas.remove()
     arrayVisualizationCanvas = undefined
+  }
+  if (sequenceVisualizationCanvas) {
+    sequenceVisualizationCanvas.remove()
+    sequenceVisualizationCanvas = undefined
   }
 }
 
@@ -300,10 +400,10 @@ async function createAnalysers(ring: Ring, width: number, height: number) {
     const h = height / 2
 
     c.beginPath()
-    c.moveTo(0, floats[0]! * h + h)
+    c.moveTo(0, floats[0]! / 2 * h + h)
     for (let i = 1; i < width; i++) {
       const idx = (i * scale) | 0
-      c.lineTo(i, -floats[idx]! * h + h)
+      c.lineTo(i, -floats[idx]! / 2 * h + h)
     }
     c.strokeStyle = 'white'
     c.lineWidth = 1.35
@@ -434,6 +534,121 @@ function createArrayVisualization(array: VmArray, width: number, height: number)
 
       c.fillStyle = 'white'
       c.fillText(value.toFixed(2), x, y)
+    }
+  }
+  draw()
+
+  document.body.appendChild(canvas)
+  return canvas
+}
+
+function createSequenceVisualization(
+  array: VmArray,
+  sequenceString: string,
+  compiledSequence: Awaited<ReturnType<typeof compileSequence>>,
+  audioContext: AudioContext,
+  bpmValue: Float32Array,
+  width: number,
+  height: number,
+) {
+  const canvas = document.createElement('canvas')
+  const dpr = window.devicePixelRatio
+  canvas.width = width * dpr
+  canvas.height = height * dpr
+  canvas.style.width = `${width}px`
+  canvas.style.height = `${height}px`
+
+  const c = canvas.getContext('2d')!
+  c.scale(dpr, dpr)
+
+  // History buffer to track indices over time (circular buffer)
+  const HISTORY_SIZE = 1000 // ~16 seconds at 60fps
+  const startTime = performance.now() / 1000
+  const indexHistory: { index: number; timestamp: number }[] = []
+  let historyWritePos = 0
+  let logCounter = 0
+
+  const draw = () => {
+    requestAnimationFrame(draw)
+
+    c.clearRect(0, 0, width, height)
+
+    const now = performance.now() / 1000 // Current time in seconds
+    const currentSlotIndex = Math.floor(array.index)
+
+    // Record current index with timestamp
+    indexHistory[historyWritePos] = { index: currentSlotIndex, timestamp: now }
+    historyWritePos = (historyWritePos + 1) % HISTORY_SIZE
+
+    // Use outputLatency to find what was generated N seconds ago
+    const latencySeconds = audioContext.outputLatency || 0
+    const targetTimestamp = now - latencySeconds
+
+    // Find the index that was active at targetTimestamp
+    let currentIndex = currentSlotIndex
+
+    if (indexHistory.length > 1 && latencySeconds > 0) {
+      // Search backwards through history to find the closest timestamp
+      let closestDiff = Infinity
+
+      for (let i = 0; i < indexHistory.length; i++) {
+        const entry = indexHistory[i]
+        const diff = Math.abs(entry.timestamp - targetTimestamp)
+
+        if (diff < closestDiff && entry.timestamp <= now) {
+          closestDiff = diff
+          currentIndex = entry.index
+        }
+      }
+    }
+
+    // Use precomputed tokens from compiler
+    const tokens = compiledSequence.tokens
+    const totalEvents = Math.max(...tokens.flatMap(t => t.flatIndices), 0) + 1 || 1
+    const currentEventIndex = currentIndex % totalEvents
+
+    // Draw the full sequence string with highlighted parts
+    c.font = '18px monospace'
+    c.textBaseline = 'middle'
+
+    const y = height / 2
+    let lastEnd = 0
+
+    // Draw character by character with proper highlighting
+    for (let charIdx = 0; charIdx < sequenceString.length; charIdx++) {
+      const char = sequenceString[charIdx]
+
+      // Find which token this character belongs to
+      const token = tokens.find(t => charIdx >= t.start && charIdx < t.start + t.length)
+      const isActive = token && token.flatIndices.includes(currentEventIndex)
+
+      const x = 10 + c.measureText(sequenceString.slice(0, charIdx)).width
+
+      if (isActive) {
+        // Highlight the entire token
+        if (token && charIdx === token.start) {
+          const tokenText = sequenceString.slice(token.start, token.start + token.length)
+          const metrics = c.measureText(tokenText)
+          c.fillStyle = 'rgba(0, 255, 0, 0.3)'
+          c.fillRect(x - 2, y - 14, metrics.width + 4, 28)
+          c.strokeStyle = 'lime'
+          c.lineWidth = 2
+          c.strokeRect(x - 2, y - 14, metrics.width + 4, 28)
+        }
+      }
+    }
+
+    // Draw the text
+    let x = 10
+    for (let charIdx = 0; charIdx < sequenceString.length; charIdx++) {
+      const char = sequenceString[charIdx]
+      const token = tokens.find(t => charIdx >= t.start && charIdx < t.start + t.length)
+      const isActive = token && token.flatIndices.includes(currentEventIndex)
+      const isEvent = token && token.flatIndices.length > 0
+
+      c.fillStyle = isActive ? 'lime' : isEvent ? 'white' : 'rgba(255, 255, 255, 0.5)'
+      c.fillText(char, x, y)
+      x += c.measureText(char).width
     }
   }
   draw()

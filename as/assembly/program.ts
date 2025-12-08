@@ -1,6 +1,8 @@
-import { ARRAYS_COUNT, LITERALS_COUNT, OPS_COUNT, RING_BUFFER_SIZE } from './constants'
+import { ARRAYS_COUNT, LITERALS_COUNT, OPS_COUNT, RING_BUFFER_SIZE, SEQ_VOICES } from './constants'
 import { Ad } from './gen/ad'
 import { Gen } from './gen/gen'
+import { Seq } from './gen/seq'
+import { SeqMap } from './gen/seqmap'
 import { Sin } from './gen/sin'
 import { Smoothed } from './lib/smoothed'
 import { Op } from './shared'
@@ -25,9 +27,18 @@ export class GenPool<T> {
 class GensPool {
   private sins: GenPool<Sin> = new GenPool<Sin>(() => new Sin())
   private ads: GenPool<Ad> = new GenPool<Ad>(() => new Ad())
+  private seqs: GenPool<Seq> = new GenPool<Seq>(() => new Seq())
+  private seqmaps: GenPool<SeqMap> = new GenPool<SeqMap>(() => new SeqMap())
   resetIndices(): void {
     this.sins.resetIndex()
     this.ads.resetIndex()
+    this.seqs.resetIndex()
+    this.seqmaps.resetIndex()
+  }
+  resetAllSeqs(): void {
+    for (let i = 0; i < this.seqs.gens.length; i++) {
+      this.seqs.gens[i].reset()
+    }
   }
   get(op: Op): Gen {
     switch (op) {
@@ -35,6 +46,10 @@ class GensPool {
         return this.sins.get()
       case Op.Ad:
         return this.ads.get()
+      case Op.Seq:
+        return this.seqs.get()
+      case Op.SeqMap:
+        return this.seqmaps.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -88,9 +103,29 @@ export class Program {
   outsPool: OutsPool = new OutsPool()
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
+
+  // SeqForEach runtime state (no GC allocations)
+  lastSeqTrigOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
+  lastSeqVelocityOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
+  lastSeqValueOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
+  lastSeqVoiceCountOut: i32 = 0
+  currentVoiceIndex: i32 = 0
+  seqForEachAudioOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
+  seqForEachAudioOutsCount: i32 = 0
+
+  // Runtime voice buffer pool (pre-allocated for SeqForEach)
+  // Each voice gets: [value, trig, audio]
+  runtimeVoiceBufs: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES * 3)
+
   constructor() {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
       this.literalsSmoothed[i] = new Smoothed()
+    }
+
+    // Initialize runtime voice buffer pool (use buffer indices 500-523)
+    let bufferIndex = 500
+    for (let i = 0; i < SEQ_VOICES * 3; i++) {
+      this.runtimeVoiceBufs[i] = bufferIndex++
     }
   }
 }

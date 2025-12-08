@@ -11,6 +11,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
     sourcemapUrl: string
     ringPos: Uint8Array<SharedArrayBuffer>
     control: Uint32Array<SharedArrayBuffer>
+    bpmValue: Float32Array<SharedArrayBuffer>
   }
 }
 
@@ -20,6 +21,9 @@ export class DspProcessor extends AudioWorkletProcessor {
   private buffers: Float32Array[] = []
   private rings: Ring[] = []
   private dsp$ = 0
+  private lastBpm = 120
+  private shouldReset = false
+  private lastControl = ControlOp.Pause
 
   constructor(private options: DspProcessorOptions) {
     super()
@@ -41,6 +45,12 @@ export class DspProcessor extends AudioWorkletProcessor {
       toRing(this.buffers[1], CHUNK_SIZE),
     ]
     this.dsp$ = this.core.wasm.createDsp()
+
+    // Initialize BPM
+    const initialBpm = this.options.processorOptions.bpmValue[0]
+    this.core.wasm.bpm.value = initialBpm
+    this.lastBpm = initialBpm
+
     return {
       memory: this.core.memory,
       rings: this.rings,
@@ -64,14 +74,33 @@ export class DspProcessor extends AudioWorkletProcessor {
     if (!this.core) return true
 
     const control = Atomics.load(this.options.processorOptions.control, 0)
-    if (control === ControlOp.Start && this.state === 'stopped') {
-      this.state = 'fade-in'
-    }
-    else if (control === ControlOp.Stop && this.state === 'running') {
-      this.state = 'fade-out'
+
+    // Only respond to control changes
+    if (control !== this.lastControl) {
+      if (control === ControlOp.Start && this.state === 'stopped') {
+        this.state = 'fade-in'
+        this.shouldReset = false
+      }
+      else if (control === ControlOp.Pause && this.state === 'running') {
+        this.state = 'fade-out'
+        this.shouldReset = false
+      }
+      else if (control === ControlOp.Stop && this.state === 'running') {
+        this.state = 'fade-out'
+        this.shouldReset = true
+      }
+
+      this.lastControl = control
     }
 
     if (this.state === 'stopped') return true
+
+    // Update global BPM and adjust globalSampleCount on change
+    const bpmValue = this.options.processorOptions.bpmValue[0]
+    if (bpmValue !== this.lastBpm) {
+      this.core.wasm.updateBpm(this.lastBpm, bpmValue)
+      this.lastBpm = bpmValue
+    }
 
     const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
     const L = this.rings[0][ringPos]
@@ -105,6 +134,13 @@ export class DspProcessor extends AudioWorkletProcessor {
         outputs[0][1][i] *= gain
       }
       this.state = 'stopped'
+
+      // Reset globalSampleCount and sequence state if Stop was pressed (not just Pause)
+      if (this.shouldReset) {
+        this.core.wasm.resetGlobalSampleCount()
+        this.core.wasm.resetDsp(this.dsp$)
+        this.shouldReset = false
+      }
     }
 
     return true
