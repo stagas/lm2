@@ -14,6 +14,10 @@ export class SequenceBytecode {
     return this.data
   }
 
+  get position(): number {
+    return this.pc - ARRAY_HEADER_SIZE
+  }
+
   cycle(length: number, speed = 1, repeat = 1, density = 1, offset = 0, jitter = 0, prob = 1, isSquare = 0): this {
     this.data[this.pc++] = SeqOp.Cycle
     this.data[this.pc++] = length

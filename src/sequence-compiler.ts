@@ -451,6 +451,7 @@ export interface TokenMetadata {
   start: number
   length: number
   flatIndices: number[]
+  bytecodePos: number
 }
 
 export interface CompiledSequence {
@@ -471,6 +472,7 @@ export function compileSequence(input: string): CompiledSequence {
     isRealToken: boolean,
   ): number => {
     const startFlatIndex = flatEventIndex
+    const bytecodePos = bc.position
 
     if (token.startsWith('<') || token.startsWith('[')) {
       const isSquare = token.startsWith('[')
@@ -534,6 +536,7 @@ export function compileSequence(input: string): CompiledSequence {
         start: startPos,
         length: token.length,
         flatIndices,
+        bytecodePos,
       })
     }
 

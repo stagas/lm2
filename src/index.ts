@@ -182,7 +182,7 @@ async function createProgram() {
   data.arrays[0].data[14] = 783.99 // G5
   data.arrays[0].data[15] = 880.00 // A5
 
-  currentSequenceString = '[c4 e4 a4]'
+  currentSequenceString = '[c4 e4 a4]*2'
   currentCompiledSequence = compileSequence(currentSequenceString)
 
   data.arrays[1].raw.set(currentCompiledSequence.bytecode.buffer)
@@ -581,7 +581,7 @@ function createSequenceVisualization(
     historyWritePos = (historyWritePos + 1) % HISTORY_SIZE
 
     // Use outputLatency to find what was generated N seconds ago
-    const latencySeconds = audioContext.outputLatency || 0
+    const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
     const targetTimestamp = now - latencySeconds
 
     // Find the index that was active at targetTimestamp
@@ -604,15 +604,19 @@ function createSequenceVisualization(
 
     // Use precomputed tokens from compiler
     const tokens = compiledSequence.tokens
-    const totalEvents = Math.max(...tokens.flatMap(t => t.flatIndices), 0) + 1 || 1
-    const currentEventIndex = currentIndex % totalEvents
 
     // Draw the full sequence string with highlighted parts
     c.font = '18px monospace'
     c.textBaseline = 'middle'
 
     const y = height / 2
-    let lastEnd = 0
+
+    // Check if token is a leaf event (not a cycle)
+    const isLeafToken = (t: typeof tokens[0]) => !t.text.startsWith('[') && !t.text.startsWith('<')
+    const leafTokens = tokens.filter(isLeafToken)
+    const firstLeafPos = leafTokens[0]?.bytecodePos ?? -1
+    // Use first leaf token's position if currentIndex doesn't match any leaf
+    const activePos = leafTokens.some(t => t.bytecodePos === currentIndex) ? currentIndex : firstLeafPos
 
     // Draw character by character with proper highlighting
     for (let charIdx = 0; charIdx < sequenceString.length; charIdx++) {
@@ -620,7 +624,7 @@ function createSequenceVisualization(
 
       // Find which token this character belongs to
       const token = tokens.find(t => charIdx >= t.start && charIdx < t.start + t.length)
-      const isActive = token && token.flatIndices.includes(currentEventIndex)
+      const isActive = token && isLeafToken(token) && token.bytecodePos === activePos
 
       const x = 10 + c.measureText(sequenceString.slice(0, charIdx)).width
 
@@ -643,8 +647,8 @@ function createSequenceVisualization(
     for (let charIdx = 0; charIdx < sequenceString.length; charIdx++) {
       const char = sequenceString[charIdx]
       const token = tokens.find(t => charIdx >= t.start && charIdx < t.start + t.length)
-      const isActive = token && token.flatIndices.includes(currentEventIndex)
-      const isEvent = token && token.flatIndices.length > 0
+      const isActive = token && isLeafToken(token) && token.bytecodePos === activePos
+      const isEvent = token && isLeafToken(token)
 
       c.fillStyle = isActive ? 'lime' : isEvent ? 'white' : 'rgba(255, 255, 255, 0.5)'
       c.fillText(char, x, y)

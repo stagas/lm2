@@ -53,7 +53,6 @@ export class Seq extends Gen {
   private stack: Frame[] = []
   private lastLatchVoice: i32 = -1
   private nextEventTime: f64 = 0
-  private currentBytecodePos: i32 = 0
 
   constructor() {
     super()
@@ -67,7 +66,6 @@ export class Seq extends Gen {
     this.stack = []
     this.lastLatchVoice = -1
     this.nextEventTime = 0
-    this.currentBytecodePos = 0
 
     for (let v = 0; v < SEQ_VOICES; v++) {
       this.voices[v].active = false
@@ -121,7 +119,6 @@ export class Seq extends Gen {
         this.stack = []
         this.lastLatchVoice = -1
         this.nextEventTime = 0
-        this.currentBytecodePos = 0
         this.rng.setSeed(1234567890)
 
         for (let v = 0; v < SEQ_VOICES; v++) {
@@ -288,9 +285,6 @@ export class Seq extends Gen {
         this.stack.push(newFrame)
 
         // Don't increment parent slotIndex - that happens when nested pops
-        // Update visualization
-        array[1] = (startPc - ARRAY_HEADER_SIZE) as f32
-
         // Calculate next event time (will be from nested frame)
         this.calculateNextEventTime(array, arrayLength, secondsPerBeat)
         return
@@ -307,7 +301,7 @@ export class Seq extends Gen {
         const jitter = array[frame.pc++]
         const glide = array[frame.pc++]
 
-        // Update array index for visualization
+        // Update bytecode position for visualization
         array[1] = (startPc - ARRAY_HEADER_SIZE) as f32
 
         // Apply prob
