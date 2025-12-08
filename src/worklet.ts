@@ -12,6 +12,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
     ringPos: Uint8Array<SharedArrayBuffer>
     control: Uint32Array<SharedArrayBuffer>
     bpmValue: Float32Array<SharedArrayBuffer>
+    globalSampleCount: Int32Array<SharedArrayBuffer>
   }
 }
 
@@ -113,6 +114,9 @@ export class DspProcessor extends AudioWorkletProcessor {
       ringPos * CHUNK_SIZE,
       CHUNK_SIZE,
     )
+
+    // Update globalSampleCount in shared buffer
+    Atomics.store(this.options.processorOptions.globalSampleCount, 0, this.core.wasm.globalSampleCount.value)
 
     Atomics.store(this.options.processorOptions.ringPos, 0, (ringPos + 1) % this.rings[0].length)
 

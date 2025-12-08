@@ -22,7 +22,8 @@ export function createProgram(): usize {
 
 export function createArray(): usize {
   const array = new StaticArray<f32>(ARRAY_SIZE + ARRAY_HEADER_SIZE)
-  array[1] = -1
+  array[1] = 0 // history write position
+  array[2] = 0 // history size (only set for sequence bytecode)
   return changetype<usize>(array)
 }
 

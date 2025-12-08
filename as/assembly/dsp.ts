@@ -78,7 +78,6 @@ export class Dsp {
           for (let i = 0; i < length; i++) {
             const element = load<f32>(element$)
             const index = Mathf.round(element)
-            array[1] = index
             const value = array[index as i32 + ARRAY_HEADER_SIZE]
             store<f32>(out$, value)
             element$ += 4

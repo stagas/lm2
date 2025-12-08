@@ -1,4 +1,4 @@
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE } from '../as/assembly/constants.ts'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, SEQ_HISTORY_SIZE } from '../as/assembly/constants.ts'
 import { SeqOp } from './bytecode.ts'
 
 export class SequenceBytecode {
@@ -7,6 +7,9 @@ export class SequenceBytecode {
 
   constructor() {
     this.data = new Float32Array(ARRAY_SIZE + ARRAY_HEADER_SIZE)
+    // Initialize history header
+    this.data[1] = 0 // history write position
+    this.data[2] = SEQ_HISTORY_SIZE // history size
   }
 
   get buffer(): Float32Array {

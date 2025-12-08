@@ -1,7 +1,8 @@
 export const RING_BUFFER_SIZE = 16384
 export const CHUNK_SIZE = 128
 export const ARRAY_SIZE = 1024
-export const ARRAY_HEADER_SIZE = 2 // length, index
+export const SEQ_HISTORY_SIZE = 128 // ring buffer for event history (increased for rapid events)
+export const ARRAY_HEADER_SIZE = 3 + SEQ_HISTORY_SIZE * 3 // length, historyWritePos, historySize, [index,startSample,endSample]*historySize
 export const ARRAYS_COUNT = 1024
 export const LITERALS_COUNT = 1024
 export const OPS_COUNT = 1024

@@ -8,6 +8,7 @@ import {
   LITERALS_COUNT,
   OPS_COUNT,
   RING_BUFFER_SIZE,
+  SEQ_HISTORY_SIZE,
 } from '../as/assembly/constants.ts'
 import WaveFFT from '../vendor/WaveFFT/WaveFFT.js'
 import { type Dsp, DspStruct, OutsPoolStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
@@ -20,7 +21,10 @@ import { type DspProcessor, type DspProcessorOptions } from './worklet.ts'
 
 type VmArray = {
   length: number
-  index: number
+  historyWritePos: number
+  historySize: number
+  history: Float32Array
+  raw: Float32Array
   data: Float32Array
 }
 
@@ -59,6 +63,7 @@ async function updateWasmBinary() {
       currentCompiledSequence,
       audioContext,
       bpmValue,
+      globalSampleCount,
       600,
       50,
     )
@@ -73,6 +78,8 @@ async function creaateWorklet() {
   const control = new Uint32Array(new SharedArrayBuffer(4))
   const bpmValue = new Float32Array(new SharedArrayBuffer(4))
   bpmValue[0] = 120 // Initialize BPM to 120
+  const globalSampleCount = new Int32Array(new SharedArrayBuffer(4))
+  globalSampleCount[0] = 0
   const dsp = new AudioWorkletNode(audioContext, 'dsp', {
     outputChannelCount: [2],
     processorOptions: {
@@ -80,14 +87,15 @@ async function creaateWorklet() {
       ringPos,
       control,
       bpmValue,
+      globalSampleCount,
     },
   } satisfies DspProcessorOptions)
   dsp.connect(audioContext.destination)
   const worklet = rpc<DspProcessor>(dsp.port)
-  return { ringPos, control, bpmValue, worklet, audioContext }
+  return { ringPos, control, bpmValue, globalSampleCount, worklet, audioContext }
 }
 
-const { ringPos, control, bpmValue, worklet, audioContext } = await creaateWorklet()
+const { ringPos, control, bpmValue, globalSampleCount, worklet, audioContext } = await creaateWorklet()
 
 console.log('Audio Context initialized')
 console.log('  Sample Rate:', audioContext.sampleRate, 'Hz')
@@ -108,11 +116,17 @@ async function createProgram() {
   const lock = new Int32Array(wasmMemory.buffer, programData.lock, 1)
   const arrays = new Uint32Array(wasmMemory.buffer, programData.arrays, ARRAYS_COUNT)
   const arrays$ = await worklet.createArrays()
-  const arrayData = new Array<{ length: number; index: number; raw: Float32Array; data: Float32Array }>(ARRAYS_COUNT)
+  const arrayData = new Array<VmArray>(ARRAYS_COUNT)
   for (let i = 0; i < ARRAYS_COUNT; i++) {
     arrays[i] = arrays$[i]
     const length = new Float32Array(wasmMemory.buffer, arrays$[i], 1)
-    const index = new Float32Array(wasmMemory.buffer, arrays$[i] + 1 * Float32Array.BYTES_PER_ELEMENT, 1)
+    const historyWritePos = new Float32Array(wasmMemory.buffer, arrays$[i] + 1 * Float32Array.BYTES_PER_ELEMENT, 1)
+    const historySize = new Float32Array(wasmMemory.buffer, arrays$[i] + 2 * Float32Array.BYTES_PER_ELEMENT, 1)
+    const history = new Float32Array(
+      wasmMemory.buffer,
+      arrays$[i] + 3 * Float32Array.BYTES_PER_ELEMENT,
+      SEQ_HISTORY_SIZE * 3,
+    )
     arrayData[i] = {
       get length() {
         return length[0]
@@ -120,12 +134,13 @@ async function createProgram() {
       set length(value: number) {
         length[0] = value
       },
-      get index() {
-        return index[0]
+      get historyWritePos() {
+        return historyWritePos[0]
       },
-      set index(value: number) {
-        index[0] = value
+      get historySize() {
+        return historySize[0]
       },
+      history,
       raw: new Float32Array(wasmMemory.buffer, arrays$[i], ARRAY_SIZE + ARRAY_HEADER_SIZE),
       data: new Float32Array(
         wasmMemory.buffer,
@@ -182,7 +197,7 @@ async function createProgram() {
   data.arrays[0].data[14] = 783.99 // G5
   data.arrays[0].data[15] = 880.00 // A5
 
-  currentSequenceString = '[c4 e4 a4]*2'
+  currentSequenceString = '[c2 e4 a4]@2 [c2 e4 a4]!2'
   currentCompiledSequence = compileSequence(currentSequenceString)
 
   data.arrays[1].raw.set(currentCompiledSequence.bytecode.buffer)
@@ -490,7 +505,7 @@ function createArrayVisualization(array: VmArray, width: number, height: number)
     c.clearRect(0, 0, width, height)
 
     const length = array.length || array.data.length
-    const currentIndex = array.index
+    const currentIndex = -1 // No highlighting for generic arrays
     const data = array.data
 
     if (length === 0) return
@@ -548,6 +563,7 @@ function createSequenceVisualization(
   compiledSequence: Awaited<ReturnType<typeof compileSequence>>,
   audioContext: AudioContext,
   bpmValue: Float32Array,
+  globalSampleCount: Int32Array,
   width: number,
   height: number,
 ) {
@@ -561,85 +577,166 @@ function createSequenceVisualization(
   const c = canvas.getContext('2d')!
   c.scale(dpr, dpr)
 
-  // History buffer to track indices over time (circular buffer)
-  const HISTORY_SIZE = 1000 // ~16 seconds at 60fps
-  const startTime = performance.now() / 1000
-  const indexHistory: { index: number; timestamp: number }[] = []
-  let historyWritePos = 0
-  let logCounter = 0
+  const FADEOUT_SECONDS = 0.3
+
+  // Smooth ages across frames at 60fps
+  let lastFrameTime = performance.now()
+  let predictedSampleCount = Atomics.load(globalSampleCount, 0)
+  let isFirstFrame = true
+  let showingFallback = false
+  let fallbackStartTime = 0
 
   const draw = () => {
     requestAnimationFrame(draw)
 
     c.clearRect(0, 0, width, height)
 
-    const now = performance.now() / 1000 // Current time in seconds
-    const currentSlotIndex = Math.floor(array.index)
+    const sampleRate = audioContext.sampleRate
+    const now = performance.now()
+    const deltaTime = (now - lastFrameTime) / 1000
+    lastFrameTime = now
 
-    // Record current index with timestamp
-    indexHistory[historyWritePos] = { index: currentSlotIndex, timestamp: now }
-    historyWritePos = (historyWritePos + 1) % HISTORY_SIZE
-
-    // Use outputLatency to find what was generated N seconds ago
+    // Account for audio output latency - what we hear is behind what's generated
     const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
-    const targetTimestamp = now - latencySeconds
+    const latencySamples = latencySeconds * sampleRate
 
-    // Find the index that was active at targetTimestamp
-    let currentIndex = currentSlotIndex
+    // Get actual sample count from WASM
+    const rawSampleCount = Atomics.load(globalSampleCount, 0)
+    const rawPlaybackPosition = rawSampleCount - latencySamples
 
-    if (indexHistory.length > 1 && latencySeconds > 0) {
-      // Search backwards through history to find the closest timestamp
-      let closestDiff = Infinity
+    // On first frame or large jump (restart), sync immediately
+    const drift = rawPlaybackPosition - predictedSampleCount
+    if (isFirstFrame || Math.abs(drift) > sampleRate) {
+      // Hard sync on start or restart
+      predictedSampleCount = rawPlaybackPosition
+      isFirstFrame = false
+    }
+    else {
+      // Predict sample count based on deltaTime at constant sample rate
+      const samplesAdvanced = deltaTime * sampleRate
+      predictedSampleCount += samplesAdvanced
 
-      for (let i = 0; i < indexHistory.length; i++) {
-        const entry = indexHistory[i]
-        const diff = Math.abs(entry.timestamp - targetTimestamp)
+      // Gently sync to avoid drift without blinking
+      if (Math.abs(drift) > 100) {
+        const correctionSpeed = 0.05 // 5% correction per frame
+        predictedSampleCount += drift * correctionSpeed
+      }
+    }
 
-        if (diff < closestDiff && entry.timestamp <= now) {
-          closestDiff = diff
-          currentIndex = entry.index
+    const currentSampleCount = predictedSampleCount
+
+    // Read history from the ring buffer
+    const historySize = Math.floor(array.historySize) || SEQ_HISTORY_SIZE
+    const history = array.history
+
+    // Find the most recent started event for each bytecode position
+    const eventData = new Map<number, { startSample: number; endSample: number }>()
+    let hasAnyValidEvents = false
+
+    for (let i = 0; i < historySize; i++) {
+      const idx = i * 3
+      const bytecodePos = Math.floor(history[idx])
+      const startSample = Math.floor(history[idx + 1])
+      const endSample = Math.floor(history[idx + 2])
+
+      // Skip invalid entries
+      if (startSample === 0) continue
+
+      hasAnyValidEvents = true
+
+      // Skip events that haven't started yet (in the future)
+      if (startSample > currentSampleCount) continue
+
+      // Keep the most recent started event per position
+      const existing = eventData.get(bytecodePos)
+      if (!existing || startSample > existing.startSample) {
+        eventData.set(bytecodePos, { startSample, endSample })
+      }
+    }
+
+    // Calculate ages for the most recent events
+    const eventAges = new Map<number, number>()
+    for (const [bytecodePos, { startSample, endSample }] of eventData.entries()) {
+      if (currentSampleCount <= endSample) {
+        // Event is active (within hold time) - show at full brightness
+        eventAges.set(bytecodePos, 0)
+      }
+      else {
+        // Event has ended - fade out based on time since end
+        const fadeAge = (currentSampleCount - endSample) / sampleRate
+        if (fadeAge <= FADEOUT_SECONDS) {
+          eventAges.set(bytecodePos, fadeAge)
         }
       }
     }
 
-    // Use precomputed tokens from compiler
     const tokens = compiledSequence.tokens
+    const y = height / 2
 
-    // Draw the full sequence string with highlighted parts
+    // Set font BEFORE measuring text
     c.font = '18px monospace'
     c.textBaseline = 'middle'
 
-    const y = height / 2
-
-    // Check if token is a leaf event (not a cycle)
     const isLeafToken = (t: typeof tokens[0]) => !t.text.startsWith('[') && !t.text.startsWith('<')
     const leafTokens = tokens.filter(isLeafToken)
-    const firstLeafPos = leafTokens[0]?.bytecodePos ?? -1
-    // Use first leaf token's position if currentIndex doesn't match any leaf
-    const activePos = leafTokens.some(t => t.bytecodePos === currentIndex) ? currentIndex : firstLeafPos
 
-    // Draw character by character with proper highlighting
-    for (let charIdx = 0; charIdx < sequenceString.length; charIdx++) {
-      const char = sequenceString[charIdx]
+    // Handle fallback first token (when stopped/no events visible)
+    if (!hasAnyValidEvents && leafTokens.length > 0) {
+      // No events in history yet - show first token at full brightness
+      eventAges.set(leafTokens[0].bytecodePos, 0)
+      showingFallback = true
+      fallbackStartTime = 0
+    }
+    else if (showingFallback && leafTokens.length > 0) {
+      // Check if the first token itself has a real event, or if any other event is visible
+      const firstTokenHasRealEvent = eventAges.has(leafTokens[0].bytecodePos)
+      const otherEventsVisible = Array.from(eventAges.keys()).some(pos => pos !== leafTokens[0].bytecodePos)
 
-      // Find which token this character belongs to
-      const token = tokens.find(t => charIdx >= t.start && charIdx < t.start + t.length)
-      const isActive = token && isLeafToken(token) && token.bytecodePos === activePos
-
-      const x = 10 + c.measureText(sequenceString.slice(0, charIdx)).width
-
-      if (isActive) {
-        // Highlight the entire token
-        if (token && charIdx === token.start) {
-          const tokenText = sequenceString.slice(token.start, token.start + token.length)
-          const metrics = c.measureText(tokenText)
-          c.fillStyle = 'rgba(0, 255, 0, 0.3)'
-          c.fillRect(x - 2, y - 14, metrics.width + 4, 28)
-          c.strokeStyle = 'lime'
-          c.lineWidth = 2
-          c.strokeRect(x - 2, y - 14, metrics.width + 4, 28)
+      if (!firstTokenHasRealEvent && !otherEventsVisible) {
+        // No visible events yet - keep showing fallback at full brightness
+        eventAges.set(leafTokens[0].bytecodePos, 0)
+      }
+      else {
+        // Real events are visible - start fading out the fallback
+        if (fallbackStartTime === 0) {
+          fallbackStartTime = now / 1000 // Record when fadeout started
+        }
+        const fadeAge = (now / 1000) - fallbackStartTime
+        if (fadeAge <= FADEOUT_SECONDS) {
+          // Only add fallback fade if first token doesn't have a real event
+          if (!firstTokenHasRealEvent) {
+            eventAges.set(leafTokens[0].bytecodePos, fadeAge)
+          }
+        }
+        else {
+          showingFallback = false
+          fallbackStartTime = 0
         }
       }
+    }
+    else if (!hasAnyValidEvents) {
+      // Reset fallback state when history is cleared
+      showingFallback = false
+      fallbackStartTime = 0
+    }
+
+    // Draw highlights with fadeout
+    for (const token of tokens) {
+      if (!isLeafToken(token)) continue
+
+      const age = eventAges.get(token.bytecodePos)
+      if (age === undefined || age > FADEOUT_SECONDS) continue
+
+      const alpha = 1 - age / FADEOUT_SECONDS
+      const x = 10 + c.measureText(sequenceString.slice(0, token.start)).width
+      const tokenText = sequenceString.slice(token.start, token.start + token.length)
+      const metrics = c.measureText(tokenText)
+
+      c.fillStyle = `rgba(0, 255, 0, ${0.3 * alpha})`
+      c.fillRect(x - 2, y - 14, metrics.width + 4, 28)
+      c.strokeStyle = `rgba(0, 255, 0, ${alpha})`
+      c.lineWidth = 2
+      c.strokeRect(x - 2, y - 14, metrics.width + 4, 28)
     }
 
     // Draw the text
@@ -647,10 +744,22 @@ function createSequenceVisualization(
     for (let charIdx = 0; charIdx < sequenceString.length; charIdx++) {
       const char = sequenceString[charIdx]
       const token = tokens.find(t => charIdx >= t.start && charIdx < t.start + t.length)
-      const isActive = token && isLeafToken(token) && token.bytecodePos === activePos
       const isEvent = token && isLeafToken(token)
 
-      c.fillStyle = isActive ? 'lime' : isEvent ? 'white' : 'rgba(255, 255, 255, 0.5)'
+      let textAlpha = isEvent ? 1 : 0.5
+      let textColor = 'white'
+
+      if (isEvent && token) {
+        const age = eventAges.get(token.bytecodePos)
+        if (age !== undefined && age < FADEOUT_SECONDS) {
+          const brightness = 1 - age / FADEOUT_SECONDS
+          textColor = `rgb(${Math.floor(255 * (1 - brightness) + 0 * brightness)}, 255, ${
+            Math.floor(255 * (1 - brightness) + 0 * brightness)
+          })`
+        }
+      }
+
+      c.fillStyle = isEvent ? textColor : 'rgba(255, 255, 255, 0.5)'
       c.fillText(char, x, y)
       x += c.measureText(char).width
     }
