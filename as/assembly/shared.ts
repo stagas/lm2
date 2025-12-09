@@ -8,6 +8,7 @@ export enum Op {
   Mul,
   Sin,
   Ad,
+  Adsr,
   Seq,
   SeqMap,
   SeqForEach,

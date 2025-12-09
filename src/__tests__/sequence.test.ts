@@ -7,6 +7,8 @@ import {
   expectEventInCycle,
   freqToNote,
   getUniqueNotes,
+  getVelocitySamples,
+  noteToFreq,
 } from '../test-utils/sequence-test.ts'
 
 describe('Sequences', () => {
@@ -557,5 +559,203 @@ describe('Sequences', () => {
 
     // E4 at slot 8 (8/9 = 0.889)
     expectEventAtTime(result.events, 'E4', 0.889)
+  })
+
+  it('c4.5', async () => {
+    // Velocity modifier .5 means 50% velocity (0.5)
+    const result = await executeSequence('c4.5')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+
+    // Verify C4 appears
+    expectEventCount(result.events, 'C4', 1)
+    expectEventAtTime(result.events, 'C4', 0)
+
+    // Verify velocity is 0.5
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    expect(c4Events.length).toBe(1)
+    expect(c4Events[0]!.velocity).toBe(0.5)
+  })
+
+  it('c4;.1', async () => {
+    // Hold modifier ;.1 means trigger stays at 1 for 0.1 seconds (100ms)
+    const result = await executeSequence('c4;.1')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+
+    // Verify C4 appears
+    expectEventCount(result.events, 'C4', 1)
+    expectEventAtTime(result.events, 'C4', 0)
+
+    // Verify hold time is 0.1 seconds
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    expect(c4Events.length).toBe(1)
+    expect(c4Events[0]!.hold).toBeCloseTo(0.1, 2)
+
+    // Verify trigger stays at 1 for 100ms
+    const c4Event = c4Events[0]!
+    const voice = c4Event.voice
+    const startTime = c4Event.sample / 44100
+    const endTime = startTime + 0.15 // Check slightly beyond 100ms
+    const samples = await getVelocitySamples('c4;.1', voice, startTime, endTime)
+
+    // Count samples where trigger is 1
+    const trigOnSamples = samples.filter(s => s.trig > 0.5)
+    const trigOnDuration = trigOnSamples.length / 44100
+
+    // Trigger should be on for approximately 0.1s (100ms)
+    expect(trigOnDuration).toBeCloseTo(0.1, 1)
+  })
+
+  it('c4;.01 e4 g4', async () => {
+    // Hold modifier ;.01 means trigger stays at 1 for 0.01 seconds (10ms)
+    // Velocity stays active until voice is replaced
+    const result = await executeSequence('c4;.01 e4 g4')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // Verify all notes appear
+    expectEventCount(result.events, 'C4', 1)
+    expectEventCount(result.events, 'E4', 1)
+    expectEventCount(result.events, 'G4', 1)
+
+    // Get c4 event
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    expect(c4Events.length).toBe(1)
+    const c4Event = c4Events[0]!
+    const voice = c4Event.voice
+
+    // Check trigger samples - c4's trigger should be 1 for 0.01s then 0
+    const startTime = c4Event.sample / 44100
+    const endTime = 0.05 // Check up to 50ms
+    const samples = await getVelocitySamples('c4;.01 e4 g4', voice, startTime, endTime)
+
+    // Count samples where trigger is 1
+    const trigOnSamples = samples.filter(s => s.trig > 0.5)
+    const trigOnDuration = trigOnSamples.length / 44100
+
+    // Trigger should be on for approximately 0.01s (10ms)
+    expect(trigOnDuration).toBeCloseTo(0.01, 2)
+
+    // Velocity should stay active (voice not released)
+    const velocityOnSamples = samples.filter(s => s.velocity > 0)
+    expect(velocityOnSamples.length).toBe(samples.length) // All samples should have velocity > 0
+  })
+
+  it('c4 e4 g4;.2', async () => {
+    // Hold modifier ;.2 means trigger stays at 1 for 0.2 seconds
+    // When cycle repeats, g4's velocity should stay active (hold only affects trigger, not voice lifetime)
+    const result = await executeSequence('c4 e4 g4;.2', { totalCycles: 2 })
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // Get g4 events (should appear in both cycles)
+    const g4Events = result.events.filter(e => freqToNote(e.value) === 'G4')
+    expect(g4Events.length).toBe(2) // Should appear in both cycles
+
+    // Verify g4 triggers in both cycles
+    expectEventAtTime(result.events, 'G4', 0.667, 0) // First cycle
+    expectEventAtTime(result.events, 'G4', 1.667, 1) // Second cycle
+
+    // Check that g4's trigger goes 1 -> 0 -> 1 between cycles
+    // First g4: trigger is 1 from 0.667 to 0.867 (hold 0.2s)
+    // Then trigger should be 0 from 0.867 to 1.667
+    // Then trigger should be 1 again from 1.667 to 1.867 (second cycle)
+    const firstG4 = g4Events[0]!
+    const voice = firstG4.voice
+
+    // Check trigger samples around the transition
+    const startTime = 0.8 // Before first hold expires
+    const endTime = 1.8 // After second trigger
+    const samples = await getVelocitySamples('c4 e4 g4;.2', voice, startTime, endTime, { totalCycles: 2 })
+
+    // Check trigger goes to 0 after first hold expires (around 0.867)
+    const afterFirstHold = samples.filter(s => s.time > 0.867 && s.time < 1.6)
+    const trigOffAfterFirst = afterFirstHold.filter(s => s.trig <= 0.5)
+    expect(trigOffAfterFirst.length).toBeGreaterThan(afterFirstHold.length * 0.9) // Most should be 0
+
+    // Check trigger goes to 1 again at second trigger (around 1.667)
+    const atSecondTrigger = samples.filter(s => s.time >= 1.667 && s.time < 1.867)
+    const trigOnAtSecond = atSecondTrigger.filter(s => s.trig > 0.5)
+    expect(trigOnAtSecond.length).toBeGreaterThan(atSecondTrigger.length * 0.9) // Most should be 1
+
+    // Check that g4's velocity stays active between cycles
+    const g4Value = noteToFreq('G4')
+    const velocityActive = samples.filter(s => Math.abs(s.value - g4Value) < 0.1 && s.velocity > 0)
+    expect(velocityActive.length).toBeGreaterThan(samples.length * 0.8) // Most should be active
+  })
+
+  it('c4#.5 e4#.5', async () => {
+    // Jitter modifier #.5 means 50% jitter (random offset up to 50% of slot duration)
+    // With fixed seed, jitter should be deterministic
+    const result = await executeSequence('c4#.5 e4#.5', { seed: 1234567890 })
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+
+    // Verify both notes appear
+    expectEventCount(result.events, 'C4', 1)
+    expectEventCount(result.events, 'E4', 1)
+
+    // C4 should be at time 0 (with possible jitter offset)
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    expect(c4Events.length).toBe(1)
+    const c4Time = c4Events[0]!.sample / 44100
+    // With 50% jitter on a 1-second cycle (2 slots), slot duration is 0.5s
+    // Jitter can offset by up to 0.5 * 0.5 = 0.25s
+    expect(c4Time).toBeGreaterThanOrEqual(-0.25)
+    expect(c4Time).toBeLessThanOrEqual(0.25)
+
+    // E4 should be at time 0.5 (with possible jitter offset)
+    const e4Events = result.events.filter(e => freqToNote(e.value) === 'E4')
+    expect(e4Events.length).toBe(1)
+    const e4Time = e4Events[0]!.sample / 44100
+    // E4 is at slot 1 (0.5s), jitter can offset by up to 0.25s
+    expect(e4Time).toBeGreaterThanOrEqual(0.25)
+    expect(e4Time).toBeLessThanOrEqual(0.75)
+  })
+
+  it('trigger goes to 0 between notes', async () => {
+    // Test that triggers properly go to 0 between note events
+    const samples = await getVelocitySamples('c4 e4 g4', 0, 0, 1.0)
+
+    // Find trigger onset samples (0->1 transitions)
+    const triggerOnsets: number[] = []
+
+    // Check sample 0 separately (it's an onset if trigger is high)
+    if (samples.length > 0 && samples[0]!.trig > 0.5) {
+      triggerOnsets.push(samples[0]!.sample)
+    }
+
+    // Check remaining samples for 0->1 transitions
+    for (let i = 1; i < samples.length; i++) {
+      if (samples[i]!.trig > 0.5 && samples[i - 1]!.trig <= 0.5) {
+        triggerOnsets.push(samples[i]!.sample)
+      }
+    }
+
+    // Should have 3 trigger onsets (c4, e4, g4) within first cycle
+    expect(triggerOnsets.length).toBe(3)
+
+    // Verify each trigger is only 1 sample wide (for hold=0)
+    for (const onset of triggerOnsets) {
+      const onsetSample = samples.find(s => s.sample === onset)
+      const nextSample = samples.find(s => s.sample === onset + 1)
+      expect(onsetSample?.trig).toBeGreaterThan(0.5)
+      expect(nextSample?.trig).toBeLessThanOrEqual(0.5)
+    }
+
+    // Verify triggers go back to 0 between onsets
+    for (let i = 1; i < triggerOnsets.length; i++) {
+      const prevOnset = triggerOnsets[i - 1]!
+      const currentOnset = triggerOnsets[i]!
+      const samplesBetween = samples.filter(s => s.sample > prevOnset && s.sample < currentOnset)
+      const hasZero = samplesBetween.some(s => s.trig <= 0.5)
+      expect(hasZero).toBe(true)
+    }
   })
 })

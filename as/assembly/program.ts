@@ -1,5 +1,6 @@
 import { ARRAYS_COUNT, LITERALS_COUNT, OPS_COUNT, RING_BUFFER_SIZE, SEQ_VOICES } from './constants'
 import { Ad } from './gen/ad'
+import { Adsr } from './gen/adsr'
 import { Gen } from './gen/gen'
 import { Seq } from './gen/seq'
 import { SeqMap } from './gen/seqmap'
@@ -27,11 +28,13 @@ export class GenPool<T> {
 class GensPool {
   private sins: GenPool<Sin> = new GenPool<Sin>(() => new Sin())
   private ads: GenPool<Ad> = new GenPool<Ad>(() => new Ad())
+  private adsrs: GenPool<Adsr> = new GenPool<Adsr>(() => new Adsr())
   private seqs: GenPool<Seq> = new GenPool<Seq>(() => new Seq())
   private seqmaps: GenPool<SeqMap> = new GenPool<SeqMap>(() => new SeqMap())
   resetIndices(): void {
     this.sins.resetIndex()
     this.ads.resetIndex()
+    this.adsrs.resetIndex()
     this.seqs.resetIndex()
     this.seqmaps.resetIndex()
   }
@@ -46,6 +49,8 @@ class GensPool {
         return this.sins.get()
       case Op.Ad:
         return this.ads.get()
+      case Op.Adsr:
+        return this.adsrs.get()
       case Op.Seq:
         return this.seqs.get()
       case Op.SeqMap:
@@ -114,17 +119,17 @@ export class Program {
   seqForEachAudioOutsCount: i32 = 0
 
   // Runtime voice buffer pool (pre-allocated for SeqForEach)
-  // Each voice gets: [value, trig, audio]
-  runtimeVoiceBufs: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES * 3)
+  // Each voice gets: [value, trig, velocity, audio, envelope]
+  runtimeVoiceBufs: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES * 5)
 
   constructor() {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
       this.literalsSmoothed[i] = new Smoothed()
     }
 
-    // Initialize runtime voice buffer pool (use buffer indices 500-523)
+    // Initialize runtime voice buffer pool (use buffer indices 500-539)
     let bufferIndex = 500
-    for (let i = 0; i < SEQ_VOICES * 3; i++) {
+    for (let i = 0; i < SEQ_VOICES * 5; i++) {
       this.runtimeVoiceBufs[i] = bufferIndex++
     }
   }

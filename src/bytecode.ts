@@ -127,6 +127,17 @@ export class Bytecode {
     this.stack.push(out)
   }
 
+  Adsr = () => {
+    const out = this.outsCount++
+    const trig = this.stack.pop()
+    const release = this.stack.pop()
+    const sustain = this.stack.pop()
+    const decay = this.stack.pop()
+    const attack = this.stack.pop()
+    this.emit(Op.Adsr, out, attack, decay, sustain, release, trig)
+    this.stack.push(out)
+  }
+
   Seq = (arrayIndex: number) => {
     const voiceCountOut = this.outsCount++
     const voiceOuts: number[][] = []

@@ -216,11 +216,27 @@ async function createProgram() {
 
   // Set initial values
   data.writeLiteral(3, 1 / 4)
+  data.writeLiteral(4, 0.0001) // attack
+  data.writeLiteral(5, 0.05) // decay
+  data.writeLiteral(6, 0.7) // sustain
+  data.writeLiteral(7, 0.2) // release
 
   bytecode.SeqForEach(() => {
     bytecode.SeqVoiceValue() // Get note value (frequency) from current voice
     bytecode.SeqVoiceTrig() // Get trigger from current voice
     bytecode.Sin() // Generate audio
+
+    bytecode.Literal(4) // attack
+    bytecode.Literal(5) // decay
+    bytecode.Literal(6) // sustain
+    bytecode.Literal(7) // release
+    bytecode.SeqVoiceTrig() // Get trigger again for ADSR
+    bytecode.Adsr() // Generate envelope
+
+    bytecode.Mul() // Multiply ADSR by Sin
+
+    bytecode.SeqVoiceVelocity() // Get velocity
+    bytecode.Mul() // Multiply by velocity
   })
 
   bytecode.SeqMap() // Mix all voices

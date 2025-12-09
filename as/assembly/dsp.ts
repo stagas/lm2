@@ -1,5 +1,6 @@
 import { ARRAY_HEADER_SIZE, SEQ_VOICES } from './constants'
 import { Ad } from './gen/ad'
+import { Adsr } from './gen/adsr'
 import { Seq } from './gen/seq'
 import { SeqMap } from './gen/seqmap'
 import { Sin } from './gen/sin'
@@ -151,6 +152,23 @@ export class Dsp {
           break
         }
 
+        case Op.Adsr: {
+          const adsr = gensPool.get(Op.Adsr) as Adsr
+          const out$ = outsPool.get(ops[pc++]) + pos
+          const attack$ = outsPool.get(ops[pc++]) + pos
+          const decay$ = outsPool.get(ops[pc++]) + pos
+          const sustain$ = outsPool.get(ops[pc++]) + pos
+          const release$ = outsPool.get(ops[pc++]) + pos
+          const trig$ = outsPool.get(ops[pc++]) + pos
+          adsr.attack$ = attack$
+          adsr.decay$ = decay$
+          adsr.sustain$ = sustain$
+          adsr.release$ = release$
+          adsr.trig$ = trig$
+          adsr.process(out$, length)
+          break
+        }
+
         case Op.Seq: {
           const seq = gensPool.get(Op.Seq) as Seq
           const arrayIndex = ops[pc++]
@@ -194,10 +212,15 @@ export class Dsp {
           for (let v = 0; v < voicesToProcess; v++) {
             this.program.currentVoiceIndex = v
 
-            // Get pre-allocated buffers for this voice (3 buffers per voice: value, trig, audio)
-            const runtimeValueBuf = this.program.runtimeVoiceBufs[v * 3 + 0]
-            const runtimeTrigBuf = this.program.runtimeVoiceBufs[v * 3 + 1]
-            const runtimeAudioBuf = this.program.runtimeVoiceBufs[v * 3 + 2]
+            // Get pre-allocated buffers for this voice (5 buffers per voice: value, trig, velocity, audio, envelope)
+            const runtimeValueBuf = this.program.runtimeVoiceBufs[v * 5 + 0]
+            const runtimeTrigBuf = this.program.runtimeVoiceBufs[v * 5 + 1]
+            const runtimeVelocityBuf = this.program.runtimeVoiceBufs[v * 5 + 2]
+            const runtimeAudioBuf = this.program.runtimeVoiceBufs[v * 5 + 3]
+            const runtimeEnvelopeBuf = this.program.runtimeVoiceBufs[v * 5 + 4]
+
+            // Track the current multiplier buffer (envelope or velocity)
+            let currentMultiplierBuf: i32 = 0
 
             // Execute body bytecode
             let bodyPc = bodyStartPc
@@ -230,7 +253,16 @@ export class Dsp {
                 }
               }
               else if (bodyOp === Op.SeqVoiceVelocity) {
-                bodyPc++ // Skip compile-time buffer index (not used for now)
+                bodyPc++ // Skip compile-time buffer index
+                const voiceIndex = this.program.currentVoiceIndex
+                const out$ = outsPool.get(runtimeVelocityBuf) + pos
+                if (voiceIndex >= 0 && voiceIndex < this.program.lastSeqVelocityOuts.length) {
+                  const velocity$ = outsPool.get(this.program.lastSeqVelocityOuts[voiceIndex]) + pos
+                  for (let i = 0; i < length; i++) {
+                    store<f32>(out$ + i * 4, load<f32>(velocity$ + i * 4))
+                  }
+                }
+                currentMultiplierBuf = runtimeVelocityBuf
               }
               else if (bodyOp === Op.Sin) {
                 bodyPc++ // Skip compile-time output buffer
@@ -247,6 +279,52 @@ export class Dsp {
                 sin.process(out$, length)
 
                 this.program.seqForEachAudioOuts[this.program.seqForEachAudioOutsCount++] = runtimeAudioBuf
+              }
+              else if (bodyOp === Op.Adsr) {
+                bodyPc++ // Skip compile-time output buffer
+                const attackBuf = ops[bodyPc++]
+                const decayBuf = ops[bodyPc++]
+                const sustainBuf = ops[bodyPc++]
+                const releaseBuf = ops[bodyPc++]
+                bodyPc++ // Skip compile-time trig buffer
+
+                const adsr = gensPool.get(Op.Adsr) as Adsr
+                const out$ = outsPool.get(runtimeEnvelopeBuf) + pos
+                const attack$ = outsPool.get(attackBuf) + pos
+                const decay$ = outsPool.get(decayBuf) + pos
+                const sustain$ = outsPool.get(sustainBuf) + pos
+                const release$ = outsPool.get(releaseBuf) + pos
+                const trig$ = outsPool.get(runtimeTrigBuf) + pos
+
+                adsr.attack$ = attack$
+                adsr.decay$ = decay$
+                adsr.sustain$ = sustain$
+                adsr.release$ = release$
+                adsr.trig$ = trig$
+                adsr.process(out$, length)
+
+                currentMultiplierBuf = runtimeEnvelopeBuf
+              }
+              else if (bodyOp === Op.Mul) {
+                bodyPc++ // Skip compile-time output buffer
+                bodyPc++ // Skip compile-time a1 buffer
+                bodyPc++ // Skip compile-time a2 buffer
+
+                // Multiply runtimeAudioBuf with currentMultiplierBuf (envelope or velocity)
+                const out$ = outsPool.get(runtimeAudioBuf) + pos
+                const a1$ = outsPool.get(runtimeAudioBuf) + pos
+                const a2$ = outsPool.get(currentMultiplierBuf) + pos
+
+                mulAudio(out$, a1$, a2$, length)
+              }
+              else if (bodyOp === Op.Literal) {
+                const outBuf = ops[bodyPc++]
+                const literalIndex = ops[bodyPc++]
+                const literal = this.program.data.readLiteral(literalIndex)
+                const out$ = outsPool.get(outBuf) + pos
+                for (let i = 0; i < length; i++) {
+                  store<f32>(out$ + i * 4, literal)
+                }
               }
             }
           }

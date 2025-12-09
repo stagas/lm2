@@ -31,6 +31,14 @@ export interface SequenceTestResult {
   totalSamples: number
 }
 
+export interface VelocitySample {
+  sample: number
+  time: number
+  velocity: number
+  trig: number
+  value: number
+}
+
 let wasmCore: Awaited<ReturnType<typeof wasmSetup<typeof WasmExports>>> | null = null
 let sharedProgram$: number | null = null
 let sharedArrays$: number[] | null = null
@@ -125,6 +133,7 @@ export async function executeSequence(
   const totalChunks = Math.ceil(totalSamples / CHUNK_LENGTH)
 
   const events: SequenceEvent[] = []
+  const prevTrig = new Float32Array(SEQ_VOICES) // Track previous trigger for each voice
 
   for (let chunk = 0; chunk < totalChunks; chunk++) {
     const currentSample = chunk * CHUNK_LENGTH
@@ -150,8 +159,14 @@ export async function executeSequence(
         const value = outValue[v * CHUNK_LENGTH + i]
         const velocity = outVelocity[v * CHUNK_LENGTH + i]
 
-        // With single-sample triggers, just check if trig is 1
-        if (trig > 0.5 && value > 0) {
+        // Detect trigger onset (trig goes from 0 to 1)
+        // For sample 0, treat any high trigger as an onset (no previous sample to compare)
+        const isTriggerOnset = sample === 0
+          ? trig > 0.5
+          : trig > 0.5 && prevTrig[v] <= 0.5
+        prevTrig[v] = trig
+
+        if (isTriggerOnset && value > 0) {
           events.push({
             cycle,
             sample,
@@ -217,8 +232,9 @@ export async function executeSequence(
     }
 
     if (bestMatch) {
-      // Hold time is now 0 since voices stay active until replaced (no releaseTime)
-      event.hold = 0
+      // Calculate hold time from history entry: (endSample - startSample) / sampleRate
+      const holdTime = (bestMatch.endSample - bestMatch.startSample) / sampleRate
+      event.hold = holdTime
       usedEntries.add(bestMatch.index)
     }
   }
@@ -356,4 +372,99 @@ export function expectEventCount(
 ) {
   const noteEvents = getEventsByNote(events, note)
   expect(noteEvents.length).toBe(expectedCount)
+}
+
+export async function getVelocitySamples(
+  sequenceString: string,
+  voice: number,
+  startTime: number,
+  endTime: number,
+  options: {
+    bpm?: number
+    sampleRate?: number
+    totalCycles?: number
+  } = {},
+): Promise<VelocitySample[]> {
+  const { bpm = 60, sampleRate = 44100 } = options
+  const { core, program$, arrays$ } = await getSharedProgram()
+
+  core.wasm.bpm.value = bpm
+  core.wasm.sampleRate.value = sampleRate
+  core.wasm.globalSampleCount.value = 0
+
+  const program = ProgramStruct(core.memory.buffer, program$)
+  const programData = ProgramDataStruct(core.memory.buffer, program.data)
+  const arrays = new Uint32Array(core.memory.buffer, programData.arrays, ARRAYS_COUNT)
+
+  const sequenceArray$ = arrays$[1]
+  const sequenceArray = new Float32Array(
+    core.memory.buffer,
+    sequenceArray$,
+    ARRAY_SIZE + ARRAY_HEADER_SIZE,
+  )
+
+  const compiled = compileSequence(sequenceString)
+  sequenceArray.set(compiled.bytecode.buffer)
+
+  const seq$ = core.wasm.createSeq()
+  core.wasm.debugSeqReset(seq$)
+
+  const CHUNK_LENGTH = CHUNK_SIZE
+  const outTrig$ = core.wasm.createFloat32Buffer(CHUNK_LENGTH * SEQ_VOICES)
+  const outVelocity$ = core.wasm.createFloat32Buffer(CHUNK_LENGTH * SEQ_VOICES)
+  const outValue$ = core.wasm.createFloat32Buffer(CHUNK_LENGTH * SEQ_VOICES)
+  const outVoiceCount$ = core.wasm.createFloat32Buffer(CHUNK_LENGTH)
+
+  const outTrig = new Float32Array(core.memory.buffer, outTrig$, CHUNK_LENGTH * SEQ_VOICES)
+  const outVelocity = new Float32Array(
+    core.memory.buffer,
+    outVelocity$,
+    CHUNK_LENGTH * SEQ_VOICES,
+  )
+  const outValue = new Float32Array(core.memory.buffer, outValue$, CHUNK_LENGTH * SEQ_VOICES)
+
+  const secondsPerBeat = 60.0 / bpm
+  const cycleDurationSeconds = secondsPerBeat
+  const { totalCycles = 1 } = options
+  const startSample = Math.floor(startTime * sampleRate)
+  const endSample = Math.ceil(endTime * sampleRate)
+  const totalSamples = Math.ceil(totalCycles * cycleDurationSeconds * sampleRate)
+  const totalChunks = Math.ceil(totalSamples / CHUNK_LENGTH)
+
+  const samples: VelocitySample[] = []
+
+  for (let chunk = 0; chunk < totalChunks; chunk++) {
+    const currentSample = chunk * CHUNK_LENGTH
+    core.wasm.globalSampleCount.value = currentSample
+
+    core.wasm.debugSeqProcess(
+      seq$,
+      sequenceArray$,
+      outTrig$,
+      outVelocity$,
+      outValue$,
+      outVoiceCount$,
+      CHUNK_LENGTH,
+    )
+
+    for (let i = 0; i < CHUNK_LENGTH; i++) {
+      const sample = currentSample + i
+      if (sample < startSample || sample >= endSample) continue
+
+      const time = sample / sampleRate
+      const velocity = outVelocity[voice * CHUNK_LENGTH + i]
+      const trig = outTrig[voice * CHUNK_LENGTH + i]
+      const value = outValue[voice * CHUNK_LENGTH + i]
+
+      samples.push({
+        sample,
+        time,
+        velocity,
+        trig,
+        value,
+      })
+    }
+  }
+
+  return samples
 }
