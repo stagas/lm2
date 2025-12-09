@@ -18,9 +18,10 @@ export class SeqMap extends Gen {
     for (let v = 0; v < voicesToMix; v++) {
       for (let i = 0; i < length; i++) {
         const audio = load<f32>(this.inAudio$[v] + i * 4)
-        const trig = load<f32>(this.inTrig$[v] + i * 4)
         const velocity = load<f32>(this.inVelocity$[v] + i * 4)
-        const mixed = audio * trig * velocity
+        // Don't multiply by trig - trig is only 1 for a single sample (trigger pulse)
+        // Velocity indicates if voice is active
+        const mixed = audio * velocity
         store<f32>(out$ + i * 4, load<f32>(out$ + i * 4) + mixed)
       }
     }

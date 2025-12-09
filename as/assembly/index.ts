@@ -88,6 +88,11 @@ export function debugSeqReset(seq$: usize): void {
   seq.reset()
 }
 
+export function debugSeqSetSeed(seq$: usize, seed: u32): void {
+  const seq = changetype<Seq>(seq$)
+  seq.setSeed(seed)
+}
+
 // Debug: Process Seq directly for diagnostics
 export function debugSeqProcess(seq$: usize, bytecode$: usize, outTrig$: usize, outVelocity$: usize, outValue$: usize,
   outVoiceCount$: usize, length: i32): void

@@ -38,7 +38,8 @@ export class SequenceBytecode {
     n: number,
     velocity = 1,
     hold = 0,
-    repeat = 1,
+    slotCount = 1,
+    repeatCount = 1,
     density = 1,
     offset = 0,
     prob = 1,
@@ -49,7 +50,8 @@ export class SequenceBytecode {
     this.data[this.pc++] = n
     this.data[this.pc++] = velocity
     this.data[this.pc++] = hold
-    this.data[this.pc++] = repeat
+    this.data[this.pc++] = slotCount
+    this.data[this.pc++] = repeatCount
     this.data[this.pc++] = density
     this.data[this.pc++] = offset
     this.data[this.pc++] = prob
@@ -69,7 +71,8 @@ export class SequenceBytecode {
     strum = 0,
     velocity = 1,
     hold = 0,
-    repeat = 1,
+    slotCount = 1,
+    repeatCount = 1,
     density = 1,
     offset = 0,
     prob = 1,
@@ -84,7 +87,8 @@ export class SequenceBytecode {
     this.data[this.pc++] = strum
     this.data[this.pc++] = velocity
     this.data[this.pc++] = hold
-    this.data[this.pc++] = repeat
+    this.data[this.pc++] = slotCount
+    this.data[this.pc++] = repeatCount
     this.data[this.pc++] = density
     this.data[this.pc++] = offset
     this.data[this.pc++] = prob

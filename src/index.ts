@@ -32,7 +32,9 @@ let wasmMemory: WebAssembly.Memory | undefined
 let wasmRings: Ring[] | undefined
 let wasmDsp: Dsp | undefined
 let program: Program | undefined
-let currentSequenceString = ''
+const SEQUENCE_STORAGE_KEY = 'engine2:sequence'
+const DEFAULT_SEQUENCE = 'c4 e4 [g4 a4]*2'
+let currentSequenceString = localStorage.getItem(SEQUENCE_STORAGE_KEY) ?? DEFAULT_SEQUENCE
 let currentCompiledSequence: Awaited<ReturnType<typeof compileSequence>> | undefined
 
 async function fetchWasmBinary() {
@@ -71,7 +73,7 @@ async function updateWasmBinary() {
 }
 
 async function creaateWorklet() {
-  const audioContext = new AudioContext({ latencyHint: 0.0125 })
+  const audioContext = new AudioContext({ latencyHint: 0.5 })
   await audioContext.audioWorklet.addModule(workletUrl)
   const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
   const ringPos = new Uint8Array(new SharedArrayBuffer(4))
@@ -197,9 +199,7 @@ async function createProgram() {
   data.arrays[0].data[14] = 783.99 // G5
   data.arrays[0].data[15] = 880.00 // A5
 
-  currentSequenceString = 'c4 e4'
   currentCompiledSequence = compileSequence(currentSequenceString)
-
   data.arrays[1].raw.set(currentCompiledSequence.bytecode.buffer)
   console.log('✓ Sequence compiled successfully')
   console.log('  Sequence:', currentSequenceString)
@@ -366,6 +366,55 @@ const bpmSlider = Object.assign(
   },
 )
 document.body.appendChild(bpmSlider)
+
+function updateSequence(newSequence: string) {
+  try {
+    currentSequenceString = newSequence
+    currentCompiledSequence = compileSequence(currentSequenceString)
+    localStorage.setItem(SEQUENCE_STORAGE_KEY, newSequence)
+
+    if (program) {
+      program.data.arrays[1].raw.set(currentCompiledSequence.bytecode.buffer)
+    }
+
+    if (program && sequenceVisualizationCanvas) {
+      sequenceVisualizationCanvas.remove()
+      sequenceVisualizationCanvas = createSequenceVisualization(
+        program.data.arrays[1],
+        currentSequenceString,
+        currentCompiledSequence,
+        audioContext,
+        bpmValue,
+        globalSampleCount,
+        600,
+        50,
+      )
+    }
+
+    console.log('✓ Sequence updated:', currentSequenceString)
+  }
+  catch (error) {
+    console.error('✗ Sequence compilation failed:', error)
+  }
+}
+
+const sequenceLabel = document.createElement('div')
+sequenceLabel.textContent = 'Sequence:'
+sequenceLabel.className = 'text-white p-2'
+document.body.appendChild(sequenceLabel)
+
+const sequenceInput = Object.assign(
+  document.createElement('input'),
+  {
+    type: 'text',
+    value: currentSequenceString,
+    className: 'bg-gray-800 text-white p-2 rounded-md border border-gray-600 w-full max-w-md',
+    oninput: (e: InputEvent & { target: HTMLInputElement }) => {
+      updateSequence(e.target.value)
+    },
+  },
+)
+document.body.appendChild(sequenceInput)
 
 let analysers: { canvas: HTMLCanvasElement; fftCanvas: HTMLCanvasElement }[] = []
 let arrayVisualizationCanvas: HTMLCanvasElement | undefined
@@ -684,10 +733,19 @@ function createSequenceVisualization(
     for (const token of tokens) {
       if (!isLeafToken(token)) continue
 
-      const age = eventAges.get(token.bytecodePos)
-      if (age === undefined || age > FADEOUT_SECONDS) continue
+      // Check all bytecode positions for this token (for repeated events like g4*2)
+      const positions = token.bytecodePositions || [token.bytecodePos]
+      let bestAge: number | undefined = undefined
+      for (const pos of positions) {
+        const age = eventAges.get(pos)
+        if (age !== undefined && (bestAge === undefined || age < bestAge)) {
+          bestAge = age
+        }
+      }
 
-      const alpha = 1 - age / FADEOUT_SECONDS
+      if (bestAge === undefined || bestAge > FADEOUT_SECONDS) continue
+
+      const alpha = 1 - bestAge / FADEOUT_SECONDS
       const x = 10 + c.measureText(sequenceString.slice(0, token.start)).width
       const tokenText = sequenceString.slice(token.start, token.start + token.length)
       const metrics = c.measureText(tokenText)
@@ -710,9 +768,17 @@ function createSequenceVisualization(
       let textColor = 'white'
 
       if (isEvent && token) {
-        const age = eventAges.get(token.bytecodePos)
-        if (age !== undefined && age < FADEOUT_SECONDS) {
-          const brightness = 1 - age / FADEOUT_SECONDS
+        // Check all bytecode positions for this token (for repeated events like g4*2)
+        const positions = token.bytecodePositions || [token.bytecodePos]
+        let bestAge: number | undefined = undefined
+        for (const pos of positions) {
+          const age = eventAges.get(pos)
+          if (age !== undefined && (bestAge === undefined || age < bestAge)) {
+            bestAge = age
+          }
+        }
+        if (bestAge !== undefined && bestAge < FADEOUT_SECONDS) {
+          const brightness = 1 - bestAge / FADEOUT_SECONDS
           textColor = `rgb(${Math.floor(255 * (1 - brightness) + 0 * brightness)}, 255, ${
             Math.floor(255 * (1 - brightness) + 0 * brightness)
           })`

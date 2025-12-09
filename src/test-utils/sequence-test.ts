@@ -22,6 +22,7 @@ export interface SequenceEvent {
   value: number
   velocity: number
   trig: number
+  hold: number // Hold time in seconds
 }
 
 export interface SequenceTestResult {
@@ -71,9 +72,10 @@ export async function executeSequence(
     bpm?: number
     sampleRate?: number
     totalCycles?: number
+    seed?: number
   } = {},
 ): Promise<SequenceTestResult> {
-  const { bpm = 60, sampleRate = 44100, totalCycles = 1 } = options
+  const { bpm = 60, sampleRate = 44100, totalCycles = 1, seed = 1234567890 } = options
   const { core, program$, arrays$ } = await getSharedProgram()
 
   core.wasm.bpm.value = bpm
@@ -97,6 +99,10 @@ export async function executeSequence(
 
   const seq$ = core.wasm.createSeq()
   core.wasm.debugSeqReset(seq$)
+  // Set seed after reset (reset sets seed to default, so we override it)
+  if (core.wasm.debugSeqSetSeed) {
+    core.wasm.debugSeqSetSeed(seq$, seed)
+  }
 
   const CHUNK_LENGTH = CHUNK_SIZE
   const outTrig$ = core.wasm.createFloat32Buffer(CHUNK_LENGTH * SEQ_VOICES)
@@ -144,10 +150,8 @@ export async function executeSequence(
         const value = outValue[v * CHUNK_LENGTH + i]
         const velocity = outVelocity[v * CHUNK_LENGTH + i]
 
-        const prevTrig = i > 0 ? outTrig[v * CHUNK_LENGTH + i - 1] : 0
-        const isTriggerOnset = trig > 0.5 && prevTrig <= 0.5
-
-        if (isTriggerOnset && value > 0) {
+        // With single-sample triggers, just check if trig is 1
+        if (trig > 0.5 && value > 0) {
           events.push({
             cycle,
             sample,
@@ -155,14 +159,72 @@ export async function executeSequence(
             value,
             velocity,
             trig,
+            hold: 0, // Will be filled from history
           })
         }
       }
     }
   }
 
+  // Read event history to get hold times
+  // Read from the most recent entries (history is a ring buffer)
+  const historyWritePos = Math.floor(sequenceArray[1]) || 0
+  const historySize = Math.floor(sequenceArray[2]) || SEQ_HISTORY_SIZE
+  const historyEntries: Array<{ startSample: number; endSample: number; bytecodePos: number }> = []
+
+  // Read history entries using the same formula as debug-seq.ts
+  for (let i = 0; i < historySize; i++) {
+    const idx = ((historyWritePos - historySize + i + historySize) % historySize) * 3 + 3
+    const bytecodePos = Math.floor(sequenceArray[idx])
+    const startSample = Math.floor(sequenceArray[idx + 1])
+    const endSample = Math.floor(sequenceArray[idx + 2])
+
+    // Skip invalid entries
+    if (startSample === 0 && endSample === 0) continue
+
+    historyEntries.push({ startSample, endSample, bytecodePos })
+  }
+
+  // Match events to history entries and calculate hold time
+  // Use tolerance to match events (within 500 samples to account for processing delays and chunk boundaries)
+  const toleranceSamples = 500
+  const usedEntries = new Set<number>() // Track which history entries we've used
+
+  // Filter events to only include those within the specified number of cycles
+  const cycleDurationSamples = cycleDurationSeconds * sampleRate
+  const filteredEvents = events.filter((event) => {
+    const eventCycle = event.sample / cycleDurationSamples
+    return eventCycle < totalCycles
+  })
+
+  // Sort events by sample time to match in order
+  const sortedEvents = [...filteredEvents].sort((a, b) => a.sample - b.sample)
+
+  for (const event of sortedEvents) {
+    // Find the closest unused history entry by startSample
+    let bestMatch: { startSample: number; endSample: number; index: number } | null = null
+    let bestDistance = Infinity
+
+    for (let i = 0; i < historyEntries.length; i++) {
+      if (usedEntries.has(i)) continue
+
+      const entry = historyEntries[i]
+      const distance = Math.abs(entry.startSample - event.sample)
+      if (distance < toleranceSamples && distance < bestDistance) {
+        bestDistance = distance
+        bestMatch = { ...entry, index: i }
+      }
+    }
+
+    if (bestMatch) {
+      // Hold time is now 0 since voices stay active until replaced (no releaseTime)
+      event.hold = 0
+      usedEntries.add(bestMatch.index)
+    }
+  }
+
   return {
-    events,
+    events: filteredEvents,
     totalCycles,
     totalSamples,
   }
@@ -222,12 +284,18 @@ export function expectEventAtTime(
   events: SequenceEvent[],
   note: string,
   expectedTime: number,
+  eventIndex?: number,
   tolerance: number = 0.01,
 ) {
   const noteEvents = getEventsByNote(events, note)
-  expect(noteEvents.length).toBeGreaterThan(0)
-  const event = noteEvents[0]!
+  expect(noteEvents.length).toBeGreaterThan(eventIndex ?? 0)
+  const event = noteEvents[eventIndex ?? 0]!
   const time = event.sample / 44100
+  if (Math.abs(time - expectedTime) >= tolerance) {
+    throw new Error(
+      `Expected time ${expectedTime} for note ${note} at index ${eventIndex ?? 0}, but got: ${time}`,
+    )
+  }
   expect(time).toBeCloseTo(expectedTime, 2)
   expect(event.cycle).toBeCloseTo(expectedTime, 2)
 }
@@ -242,4 +310,50 @@ export function expectEventInCycle(
   expect(noteEvents.length).toBeGreaterThan(0)
   const event = noteEvents[0]!
   expect(event.cycle).toBeCloseTo(expectedCycle, 2)
+}
+
+export function expectEventHoldTime(
+  events: SequenceEvent[],
+  note: string,
+  expectedHold: number,
+  eventIndex?: number,
+  tolerance: number = 0.01,
+) {
+  const noteEvents = getEventsByNote(events, note)
+  expect(noteEvents.length).toBeGreaterThan(0)
+
+  if (eventIndex !== undefined) {
+    // Check specific event by index
+    expect(noteEvents.length).toBeGreaterThan(eventIndex)
+    const event = noteEvents[eventIndex]!
+    if (Math.abs(event.hold - expectedHold) >= tolerance) {
+      throw new Error(
+        `Expected hold time ${expectedHold} for note ${note} at index ${eventIndex}, but got: ${event.hold}`,
+      )
+    }
+    expect(event.hold).toBeCloseTo(expectedHold, 2)
+  }
+  else {
+    // Check if any event for this note has the expected hold time
+    const hasMatch = noteEvents.some((event) => {
+      return Math.abs(event.hold - expectedHold) < tolerance
+    })
+    if (!hasMatch) {
+      // Debug: show actual hold times
+      const actualHolds = noteEvents.map(e => e.hold).filter((v, i, arr) => arr.indexOf(v) === i)
+      throw new Error(
+        `Expected hold time ${expectedHold} for note ${note}, but got: ${actualHolds.join(', ')}`,
+      )
+    }
+    expect(hasMatch).toBe(true)
+  }
+}
+
+export function expectEventCount(
+  events: SequenceEvent[],
+  note: string,
+  expectedCount: number,
+) {
+  const noteEvents = getEventsByNote(events, note)
+  expect(noteEvents.length).toBe(expectedCount)
 }

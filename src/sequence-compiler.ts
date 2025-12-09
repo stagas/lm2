@@ -12,6 +12,7 @@ interface Modifiers {
   glide: number
   strum: number
   spreadCycles: number // /N: spread children across N cycles (for square brackets)
+  replicate: number // !N: replicate event N times (N slots, each plays once)
 }
 
 const DEFAULT_MODIFIERS: Modifiers = {
@@ -61,8 +62,40 @@ function midiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
 }
 
+function generateEuclideanPattern(beats: number, steps: number, offset: number = 0): boolean[] {
+  if (beats <= 0 || steps <= 0 || beats > steps) {
+    return new Array(steps).fill(false)
+  }
+
+  if (beats === 0) {
+    return new Array(steps).fill(false)
+  }
+
+  // Euclidean rhythm: distribute beats evenly across steps
+  // Use formula: step i is a hit if floor(i * beats / steps) != floor((i-1) * beats / steps)
+  const pattern: boolean[] = new Array(steps).fill(false)
+  pattern[0] = true // First step is always a hit
+
+  for (let i = 1; i < steps; i++) {
+    const prev = Math.floor(((i - 1) * beats) / steps)
+    const curr = Math.floor((i * beats) / steps)
+    pattern[i] = curr !== prev
+  }
+
+  // Apply user-specified offset
+  if (offset !== 0) {
+    const rotated = new Array(steps)
+    for (let i = 0; i < steps; i++) {
+      rotated[(i + offset) % steps] = pattern[i]
+    }
+    return rotated
+  }
+
+  return pattern
+}
+
 function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: boolean): Modifiers {
-  const mods = { ...parentMods, spreadCycles: parentMods.spreadCycles || 0 }
+  const mods = { ...parentMods, spreadCycles: parentMods.spreadCycles || 0, replicate: parentMods.replicate || 1 }
   let i = 0
 
   while (i < str.length) {
@@ -131,6 +164,8 @@ function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: bo
           i += match[0].length + 1
         }
         else {
+          // ? without number defaults to 0.5
+          mods.prob *= 0.5
           i++
         }
         break
@@ -204,6 +239,20 @@ function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: bo
         }
         break
       }
+      case '!': {
+        // !N means replicate the event N times (N slots, each plays once)
+        // g4!2 should be equivalent to g4 g4 - two separate events in two slots
+        const match = rest.match(/^([\d.]+)/)
+        if (match) {
+          const val = parseFloat(match[1])
+          mods.replicate = val
+          i += match[0].length + 1
+        }
+        else {
+          i++
+        }
+        break
+      }
       default:
         i++
     }
@@ -213,27 +262,47 @@ function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: bo
 }
 
 function getTokenSlotCount(token: string, parentMods: Modifiers): number {
-  // Slot count = repeat / speed (how many parent slots this token consumes)
-  // speed < 1 means slower, takes more parent slots
+  // Slot count = how many parent slots this token consumes
   if (token.startsWith('<') || token.startsWith('[')) {
     const isSquare = token.startsWith('[')
     const closingChar = isSquare ? ']' : '>'
     const closingIndex = token.lastIndexOf(closingChar)
     const modifiersStr = token.slice(closingIndex + 1)
     const mods = parseModifiers(modifiersStr, parentMods, isSquare)
-    return mods.repeat / mods.speed // Cycles: repeat / speed = parent slots consumed
+    // For cycles with *N (repeat > 1), the cycle still takes 1 slot
+    // The repetition happens within that slot
+    // Only speed affects slot count: speed < 1 means slower, takes more parent slots
+    return 1 / mods.speed
   }
-  else if (token.startsWith('_')) {
+  else if (token.startsWith('_') || token.startsWith('~')) {
     const modifiersStr = token.slice(1)
     const mods = parseModifiers(modifiersStr, parentMods)
     return mods.repeat / mods.speed
   }
   else {
+    // Check for euclidean rhythm syntax: event(beats,steps[,offset])
+    const euclideanMatch = token.match(/^([^\(]+)\((\d+),(\d+)(?:,(\d+))?\)(.*)$/)
+    if (euclideanMatch) {
+      const [, , , stepsStr, , modifiersStr] = euclideanMatch
+      const steps = parseInt(stepsStr, 10)
+      const mods = parseModifiers(modifiersStr, parentMods)
+      return steps / mods.speed
+    }
+
+    // Events: slot count depends on speed and replicate modifiers
+    // @N means 1/N speed, so @2 = 0.5x speed = takes 2 slots
+    // !N means replicate N times, so !2 = takes 2 slots (each plays once)
     const eventMatch = token.match(/^([^\.*;!?#\\<>@%/$]+)(.*)$/)
     if (eventMatch) {
-      const [, , modifiersStr] = eventMatch
+      const modifiersStr = eventMatch[2]
       const mods = parseModifiers(modifiersStr, parentMods)
-      return mods.repeat / mods.speed
+      // Replicate takes precedence: if !N is used, it takes N slots
+      if (mods.replicate > 1) {
+        return mods.replicate
+      }
+      // If *N is used with @N, @N determines slot count
+      // Otherwise, use speed modifier
+      return 1 / mods.speed
     }
     return 1
   }
@@ -275,8 +344,8 @@ function tokenize(input: string): string[] {
       tokens.push(input.slice(i, j))
       i = j
     }
-    else if (char === '_') {
-      // Rest
+    else if (char === '_' || char === '~') {
+      // Rest (both _ and ~ are rest tokens)
       let j = i + 1
       while (j < input.length && /[*.;?#\\<>@%/$\d]/.test(input[j])) {
         j++
@@ -286,26 +355,39 @@ function tokenize(input: string): string[] {
     }
     else {
       // Event or chord
-      let j = i
-      while (j < input.length && !/[\s\[\]]/.test(input[j])) {
-        // Check for angle brackets only if they would start a new cycle (preceded by whitespace or at start)
-        if ((input[j] === '<' || input[j] === '>') && j > i) {
-          // Check if this might be the start of a new cycle (needs whitespace before)
-          // or if it's part of modifiers (attached to current token)
-          // Since modifiers are attached, we continue unless it's clearly a new cycle
-          const prevChar = j > 0 ? input[j - 1] : ''
-          if (input[j] === '<' && /\s/.test(prevChar)) {
-            break
-          }
+      // Check for euclidean rhythm syntax: event(beats,steps[,offset])
+      const euclideanMatch = input.slice(i).match(/^([^\(]+)\((\d+),(\d+)(?:,(\d+))?\)/)
+      if (euclideanMatch) {
+        let j = i + euclideanMatch[0].length
+        // Continue to capture modifiers after the closing parenthesis
+        while (j < input.length && /[*.;?#\\<>@%/$\d]/.test(input[j])) {
+          j++
         }
-        j++
+        tokens.push(input.slice(i, j))
+        i = j
       }
-      if (j === i) {
-        // No progress, skip this character
-        j++
+      else {
+        let j = i
+        while (j < input.length && !/[\s\[\]]/.test(input[j])) {
+          // Check for angle brackets only if they would start a new cycle (preceded by whitespace or at start)
+          if ((input[j] === '<' || input[j] === '>') && j > i) {
+            // Check if this might be the start of a new cycle (needs whitespace before)
+            // or if it's part of modifiers (attached to current token)
+            // Since modifiers are attached, we continue unless it's clearly a new cycle
+            const prevChar = j > 0 ? input[j - 1] : ''
+            if (input[j] === '<' && /\s/.test(prevChar)) {
+              break
+            }
+          }
+          j++
+        }
+        if (j === i) {
+          // No progress, skip this character
+          j++
+        }
+        tokens.push(input.slice(i, j))
+        i = j
       }
-      tokens.push(input.slice(i, j))
-      i = j
     }
   }
 
@@ -318,17 +400,18 @@ function compileToken(
   parentMods: Modifiers,
 ): void {
   if (token.startsWith('<')) {
-    // Angle bracket cycle: play one child per cycle
+    // Angle bracket cycle: identical to square bracket with /N (spread mode)
+    // where N is the number of children
     const closingIndex = token.lastIndexOf('>')
     const content = token.slice(1, closingIndex)
     const modifiersStr = token.slice(closingIndex + 1)
-    const mods = parseModifiers(modifiersStr, parentMods, false)
+    const mods = parseModifiers(modifiersStr, parentMods, true) // Use square bracket parsing
 
     const innerTokens = tokenize(content)
 
     if (innerTokens.length === 0) {
       // Empty angle bracket - create a rest cycle
-      bc.cycle(1, 1, mods.repeat, 1, mods.offset, mods.jitter, mods.prob, 0)
+      bc.cycle(1, 1, mods.repeat, 1, mods.offset, mods.jitter, mods.prob, 1)
       bc.rest(1)
       return
     }
@@ -348,23 +431,29 @@ function compileToken(
       spreadCycles: 0,
     }
 
-    // Angle bracket: one slot per child (play one child per cycle)
+    // Angle bracket: compile as square bracket with spread mode
+    // With *N, spread slotCount * N effective events across slotCount cycles
+    // For <c4 e4 g4>: 3 events in 3 cycles (1 per cycle)
+    // For <c4 e4 g4>*2: 3*2 = 6 effective events in 3 cycles (2 per cycle, each 0.5 beats)
+    // slotCount = actual children, repeatCount = cycles to spread across
+    // The VM uses (slotCount * density) as effective slots, where density encodes the repeat
     const slotCount = innerTokens.length
-    // For angle brackets, cycleLength is the slot count (number of children)
-    // The VM will peek at the first child to determine the cycle duration
+    const repeatCount = slotCount // Number of cycles to spread across
+    // Use density to encode the repeat multiplier: density = mods.repeat
+    const density = mods.repeat
 
     bc.cycle(
       slotCount,
       mods.speed,
-      mods.repeat,
-      mods.density,
+      repeatCount, // repeat = number of cycles to spread across
+      density, // density = repeat multiplier (1 for normal, 2 for *2)
       mods.offset,
       mods.jitter,
       mods.prob,
-      0, // isSquare = 0 for angle brackets
+      1, // isSquare = 1 (treat as square bracket)
     )
 
-    // Compile each child into its own slot
+    // Compile each child once (VM handles repetition)
     for (const innerToken of innerTokens) {
       compileToken(innerToken, bc, childMods)
     }
@@ -424,11 +513,20 @@ function compileToken(
       const effectiveSpeed = mods.density > 1 ? mods.speed * mods.density : mods.speed
       const effectiveRepeat = mods.repeat
 
+      // For *N on cycles, we need to signal that this is NOT spread mode
+      // We can use density = -1 as a flag, or check if repeat > 1 but spreadCycles === 0
+      // Actually, we can use a very high density value to ensure it's not spread mode
+      // Or better: only use spread mode detection in VM when density matches a specific pattern
+      // For now, let's set density to a special value when repeat > 1 and spreadCycles === 0
+      const effectiveDensity = mods.repeat > 1 && mods.spreadCycles === 0
+        ? -mods.repeat // Negative density signals repeat mode (not spread)
+        : mods.density
+
       bc.cycle(
         effectiveSlotCount,
         effectiveSpeed,
         effectiveRepeat,
-        mods.density,
+        effectiveDensity,
         mods.offset,
         mods.jitter,
         mods.prob,
@@ -440,14 +538,92 @@ function compileToken(
       compileToken(innerToken, bc, childMods)
     }
   }
-  else if (token.startsWith('_')) {
-    // Rest
+  else if (token.startsWith('_') || token.startsWith('~')) {
+    // Rest (both _ and ~ are rest tokens)
     const modifiersStr = token.slice(1)
     const mods = parseModifiers(modifiersStr, parentMods)
     bc.rest(mods.repeat)
   }
   else {
     // Event or chord
+    // Check for euclidean rhythm syntax: event(beats,steps[,offset])
+    const euclideanMatch = token.match(/^([^\(]+)\((\d+),(\d+)(?:,(\d+))?\)(.*)$/)
+    if (euclideanMatch) {
+      const [, eventPart, beatsStr, stepsStr, offsetStr, modifiersStr] = euclideanMatch
+      const beats = parseInt(beatsStr, 10)
+      const steps = parseInt(stepsStr, 10)
+      const offset = offsetStr ? parseInt(offsetStr, 10) : 0
+      const mods = parseModifiers(modifiersStr, parentMods)
+
+      // Generate euclidean pattern
+      const pattern = generateEuclideanPattern(beats, steps, offset)
+
+      // Parse the event part to get notes
+      const notes: number[] = []
+      let remaining = eventPart
+
+      while (remaining.length > 0) {
+        const noteMatch = remaining.match(/^([a-g][#b]?-?\d+)/i)
+        if (noteMatch) {
+          const midi = noteNameToMidi(noteMatch[1])
+          notes.push(midiToFrequency(midi))
+          remaining = remaining.slice(noteMatch[1].length)
+        }
+        else {
+          const numMatch = remaining.match(/^(-?[\d.]+)/)
+          if (numMatch) {
+            notes.push(parseFloat(numMatch[1]))
+            remaining = remaining.slice(numMatch[0].length)
+          }
+          else {
+            break
+          }
+        }
+      }
+
+      if (notes.length === 0) return
+
+      // Compile pattern directly as events/rests in root cycle (no nested cycle)
+      // Each step takes 1 slot in the parent cycle
+      for (let i = 0; i < pattern.length; i++) {
+        if (pattern[i]) {
+          if (notes.length === 1) {
+            bc.value(
+              notes[0],
+              mods.velocity,
+              mods.hold,
+              1, // slotCount
+              1, // repeatCount
+              mods.density,
+              mods.offset,
+              mods.prob,
+              mods.jitter,
+              mods.glide,
+            )
+          }
+          else {
+            bc.chord(
+              notes,
+              mods.strum,
+              mods.velocity,
+              mods.hold,
+              1, // slotCount
+              1, // repeatCount
+              mods.density,
+              mods.offset,
+              mods.prob,
+              mods.jitter,
+              mods.glide,
+            )
+          }
+        }
+        else {
+          bc.rest(1)
+        }
+      }
+      return
+    }
+
     const eventMatch = token.match(/^([^\.*;!?#\\<>@%/$]+)(.*)$/)
     if (!eventMatch) return
 
@@ -481,15 +657,39 @@ function compileToken(
 
     if (notes.length === 0) return
 
-    // Calculate slot count: repeat / speed (e.g., *2 means repeat=2, so 2 slots)
-    const slotCount = mods.repeat / mods.speed
+    // Calculate slotCount and repeatCount explicitly:
+    // - *N: slotCount=1, repeatCount=N (repeat N times within 1 slot)
+    // - @N: slotCount=N, repeatCount=1 (take N slots, trigger once)
+    // - !N: slotCount=N, repeatCount=N (take N slots, trigger once per slot)
+    // - @N*M: slotCount=N, repeatCount=M (take N slots, trigger M times)
+    let slotCount: number
+    let repeatCount: number
+
+    if (mods.replicate > 1) {
+      // !N: take N slots, trigger once per slot
+      slotCount = mods.replicate
+      repeatCount = mods.replicate
+    } else if (mods.repeat > 1 && mods.speed < 1) {
+      // @N*M: take N slots (from @N), trigger M times (from *M)
+      slotCount = 1 / mods.speed
+      repeatCount = mods.repeat
+    } else if (mods.repeat > 1) {
+      // *N: take 1 slot, trigger N times
+      slotCount = 1
+      repeatCount = mods.repeat
+    } else {
+      // @N or normal: take N slots (or 1), trigger once
+      slotCount = 1 / mods.speed
+      repeatCount = 1
+    }
 
     if (notes.length === 1) {
       bc.value(
         notes[0],
         mods.velocity,
         mods.hold,
-        slotCount, // Use slot count instead of repeat
+        slotCount,
+        repeatCount,
         mods.density,
         mods.offset,
         mods.prob,
@@ -503,7 +703,8 @@ function compileToken(
         mods.strum,
         mods.velocity,
         mods.hold,
-        slotCount, // Use slot count instead of repeat
+        slotCount,
+        repeatCount,
         mods.density,
         mods.offset,
         mods.prob,
@@ -520,6 +721,7 @@ export interface TokenMetadata {
   length: number
   flatIndices: number[]
   bytecodePos: number
+  bytecodePositions: number[] // All bytecode positions for this token (for repeated events)
 }
 
 export interface CompiledSequence {
@@ -541,6 +743,7 @@ export function compileSequence(input: string): CompiledSequence {
   ): number => {
     const startFlatIndex = flatEventIndex
     const bytecodePos = bc.position
+    const bytecodePositions: number[] = [bytecodePos]
 
     if (token.startsWith('<') || token.startsWith('[')) {
       const isSquare = token.startsWith('[')
@@ -597,11 +800,16 @@ export function compileSequence(input: string): CompiledSequence {
           const effectiveSpeed = mods.density > 1 ? mods.speed * mods.density : mods.speed
           const effectiveRepeat = mods.repeat
 
+          // For *N on cycles, use negative density to signal repeat mode (not spread)
+          const effectiveDensity = mods.repeat > 1 && (mods.spreadCycles === 0 || mods.spreadCycles === undefined)
+            ? -mods.repeat
+            : mods.density
+
           bc.cycle(
             effectiveSlotCount,
             effectiveSpeed,
             effectiveRepeat,
-            mods.density,
+            effectiveDensity,
             mods.offset,
             mods.jitter,
             mods.prob,
@@ -610,30 +818,36 @@ export function compileSequence(input: string): CompiledSequence {
         }
       }
       else {
-        // Angle bracket cycle: one slot per child (play one child per cycle)
+        // Angle bracket cycle: identical to square bracket with /N (spread mode)
+        // where N is the number of children
         if (innerTokens.length === 0) {
-          bc.cycle(1, 1, mods.repeat, 1, mods.offset, mods.jitter, mods.prob, 0)
+          bc.cycle(1, 1, mods.repeat, 1, mods.offset, mods.jitter, mods.prob, 1)
           bc.rest(1)
           return startFlatIndex
         }
 
+        // Angle bracket: compile as square bracket with spread mode
+        // With *N, spread slotCount * N effective events across slotCount cycles
+        // For <c4 e4 g4>: 3 events in 3 cycles (1 per cycle)
+        // For <c4 e4 g4>*2: 6 effective events in 3 cycles (2 per cycle, each 0.5 beats)
+        // Use density to encode the repeat multiplier
         const slotCount = innerTokens.length
-        // For angle brackets, cycleLength is the slot count (number of children)
-        // The VM will peek at the first child to determine the cycle duration
+        const repeatCount = slotCount // Number of cycles to spread across
+        const density = mods.repeat // Repeat multiplier (1 for normal, 2 for *2)
 
         bc.cycle(
           slotCount,
           mods.speed,
-          mods.repeat,
-          mods.density,
+          repeatCount, // repeat = number of cycles to spread across
+          density, // density = repeat multiplier
           mods.offset,
           mods.jitter,
           mods.prob,
-          0, // isSquare = 0
+          1, // isSquare = 1 (treat as square bracket)
         )
       }
 
-      // Compile inner tokens once (VM will handle repetition)
+      // Compile inner tokens once (VM handles repetition)
       let innerContentPos = startPos + 1
       for (const innerToken of innerTokens) {
         const innerTokenStartInInput = input.indexOf(innerToken, innerContentPos)
@@ -646,8 +860,99 @@ export function compileSequence(input: string): CompiledSequence {
       flatEventIndex = startFlatIndex + (innerEventCount * mods.repeat)
     }
     else {
-      compileToken(token, bc, parentMods)
-      flatEventIndex++
+      // Check for euclidean rhythm syntax: event(beats,steps[,offset])
+      const euclideanMatch = token.match(/^([^\(]+)\((\d+),(\d+)(?:,(\d+))?\)(.*)$/)
+      if (euclideanMatch) {
+        const [, eventPart, beatsStr, stepsStr, offsetStr, modifiersStr] = euclideanMatch
+        const beats = parseInt(beatsStr, 10)
+        const steps = parseInt(stepsStr, 10)
+        const offset = offsetStr ? parseInt(offsetStr, 10) : 0
+        const mods = parseModifiers(modifiersStr, parentMods)
+
+        // Generate euclidean pattern
+        const pattern = generateEuclideanPattern(beats, steps, offset)
+
+        // Parse the event part to get notes
+        const notes: number[] = []
+        let remaining = eventPart
+
+        while (remaining.length > 0) {
+          const noteMatch = remaining.match(/^([a-g][#b]?-?\d+)/i)
+          if (noteMatch) {
+            const midi = noteNameToMidi(noteMatch[1])
+            notes.push(midiToFrequency(midi))
+            remaining = remaining.slice(noteMatch[1].length)
+          }
+          else {
+            const numMatch = remaining.match(/^(-?[\d.]+)/)
+            if (numMatch) {
+              notes.push(parseFloat(numMatch[1]))
+              remaining = remaining.slice(numMatch[0].length)
+            }
+            else {
+              break
+            }
+          }
+        }
+
+        if (notes.length > 0) {
+          // Track bytecode positions for all events (not rests)
+          const eventPositions: number[] = []
+
+          // Compile pattern directly as events/rests in root cycle
+          for (let i = 0; i < pattern.length; i++) {
+            if (pattern[i]) {
+              const eventPos = bc.position
+              eventPositions.push(eventPos)
+              if (notes.length === 1) {
+                bc.value(
+                  notes[0],
+                  mods.velocity,
+                  mods.hold,
+                  1,
+                  1,
+                  mods.density,
+                  mods.offset,
+                  mods.prob,
+                  mods.jitter,
+                  mods.glide,
+                )
+              }
+              else {
+                bc.chord(
+                  notes,
+                  mods.strum,
+                  mods.velocity,
+                  mods.hold,
+                  1,
+                  1,
+                  mods.density,
+                  mods.offset,
+                  mods.prob,
+                  mods.jitter,
+                  mods.glide,
+                )
+              }
+              flatEventIndex++
+            }
+            else {
+              bc.rest(1)
+            }
+          }
+
+          // Update bytecodePositions with all event positions
+          bytecodePositions.length = 0
+          bytecodePositions.push(...eventPositions)
+        }
+        else {
+          compileToken(token, bc, parentMods)
+          flatEventIndex++
+        }
+      }
+      else {
+        compileToken(token, bc, parentMods)
+        flatEventIndex++
+      }
     }
 
     const endFlatIndex = flatEventIndex
@@ -663,6 +968,7 @@ export function compileSequence(input: string): CompiledSequence {
         length: token.length,
         flatIndices,
         bytecodePos,
+        bytecodePositions: bytecodePositions.length > 1 ? bytecodePositions : undefined,
       })
     }
 
@@ -711,13 +1017,23 @@ export function compileSequence(input: string): CompiledSequence {
       }
     }
     else {
-      // Single event: base is slotCount beats, actual = (slotCount / 4) / speed bars
-      const eventMatch = token.match(/^([^\.*;!?#\\<>@%/$]+)(.*)$/)
-      if (eventMatch) {
-        const modifiersStr = eventMatch[2]
+      // Check for euclidean rhythm syntax: event(beats,steps[,offset])
+      const euclideanMatch = token.match(/^([^\(]+)\((\d+),(\d+)(?:,(\d+))?\)(.*)$/)
+      if (euclideanMatch) {
+        const [, , , stepsStr, , modifiersStr] = euclideanMatch
+        const steps = parseInt(stepsStr, 10)
         const mods = parseModifiers(modifiersStr, DEFAULT_MODIFIERS)
-        const slotCount = getTokenSlotCount(token, DEFAULT_MODIFIERS)
-        totalDurationBars += (slotCount / 4.0) / mods.speed
+        totalDurationBars += (steps / 4.0) / mods.speed
+      }
+      else {
+        // Single event: base is slotCount beats, actual = (slotCount / 4) / speed bars
+        const eventMatch = token.match(/^([^\.*;!?#\\<>@%/$]+)(.*)$/)
+        if (eventMatch) {
+          const modifiersStr = eventMatch[2]
+          const mods = parseModifiers(modifiersStr, DEFAULT_MODIFIERS)
+          const slotCount = getTokenSlotCount(token, DEFAULT_MODIFIERS)
+          totalDurationBars += (slotCount / 4.0) / mods.speed
+        }
       }
     }
   }
