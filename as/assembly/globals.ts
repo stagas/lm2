@@ -14,7 +14,7 @@ export let nyquist: f32 = sampleRate / 2.0
 
 // @ts-ignore
 @global
-export let bpm: f32 = 120
+export let bpm: f32 = 60
 
 // @ts-ignore
 @global

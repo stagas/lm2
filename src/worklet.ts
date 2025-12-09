@@ -22,7 +22,7 @@ export class DspProcessor extends AudioWorkletProcessor {
   private buffers: Float32Array[] = []
   private rings: Ring[] = []
   private dsp$ = 0
-  private lastBpm = 120
+  private lastBpm = 60
   private shouldReset = false
   private lastControl = ControlOp.Pause
 

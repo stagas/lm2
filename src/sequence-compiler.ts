@@ -11,6 +11,7 @@ interface Modifiers {
   jitter: number
   glide: number
   strum: number
+  spreadCycles: number // /N: spread children across N cycles (for square brackets)
 }
 
 const DEFAULT_MODIFIERS: Modifiers = {
@@ -61,7 +62,7 @@ function midiToFrequency(midi: number): number {
 }
 
 function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: boolean): Modifiers {
-  const mods = { ...parentMods }
+  const mods = { ...parentMods, spreadCycles: parentMods.spreadCycles || 0 }
   let i = 0
 
   while (i < str.length) {
@@ -91,21 +92,12 @@ function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: bo
         }
         break
       }
-      case '!': {
+      case '*': {
         const match = rest.match(/^([\d.]+)/)
         if (match) {
-          mods.repeat = parseFloat(match[1])
-          i += match[0].length + 1
-        }
-        else {
-          i++
-        }
-        break
-      }
-      case '%': {
-        const match = rest.match(/^([\d.]+)/)
-        if (match) {
-          mods.density *= parseFloat(match[1])
+          const val = parseFloat(match[1])
+          // *N means repeat N times
+          mods.repeat = val
           i += match[0].length + 1
         }
         else {
@@ -117,7 +109,14 @@ function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: bo
         const match = rest.match(/^([\d.]+)/)
         if (match) {
           const val = parseFloat(match[1])
-          mods.density *= val === 0 ? 0 : 1 / val
+          if (isSquareBracket) {
+            // For square brackets: /N means spread children across N cycles
+            mods.spreadCycles = val
+          }
+          else {
+            // For other contexts: /N means density *= 1/N (skip cycles)
+            mods.density *= val === 0 ? 0 : 1 / val
+          }
           i += match[0].length + 1
         }
         else {
@@ -185,29 +184,6 @@ function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: bo
         const match = rest.match(/^([\d.]+)/)
         if (match) {
           mods.strum = parseFloat(match[1])
-          i += match[0].length + 1
-        }
-        else {
-          i++
-        }
-        break
-      }
-      case '*': {
-        const match = rest.match(/^([\d.]+)/)
-        if (match) {
-          const val = parseFloat(match[1])
-          if (isSquareBracket) {
-            // Square bracket: *N means Nx speed (faster), so *2 = 2x speed = 0.5 bar
-            mods.speed *= val
-          }
-          else if (isSquareBracket === false) {
-            // Angle bracket: density
-            mods.density *= val
-          }
-          else {
-            // Event: *N means Nx speed (faster), so *2 = 2x speed = takes 0.5 slots
-            mods.speed *= val
-          }
           i += match[0].length + 1
         }
         else {
@@ -292,7 +268,7 @@ function tokenize(input: string): string[] {
 
       // Capture modifiers after closing bracket
       const afterClose = j
-      while (j < input.length && /[*.;!?#\\<>@%/$\d]/.test(input[j])) {
+      while (j < input.length && /[*.;?#\\<>@%/$\d]/.test(input[j])) {
         j++
       }
 
@@ -302,7 +278,7 @@ function tokenize(input: string): string[] {
     else if (char === '_') {
       // Rest
       let j = i + 1
-      while (j < input.length && /[*.;!?#\\<>@%/$\d]/.test(input[j])) {
+      while (j < input.length && /[*.;?#\\<>@%/$\d]/.test(input[j])) {
         j++
       }
       tokens.push(input.slice(i, j))
@@ -342,13 +318,20 @@ function compileToken(
   parentMods: Modifiers,
 ): void {
   if (token.startsWith('<')) {
-    // Angle bracket cycle
+    // Angle bracket cycle: play one child per cycle
     const closingIndex = token.lastIndexOf('>')
     const content = token.slice(1, closingIndex)
     const modifiersStr = token.slice(closingIndex + 1)
     const mods = parseModifiers(modifiersStr, parentMods, false)
 
     const innerTokens = tokenize(content)
+
+    if (innerTokens.length === 0) {
+      // Empty angle bracket - create a rest cycle
+      bc.cycle(1, 1, mods.repeat, 1, mods.offset, mods.jitter, mods.prob, 0)
+      bc.rest(1)
+      return
+    }
 
     // Children inherit velocity, but not prob (prob only applies to cycle trigger)
     const childMods: Modifiers = {
@@ -362,24 +345,26 @@ function compileToken(
       jitter: 0,
       glide: 0,
       strum: 0,
+      spreadCycles: 0,
     }
 
-    // Calculate effective slot count (sum of inner token slot counts)
-    let effectiveSlotCount = 0
-    for (const innerToken of innerTokens) {
-      effectiveSlotCount += getTokenSlotCount(innerToken, childMods)
-    }
+    // Angle bracket: one slot per child (play one child per cycle)
+    const slotCount = innerTokens.length
+    // For angle brackets, cycleLength is the slot count (number of children)
+    // The VM will peek at the first child to determine the cycle duration
 
     bc.cycle(
-      effectiveSlotCount,
-      mods.density,
+      slotCount,
+      mods.speed,
       mods.repeat,
-      1,
+      mods.density,
       mods.offset,
       mods.jitter,
       mods.prob,
+      0, // isSquare = 0 for angle brackets
     )
 
+    // Compile each child into its own slot
     for (const innerToken of innerTokens) {
       compileToken(innerToken, bc, childMods)
     }
@@ -405,23 +390,51 @@ function compileToken(
       jitter: 0,
       glide: 0,
       strum: 0,
+      spreadCycles: 0,
     }
 
-    // Calculate effective slot count (sum of inner token slot counts)
-    let effectiveSlotCount = 0
-    for (const innerToken of innerTokens) {
-      effectiveSlotCount += getTokenSlotCount(innerToken, childMods)
-    }
+    // If /N is used (spreadCycles > 0), spread children across N cycles (one per cycle)
+    // Otherwise, play all children in sequence within one cycle
+    if (mods.spreadCycles > 0) {
+      // Spread mode: one slot per child, repeat = spreadCycles
+      const slotCount = innerTokens.length
+      const repeat = mods.spreadCycles
 
-    bc.cycle(
-      effectiveSlotCount,
-      mods.speed,
-      mods.repeat,
-      1,
-      mods.offset,
-      mods.jitter,
-      mods.prob,
-    )
+      bc.cycle(
+        slotCount,
+        mods.speed,
+        repeat,
+        mods.density,
+        mods.offset,
+        mods.jitter,
+        mods.prob,
+        1, // isSquare = 1 for square brackets
+      )
+    }
+    else {
+      // Normal mode: sum of inner token slot counts, play all in one cycle
+      let effectiveSlotCount = 0
+      for (const innerToken of innerTokens) {
+        effectiveSlotCount += getTokenSlotCount(innerToken, childMods)
+      }
+
+      // If density > 1, play N times in 1 slot (multiply repeat and speed by density)
+      // If density < 1, it's used for skipping cycles (handled by VM)
+      // Note: *N sets repeat directly, so we use repeat as-is (don't multiply by density)
+      const effectiveSpeed = mods.density > 1 ? mods.speed * mods.density : mods.speed
+      const effectiveRepeat = mods.repeat
+
+      bc.cycle(
+        effectiveSlotCount,
+        effectiveSpeed,
+        effectiveRepeat,
+        mods.density,
+        mods.offset,
+        mods.jitter,
+        mods.prob,
+        1, // isSquare = 1 for square brackets
+      )
+    }
 
     for (const innerToken of innerTokens) {
       compileToken(innerToken, bc, childMods)
@@ -468,7 +481,7 @@ function compileToken(
 
     if (notes.length === 0) return
 
-    // Calculate slot count: repeat / speed (e.g., *2 means speed=2, so 0.5 slots)
+    // Calculate slot count: repeat / speed (e.g., *2 means repeat=2, so 2 slots)
     const slotCount = mods.repeat / mods.speed
 
     if (notes.length === 1) {
@@ -552,22 +565,73 @@ export function compileSequence(input: string): CompiledSequence {
         strum: 0,
       }
 
-      // Calculate effective slot count (sum of inner token slot counts)
-      let effectiveSlotCount = 0
-      for (const innerToken of innerTokens) {
-        effectiveSlotCount += getTokenSlotCount(innerToken, childMods)
-      }
+      if (isSquare) {
+        // If /N is used (spreadCycles > 0), spread children across N cycles (one per cycle)
+        // Otherwise, play all children in sequence within one cycle
+        if (mods.spreadCycles > 0) {
+          // Spread mode: one slot per child, repeat = spreadCycles
+          const slotCount = innerTokens.length
+          const repeat = mods.spreadCycles
 
-      bc.cycle(
-        effectiveSlotCount,
-        isSquare ? mods.speed : mods.density,
-        mods.repeat,
-        1,
-        mods.offset,
-        mods.jitter,
-        mods.prob,
-        isSquare ? 1 : 0,
-      )
+          bc.cycle(
+            slotCount,
+            mods.speed,
+            repeat,
+            mods.density,
+            mods.offset,
+            mods.jitter,
+            mods.prob,
+            1, // isSquare = 1
+          )
+        }
+        else {
+          // Normal mode: sum of inner token slot counts, play all in one cycle
+          let effectiveSlotCount = 0
+          for (const innerToken of innerTokens) {
+            effectiveSlotCount += getTokenSlotCount(innerToken, childMods)
+          }
+
+          // If density > 1, play N times in 1 slot (multiply repeat and speed by density)
+          // If density < 1, it's used for skipping cycles (handled by VM)
+          // Note: *N sets repeat directly, so we don't multiply repeat by density when repeat was set by *
+          const effectiveSpeed = mods.density > 1 ? mods.speed * mods.density : mods.speed
+          const effectiveRepeat = mods.repeat
+
+          bc.cycle(
+            effectiveSlotCount,
+            effectiveSpeed,
+            effectiveRepeat,
+            mods.density,
+            mods.offset,
+            mods.jitter,
+            mods.prob,
+            1, // isSquare = 1
+          )
+        }
+      }
+      else {
+        // Angle bracket cycle: one slot per child (play one child per cycle)
+        if (innerTokens.length === 0) {
+          bc.cycle(1, 1, mods.repeat, 1, mods.offset, mods.jitter, mods.prob, 0)
+          bc.rest(1)
+          return startFlatIndex
+        }
+
+        const slotCount = innerTokens.length
+        // For angle brackets, cycleLength is the slot count (number of children)
+        // The VM will peek at the first child to determine the cycle duration
+
+        bc.cycle(
+          slotCount,
+          mods.speed,
+          mods.repeat,
+          mods.density,
+          mods.offset,
+          mods.jitter,
+          mods.prob,
+          0, // isSquare = 0
+        )
+      }
 
       // Compile inner tokens once (VM will handle repetition)
       let innerContentPos = startPos + 1
@@ -605,73 +669,82 @@ export function compileSequence(input: string): CompiledSequence {
     return flatEventIndex
   }
 
-  // If there are multiple top-level tokens, wrap them in a root cycle
-  // Otherwise, if there's a single cycle, use it as root
-  if (tokens.length > 1) {
-    // Calculate total slot count for root cycle
-    let totalSlotCount = 0
-    let totalDurationBars = 0 // Total duration in bars needed
+  // Always wrap in an implicit square bracket root cycle (1 bar = 1 cycle)
+  // Calculate total slot count and duration for root cycle
+  let totalSlotCount = 0
+  let totalDurationBars = 0
 
-    for (const token of tokens) {
-      totalSlotCount += getTokenSlotCount(token, DEFAULT_MODIFIERS)
+  for (const token of tokens) {
+    totalSlotCount += getTokenSlotCount(token, DEFAULT_MODIFIERS)
 
-      // Calculate actual duration for this cycle in bars
-      if (token.startsWith('[')) {
-        // Square bracket: base is 1 bar, actual = repeat / speed
-        const closingIndex = token.lastIndexOf(']')
-        const modifiersStr = token.slice(closingIndex + 1)
-        const mods = parseModifiers(modifiersStr, DEFAULT_MODIFIERS, true)
-        totalDurationBars += mods.repeat / mods.speed
+    // Calculate actual duration for this token in bars
+    if (token.startsWith('[')) {
+      // Square bracket: base is 1 bar, actual = repeat / speed
+      const closingIndex = token.lastIndexOf(']')
+      const modifiersStr = token.slice(closingIndex + 1)
+      const mods = parseModifiers(modifiersStr, DEFAULT_MODIFIERS, true)
+      totalDurationBars += mods.repeat / mods.speed
+    }
+    else if (token.startsWith('<')) {
+      // Angle bracket: duration is based on first child's length
+      const closingIndex = token.lastIndexOf('>')
+      const content = token.slice(1, closingIndex)
+      const modifiersStr = token.slice(closingIndex + 1)
+      const mods = parseModifiers(modifiersStr, DEFAULT_MODIFIERS, false)
+      const innerTokens = tokenize(content)
+      if (innerTokens.length > 0) {
+        const childMods: Modifiers = {
+          velocity: 1,
+          prob: 1,
+          hold: 0,
+          repeat: 1,
+          density: 1,
+          speed: 1,
+          offset: 0,
+          jitter: 0,
+          glide: 0,
+          strum: 0,
+        }
+        const firstChildSlotCount = getTokenSlotCount(innerTokens[0]!, childMods)
+        // Duration in bars = (first child length in beats) / 4 / speed
+        totalDurationBars += (firstChildSlotCount / 4.0) / mods.speed
       }
-      else if (token.startsWith('<')) {
-        // Angle bracket: base is slotCount beats, actual = (slotCount / 4) / speed bars
-        const closingIndex = token.lastIndexOf('>')
-        const modifiersStr = token.slice(closingIndex + 1)
-        const mods = parseModifiers(modifiersStr, DEFAULT_MODIFIERS, false)
+    }
+    else {
+      // Single event: base is slotCount beats, actual = (slotCount / 4) / speed bars
+      const eventMatch = token.match(/^([^\.*;!?#\\<>@%/$]+)(.*)$/)
+      if (eventMatch) {
+        const modifiersStr = eventMatch[2]
+        const mods = parseModifiers(modifiersStr, DEFAULT_MODIFIERS)
         const slotCount = getTokenSlotCount(token, DEFAULT_MODIFIERS)
         totalDurationBars += (slotCount / 4.0) / mods.speed
       }
-      else {
-        // Single event: base is slotCount beats, actual = (slotCount / 4) / speed bars
-        const eventMatch = token.match(/^([^\.*;!?#\\<>@%/$]+)(.*)$/)
-        if (eventMatch) {
-          const modifiersStr = eventMatch[2]
-          const mods = parseModifiers(modifiersStr, DEFAULT_MODIFIERS)
-          const slotCount = getTokenSlotCount(token, DEFAULT_MODIFIERS)
-          totalDurationBars += (slotCount / 4.0) / mods.speed
-        }
-      }
-    }
-
-    // For root cycle wrapping multiple cycles, use square brackets
-    // Root base duration = 1 bar, but we need totalDurationBars
-    // So speed = 1 / totalDurationBars
-    const rootSpeed = 1.0 / totalDurationBars
-
-    // Create root cycle wrapping all tokens (use square brackets with adjusted speed)
-    bc.cycle(
-      totalSlotCount,
-      rootSpeed, // speed adjusted so root extends to totalDurationBars
-      1, // repeat
-      1, // density
-      0, // offset
-      0, // jitter
-      1, // prob
-      1, // isSquare (square bracket - base 1 bar, but speed makes it extend)
-    )
-
-    // Compile all tokens as children of root cycle
-    let currentPos = 0
-    for (const token of tokens) {
-      const tokenStart = input.indexOf(token, currentPos)
-      compileTokenWithMetadata(token, DEFAULT_MODIFIERS, tokenStart, true)
-      currentPos = tokenStart + token.length
     }
   }
-  else if (tokens.length === 1) {
-    // Single token - compile it directly (will be the root cycle)
-    const tokenStart = input.indexOf(tokens[0])
-    compileTokenWithMetadata(tokens[0], DEFAULT_MODIFIERS, tokenStart, true)
+
+  // Create implicit square bracket root cycle (1 beat = 1 cycle = 1 second at 60 BPM)
+  // Root is always 1 beat = 1 cycle, events are distributed equally
+  // Each event gets equal width: 1 / number of events
+  // Speed stays at 1.0 - the VM calculates cycle duration as 1 beat for square brackets
+  const rootSpeed = 1.0
+
+  bc.cycle(
+    totalSlotCount,
+    rootSpeed,
+    1, // repeat
+    1, // density
+    0, // offset
+    0, // jitter
+    1, // prob
+    1, // isSquare = 1 (implicit square bracket root - base 1 bar)
+  )
+
+  // Compile all tokens as children of implicit root cycle
+  let currentPos = 0
+  for (const token of tokens) {
+    const tokenStart = input.indexOf(token, currentPos)
+    compileTokenWithMetadata(token, DEFAULT_MODIFIERS, tokenStart, true)
+    currentPos = tokenStart + token.length
   }
 
   return {

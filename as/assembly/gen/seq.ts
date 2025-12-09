@@ -57,6 +57,8 @@ export class Seq extends Gen {
   private currentSampleCount: i32 = 0
   private lastLatchHistoryPos: i32 = -1
   private cycleCount: i32 = 0
+  private cycleStartTime: f64 = 0
+  private cycleDurationSeconds: f64 = 0
 
   constructor() {
     super()
@@ -72,6 +74,8 @@ export class Seq extends Gen {
     this.nextEventTime = 0
     this.lastLatchHistoryPos = -1
     this.cycleCount = 0
+    this.cycleStartTime = 0
+    this.cycleDurationSeconds = 0
 
     for (let v = 0; v < SEQ_VOICES; v++) {
       this.voices[v].active = false
@@ -123,30 +127,66 @@ export class Seq extends Gen {
     let localSampleCount = globalSampleCount
 
     // Calculate cycle duration
-    let cycleDuration = 4.0 // Default 1 bar = 4 beats
+    // For square brackets: cycleDuration is in bars (0.25 = 1 beat = 1 cycle = 1 second at 60 BPM)
+    // For angle brackets: cycleDuration is in beats (based on first child's length)
+    let cycleDuration = 0.25 // Default 1 beat (1 cycle = 1 second at 60 BPM)
     let cycleSpeed: f32 = 1.0
+    let isSquare = 0
     if (arrayLength >= 9) {
       const op = array[ARRAY_HEADER_SIZE] as i32
       if (op === SeqOp.Cycle) {
         const cycleLength = array[ARRAY_HEADER_SIZE + 1] as i32
         cycleSpeed = array[ARRAY_HEADER_SIZE + 2]
-        const isSquare = array[ARRAY_HEADER_SIZE + 8] as i32
-        cycleDuration = isSquare === 1 ? 4.0 : (cycleLength as f64)
+        isSquare = array[ARRAY_HEADER_SIZE + 8] as i32
+        if (isSquare === 1) {
+          cycleDuration = 0.25 // Square bracket: 1 beat = 0.25 bars (1 cycle = 1 second at 60 BPM)
+        }
+        else {
+          // Angle bracket: cycle duration is based on first child's length (in beats)
+          // Peek at first child to get its slot count
+          let firstChildSlotCount: f64 = 1.0
+          const slotsStartPc = ARRAY_HEADER_SIZE + 9
+          if (slotsStartPc < arrayLength + ARRAY_HEADER_SIZE) {
+            const firstOp = array[slotsStartPc] as i32
+            if (firstOp === SeqOp.Value) {
+              firstChildSlotCount = array[slotsStartPc + 4] as f64
+            }
+            else if (firstOp === SeqOp.Rest) {
+              firstChildSlotCount = array[slotsStartPc + 1] as f64
+            }
+            else if (firstOp === SeqOp.Chord) {
+              const chordLength = array[slotsStartPc + 1] as i32
+              firstChildSlotCount = array[slotsStartPc + 1 + chordLength + 3] as f64
+            }
+            else if (firstOp === SeqOp.Cycle) {
+              const nestedCycleLength = array[slotsStartPc + 1] as i32
+              firstChildSlotCount = nestedCycleLength as f64
+            }
+          }
+          cycleDuration = firstChildSlotCount // In beats
+        }
       }
     }
 
-    const cycleSeconds = cycleDuration * secondsPerBeat / (cycleSpeed as f64)
+    // Convert cycle duration to beats: square brackets are in bars (multiply by 4), angle brackets are already in beats
+    const cycleDurationBeats = isSquare === 1 ? cycleDuration * 4.0 : cycleDuration
+    const cycleSeconds = cycleDurationBeats * secondsPerBeat / (cycleSpeed as f64)
     const cycleSamples = (cycleSeconds * (sampleRate as f64)) as i32
 
     for (let i = 0; i < length; i++) {
       this.currentSampleCount = localSampleCount
 
-      // Detect cycle wrap
-      const prevSample = localSampleCount - 1
-      const prevCycle = prevSample >= 0 ? (prevSample / cycleSamples) : -1
-      const currentCycle = localSampleCount / cycleSamples
+      // Detect cycle wrap using time-based tracking (handles BPM changes correctly)
+      // When BPM changes, cycleSeconds changes, but we use the duration from when the cycle started
+      const timeSinceCycleStart = this.time - this.cycleStartTime
 
-      if (currentCycle > prevCycle) {
+      // Use the cycle duration from when this cycle started (cycleDurationSeconds)
+      // If this is the first cycle, use current cycleSeconds
+      const currentCycleDuration = this.cycleDurationSeconds > 0 ? this.cycleDurationSeconds : cycleSeconds
+
+      // Check if we've completed a cycle OR if this is the first sample (stack empty, time is 0)
+      const isFirstSample = this.stack.length === 0 && this.time === 0 && this.cycleDurationSeconds === 0
+      if (isFirstSample || timeSinceCycleStart >= currentCycleDuration) {
         // Update last latch's end sample before resetting
         if (this.lastLatchHistoryPos >= 0) {
           this.updateHistoryEndSample(array, this.lastLatchHistoryPos, this.currentSampleCount)
@@ -156,7 +196,10 @@ export class Seq extends Gen {
         this.cycleCount++
 
         // Reset for new cycle (but keep RNG advancing for varied probability)
+        // Reset both time and cycleStartTime to 0 to keep them in sync
         this.time = 0
+        this.cycleStartTime = 0
+        this.cycleDurationSeconds = cycleSeconds
         this.stack = []
         this.lastLatchVoice = -1
         this.lastLatchHistoryPos = -1
@@ -170,22 +213,46 @@ export class Seq extends Gen {
         if (arrayLength >= 1) {
           const op = array[ARRAY_HEADER_SIZE] as i32
           if (op === SeqOp.Cycle) {
-            const frame = new Frame()
-            frame.pcStart = ARRAY_HEADER_SIZE + 9 // Start of slots
-            frame.pc = frame.pcStart
-            frame.slotIndex = 0
-            frame.slotCount = array[ARRAY_HEADER_SIZE + 1]
-            frame.repeatIndex = 0
-            frame.repeatCount = Mathf.max(1, Mathf.round(array[ARRAY_HEADER_SIZE + 3])) as i32
-            frame.startTime = 0
-            // slotDuration accounts for speed - faster cycles have shorter slot durations
-            frame.slotDuration = cycleDuration / (frame.slotCount as f64) / (frame.repeatCount as f64)
-              / (cycleSpeed as f64)
-            frame.velocity = 1.0
-            frame.offset = 0
-            frame.jitter = 0
-            frame.prob = 1.0
-            this.stack.push(frame)
+            // Check root cycle density (skip first cycle, play on 2nd, 4th, 6th...)
+            const density = array[ARRAY_HEADER_SIZE + 4]
+            let densityTriggered = true
+            if (density < 1.0 && density > 0) {
+              const interval = Mathf.round(1.0 / density) as i32
+              // cycleCount is 1-indexed (1, 2, 3...), skip 1, play on 2, 4, 6...
+              densityTriggered = (this.cycleCount > 0) && ((this.cycleCount % interval) == 0)
+            }
+
+            // Check root cycle probability
+            const prob = array[ARRAY_HEADER_SIZE + 7]
+            const probTriggered = this.rng.next() < prob
+
+            if (densityTriggered && probTriggered) {
+              // Initialize cycle duration and start time on first cycle
+              if (this.cycleDurationSeconds === 0) {
+                this.cycleDurationSeconds = cycleSeconds
+                this.cycleStartTime = 0
+              }
+
+              const frame = new Frame()
+              frame.pcStart = ARRAY_HEADER_SIZE + 9 // Start of slots
+              frame.pc = frame.pcStart
+              frame.slotIndex = 0
+              frame.slotCount = array[ARRAY_HEADER_SIZE + 1]
+              frame.repeatIndex = 0
+              frame.repeatCount = Mathf.max(1, Mathf.round(array[ARRAY_HEADER_SIZE + 3])) as i32
+              frame.speed = array[ARRAY_HEADER_SIZE + 2] // Store speed for parent slot advancement
+              frame.startTime = 0
+              // slotDuration accounts for speed - faster cycles have shorter slot durations
+              // Use cycleSeconds (already converted to seconds) divided by slot count and repeat count
+              frame.slotDuration = cycleSeconds / (frame.slotCount as f64) / (frame.repeatCount as f64)
+              frame.velocity = 1.0
+              frame.offset = 0
+              frame.jitter = 0
+              frame.prob = 1.0
+              this.stack.push(frame)
+              // Calculate next event time immediately after pushing frame
+              this.calculateNextEventTime(array, arrayLength, secondsPerBeat)
+            }
           }
         }
       }
@@ -266,12 +333,24 @@ export class Seq extends Gen {
       let frame = this.stack[this.stack.length - 1]
 
       // Check if frame is complete
-      if (frame.slotIndex >= frame.slotCount) {
-        frame.repeatIndex++
-        if (frame.repeatIndex >= frame.repeatCount) {
-          // Pop frame and advance parent by repeatCount/speed slots
-          // Speed < 1 means slower, takes more parent slots
-          const slotsUsed = (frame.repeatCount as f32) / frame.speed
+      // For spread mode (square bracket with repeatCount <= slotCount and repeatCount > 1), we spread children across cycles
+      // Normal mode: repeatCount == 1 (no spread modifier)
+      const isSpreadMode = f32(frame.repeatCount) <= frame.slotCount && frame.slotCount > 0 && frame.repeatCount > 1
+
+      if (isSpreadMode) {
+        // Spread mode: play multiple slots per repeat cycle
+        // childrenPerCycle = slotCount / repeatCount (e.g., 4 children / 2 cycles = 2 per cycle)
+        // On repeatIndex K, play slots from K * childrenPerCycle to (K+1) * childrenPerCycle - 1
+        const childrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
+        const startSlot = (frame.repeatIndex as f32) * childrenPerCycle
+        // endSlot is exclusive: play slots from startSlot (inclusive) to endSlot (exclusive)
+        const endSlot = startSlot + childrenPerCycle
+
+        // Use a small epsilon for floating point comparison
+        if (frame.slotIndex >= endSlot - 0.0001) {
+          // We've played all slots for this repeat - pop frame
+          // In spread mode, the cycle takes exactly 1 slot in the parent
+          const slotsUsed: f32 = 1.0
           this.stack.pop()
           if (this.stack.length > 0) {
             const parentFrame = this.stack[this.stack.length - 1]
@@ -283,9 +362,51 @@ export class Seq extends Gen {
           }
           continue
         }
-        // Reset for next repeat - rewind to start of slots
-        frame.slotIndex = 0
-        frame.pc = frame.pcStart
+
+        // Ensure PC is positioned correctly for the current slotIndex
+        // Calculate expected PC position for current slotIndex
+        let expectedPc = frame.pcStart
+        for (let i = 0; i < i32(frame.slotIndex); i++) {
+          expectedPc += this.countSlotBytes(array, arrayLength, expectedPc, 1)
+        }
+        // Reposition PC if it's not at the expected position
+        if (frame.pc !== expectedPc) {
+          frame.pc = expectedPc
+        }
+
+        // If slotIndex is before startSlot, advance to startSlot
+        if (frame.slotIndex < startSlot) {
+          frame.slotIndex = startSlot
+          frame.pc = frame.pcStart
+          // Skip slots before the starting slot
+          for (let i = 0; i < i32(startSlot); i++) {
+            frame.pc += this.countSlotBytes(array, arrayLength, frame.pc, 1)
+          }
+        }
+      }
+      else {
+        // Normal mode: play all slots in sequence
+        if (frame.slotIndex >= frame.slotCount) {
+          frame.repeatIndex++
+          if (frame.repeatIndex >= frame.repeatCount) {
+            // Pop frame and advance parent by repeatCount/speed slots
+            // Speed < 1 means slower, takes more parent slots
+            const slotsUsed = (frame.repeatCount as f32) / frame.speed
+            this.stack.pop()
+            if (this.stack.length > 0) {
+              const parentFrame = this.stack[this.stack.length - 1]
+              parentFrame.slotIndex += slotsUsed
+            }
+            else {
+              this.nextEventTime = f64.MAX_VALUE
+              return
+            }
+            continue
+          }
+          // Reset for next repeat - rewind to start of slots
+          frame.slotIndex = 0
+          frame.pc = frame.pcStart
+        }
       }
 
       // Check if PC is past valid data (can happen after nested cycle)
@@ -311,13 +432,32 @@ export class Seq extends Gen {
         const isSquare = array[frame.pc++] as i32
 
         const nestedStartPc = frame.pc
+        const nestedBytes = this.countSlotBytes(array, arrayLength, frame.pc, cycleLength)
+        const repeatCountI = Mathf.max(1, Mathf.round(repeat)) as i32
 
+        // Always advance parent PC past nested slots to avoid re-encountering the Cycle opcode
         // Skip nested slots in parent's PC
-        frame.pc += this.countSlotBytes(array, arrayLength, frame.pc, cycleLength)
+        frame.pc += nestedBytes
+
+        // Apply density (deterministic: play every Nth parent cycle where N = 1/density)
+        // /2 means play on 2nd, 4th, 6th parent cycle (not 1st, 3rd, 5th)
+        let densityTriggered = true
+        if (density < 1.0 && density > 0) {
+          const interval = Mathf.round(1.0 / density) as i32
+          // For root cycle children, use global cycleCount (root repeatIndex is always 0)
+          // For nested cycles, use parent's repeatIndex
+          if (this.stack.length === 1) {
+            // cycleCount is 1-indexed (1, 2, 3...), skip 1, play on 2, 4, 6...
+            densityTriggered = (this.cycleCount > 0) && ((this.cycleCount % interval) == 0)
+          }
+          else {
+            // repeatIndex is 0-indexed, skip 0, play on 1, 3, 5...
+            densityTriggered = (frame.repeatIndex % interval) == (interval - 1)
+          }
+        }
 
         // Apply prob to decide if this cycle triggers at all
-        const cycleTriggered = this.rng.next() < prob
-        const repeatCountI = Mathf.max(1, Mathf.round(repeat)) as i32
+        const cycleTriggered = densityTriggered && this.rng.next() < prob
         const repeatCountF = repeatCountI as f32
 
         if (!cycleTriggered) {
@@ -330,18 +470,99 @@ export class Seq extends Gen {
         // Push new frame for nested cycle
         const newFrame = new Frame()
         newFrame.pcStart = nestedStartPc
-        newFrame.pc = nestedStartPc
-        newFrame.slotIndex = 0
+
+        // For square brackets with spread cycles (/N): detect if repeatCount <= slotCount and repeatCount > 1
+        // This indicates spread mode where we spread children across cycles
+        const isSpreadMode = isSquare === 1 && repeatCountI <= cycleLength && repeatCountI > 1
+
         newFrame.slotCount = cycleLength as f32
-        newFrame.repeatIndex = 0
         newFrame.repeatCount = repeatCountI
+
+        if (isSpreadMode) {
+          // Spread mode: repeatIndex tracks root cycle count (modulo repeatCount)
+          // cycleCount is 1-indexed (1, 2, 3...), so use (cycleCount - 1) % repeatCount
+          // This allows the spread cycle to advance across root cycles
+          newFrame.repeatIndex = (this.cycleCount - 1) % repeatCountI
+          // Calculate which slots to play in this cycle
+          const childrenPerCycle = (cycleLength as f32) / (repeatCountI as f32)
+          const startSlot = (newFrame.repeatIndex as f32) * childrenPerCycle
+          newFrame.slotIndex = startSlot
+          // Skip to the PC position of the starting slot
+          newFrame.pc = nestedStartPc
+          for (let i = 0; i < i32(startSlot); i++) {
+            newFrame.pc += this.countSlotBytes(array, arrayLength, newFrame.pc, 1)
+          }
+        }
+        else {
+          // Normal mode: start at slot 0, play all slots
+          newFrame.slotIndex = 0
+          newFrame.repeatIndex = 0
+          newFrame.pc = nestedStartPc
+        }
+
         newFrame.speed = speed // Store speed for parent slot advancement when popping
         // Calculate start time for this nested cycle (current slot's time)
         const slotTime = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration
-        const repeatOffset = (frame.repeatIndex as f64) * (frame.slotCount as f64) * frame.slotDuration
-        newFrame.startTime = slotTime + repeatOffset
-        // slotDuration accounts for nested cycle's speed - faster cycles have shorter slot durations
-        newFrame.slotDuration = frame.slotDuration / (cycleLength as f64) / (speed as f64)
+        if (isSpreadMode) {
+          // Spread mode: startTime should be the parent slot's time within the current root cycle
+          // The nested cycle plays different slots in different root cycles based on repeatIndex
+          // But it should start at the parent slot's time, not at time 0
+          // Since root cycles reset time to 0, we calculate relative to cycle start
+          newFrame.startTime = (frame.slotIndex as f64) * frame.slotDuration
+        }
+        else {
+          // Normal mode: include repeat offset
+          const repeatOffset = (frame.repeatIndex as f64) * (frame.slotCount as f64) * frame.slotDuration
+          newFrame.startTime = slotTime + repeatOffset
+        }
+
+        // For angle brackets (isSquare = 0), calculate slot duration based on first child's length
+        // For square brackets (isSquare = 1), use standard calculation
+        if (isSquare === 0) {
+          // Angle bracket: peek at first child to get its slot count (length in beats)
+          let firstChildSlotCount: f64 = 1.0
+          if (nestedStartPc < arrayLength + ARRAY_HEADER_SIZE) {
+            const firstOp = array[nestedStartPc] as i32
+            if (firstOp === SeqOp.Value) {
+              // Value: repeat field (4th param) is the slot count
+              firstChildSlotCount = array[nestedStartPc + 4] as f64
+            }
+            else if (firstOp === SeqOp.Rest) {
+              // Rest: repeat field (1st param) is the slot count
+              firstChildSlotCount = array[nestedStartPc + 1] as f64
+            }
+            else if (firstOp === SeqOp.Chord) {
+              // Chord: repeat field (4th param after notes) is the slot count
+              const chordLength = array[nestedStartPc + 1] as i32
+              firstChildSlotCount = array[nestedStartPc + 1 + chordLength + 3] as f64
+            }
+            else if (firstOp === SeqOp.Cycle) {
+              // Nested cycle: for angle brackets, use first child's length
+              // For now, use cycleLength as approximation
+              const nestedCycleLength = array[nestedStartPc + 1] as i32
+              firstChildSlotCount = nestedCycleLength as f64
+            }
+          }
+          // For angle brackets, each slot should be the length of one child (in beats)
+          // Convert from beats to seconds: slotDuration = firstChildSlotCount * secondsPerBeat / speed
+          newFrame.slotDuration = firstChildSlotCount * secondsPerBeat / (speed as f64)
+        }
+        else {
+          // Square bracket: standard calculation
+          // For spread mode (repeatCount >= slotCount), calculate based on children per cycle
+          // For normal mode, each slot takes cycleDuration / slotCount
+          if (isSpreadMode) {
+            // Spread mode: childrenPerCycle slots share the parent slot's duration
+            // Each slot takes parentSlotDuration / childrenPerCycle
+            // The parent slot duration is frame.slotDuration (one slot in the parent cycle)
+            const childrenPerCycle = (cycleLength as f64) / (repeatCountI as f64)
+            newFrame.slotDuration = frame.slotDuration / childrenPerCycle / (speed as f64)
+          }
+          else {
+            // Normal mode: divide cycle duration by number of slots
+            newFrame.slotDuration = frame.slotDuration / (cycleLength as f64) / (speed as f64)
+          }
+        }
         newFrame.velocity = frame.velocity
         newFrame.offset = frame.offset + offset
         newFrame.jitter = Mathf.min(1.0, frame.jitter + jitter)
@@ -366,6 +587,8 @@ export class Seq extends Gen {
         const jitter = array[frame.pc++]
         const glide = array[frame.pc++]
 
+        const isSpreadMode = f32(frame.repeatCount) <= frame.slotCount && frame.slotCount > 0 && frame.repeatCount > 1
+
         // Apply density (deterministic: play every Nth cycle where N = 1/density)
         // /2 means play on 2nd, 4th, 6th cycle (not 1st, 3rd, 5th)
         let densityTriggered = true
@@ -380,8 +603,8 @@ export class Seq extends Gen {
         if (triggered) {
           // Slot count from repeat field (can be fractional with *2 = 0.5)
           const slotCount = repeat as f64
-          // slotDuration is in beats, convert to seconds
-          const autoHoldDuration = slotCount * frame.slotDuration * secondsPerBeat
+          // frame.slotDuration is already in seconds, so just multiply by slotCount
+          const autoHoldDuration = slotCount * frame.slotDuration
           const autoHoldSamples = (autoHoldDuration * (sampleRate as f64)) as i32
 
           // Calculate end sample for history (start + hold duration)
@@ -428,6 +651,31 @@ export class Seq extends Gen {
         // Can be fractional (e.g., *2 = 0.5 slots)
         frame.slotIndex += repeat
 
+        // For spread mode, check if we've reached the end slot immediately after incrementing
+        // (isSpreadMode is already declared above in this block)
+        if (isSpreadMode) {
+          const childrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
+          const startSlot = (frame.repeatIndex as f32) * childrenPerCycle
+          const endSlot = startSlot + childrenPerCycle
+          // Use a small epsilon for floating point comparison
+          if (frame.slotIndex >= endSlot - 0.0001) {
+            // We've played all slots for this repeat - pop frame
+            const slotsUsed: f32 = 1.0
+            this.stack.pop()
+            if (this.stack.length > 0) {
+              const parentFrame = this.stack[this.stack.length - 1]
+              parentFrame.slotIndex += slotsUsed
+            }
+            else {
+              this.nextEventTime = f64.MAX_VALUE
+              return
+            }
+            // Continue to process parent frame
+            this.calculateNextEventTime(array, arrayLength, secondsPerBeat)
+            return
+          }
+        }
+
         // Calculate NEXT event time
         this.calculateNextEventTime(array, arrayLength, secondsPerBeat)
         return
@@ -472,11 +720,49 @@ export class Seq extends Gen {
 
     const frame = this.stack[this.stack.length - 1]
 
+    // Check if this is spread mode
+    const isSpreadMode = f32(frame.repeatCount) <= frame.slotCount && frame.slotCount > 0 && frame.repeatCount > 1
+
     // Calculate time for next event
-    const slotTime = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration
-    const repeatOffset = (frame.repeatIndex as f64) * (frame.slotCount as f64) * frame.slotDuration
-    const eventTime = slotTime + repeatOffset
-    this.nextEventTime = eventTime * secondsPerBeat
+    // slotDuration is in seconds, startTime is in seconds, so eventTime is in seconds
+    // this.time is also in seconds, so nextEventTime should be in seconds (no conversion needed)
+    if (isSpreadMode) {
+      // Spread mode: calculate time based on relative slot position within current cycle's slots
+      // slotIndex is absolute (e.g., 2 for cycle 2), but timing should be relative to startSlot
+      const childrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
+      const startSlot = (frame.repeatIndex as f32) * childrenPerCycle
+      const relativeSlotIndex = frame.slotIndex - startSlot
+      const slotTime = frame.startTime + (relativeSlotIndex as f64) * frame.slotDuration
+      // Make nextEventTime relative to cycle start
+      this.nextEventTime = this.cycleStartTime + slotTime
+    }
+    else {
+      // Normal mode: standard calculation
+      // For root cycle, startTime is 0 and time is relative to cycle start
+      // nextEventTime should be relative to cycleStartTime, not absolute
+      const slotTime = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration
+      const repeatOffset = (frame.repeatIndex as f64) * (frame.slotCount as f64) * frame.slotDuration
+      const eventTime = slotTime + repeatOffset
+      // Make nextEventTime relative to cycle start
+      this.nextEventTime = this.cycleStartTime + eventTime
+    }
+  }
+
+  // Debug methods
+  getCycleCount(): i32 {
+    return this.cycleCount
+  }
+
+  getStackLength(): i32 {
+    return this.stack.length
+  }
+
+  getNextEventTime(): f64 {
+    return this.nextEventTime
+  }
+
+  getTime(): f64 {
+    return this.time
   }
 
   private countSlotBytes(array: StaticArray<f32>, arrayLength: i32, startPc: i32, slotCount: i32): i32 {

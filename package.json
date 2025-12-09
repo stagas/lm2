@@ -15,7 +15,8 @@
   "license": "ISC",
   "scripts": {
     "dev": "vite --open",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "bun test"
   },
   "type": "module"
 }

@@ -71,13 +71,13 @@ async function updateWasmBinary() {
 }
 
 async function creaateWorklet() {
-  const audioContext = new AudioContext({ latencyHint: 1.0 })
+  const audioContext = new AudioContext({ latencyHint: 0.0125 })
   await audioContext.audioWorklet.addModule(workletUrl)
   const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
   const ringPos = new Uint8Array(new SharedArrayBuffer(4))
   const control = new Uint32Array(new SharedArrayBuffer(4))
   const bpmValue = new Float32Array(new SharedArrayBuffer(4))
-  bpmValue[0] = 120 // Initialize BPM to 120
+  bpmValue[0] = 60 // Initialize BPM to 60
   const globalSampleCount = new Int32Array(new SharedArrayBuffer(4))
   globalSampleCount[0] = 0
   const dsp = new AudioWorkletNode(audioContext, 'dsp', {
@@ -197,7 +197,7 @@ async function createProgram() {
   data.arrays[0].data[14] = 783.99 // G5
   data.arrays[0].data[15] = 880.00 // A5
 
-  currentSequenceString = '[c2 e4 a4]@2 [c2 e4 a4]!2'
+  currentSequenceString = 'c4 e4'
   currentCompiledSequence = compileSequence(currentSequenceString)
 
   data.arrays[1].raw.set(currentCompiledSequence.bytecode.buffer)
@@ -346,7 +346,7 @@ function createFrequencySlider(index: number, min: number, max: number, step: nu
 
 // BPM control
 const bpmLabel = document.createElement('div')
-bpmLabel.textContent = 'BPM: 120'
+bpmLabel.textContent = 'BPM: 60'
 bpmLabel.className = 'text-white p-2'
 document.body.appendChild(bpmLabel)
 
@@ -357,7 +357,7 @@ const bpmSlider = Object.assign(
     min: 1,
     max: 666,
     step: 1,
-    value: 120,
+    value: 60,
     oninput: (e: InputEvent & { target: HTMLInputElement }) => {
       const bpm = parseFloat(e.target.value)
       bpmValue[0] = bpm
@@ -583,8 +583,6 @@ function createSequenceVisualization(
   let lastFrameTime = performance.now()
   let predictedSampleCount = Atomics.load(globalSampleCount, 0)
   let isFirstFrame = true
-  let showingFallback = false
-  let fallbackStartTime = 0
 
   const draw = () => {
     requestAnimationFrame(draw)
@@ -623,7 +621,8 @@ function createSequenceVisualization(
       }
     }
 
-    const currentSampleCount = predictedSampleCount
+    // Ensure currentSampleCount is never negative (audio can't go backwards)
+    const currentSampleCount = Math.max(0, predictedSampleCount)
 
     // Read history from the ring buffer
     const historySize = Math.floor(array.historySize) || SEQ_HISTORY_SIZE
@@ -639,13 +638,15 @@ function createSequenceVisualization(
       const startSample = Math.floor(history[idx + 1])
       const endSample = Math.floor(history[idx + 2])
 
-      // Skip invalid entries
-      if (startSample === 0) continue
+      // Skip invalid entries (uninitialized history buffer entries have all zeros)
+      if (startSample === 0 && endSample === 0) continue
 
       hasAnyValidEvents = true
 
       // Skip events that haven't started yet (in the future)
-      if (startSample > currentSampleCount) continue
+      // Add small tolerance (1ms) to account for timing differences
+      const toleranceSamples = sampleRate * 0.001
+      if (startSample > currentSampleCount + toleranceSamples) continue
 
       // Keep the most recent started event per position
       const existing = eventData.get(bytecodePos)
@@ -678,47 +679,6 @@ function createSequenceVisualization(
     c.textBaseline = 'middle'
 
     const isLeafToken = (t: typeof tokens[0]) => !t.text.startsWith('[') && !t.text.startsWith('<')
-    const leafTokens = tokens.filter(isLeafToken)
-
-    // Handle fallback first token (when stopped/no events visible)
-    if (!hasAnyValidEvents && leafTokens.length > 0) {
-      // No events in history yet - show first token at full brightness
-      eventAges.set(leafTokens[0].bytecodePos, 0)
-      showingFallback = true
-      fallbackStartTime = 0
-    }
-    else if (showingFallback && leafTokens.length > 0) {
-      // Check if the first token itself has a real event, or if any other event is visible
-      const firstTokenHasRealEvent = eventAges.has(leafTokens[0].bytecodePos)
-      const otherEventsVisible = Array.from(eventAges.keys()).some(pos => pos !== leafTokens[0].bytecodePos)
-
-      if (!firstTokenHasRealEvent && !otherEventsVisible) {
-        // No visible events yet - keep showing fallback at full brightness
-        eventAges.set(leafTokens[0].bytecodePos, 0)
-      }
-      else {
-        // Real events are visible - start fading out the fallback
-        if (fallbackStartTime === 0) {
-          fallbackStartTime = now / 1000 // Record when fadeout started
-        }
-        const fadeAge = (now / 1000) - fallbackStartTime
-        if (fadeAge <= FADEOUT_SECONDS) {
-          // Only add fallback fade if first token doesn't have a real event
-          if (!firstTokenHasRealEvent) {
-            eventAges.set(leafTokens[0].bytecodePos, fadeAge)
-          }
-        }
-        else {
-          showingFallback = false
-          fallbackStartTime = 0
-        }
-      }
-    }
-    else if (!hasAnyValidEvents) {
-      // Reset fallback state when history is cleared
-      showingFallback = false
-      fallbackStartTime = 0
-    }
 
     // Draw highlights with fadeout
     for (const token of tokens) {
