@@ -758,4 +758,58 @@ describe('Sequences', () => {
       expect(hasZero).toBe(true)
     }
   })
+
+  it('c4 e4<.5', async () => {
+    // Offset modifier <.5 means shift backwards by .5 slot time
+    // In a 2-slot cycle, each slot is 0.5 beats
+    // e4 at 0.5 - (0.5 * 0.5) = 0.25 (halfway to previous slot)
+    const result = await executeSequence('c4 e4<.5')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0.25)
+  })
+
+  it('c4 e4>.5', async () => {
+    // Offset modifier >.5 means shift forwards by .5 slot time
+    // In a 2-slot cycle, each slot is 0.5 beats
+    // e4 at 0.5 + (0.5 * 0.5) = 0.75 (halfway to next slot)
+    const result = await executeSequence('c4 e4>.5')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0.75)
+  })
+
+  it('c4 e4<1', async () => {
+    // Offset modifier <1 means shift backwards by 1 slot time
+    // In a 2-slot cycle, each slot is 0.5 beats
+    // e4 at 0.5 - (1 * 0.5) = 0.0 (fires at previous slot, same time as c4)
+    const result = await executeSequence('c4 e4<1')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+
+    expectEventCount(result.events, 'C4', 1)
+    expectEventCount(result.events, 'E4', 1)
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0)
+  })
+
+  it('c4 e4>1', async () => {
+    // Offset modifier >1 means shift forwards by 1 slot time
+    // In a 2-slot cycle, each slot is 0.5 beats
+    // e4 at 0.5 + (1 * 0.5) = 1.0 (fires at next slot, beginning of next cycle)
+    const result = await executeSequence('c4 e4>1', { totalCycles: 2 })
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+
+    expectEventAtTime(result.events, 'C4', 0, 0)
+    expectEventAtTime(result.events, 'E4', 1.0, 0)
+  })
 })
