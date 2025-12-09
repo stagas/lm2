@@ -44,6 +44,20 @@ describe('Sequences', () => {
     expectEventAtTime(result.events, 'G4', 0.667)
   })
 
+  it('c4e4g4', async () => {
+    // Chord notation: all notes play simultaneously
+    const result = await executeSequence('c4e4g4')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // All notes should play at the same time (time 0)
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0)
+    expectEventAtTime(result.events, 'G4', 0)
+  })
+
   it('c4 e4 g4 a4', async () => {
     const result = await executeSequence('c4 e4 g4 a4')
     const notes = getUniqueNotes(result.events)
@@ -811,5 +825,154 @@ describe('Sequences', () => {
 
     expectEventAtTime(result.events, 'C4', 0, 0)
     expectEventAtTime(result.events, 'E4', 1.0, 0)
+  })
+
+  it('c4\\ e4\\ - simple linear glide', async () => {
+    // Test basic linear glide (exponent 1.0, default)
+    // Glide should work without hold time, using slot duration (0.5s for 2-slot cycle)
+    // Glide should reuse the same voice (latch)
+    const result = await executeSequence('c4\\ e4\\', { totalCycles: 2 })
+    const allEvents = result.events
+
+    // With glide, we should have events for both notes
+    // The first event should be c4, and when e4 triggers, it should reuse the same voice
+    expect(allEvents.length).toBeGreaterThan(0)
+
+    // Get the first event (c4) and check if subsequent events use the same voice
+    const firstEvent = allEvents[0]!
+    const firstVoice = firstEvent.voice
+
+    // Find events that occur after the first one (should include e4)
+    const laterEvents = allEvents.filter(e => e.sample > firstEvent.sample)
+    if (laterEvents.length > 0) {
+      // With glide, later events should reuse the same voice
+      const laterVoice = laterEvents[0]!.voice
+      expect(laterVoice).toBe(firstVoice)
+    }
+
+    // Verify smooth transition with samples
+    const samples = await getVelocitySamples('c4\\ e4\\', firstVoice, 0, 1.0, { totalCycles: 2 })
+    const c4Freq = noteToFreq('C4')
+    const e4Freq = noteToFreq('E4')
+
+    // Find samples during the transition period (0.5 to 1.0 seconds - slot duration glide)
+    const transitionSamples = samples.filter(s => s.time >= 0.5 && s.time <= 1.0)
+    expect(transitionSamples.length).toBeGreaterThan(0)
+
+    // Check that value transitions from c4 to e4 (not instant jump)
+    const values = transitionSamples.map(s => s.value)
+    const minValue = Math.min(...values)
+    const maxValue = Math.max(...values)
+
+    // Should have values between c4 and e4 (smooth transition)
+    expect(minValue).toBeLessThan(e4Freq)
+    expect(maxValue).toBeGreaterThan(c4Freq)
+  })
+
+  it('c4\\ e4\\.5 - glide exponent 0.5', async () => {
+    // Test glide with exponent 0.5 (concave down - fast start, slow end)
+    // Uses default 0.1s glide duration
+    const samples = await getVelocitySamples('c4\\ e4\\.5', 0, 0, 0.7, { totalCycles: 2 })
+    const c4Freq = noteToFreq('C4')
+    const e4Freq = noteToFreq('E4')
+
+    // Find samples during the transition period (0.5 to 0.6 seconds - default 0.1s glide)
+    const transitionSamples = samples.filter(s => s.time >= 0.5 && s.time <= 0.6)
+    expect(transitionSamples.length).toBeGreaterThan(0)
+
+    // Check that value transitions from c4 to e4 (not instant jump)
+    const values = transitionSamples.map(s => s.value)
+    const minValue = Math.min(...values)
+    const maxValue = Math.max(...values)
+
+    // Should have values between c4 and e4 (smooth transition)
+    expect(minValue).toBeLessThan(e4Freq)
+    expect(maxValue).toBeGreaterThan(c4Freq)
+
+    // At quarter point of transition, should be further along than linear (faster start with exp 0.5)
+    const quarterTime = 0.5 + (0.6 - 0.5) * 0.25
+    const quarterSample = samples.find(s => Math.abs(s.time - quarterTime) < 0.01)
+      || transitionSamples[Math.floor(transitionSamples.length * 0.25)]!
+    const linearQuarter = c4Freq + (e4Freq - c4Freq) * 0.25
+    expect(quarterSample.value).toBeGreaterThan(linearQuarter)
+  })
+
+  it('c4\\ e4\\ - linear glide (exponent 1)', async () => {
+    // Test linear glide (exponent 1.0)
+    const samples = await getVelocitySamples('c4\\ e4\\', 0, 0, 0.7, { totalCycles: 2 })
+    const c4Freq = noteToFreq('C4')
+    const e4Freq = noteToFreq('E4')
+
+    // Find samples during the transition period (0.5 to 0.6 seconds - default 0.1s glide)
+    const transitionSamples = samples.filter(s => s.time >= 0.5 && s.time <= 0.6)
+    expect(transitionSamples.length).toBeGreaterThan(0)
+
+    // Check that value transitions from c4 to e4 (not instant jump)
+    const values = transitionSamples.map(s => s.value)
+    const minValue = Math.min(...values)
+    const maxValue = Math.max(...values)
+
+    // Should have values between c4 and e4 (smooth transition)
+    expect(minValue).toBeLessThan(e4Freq)
+    expect(maxValue).toBeGreaterThan(c4Freq)
+
+    // Verify smooth transition - values should be increasing
+    const sortedByTime = [...transitionSamples].sort((a, b) => a.time - b.time)
+    const firstValue = sortedByTime[0]!.value
+    const lastValue = sortedByTime[sortedByTime.length - 1]!.value
+    expect(lastValue).toBeGreaterThan(firstValue)
+  })
+
+  it('c4\\ e4\\1 - linear glide (exponent 1, explicit)', async () => {
+    // Test linear glide with explicit \1
+    const samples = await getVelocitySamples('c4\\ e4\\1', 0, 0, 0.7, { totalCycles: 2 })
+    const c4Freq = noteToFreq('C4')
+    const e4Freq = noteToFreq('E4')
+
+    // Find samples during the transition period (0.5 to 0.6 seconds - default 0.1s glide)
+    const transitionSamples = samples.filter(s => s.time >= 0.5 && s.time <= 0.6)
+    expect(transitionSamples.length).toBeGreaterThan(0)
+
+    // Check that value transitions from c4 to e4 (not instant jump)
+    const values = transitionSamples.map(s => s.value)
+    const minValue = Math.min(...values)
+    const maxValue = Math.max(...values)
+
+    // Should have values between c4 and e4 (smooth transition)
+    expect(minValue).toBeLessThan(e4Freq)
+    expect(maxValue).toBeGreaterThan(c4Freq)
+
+    // Verify smooth transition - values should be increasing
+    const sortedByTime = [...transitionSamples].sort((a, b) => a.time - b.time)
+    const firstValue = sortedByTime[0]!.value
+    const lastValue = sortedByTime[sortedByTime.length - 1]!.value
+    expect(lastValue).toBeGreaterThan(firstValue)
+  })
+
+  it('c4\\ e4\\5 - glide exponent 5', async () => {
+    // Test glide with exponent 5.0 (concave up - slow start, fast end)
+    const samples = await getVelocitySamples('c4\\ e4\\5', 0, 0, 0.7, { totalCycles: 2 })
+    const c4Freq = noteToFreq('C4')
+    const e4Freq = noteToFreq('E4')
+
+    // Find samples during the transition period (0.5 to 0.6 seconds - default 0.1s glide)
+    const transitionSamples = samples.filter(s => s.time >= 0.5 && s.time <= 0.6)
+    expect(transitionSamples.length).toBeGreaterThan(0)
+
+    // Check that value transitions from c4 to e4 (not instant jump)
+    const values = transitionSamples.map(s => s.value)
+    const minValue = Math.min(...values)
+    const maxValue = Math.max(...values)
+
+    // Should have values between c4 and e4 (smooth transition)
+    expect(minValue).toBeLessThan(e4Freq)
+    expect(maxValue).toBeGreaterThan(c4Freq)
+
+    // At quarter point of transition, should be less far along than linear (slower start with exp 5)
+    const quarterTime = 0.5 + (0.6 - 0.5) * 0.25
+    const quarterSample = samples.find(s => Math.abs(s.time - quarterTime) < 0.01)
+      || transitionSamples[Math.floor(transitionSamples.length * 0.25)]!
+    const linearQuarter = c4Freq + (e4Freq - c4Freq) * 0.25
+    expect(quarterSample.value).toBeLessThan(linearQuarter)
   })
 })

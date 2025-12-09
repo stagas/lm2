@@ -754,15 +754,35 @@ export class Seq extends Gen {
             // Trigger voice at the repeat time
             // For repeats, always allocate a new voice to allow multiple simultaneous triggers
             // For non-repeats (single events), try to reuse voices to prevent same note doubling
+            // For glide, always reuse the same voice (latch) to enable smooth transitions
             let voiceIndex = -1
             let isReusingVoice = false
             if (repeatCount === 1) {
-              // Single event: try to reuse a voice playing the same note
-              for (let v = 0; v < SEQ_VOICES; v++) {
-                if (this.voices[v].active && this.voices[v].targetValue === value) {
-                  voiceIndex = v
+              if (glide > 0) {
+                // Glide enabled: try to reuse lastLatchVoice first, then any active voice
+                if (this.lastLatchVoice >= 0 && this.voices[this.lastLatchVoice].active) {
+                  voiceIndex = this.lastLatchVoice
                   isReusingVoice = true
-                  break
+                }
+                else {
+                  // Try to reuse any active voice for glide
+                  for (let v = 0; v < SEQ_VOICES; v++) {
+                    if (this.voices[v].active) {
+                      voiceIndex = v
+                      isReusingVoice = true
+                      break
+                    }
+                  }
+                }
+              }
+              else {
+                // No glide: try to reuse a voice playing the same note
+                for (let v = 0; v < SEQ_VOICES; v++) {
+                  if (this.voices[v].active && this.voices[v].targetValue === value) {
+                    voiceIndex = v
+                    isReusingVoice = true
+                    break
+                  }
                 }
               }
             }
@@ -788,7 +808,8 @@ export class Seq extends Gen {
               voice.glidePower = glide
 
               if (glide > 0 && voice.currentValue > 0) {
-                const glideSamples = Mathf.max(1, hold * (sampleRate as f32))
+                const glideDuration = hold > 0 ? hold : (frame.slotDuration as f32)
+                const glideSamples = Mathf.max(1, glideDuration * (sampleRate as f32))
                 voice.glideRate = 1.0 / glideSamples
               }
               else {
@@ -817,8 +838,8 @@ export class Seq extends Gen {
                 voice.endSample = hold === 0 ? -1 : endSample
               }
 
-              if (hold === 0 && repeatCount === 1) {
-                // Only use latch mode for single events without explicit hold
+              if ((hold === 0 || glide > 0) && repeatCount === 1) {
+                // Use latch mode for single events without explicit hold, or when glide is enabled
                 this.lastLatchVoice = voiceIndex
               }
             }
