@@ -26,6 +26,8 @@ const DEFAULT_MODIFIERS: Modifiers = {
   jitter: 0,
   glide: 0,
   strum: 0,
+  spreadCycles: 0,
+  replicate: 1,
 }
 
 const NOTE_NAMES = ['c', 'd', 'e', 'f', 'g', 'a', 'b']
@@ -271,8 +273,10 @@ function getTokenSlotCount(token: string, parentMods: Modifiers): number {
     const mods = parseModifiers(modifiersStr, parentMods, isSquare)
     // For cycles with *N (repeat > 1), the cycle still takes 1 slot
     // The repetition happens within that slot
+    // For cycles with !N (replicate > 1), the cycle takes N slots
     // Only speed affects slot count: speed < 1 means slower, takes more parent slots
-    return 1 / mods.speed
+    const baseSlots = mods.replicate > 1 ? mods.replicate : 1
+    return baseSlots / mods.speed
   }
   else if (token.startsWith('_') || token.startsWith('~')) {
     const modifiersStr = token.slice(1)
@@ -337,7 +341,7 @@ function tokenize(input: string): string[] {
 
       // Capture modifiers after closing bracket
       const afterClose = j
-      while (j < input.length && /[*.;?#\\<>@%/$\d]/.test(input[j])) {
+      while (j < input.length && /[*.;?#\\<>@%/$!\d]/.test(input[j])) {
         j++
       }
 
@@ -347,7 +351,7 @@ function tokenize(input: string): string[] {
     else if (char === '_' || char === '~') {
       // Rest (both _ and ~ are rest tokens)
       let j = i + 1
-      while (j < input.length && /[*.;?#\\<>@%/$\d]/.test(input[j])) {
+      while (j < input.length && /[*.;?#\\<>@%/$!\d]/.test(input[j])) {
         j++
       }
       tokens.push(input.slice(i, j))
@@ -360,7 +364,7 @@ function tokenize(input: string): string[] {
       if (euclideanMatch) {
         let j = i + euclideanMatch[0].length
         // Continue to capture modifiers after the closing parenthesis
-        while (j < input.length && /[*.;?#\\<>@%/$\d]/.test(input[j])) {
+        while (j < input.length && /[*.;?#\\<>@%/$!\d]/.test(input[j])) {
           j++
         }
         tokens.push(input.slice(i, j))
@@ -429,6 +433,7 @@ function compileToken(
       glide: 0,
       strum: 0,
       spreadCycles: 0,
+      replicate: 1,
     }
 
     // Angle bracket: compile as square bracket with spread mode
@@ -480,6 +485,7 @@ function compileToken(
       glide: 0,
       strum: 0,
       spreadCycles: 0,
+      replicate: 1,
     }
 
     // If /N is used (spreadCycles > 0), spread children across N cycles (one per cycle)
@@ -499,6 +505,41 @@ function compileToken(
         mods.prob,
         1, // isSquare = 1 for square brackets
       )
+
+      for (const innerToken of innerTokens) {
+        compileToken(innerToken, bc, childMods)
+      }
+    }
+    else if (mods.replicate > 1) {
+      // Replicate mode (!N): take N slots, play content N times (once per slot)
+      // [g4 a4]!2 is equivalent to [g4 a4 g4 a4] - emit inner content N times
+      let effectiveSlotCount = 0
+      for (const innerToken of innerTokens) {
+        effectiveSlotCount += getTokenSlotCount(innerToken, childMods)
+      }
+      effectiveSlotCount *= mods.replicate
+
+      // Adjust speed so the VM knows this cycle takes N parent slots
+      // speed = 1/N makes the cycle N times slower, taking N parent slots
+      const effectiveSpeed = mods.speed / mods.replicate
+
+      bc.cycle(
+        effectiveSlotCount,
+        effectiveSpeed,
+        1, // No VM-level repeat needed
+        mods.density,
+        mods.offset,
+        mods.jitter,
+        mods.prob,
+        1, // isSquare = 1 for square brackets
+      )
+
+      // Emit the inner tokens N times
+      for (let r = 0; r < mods.replicate; r++) {
+        for (const innerToken of innerTokens) {
+          compileToken(innerToken, bc, childMods)
+        }
+      }
     }
     else {
       // Normal mode: sum of inner token slot counts, play all in one cycle
@@ -532,10 +573,10 @@ function compileToken(
         mods.prob,
         1, // isSquare = 1 for square brackets
       )
-    }
 
-    for (const innerToken of innerTokens) {
-      compileToken(innerToken, bc, childMods)
+      for (const innerToken of innerTokens) {
+        compileToken(innerToken, bc, childMods)
+      }
     }
   }
   else if (token.startsWith('_') || token.startsWith('~')) {
@@ -766,6 +807,8 @@ export function compileSequence(input: string): CompiledSequence {
         jitter: 0,
         glide: 0,
         strum: 0,
+        spreadCycles: 0,
+        replicate: 1,
       }
 
       if (isSquare) {
@@ -780,6 +823,30 @@ export function compileSequence(input: string): CompiledSequence {
             slotCount,
             mods.speed,
             repeat,
+            mods.density,
+            mods.offset,
+            mods.jitter,
+            mods.prob,
+            1, // isSquare = 1
+          )
+        }
+        else if (mods.replicate > 1) {
+          // Replicate mode (!N): take N slots, play content N times (once per slot)
+          // [g4 a4]!2 is equivalent to [g4 a4 g4 a4] - emit inner content N times
+          let effectiveSlotCount = 0
+          for (const innerToken of innerTokens) {
+            effectiveSlotCount += getTokenSlotCount(innerToken, childMods)
+          }
+          effectiveSlotCount *= mods.replicate
+
+          // Adjust speed so the VM knows this cycle takes N parent slots
+          // speed = 1/N makes the cycle N times slower, taking N parent slots
+          const effectiveSpeed = mods.speed / mods.replicate
+
+          bc.cycle(
+            effectiveSlotCount,
+            effectiveSpeed,
+            1, // No VM-level repeat needed
             mods.density,
             mods.offset,
             mods.jitter,
@@ -847,17 +914,23 @@ export function compileSequence(input: string): CompiledSequence {
         )
       }
 
-      // Compile inner tokens once (VM handles repetition)
-      let innerContentPos = startPos + 1
-      for (const innerToken of innerTokens) {
-        const innerTokenStartInInput = input.indexOf(innerToken, innerContentPos)
-        compileTokenWithMetadata(innerToken, childMods, innerTokenStartInInput, isRealToken)
-        innerContentPos = innerTokenStartInInput + innerToken.length
+      // Compile inner tokens
+      // For replicate mode (!N), emit inner tokens N times
+      // For other modes, VM handles repetition
+      const repeatTimes = isSquare && mods.replicate > 1 ? mods.replicate : 1
+      for (let r = 0; r < repeatTimes; r++) {
+        let innerContentPos = startPos + 1
+        for (const innerToken of innerTokens) {
+          const innerTokenStartInInput = input.indexOf(innerToken, innerContentPos)
+          compileTokenWithMetadata(innerToken, childMods, innerTokenStartInInput, isRealToken)
+          innerContentPos = innerTokenStartInInput + innerToken.length
+        }
       }
 
       // Calculate flat indices including repetition for visualization
       const innerEventCount = flatEventIndex - startFlatIndex
-      flatEventIndex = startFlatIndex + (innerEventCount * mods.repeat)
+      const effectiveRepeat = mods.replicate > 1 ? 1 : mods.repeat // replicate already expanded above
+      flatEventIndex = startFlatIndex + (innerEventCount * effectiveRepeat)
     }
     else {
       // Check for euclidean rhythm syntax: event(beats,steps[,offset])
@@ -1010,6 +1083,8 @@ export function compileSequence(input: string): CompiledSequence {
           jitter: 0,
           glide: 0,
           strum: 0,
+          spreadCycles: 0,
+          replicate: 1,
         }
         const firstChildSlotCount = getTokenSlotCount(innerTokens[0]!, childMods)
         // Duration in bars = (first child length in beats) / 4 / speed

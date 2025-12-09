@@ -556,13 +556,32 @@ export class Seq extends Gen {
 
         newFrame.speed = speed // Store speed for parent slot advancement when popping
         // Calculate start time for this nested cycle (current slot's time)
-        const slotTime = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration
+        // For spread mode, we need to use relative slot index (within current cycle's allocation)
+        const parentIsSpreadMode = !frame.isRepeatMode && f32(frame.repeatCount) <= frame.slotCount
+          && frame.slotCount > 0 && frame.repeatCount > 1
+        let slotTime: f64
+        if (parentIsSpreadMode) {
+          // In spread mode, calculate relative slot position
+          const parentChildrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
+          const parentStartSlot = (frame.repeatIndex as f32) * parentChildrenPerCycle
+          const relativeSlotIndex = frame.slotIndex - parentStartSlot
+          slotTime = frame.startTime + (relativeSlotIndex as f64) * frame.slotDuration
+        }
+        else {
+          slotTime = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration
+        }
         if (isSpreadMode) {
-          // Spread mode: startTime should be the parent slot's time within the current root cycle
-          // The nested cycle plays different slots in different root cycles based on repeatIndex
-          // But it should start at the parent slot's time, not at time 0
-          // Since root cycles reset time to 0, we calculate relative to cycle start
-          newFrame.startTime = (frame.slotIndex as f64) * frame.slotDuration
+          // Spread mode for the NEW frame: startTime relative to the slot we're playing
+          // Use the same relative calculation
+          if (parentIsSpreadMode) {
+            const parentChildrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
+            const parentStartSlot = (frame.repeatIndex as f32) * parentChildrenPerCycle
+            const relativeSlotIndex = frame.slotIndex - parentStartSlot
+            newFrame.startTime = frame.startTime + (relativeSlotIndex as f64) * frame.slotDuration
+          }
+          else {
+            newFrame.startTime = (frame.slotIndex as f64) * frame.slotDuration
+          }
         }
         else {
           // Normal mode: for cycles with repeat > 1 (repeat mode), the cycle repeats within the parent slot
@@ -1174,9 +1193,9 @@ export class Seq extends Gen {
 
     // Steal the oldest triggered voice that has already fired
     // Don't steal voices scheduled for current or future samples
-    let oldestVoice = -1
-    let oldestSample = i32.MAX_VALUE
-    for (let v = 0; v < SEQ_VOICES; v++) {
+    let oldestVoice = 0
+    let oldestSample = this.voices[0].triggerSample
+    for (let v = 1; v < SEQ_VOICES; v++) {
       // Only consider voices that have already triggered (past samples)
       if (this.voices[v].triggerSample < this.currentSampleCount
         && this.voices[v].triggerSample < oldestSample)
@@ -1186,22 +1205,17 @@ export class Seq extends Gen {
       }
     }
 
-    // If found a past voice, steal it
-    if (oldestVoice >= 0) {
-      return oldestVoice
-    }
-
-    // No past voice found - all voices are scheduled for future samples
-    // Steal the LATEST scheduled voice (farthest in future) so earlier notes play first
-    let latestVoice = 0
-    let latestSample = this.voices[0].triggerSample
-    for (let v = 1; v < SEQ_VOICES; v++) {
-      if (this.voices[v].triggerSample > latestSample) {
-        latestSample = this.voices[v].triggerSample
-        latestVoice = v
+    // If no past voice found, fall back to stealing the oldest regardless
+    if (oldestSample >= this.currentSampleCount) {
+      oldestSample = this.voices[0].triggerSample
+      for (let v = 1; v < SEQ_VOICES; v++) {
+        if (this.voices[v].triggerSample < oldestSample) {
+          oldestSample = this.voices[v].triggerSample
+          oldestVoice = v
+        }
       }
     }
 
-    return latestVoice
+    return oldestVoice
   }
 }

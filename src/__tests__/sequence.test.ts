@@ -124,6 +124,33 @@ describe('Sequences', () => {
     expectEventAtTime(result.events, 'A4', 0.917, 1) // Second A4 (0.833 + 0.083)
   })
 
+  it('c4 e4 [g4 a4]!2', async () => {
+    // !2 means replicate the bracket - should be equivalent to `c4 e4 [g4 a4] [g4 a4]`
+    // The bracket takes 2 slots and plays its content in each slot
+    const result = await executeSequence('c4 e4 [g4 a4]!2')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+    expect(notes).toContain('A4')
+
+    // For 'c4 e4 [g4 a4]!2', the root cycle has 4 slots: c4, e4, [g4 a4], [g4 a4]
+    // Each slot = 1/4 = 0.25 beats
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0.25)
+
+    // Check that G4 and A4 appear twice each
+    expectEventCount(result.events, 'G4', 2)
+    expectEventCount(result.events, 'A4', 2)
+
+    // First bracket: starts at 0.5, each note gets 0.125 beats
+    expectEventAtTime(result.events, 'G4', 0.5, 0) // First G4
+    expectEventAtTime(result.events, 'A4', 0.625, 0) // First A4
+    // Second bracket: starts at 0.75, each note gets 0.125 beats
+    expectEventAtTime(result.events, 'G4', 0.75, 1) // Second G4
+    expectEventAtTime(result.events, 'A4', 0.875, 1) // Second A4
+  })
+
   it('c4 e4 g4/2', async () => {
     // /2 means density = 0.5, so G4 plays on cycles 2, 4, 6, etc. (not cycle 1)
     const result = await executeSequence('c4 e4 g4/2', { totalCycles: 2 })
@@ -165,6 +192,43 @@ describe('Sequences', () => {
     expectEventAtTime(result.events, 'C4', 1.0, 1) // Second C4 (cycle 2)
     expectEventAtTime(result.events, 'E4', 1.333, 1) // Second E4 (cycle 2)
     expectEventAtTime(result.events, 'A4', 1.667, 0) // A4 from subdivision (cycle 2)
+
+    // Verify G4 and A4 each appear once
+    expectEventCount(result.events, 'G4', 1)
+    expectEventCount(result.events, 'A4', 1)
+  })
+
+  it('c4 [e4 [g4 a4]]/2', async () => {
+    // /2 on outer bracket spreads its children across 2 cycles
+    // Children are: e4 and [g4 a4]
+    // Cycle 1: c4, e4
+    // Cycle 2: c4, [g4 a4]
+    const result = await executeSequence('c4 [e4 [g4 a4]]/2', { totalCycles: 2 })
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+    expect(notes).toContain('A4')
+
+    // Root cycle has 2 slots: c4 (1), [e4 [g4 a4]]/2 (1)
+    // Each slot = 0.5 beats
+
+    // Cycle 1: c4 at 0, e4 at 0.5
+    expectEventAtTime(result.events, 'C4', 0, 0)
+    expectEventAtTime(result.events, 'E4', 0.5, 0)
+
+    // Cycle 2: c4 at 1.0, [g4 a4] at 1.5
+    // The nested [g4 a4] takes 1 slot (0.5 beats), with 2 inner slots
+    // g4 at 1.5, a4 at 1.75
+    expectEventAtTime(result.events, 'C4', 1.0, 1)
+    expectEventAtTime(result.events, 'G4', 1.5, 0)
+    expectEventAtTime(result.events, 'A4', 1.75, 0)
+
+    // Verify counts
+    expectEventCount(result.events, 'C4', 2)
+    expectEventCount(result.events, 'E4', 1)
+    expectEventCount(result.events, 'G4', 1)
+    expectEventCount(result.events, 'A4', 1)
 
     // Verify G4 and A4 each appear once
     expectEventCount(result.events, 'G4', 1)
