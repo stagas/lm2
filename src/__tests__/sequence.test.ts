@@ -44,20 +44,6 @@ describe('Sequences', () => {
     expectEventAtTime(result.events, 'G4', 0.667)
   })
 
-  it('c4e4g4', async () => {
-    // Chord notation: all notes play simultaneously
-    const result = await executeSequence('c4e4g4')
-    const notes = getUniqueNotes(result.events)
-    expect(notes).toContain('C4')
-    expect(notes).toContain('E4')
-    expect(notes).toContain('G4')
-
-    // All notes should play at the same time (time 0)
-    expectEventAtTime(result.events, 'C4', 0)
-    expectEventAtTime(result.events, 'E4', 0)
-    expectEventAtTime(result.events, 'G4', 0)
-  })
-
   it('c4 e4 g4 a4', async () => {
     const result = await executeSequence('c4 e4 g4 a4')
     const notes = getUniqueNotes(result.events)
@@ -592,7 +578,8 @@ describe('Sequences', () => {
   })
 
   it('c4;.1', async () => {
-    // Hold modifier ;.1 means trigger stays at 1 for 0.1 seconds (100ms)
+    // Hold modifier ;.1 means trigger stays at 1 for 0.1 * slotDuration
+    // For c4 in a 1-slot cycle, slotDuration = 1s, so ;.1 = 0.1 seconds (100ms)
     const result = await executeSequence('c4;.1')
     const notes = getUniqueNotes(result.events)
     expect(notes).toContain('C4')
@@ -621,10 +608,11 @@ describe('Sequences', () => {
     expect(trigOnDuration).toBeCloseTo(0.1, 1)
   })
 
-  it('c4;.01 e4 g4', async () => {
-    // Hold modifier ;.01 means trigger stays at 1 for 0.01 seconds (10ms)
+  it('c4;.03 e4 g4', async () => {
+    // Hold modifier ;.03 means trigger stays at 1 for 0.03 * slotDuration
+    // For c4 in a 3-slot cycle, slotDuration = 1/3s, so ;.03 = 0.01 seconds (10ms)
     // Velocity stays active until voice is replaced
-    const result = await executeSequence('c4;.01 e4 g4')
+    const result = await executeSequence('c4;.03 e4 g4')
     const notes = getUniqueNotes(result.events)
     expect(notes).toContain('C4')
     expect(notes).toContain('E4')
@@ -644,7 +632,7 @@ describe('Sequences', () => {
     // Check trigger samples - c4's trigger should be 1 for 0.01s then 0
     const startTime = c4Event.sample / 44100
     const endTime = 0.05 // Check up to 50ms
-    const samples = await getVelocitySamples('c4;.01 e4 g4', voice, startTime, endTime)
+    const samples = await getVelocitySamples('c4;.03 e4 g4', voice, startTime, endTime)
 
     // Count samples where trigger is 1
     const trigOnSamples = samples.filter(s => s.trig > 0.5)
@@ -658,10 +646,11 @@ describe('Sequences', () => {
     expect(velocityOnSamples.length).toBe(samples.length) // All samples should have velocity > 0
   })
 
-  it('c4 e4 g4;.2', async () => {
-    // Hold modifier ;.2 means trigger stays at 1 for 0.2 seconds
+  it('c4 e4 g4;.6', async () => {
+    // Hold modifier ;.6 means trigger stays at 1 for 0.6 * slotDuration
+    // For g4 in a 3-slot cycle, slotDuration = 1/3s, so ;.6 = 0.2 seconds
     // When cycle repeats, g4's velocity should stay active (hold only affects trigger, not voice lifetime)
-    const result = await executeSequence('c4 e4 g4;.2', { totalCycles: 2 })
+    const result = await executeSequence('c4 e4 g4;.6', { totalCycles: 2 })
     const notes = getUniqueNotes(result.events)
     expect(notes).toContain('C4')
     expect(notes).toContain('E4')
@@ -685,7 +674,7 @@ describe('Sequences', () => {
     // Check trigger samples around the transition
     const startTime = 0.8 // Before first hold expires
     const endTime = 1.8 // After second trigger
-    const samples = await getVelocitySamples('c4 e4 g4;.2', voice, startTime, endTime, { totalCycles: 2 })
+    const samples = await getVelocitySamples('c4 e4 g4;.6', voice, startTime, endTime, { totalCycles: 2 })
 
     // Check trigger goes to 0 after first hold expires (around 0.867)
     const afterFirstHold = samples.filter(s => s.time > 0.867 && s.time < 1.6)
@@ -974,5 +963,257 @@ describe('Sequences', () => {
       || transitionSamples[Math.floor(transitionSamples.length * 0.25)]!
     const linearQuarter = c4Freq + (e4Freq - c4Freq) * 0.25
     expect(quarterSample.value).toBeLessThan(linearQuarter)
+  })
+
+  it('c4e4g4 - basic chord', async () => {
+    // Chord: all notes play simultaneously (no strum)
+    const result = await executeSequence('c4e4g4')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // All notes should play at the same time (time 0)
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0)
+    expectEventAtTime(result.events, 'G4', 0)
+
+    // Verify all notes appear once
+    expectEventCount(result.events, 'C4', 1)
+    expectEventCount(result.events, 'E4', 1)
+    expectEventCount(result.events, 'G4', 1)
+  })
+
+  it('c4e4g4$.1 - chord with strum', async () => {
+    // Chord with strum: notes are delayed by strum amount
+    // $0.1 means 0.1 slot duration strum between notes
+    // In a 1-slot cycle (1 beat), slot duration is 1.0 seconds
+    // So strum delay = 0.1 * 1.0 = 0.1 seconds between notes
+    const result = await executeSequence('c4e4g4$.1')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // C4 plays first at time 0
+    expectEventAtTime(result.events, 'C4', 0)
+    // E4 plays 0.1 seconds after C4
+    expectEventAtTime(result.events, 'E4', 0.1)
+    // G4 plays 0.1 seconds after E4 (0.2 total)
+    expectEventAtTime(result.events, 'G4', 0.2)
+
+    // Verify all notes appear once
+    expectEventCount(result.events, 'C4', 1)
+    expectEventCount(result.events, 'E4', 1)
+    expectEventCount(result.events, 'G4', 1)
+  })
+
+  it('c4e4g4$.2 - chord with larger strum', async () => {
+    // Chord with larger strum: more delay between notes
+    const result = await executeSequence('c4e4g4$.2')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // C4 plays first at time 0
+    expectEventAtTime(result.events, 'C4', 0)
+    // E4 plays 0.2 seconds after C4
+    expectEventAtTime(result.events, 'E4', 0.2)
+    // G4 plays 0.2 seconds after E4 (0.4 total)
+    expectEventAtTime(result.events, 'G4', 0.4)
+  })
+
+  it('c4e4g4 c4 - chord followed by single note', async () => {
+    // Chord in first slot, single note in second slot
+    const result = await executeSequence('c4e4g4 c4')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // Chord plays at time 0
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0)
+    expectEventAtTime(result.events, 'G4', 0)
+
+    // Single C4 plays at time 0.5 (second slot in 2-slot cycle)
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    expect(c4Events.length).toBe(2) // C4 appears twice (in chord and as single note)
+    expectEventAtTime(result.events, 'C4', 0.5, 1) // Second C4 at 0.5
+  })
+
+  it('c4e4g4$.1 c4 - chord with strum followed by single note', async () => {
+    // Chord with strum in first slot, single note in second slot
+    // In a 2-slot cycle, each slot is 0.5 seconds
+    // Strum 0.1 means 0.1 * 0.5 = 0.05 seconds between notes
+    const result = await executeSequence('c4e4g4$.1 c4')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // Chord with strum: C4 at 0, E4 at 0.05, G4 at 0.1
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0.05)
+    expectEventAtTime(result.events, 'G4', 0.1)
+
+    // Single C4 plays at time 0.5 (second slot)
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    expect(c4Events.length).toBe(2)
+    expectEventAtTime(result.events, 'C4', 0.5, 1)
+  })
+
+  it('c4e4g4*2 - chord with repeat', async () => {
+    // Chord repeated twice within its slot
+    const result = await executeSequence('c4e4g4*2')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // Each note should appear twice
+    expectEventCount(result.events, 'C4', 2)
+    expectEventCount(result.events, 'E4', 2)
+    expectEventCount(result.events, 'G4', 2)
+
+    // First chord at time 0
+    expectEventAtTime(result.events, 'C4', 0, 0)
+    expectEventAtTime(result.events, 'E4', 0, 0)
+    expectEventAtTime(result.events, 'G4', 0, 0)
+
+    // Second chord at time 0.5 (halfway through the slot)
+    expectEventAtTime(result.events, 'C4', 0.5, 1)
+    expectEventAtTime(result.events, 'E4', 0.5, 1)
+    expectEventAtTime(result.events, 'G4', 0.5, 1)
+  })
+
+  it('c4e4g4*2$.1 - chord with repeat and strum', async () => {
+    // Chord repeated twice with strum
+    const result = await executeSequence('c4e4g4*2$.1')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // Each note should appear twice
+    expectEventCount(result.events, 'C4', 2)
+    expectEventCount(result.events, 'E4', 2)
+    expectEventCount(result.events, 'G4', 2)
+
+    // First chord: C4 at 0, E4 at 0.1, G4 at 0.2
+    expectEventAtTime(result.events, 'C4', 0, 0)
+    expectEventAtTime(result.events, 'E4', 0.1, 0)
+    expectEventAtTime(result.events, 'G4', 0.2, 0)
+
+    // Second chord: C4 at 0.5, E4 at 0.6, G4 at 0.7
+    expectEventAtTime(result.events, 'C4', 0.5, 1)
+    expectEventAtTime(result.events, 'E4', 0.6, 1)
+    expectEventAtTime(result.events, 'G4', 0.7, 1)
+  })
+
+  it('c4e4g4.5 - chord with velocity', async () => {
+    // Chord with 50% velocity
+    const result = await executeSequence('c4e4g4.5')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // All notes should have 0.5 velocity
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    const e4Events = result.events.filter(e => freqToNote(e.value) === 'E4')
+    const g4Events = result.events.filter(e => freqToNote(e.value) === 'G4')
+
+    expect(c4Events.length).toBe(1)
+    expect(e4Events.length).toBe(1)
+    expect(g4Events.length).toBe(1)
+
+    expect(c4Events[0]!.velocity).toBe(0.5)
+    expect(e4Events[0]!.velocity).toBe(0.5)
+    expect(g4Events[0]!.velocity).toBe(0.5)
+  })
+
+  it('c4e4g4;.1 - chord with hold', async () => {
+    // Chord with 0.1s hold time
+    const result = await executeSequence('c4e4g4;.1')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // All notes should have 0.1s hold time
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    const e4Events = result.events.filter(e => freqToNote(e.value) === 'E4')
+    const g4Events = result.events.filter(e => freqToNote(e.value) === 'G4')
+
+    expect(c4Events.length).toBe(1)
+    expect(e4Events.length).toBe(1)
+    expect(g4Events.length).toBe(1)
+
+    expect(c4Events[0]!.hold).toBeCloseTo(0.1, 2)
+    expect(e4Events[0]!.hold).toBeCloseTo(0.1, 2)
+    expect(g4Events[0]!.hold).toBeCloseTo(0.1, 2)
+  })
+
+  it('c4e4g4$.1;.1 - chord with strum and hold', async () => {
+    // Chord with strum and hold
+    const result = await executeSequence('c4e4g4$.1;.1')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+
+    // Notes should be strummed
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0.1)
+    expectEventAtTime(result.events, 'G4', 0.2)
+
+    // All notes should have 0.1s hold time
+    const c4Events = result.events.filter(e => freqToNote(e.value) === 'C4')
+    const e4Events = result.events.filter(e => freqToNote(e.value) === 'E4')
+    const g4Events = result.events.filter(e => freqToNote(e.value) === 'G4')
+
+    expect(c4Events[0]!.hold).toBeCloseTo(0.1, 2)
+    expect(e4Events[0]!.hold).toBeCloseTo(0.1, 2)
+    expect(g4Events[0]!.hold).toBeCloseTo(0.1, 2)
+  })
+
+  it('c4e4g4a4 - four note chord', async () => {
+    // Four note chord
+    const result = await executeSequence('c4e4g4a4')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+    expect(notes).toContain('A4')
+
+    // All notes should play at the same time
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0)
+    expectEventAtTime(result.events, 'G4', 0)
+    expectEventAtTime(result.events, 'A4', 0)
+
+    // Verify all notes appear once
+    expectEventCount(result.events, 'C4', 1)
+    expectEventCount(result.events, 'E4', 1)
+    expectEventCount(result.events, 'G4', 1)
+    expectEventCount(result.events, 'A4', 1)
+  })
+
+  it('c4e4g4a4$.05 - four note chord with strum', async () => {
+    // Four note chord with strum
+    const result = await executeSequence('c4e4g4a4$.05')
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+    expect(notes).toContain('A4')
+
+    // Notes should be strummed with 0.05s delay
+    expectEventAtTime(result.events, 'C4', 0)
+    expectEventAtTime(result.events, 'E4', 0.05)
+    expectEventAtTime(result.events, 'G4', 0.1)
+    expectEventAtTime(result.events, 'A4', 0.15)
   })
 })

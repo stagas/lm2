@@ -734,9 +734,10 @@ export class Seq extends Gen {
             }
 
             // Calculate end sample for history (start + hold duration)
+            // hold is relative to slotDuration: 0 = 1 sample, 0.5 = half slot, 1 = full slot
             const endSample = hold === 0
               ? repeatSample
-              : repeatSample + ((hold * (sampleRate as f32)) as i32)
+              : repeatSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32)
 
             // Write event to history ring buffer
             this.writeEventHistory(array, startPc - ARRAY_HEADER_SIZE, repeatSample, endSample)
@@ -808,7 +809,8 @@ export class Seq extends Gen {
               voice.glidePower = glide
 
               if (glide > 0 && voice.currentValue > 0) {
-                const glideDuration = hold > 0 ? hold : (frame.slotDuration as f32)
+                // hold is relative to slotDuration: 0 = use slotDuration, >0 = hold * slotDuration
+                const glideDuration = hold > 0 ? (hold * (frame.slotDuration as f32)) : (frame.slotDuration as f32)
                 const glideSamples = Mathf.max(1, glideDuration * (sampleRate as f32))
                 voice.glideRate = 1.0 / glideSamples
               }
@@ -829,7 +831,7 @@ export class Seq extends Gen {
                 voice.triggerSample = repeatSample > minTriggerSample ? repeatSample : minTriggerSample
                 voice.endSample = hold === 0
                   ? -1
-                  : (voice.triggerSample + ((hold * (sampleRate as f32)) as i32))
+                  : (voice.triggerSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32))
               }
               else {
                 // Allow scheduling in the past for backward offsets
@@ -912,16 +914,119 @@ export class Seq extends Gen {
 
       if (op === SeqOp.Chord) {
         const chordLength = array[frame.pc++] as i32
-        frame.pc += chordLength // Skip notes
-        // Read modifiers: strum, velocity, hold, slotCount, repeatCount, density, offset, prob, jitter, glide
-        frame.pc++ // strum
-        frame.pc++ // velocity
-        frame.pc++ // hold
-        const chordSlotCount = array[frame.pc++] // slotCount
-        frame.pc++ // repeatCount
-        frame.pc += 5 // density, offset, prob, jitter, glide
-        this.writeEventHistory(array, startPc - ARRAY_HEADER_SIZE, this.currentSampleCount, this.currentSampleCount)
-        frame.slotIndex += chordSlotCount
+        const notesStart = frame.pc
+        frame.pc += chordLength // Skip past notes to read modifiers
+
+        const strum = array[frame.pc++]
+        const velocity = array[frame.pc++]
+        const hold = array[frame.pc++]
+        const slotCount = array[frame.pc++]
+        const repeatCount = Mathf.round(array[frame.pc++]) as i32
+        const density = array[frame.pc++]
+        const offset = array[frame.pc++]
+        const prob = array[frame.pc++]
+        const eventJitter = array[frame.pc++]
+        const glide = array[frame.pc++]
+
+        // Combine frame jitter with event jitter
+        const totalJitter = Mathf.min(1.0, frame.jitter + eventJitter) as f32
+
+        // Apply density
+        let densityTriggered = true
+        if (density < 1.0 && density > 0) {
+          const interval = Mathf.round(1.0 / density) as i32
+          densityTriggered = (this.cycleCount % interval) == 0
+        }
+
+        // Apply prob
+        const triggered = densityTriggered && (prob >= 1.0 || this.rng.next() < prob)
+
+        if (triggered) {
+          const totalDuration = (slotCount as f64) * frame.slotDuration
+          const repeatInterval = totalDuration / (repeatCount as f64)
+
+          for (let r: i32 = 0; r < repeatCount; r++) {
+            const repeatTime = repeatInterval * (r as f64)
+            let repeatSampleOffset = (repeatTime * (sampleRate as f64)) as i32
+
+            // Apply jitter
+            if (totalJitter > 0) {
+              const maxJitterSeconds = (totalJitter as f64) * frame.slotDuration
+              const maxJitterSamples = (maxJitterSeconds * (sampleRate as f64)) as i32
+              const randomValue = (this.rng.next() as f64) * 2.0 - 1.0
+              const jitterOffset = (randomValue * (maxJitterSamples as f64)) as i32
+              repeatSampleOffset += maxJitterSamples + jitterOffset
+            }
+
+            let repeatSample = this.currentSampleCount + repeatSampleOffset
+            const maxBackwardMovement = (frame.slotDuration * 2.0 * (sampleRate as f64)) as i32
+            const minAllowedSample = this.currentSampleCount - maxBackwardMovement
+            if (repeatSample < minAllowedSample) {
+              repeatSample = minAllowedSample
+            }
+
+            // Calculate strum delay per note (in samples)
+            // Strum is the delay between consecutive notes, as a fraction of slot duration
+            const strumDelaySamples = ((strum as f64) * frame.slotDuration * (sampleRate as f64)) as i32
+
+            // Trigger each note in the chord
+            for (let n: i32 = 0; n < chordLength; n++) {
+              const noteValue = array[notesStart + n]
+              const noteSample = repeatSample + n * strumDelaySamples
+
+              // hold is relative to slotDuration: 0 = 1 sample, 0.5 = half slot, 1 = full slot
+              const endSample = hold === 0
+                ? noteSample
+                : noteSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32)
+
+              // Write event history for each note
+              this.writeEventHistory(array, startPc - ARRAY_HEADER_SIZE, noteSample, endSample)
+
+              // Allocate voice for this note
+              const voiceIndex = this.allocateVoice()
+
+              if (voiceIndex >= 0) {
+                const voice = this.voices[voiceIndex]
+                voice.triggerFired = false
+
+                if (r > 0) {
+                  voice.endSample = this.currentSampleCount
+                }
+
+                voice.velocity = frame.velocity * velocity
+                voice.targetValue = noteValue
+                voice.glidePower = glide
+
+                if (glide > 0 && voice.currentValue > 0) {
+                  // hold is relative to slotDuration: 0 = use slotDuration, >0 = hold * slotDuration
+                  const glideDuration = hold > 0 ? (hold * (frame.slotDuration as f32)) : (frame.slotDuration as f32)
+                  const glideSamples = Mathf.max(1, glideDuration * (sampleRate as f32))
+                  voice.glideRate = 1.0 / glideSamples
+                }
+                else {
+                  voice.currentValue = noteValue
+                  voice.glideRate = 1.0
+                }
+
+                voice.active = true
+
+                if (r > 0) {
+                  const minTriggerSample = this.currentSampleCount + 1
+                  voice.triggerSample = noteSample > minTriggerSample ? noteSample : minTriggerSample
+                  voice.endSample = hold === 0
+                    ? -1
+                    : (voice.triggerSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32))
+                }
+                else {
+                  voice.triggerSample = noteSample
+                  voice.endSample = hold === 0 ? -1 : endSample
+                }
+              }
+            }
+          }
+        }
+
+        frame.slotIndex += slotCount
         this.calculateNextEventTime(array, arrayLength, secondsPerBeat)
         return
       }

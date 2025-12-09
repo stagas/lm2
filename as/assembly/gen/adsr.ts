@@ -23,7 +23,6 @@ export class Adsr extends Gen {
   @inline
   generate(attack: f32, decay: f32, sustain: f32, release: f32, trig: f32): f32 {
     const isTrigger = trig > 0 && this.lastTrig <= 0
-    const isRelease = trig <= 0 && this.lastTrig > 0
     this.lastTrig = trig
 
     // Retrigger from any phase - always restart from Attack on trigger
@@ -32,16 +31,11 @@ export class Adsr extends Gen {
       this.position = 0
     }
 
-    // Release only if we're in an active phase (not already releasing or idle)
-    if (isRelease && (this.phase === Phase.Attack || this.phase === Phase.Decay || this.phase === Phase.Sustain)) {
-      this.phase = Phase.Release
-      this.sustainLevel = this.position
-    }
-
     if (this.phase === Phase.Idle) {
       return 0
     }
 
+    // Attack always completes to 1.0, regardless of trigger state
     if (this.phase === Phase.Attack) {
       const attackSamples = attack * sampleRate
       if (attackSamples <= 0) {
@@ -58,6 +52,7 @@ export class Adsr extends Gen {
       return this.position
     }
 
+    // Decay always completes to sustain level, regardless of trigger state
     if (this.phase === Phase.Decay) {
       const decaySamples = decay * sampleRate
       if (decaySamples <= 0) {
@@ -78,13 +73,14 @@ export class Adsr extends Gen {
       return this.position
     }
 
+    // Sustain holds while trigger is high, transitions to Release when trigger goes low
     if (this.phase === Phase.Sustain) {
-      if (trig > 0) {
-        return this.position
-      }
-      else {
+      if (trig <= 0) {
         this.phase = Phase.Release
         this.sustainLevel = this.position
+      }
+      else {
+        return this.position
       }
     }
 
