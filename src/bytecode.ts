@@ -170,17 +170,22 @@ export class Bytecode {
     // Voice count is on top of stack from Seq
 
     const voiceCount = this.stack.pop()! // Pop voice count
+    const bodyBufBase = this.outsCount // First buffer index used in body (for remapping)
 
     const seqForEachPc = this.pc
-    this.emit(Op.SeqForEach, voiceCount, 0, 0) // voiceCount buffer, body start, body length
+    this.emit(Op.SeqForEach, voiceCount, 0, 0, bodyBufBase, 0) // voiceCount, body start, body length, bodyBufBase, audioOutBuf
 
     const bodyStartPc = this.pc
     bodyFn() // Generate the loop body bytecode once
     const bodyLength = this.pc - bodyStartPc
 
+    // The audio output is whatever is on top of stack after body
+    const audioOutBuf = this.stack.at(-1)!
+
     // Patch the offsets
     this.ops[seqForEachPc + 2] = bodyStartPc // body start offset
     this.ops[seqForEachPc + 3] = bodyLength // body length
+    this.ops[seqForEachPc + 5] = audioOutBuf // audio output buffer (compile-time)
   }
 
   SeqVoiceTrig = () => {

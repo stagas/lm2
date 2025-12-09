@@ -43,6 +43,11 @@ class Frame {
   offset: f32 = 0
   jitter: f32 = 0
   prob: f32 = 1
+  // Event-level repeat tracking (for dynamic voice allocation)
+  eventRepeatIndex: i32 = 0 // Current repeat of the event (0-indexed)
+  eventRepeatCount: i32 = 0 // Total repeats for current event
+  eventStartPc: i32 = 0 // PC position where current event started
+  eventSlotCount: f32 = 0 // Slot count for current event
 }
 
 export class Seq extends Gen {
@@ -686,6 +691,13 @@ export class Seq extends Gen {
           }
         }
 
+        // Initialize event-level repeat tracking on first repeat
+        if (frame.eventRepeatIndex === 0) {
+          frame.eventStartPc = startPc
+          frame.eventRepeatCount = repeatCount
+          frame.eventSlotCount = slotCount
+        }
+
         // Apply density (deterministic: play every Nth cycle where N = 1/density)
         let densityTriggered = true
         if (density < 1.0 && density > 0) {
@@ -693,93 +705,62 @@ export class Seq extends Gen {
           densityTriggered = (this.cycleCount % interval) == 0
         }
 
-        // Apply prob (only if event has its own probability modifier)
-        const triggered = densityTriggered && (prob >= 1.0 || this.rng.next() < prob)
+        // Apply prob (only if event has its own probability modifier, and only on first repeat)
+        const triggered = densityTriggered && (frame.eventRepeatIndex > 0 || prob >= 1.0 || this.rng.next() < prob)
 
         if (triggered) {
           // Calculate repeat interval: total duration / number of repeats
-          // Total duration = slotCount * frame.slotDuration
-          // Interval = (slotCount * frame.slotDuration) / repeatCount
           const totalDuration = (slotCount as f64) * frame.slotDuration
           const repeatInterval = totalDuration / (repeatCount as f64)
 
-          // Trigger the event repeatCount times
-          for (let r: i32 = 0; r < repeatCount; r++) {
-            const repeatTime = repeatInterval * (r as f64)
-            let repeatSampleOffset = (repeatTime * (sampleRate as f64)) as i32
+          // Process just the current repeat
+          const r = frame.eventRepeatIndex
+          // With dynamic scheduling, each repeat is processed at its exact time
+          // so the base offset is 0 (we're already at the right time)
+          let repeatSampleOffset: i32 = 0
 
-            // Apply jitter: random offset up to jitter * slotDuration
-            // We processed early to account for max backward jitter, so we need to add it back
-            // plus the actual random jitter value
-            if (totalJitter > 0) {
-              const maxJitterSeconds = (totalJitter as f64) * frame.slotDuration
-              const maxJitterSamples = (maxJitterSeconds * (sampleRate as f64)) as i32
-              // Random value between -1 and 1
-              const randomValue = (this.rng.next() as f64) * 2.0 - 1.0
-              const jitterOffset = (randomValue * (maxJitterSamples as f64)) as i32
-              // Add back maxJitter (we subtracted it in peek) plus the random jitter
-              repeatSampleOffset += maxJitterSamples + jitterOffset
+          // Apply jitter
+          if (totalJitter > 0) {
+            const maxJitterSeconds = (totalJitter as f64) * frame.slotDuration
+            const maxJitterSamples = (maxJitterSeconds * (sampleRate as f64)) as i32
+            const randomValue = (this.rng.next() as f64) * 2.0 - 1.0
+            const jitterOffset = (randomValue * (maxJitterSamples as f64)) as i32
+            repeatSampleOffset += maxJitterSamples + jitterOffset
+          }
+
+          let repeatSample = this.currentSampleCount + repeatSampleOffset
+          const maxBackwardMovement = (frame.slotDuration * 2.0 * (sampleRate as f64)) as i32
+          const minAllowedSample = this.currentSampleCount - maxBackwardMovement
+          if (repeatSample < minAllowedSample) {
+            repeatSample = minAllowedSample
+          }
+
+          const endSample = hold === 0
+            ? repeatSample
+            : repeatSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32)
+
+          this.writeEventHistory(array, startPc - ARRAY_HEADER_SIZE, repeatSample, endSample)
+
+          // Release previous latch voice on first repeat
+          if (r === 0 && hold === 0 && this.lastLatchVoice >= 0) {
+            const lastVoice = this.voices[this.lastLatchVoice]
+            if (lastVoice.triggerSample < this.currentSampleCount) {
+              lastVoice.active = false
             }
+          }
 
-            // Calculate repeatSample based on current sample count
-            // Offset is already applied via calculateNextEventTime peeking
-            let repeatSample = this.currentSampleCount + repeatSampleOffset
-            // Allow offsets to move events backward or forward
-            // Only clamp to prevent excessive backward movement beyond reasonable bounds
-            // Allow movement up to 2 slot durations backward (for offset + jitter combined)
-            const maxBackwardMovement = (frame.slotDuration * 2.0 * (sampleRate as f64)) as i32
-            const minAllowedSample = this.currentSampleCount - maxBackwardMovement
-            if (repeatSample < minAllowedSample) {
-              repeatSample = minAllowedSample
-            }
-
-            // Calculate end sample for history (start + hold duration)
-            // hold is relative to slotDuration: 0 = 1 sample, 0.5 = half slot, 1 = full slot
-            const endSample = hold === 0
-              ? repeatSample
-              : repeatSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32)
-
-            // Write event to history ring buffer
-            this.writeEventHistory(array, startPc - ARRAY_HEADER_SIZE, repeatSample, endSample)
-
-            // Release previous latch voice when new event with hold=0 triggers (only on first repeat)
-            // But don't release voices that are scheduled for current or future samples
-            if (r === 0 && hold === 0 && this.lastLatchVoice >= 0) {
-              const lastVoice = this.voices[this.lastLatchVoice]
-              // Only deactivate if the voice triggered in the past (before current sample)
-              if (lastVoice.triggerSample < this.currentSampleCount) {
-                lastVoice.active = false
-              }
-            }
-
-            // Trigger voice at the repeat time
-            // For repeats, always allocate a new voice to allow multiple simultaneous triggers
-            // For non-repeats (single events), try to reuse voices to prevent same note doubling
-            // For glide, always reuse the same voice (latch) to enable smooth transitions
-            let voiceIndex = -1
-            let isReusingVoice = false
-            if (repeatCount === 1) {
-              if (glide > 0) {
-                // Glide enabled: try to reuse lastLatchVoice first, then any active voice
-                if (this.lastLatchVoice >= 0 && this.voices[this.lastLatchVoice].active) {
-                  voiceIndex = this.lastLatchVoice
-                  isReusingVoice = true
-                }
-                else {
-                  // Try to reuse any active voice for glide
-                  for (let v = 0; v < SEQ_VOICES; v++) {
-                    if (this.voices[v].active) {
-                      voiceIndex = v
-                      isReusingVoice = true
-                      break
-                    }
-                  }
-                }
+          // Allocate voice for this repeat
+          let voiceIndex = -1
+          let isReusingVoice = false
+          if (repeatCount === 1) {
+            if (glide > 0) {
+              if (this.lastLatchVoice >= 0 && this.voices[this.lastLatchVoice].active) {
+                voiceIndex = this.lastLatchVoice
+                isReusingVoice = true
               }
               else {
-                // No glide: try to reuse a voice playing the same note
                 for (let v = 0; v < SEQ_VOICES; v++) {
-                  if (this.voices[v].active && this.voices[v].targetValue === value) {
+                  if (this.voices[v].active) {
                     voiceIndex = v
                     isReusingVoice = true
                     break
@@ -787,65 +768,78 @@ export class Seq extends Gen {
                 }
               }
             }
-            // Always allocate new voice for repeats, or if no reusable voice found
-            if (voiceIndex < 0) {
-              voiceIndex = this.allocateVoice()
-            }
-
-            if (voiceIndex >= 0) {
-              const voice = this.voices[voiceIndex]
-
-              // Reset triggerFired flag for new event
-              voice.triggerFired = false
-
-              // For repeats (r > 0) or when reusing a voice, always end the current trigger first
-              // This ensures a 0->1 transition for ADSR and Sin generators on each repeat
-              if (r > 0 || isReusingVoice) {
-                voice.endSample = this.currentSampleCount
-              }
-
-              voice.velocity = frame.velocity * velocity
-              voice.targetValue = value
-              voice.glidePower = glide
-
-              if (glide > 0 && voice.currentValue > 0) {
-                // hold is relative to slotDuration: 0 = use slotDuration, >0 = hold * slotDuration
-                const glideDuration = hold > 0 ? (hold * (frame.slotDuration as f32)) : (frame.slotDuration as f32)
-                const glideSamples = Mathf.max(1, glideDuration * (sampleRate as f32))
-                voice.glideRate = 1.0 / glideSamples
-              }
-              else {
-                voice.currentValue = value
-                voice.glideRate = 1.0
-              }
-
-              voice.active = true
-
-              // When reusing a voice or repeating, force a 1-sample gap to ensure 0->1 transition
-              // The sin generator resets phase on 0->1 edge, so we need trigger to go 0 first
-              // For new voices, if trigger would start at currentSampleCount, delay by 1 sample
-              // to ensure a 0->1 transition (trigger must be 0 first for ADSR/generators to detect edge)
-              if (r > 0 || isReusingVoice) {
-                // Use jittered timing, but ensure at least 1 sample gap for 0->1 transition
-                const minTriggerSample = this.currentSampleCount + 1
-                voice.triggerSample = repeatSample > minTriggerSample ? repeatSample : minTriggerSample
-                voice.endSample = hold === 0
-                  ? -1
-                  : (voice.triggerSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32))
-              }
-              else {
-                // Allow scheduling in the past for backward offsets
-                // The trigger output logic will fire it immediately if it's already past
-                voice.triggerSample = repeatSample
-                voice.endSample = hold === 0 ? -1 : endSample
-              }
-
-              if ((hold === 0 || glide > 0) && repeatCount === 1) {
-                // Use latch mode for single events without explicit hold, or when glide is enabled
-                this.lastLatchVoice = voiceIndex
+            else {
+              for (let v = 0; v < SEQ_VOICES; v++) {
+                if (this.voices[v].active && this.voices[v].targetValue === value) {
+                  voiceIndex = v
+                  isReusingVoice = true
+                  break
+                }
               }
             }
           }
+          if (voiceIndex < 0) {
+            voiceIndex = this.allocateVoice()
+          }
+
+          if (voiceIndex >= 0) {
+            const voice = this.voices[voiceIndex]
+            voice.triggerFired = false
+
+            if (r > 0 || isReusingVoice) {
+              voice.endSample = this.currentSampleCount
+            }
+
+            voice.velocity = frame.velocity * velocity
+            voice.targetValue = value
+            voice.glidePower = glide
+
+            if (glide > 0 && voice.currentValue > 0) {
+              const glideDuration = hold > 0 ? (hold * (frame.slotDuration as f32)) : (frame.slotDuration as f32)
+              const glideSamples = Mathf.max(1, glideDuration * (sampleRate as f32))
+              voice.glideRate = 1.0 / glideSamples
+            }
+            else {
+              voice.currentValue = value
+              voice.glideRate = 1.0
+            }
+
+            voice.active = true
+
+            if (r > 0 || isReusingVoice) {
+              const minTriggerSample = this.currentSampleCount + 1
+              voice.triggerSample = repeatSample > minTriggerSample ? repeatSample : minTriggerSample
+              voice.endSample = hold === 0
+                ? -1
+                : (voice.triggerSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32))
+            }
+            else {
+              voice.triggerSample = repeatSample
+              voice.endSample = hold === 0 ? -1 : endSample
+            }
+
+            if ((hold === 0 || glide > 0) && repeatCount === 1) {
+              this.lastLatchVoice = voiceIndex
+            }
+          }
+
+          // Check if more repeats remain
+          frame.eventRepeatIndex++
+          if (frame.eventRepeatIndex < repeatCount) {
+            // More repeats to come - reset PC to re-read event, set next time, return
+            frame.pc = frame.eventStartPc
+            const nextRepeatTime = repeatInterval * (frame.eventRepeatIndex as f64)
+            const nextRepeatSeconds = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration + nextRepeatTime
+            this.nextEventTime = nextRepeatSeconds
+            return
+          }
+
+          // All repeats done - reset event repeat tracking
+          frame.eventRepeatIndex = 0
+        }
+        else {
+          // Not triggered - reset event repeat tracking
+          frame.eventRepeatIndex = 0
         }
 
         // Advance slot by slotCount
@@ -928,8 +922,14 @@ export class Seq extends Gen {
         const eventJitter = array[frame.pc++]
         const glide = array[frame.pc++]
 
-        // Combine frame jitter with event jitter
         const totalJitter = Mathf.min(1.0, frame.jitter + eventJitter) as f32
+
+        // Initialize event-level repeat tracking on first repeat
+        if (frame.eventRepeatIndex === 0) {
+          frame.eventStartPc = startPc
+          frame.eventRepeatCount = repeatCount
+          frame.eventSlotCount = slotCount
+        }
 
         // Apply density
         let densityTriggered = true
@@ -938,92 +938,105 @@ export class Seq extends Gen {
           densityTriggered = (this.cycleCount % interval) == 0
         }
 
-        // Apply prob
-        const triggered = densityTriggered && (prob >= 1.0 || this.rng.next() < prob)
+        // Apply prob (only on first repeat)
+        const triggered = densityTriggered && (frame.eventRepeatIndex > 0 || prob >= 1.0 || this.rng.next() < prob)
 
         if (triggered) {
           const totalDuration = (slotCount as f64) * frame.slotDuration
           const repeatInterval = totalDuration / (repeatCount as f64)
 
-          for (let r: i32 = 0; r < repeatCount; r++) {
-            const repeatTime = repeatInterval * (r as f64)
-            let repeatSampleOffset = (repeatTime * (sampleRate as f64)) as i32
+          // Process just the current repeat
+          const r = frame.eventRepeatIndex
+          // With dynamic scheduling, each repeat is processed at its exact time
+          // so the base offset is 0 (we're already at the right time)
+          let repeatSampleOffset: i32 = 0
 
-            // Apply jitter
-            if (totalJitter > 0) {
-              const maxJitterSeconds = (totalJitter as f64) * frame.slotDuration
-              const maxJitterSamples = (maxJitterSeconds * (sampleRate as f64)) as i32
-              const randomValue = (this.rng.next() as f64) * 2.0 - 1.0
-              const jitterOffset = (randomValue * (maxJitterSamples as f64)) as i32
-              repeatSampleOffset += maxJitterSamples + jitterOffset
-            }
+          // Apply jitter
+          if (totalJitter > 0) {
+            const maxJitterSeconds = (totalJitter as f64) * frame.slotDuration
+            const maxJitterSamples = (maxJitterSeconds * (sampleRate as f64)) as i32
+            const randomValue = (this.rng.next() as f64) * 2.0 - 1.0
+            const jitterOffset = (randomValue * (maxJitterSamples as f64)) as i32
+            repeatSampleOffset += maxJitterSamples + jitterOffset
+          }
 
-            let repeatSample = this.currentSampleCount + repeatSampleOffset
-            const maxBackwardMovement = (frame.slotDuration * 2.0 * (sampleRate as f64)) as i32
-            const minAllowedSample = this.currentSampleCount - maxBackwardMovement
-            if (repeatSample < minAllowedSample) {
-              repeatSample = minAllowedSample
-            }
+          let repeatSample = this.currentSampleCount + repeatSampleOffset
+          const maxBackwardMovement = (frame.slotDuration * 2.0 * (sampleRate as f64)) as i32
+          const minAllowedSample = this.currentSampleCount - maxBackwardMovement
+          if (repeatSample < minAllowedSample) {
+            repeatSample = minAllowedSample
+          }
 
-            // Calculate strum delay per note (in samples)
-            // Strum is the delay between consecutive notes, as a fraction of slot duration
-            const strumDelaySamples = ((strum as f64) * frame.slotDuration * (sampleRate as f64)) as i32
+          const strumDelaySamples = ((strum as f64) * frame.slotDuration * (sampleRate as f64)) as i32
 
-            // Trigger each note in the chord
-            for (let n: i32 = 0; n < chordLength; n++) {
-              const noteValue = array[notesStart + n]
-              const noteSample = repeatSample + n * strumDelaySamples
+          // Trigger each note in the chord for this repeat only
+          for (let n: i32 = 0; n < chordLength; n++) {
+            const noteValue = array[notesStart + n]
+            const noteSample = repeatSample + n * strumDelaySamples
 
-              // hold is relative to slotDuration: 0 = 1 sample, 0.5 = half slot, 1 = full slot
-              const endSample = hold === 0
-                ? noteSample
-                : noteSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32)
+            const endSample = hold === 0
+              ? noteSample
+              : noteSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32)
 
-              // Write event history for each note
-              this.writeEventHistory(array, startPc - ARRAY_HEADER_SIZE, noteSample, endSample)
+            this.writeEventHistory(array, startPc - ARRAY_HEADER_SIZE, noteSample, endSample)
 
-              // Allocate voice for this note
-              const voiceIndex = this.allocateVoice()
+            const voiceIndex = this.allocateVoice()
 
-              if (voiceIndex >= 0) {
-                const voice = this.voices[voiceIndex]
-                voice.triggerFired = false
+            if (voiceIndex >= 0) {
+              const voice = this.voices[voiceIndex]
+              voice.triggerFired = false
 
-                if (r > 0) {
-                  voice.endSample = this.currentSampleCount
-                }
+              if (r > 0) {
+                voice.endSample = this.currentSampleCount
+              }
 
-                voice.velocity = frame.velocity * velocity
-                voice.targetValue = noteValue
-                voice.glidePower = glide
+              voice.velocity = frame.velocity * velocity
+              voice.targetValue = noteValue
+              voice.glidePower = glide
 
-                if (glide > 0 && voice.currentValue > 0) {
-                  // hold is relative to slotDuration: 0 = use slotDuration, >0 = hold * slotDuration
-                  const glideDuration = hold > 0 ? (hold * (frame.slotDuration as f32)) : (frame.slotDuration as f32)
-                  const glideSamples = Mathf.max(1, glideDuration * (sampleRate as f32))
-                  voice.glideRate = 1.0 / glideSamples
-                }
-                else {
-                  voice.currentValue = noteValue
-                  voice.glideRate = 1.0
-                }
+              if (glide > 0 && voice.currentValue > 0) {
+                const glideDuration = hold > 0 ? (hold * (frame.slotDuration as f32)) : (frame.slotDuration as f32)
+                const glideSamples = Mathf.max(1, glideDuration * (sampleRate as f32))
+                voice.glideRate = 1.0 / glideSamples
+              }
+              else {
+                voice.currentValue = noteValue
+                voice.glideRate = 1.0
+              }
 
-                voice.active = true
+              voice.active = true
 
-                if (r > 0) {
-                  const minTriggerSample = this.currentSampleCount + 1
-                  voice.triggerSample = noteSample > minTriggerSample ? noteSample : minTriggerSample
-                  voice.endSample = hold === 0
-                    ? -1
-                    : (voice.triggerSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32))
-                }
-                else {
-                  voice.triggerSample = noteSample
-                  voice.endSample = hold === 0 ? -1 : endSample
-                }
+              if (r > 0) {
+                const minTriggerSample = this.currentSampleCount + 1
+                voice.triggerSample = noteSample > minTriggerSample ? noteSample : minTriggerSample
+                voice.endSample = hold === 0
+                  ? -1
+                  : (voice.triggerSample + (((hold * (frame.slotDuration as f32)) * (sampleRate as f32)) as i32))
+              }
+              else {
+                voice.triggerSample = noteSample
+                voice.endSample = hold === 0 ? -1 : endSample
               }
             }
           }
+
+          // Check if more repeats remain
+          frame.eventRepeatIndex++
+          if (frame.eventRepeatIndex < repeatCount) {
+            // More repeats to come - reset PC to re-read event, set next time, return
+            frame.pc = frame.eventStartPc
+            const nextRepeatTime = repeatInterval * (frame.eventRepeatIndex as f64)
+            const nextRepeatSeconds = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration + nextRepeatTime
+            this.nextEventTime = nextRepeatSeconds
+            return
+          }
+
+          // All repeats done - reset event repeat tracking
+          frame.eventRepeatIndex = 0
+        }
+        else {
+          // Not triggered - reset event repeat tracking
+          frame.eventRepeatIndex = 0
         }
 
         frame.slotIndex += slotCount
@@ -1161,9 +1174,9 @@ export class Seq extends Gen {
 
     // Steal the oldest triggered voice that has already fired
     // Don't steal voices scheduled for current or future samples
-    let oldestVoice = 0
-    let oldestSample = this.voices[0].triggerSample
-    for (let v = 1; v < SEQ_VOICES; v++) {
+    let oldestVoice = -1
+    let oldestSample = i32.MAX_VALUE
+    for (let v = 0; v < SEQ_VOICES; v++) {
       // Only consider voices that have already triggered (past samples)
       if (this.voices[v].triggerSample < this.currentSampleCount
         && this.voices[v].triggerSample < oldestSample)
@@ -1173,18 +1186,22 @@ export class Seq extends Gen {
       }
     }
 
-    // If no past voice found, fall back to stealing the oldest regardless
-    // This handles the case where all voices are scheduled for future samples
-    if (oldestSample >= this.currentSampleCount) {
-      oldestSample = this.voices[0].triggerSample
-      for (let v = 1; v < SEQ_VOICES; v++) {
-        if (this.voices[v].triggerSample < oldestSample) {
-          oldestSample = this.voices[v].triggerSample
-          oldestVoice = v
-        }
+    // If found a past voice, steal it
+    if (oldestVoice >= 0) {
+      return oldestVoice
+    }
+
+    // No past voice found - all voices are scheduled for future samples
+    // Steal the LATEST scheduled voice (farthest in future) so earlier notes play first
+    let latestVoice = 0
+    let latestSample = this.voices[0].triggerSample
+    for (let v = 1; v < SEQ_VOICES; v++) {
+      if (this.voices[v].triggerSample > latestSample) {
+        latestSample = this.voices[v].triggerSample
+        latestVoice = v
       }
     }
 
-    return oldestVoice
+    return latestVoice
   }
 }

@@ -102,6 +102,9 @@ class ProgramData {
   }
 }
 
+// Buffers per voice for SeqForEach remapping (enough for complex synth voices)
+const BUFS_PER_VOICE: i32 = 32
+
 export class Program {
   data: ProgramData = new ProgramData()
   ops: StaticArray<i32> = new StaticArray<i32>(OPS_COUNT)
@@ -109,7 +112,7 @@ export class Program {
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
 
-  // SeqForEach runtime state (no GC allocations)
+  // SeqForEach runtime state
   lastSeqTrigOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
   lastSeqVelocityOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
   lastSeqValueOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
@@ -118,19 +121,26 @@ export class Program {
   seqForEachAudioOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
   seqForEachAudioOutsCount: i32 = 0
 
-  // Runtime voice buffer pool (pre-allocated for SeqForEach)
-  // Each voice gets: [value, trig, velocity, audio, envelope]
-  runtimeVoiceBufs: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES * 5)
+  // Buffer remapping for SeqForEach (per-voice buffer isolation)
+  // When inSeqForEach is true, buffer indices in range [bodyBufBase, bodyBufBase+BUFS_PER_VOICE)
+  // get remapped to per-voice buffers starting at 500
+  inSeqForEach: bool = false
+  bodyBufBase: i32 = 0  // First buffer index used in SeqForEach body
 
   constructor() {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
       this.literalsSmoothed[i] = new Smoothed()
     }
+  }
 
-    // Initialize runtime voice buffer pool (use buffer indices 500-539)
-    let bufferIndex = 500
-    for (let i = 0; i < SEQ_VOICES * 5; i++) {
-      this.runtimeVoiceBufs[i] = bufferIndex++
+  // Get buffer with remapping applied when inside SeqForEach
+  getBuf(index: i32): usize {
+    if (this.inSeqForEach && index >= this.bodyBufBase) {
+      // Remap to per-voice buffer: 500 + voice * BUFS_PER_VOICE + offset
+      const offset = index - this.bodyBufBase
+      const remapped = 500 + this.currentVoiceIndex * BUFS_PER_VOICE + offset
+      return this.outsPool.get(remapped)
     }
+    return this.outsPool.get(index)
   }
 }

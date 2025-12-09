@@ -221,8 +221,12 @@ async function createProgram() {
   data.writeLiteral(6, 0.7) // sustain
   data.writeLiteral(7, 0.2) // release
 
+  data.writeLiteral(8, 1)
   bytecode.SeqForEach(() => {
     bytecode.SeqVoiceValue() // Get note value (frequency) from current voice
+    bytecode.LiteralSmoothed(8)
+    bytecode.Mul()
+
     bytecode.SeqVoiceTrig() // Get trigger from current voice
     bytecode.Sin() // Generate audio
 
@@ -382,6 +386,8 @@ const bpmSlider = Object.assign(
   },
 )
 document.body.appendChild(bpmSlider)
+
+document.body.appendChild(createFrequencySlider(8, 0.5, 2, .01))
 
 function updateSequence(newSequence: string) {
   try {

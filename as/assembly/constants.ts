@@ -6,4 +6,4 @@ export const ARRAY_HEADER_SIZE = 3 + SEQ_HISTORY_SIZE * 3 // length, historyWrit
 export const ARRAYS_COUNT = 1024
 export const LITERALS_COUNT = 1024
 export const OPS_COUNT = 1024
-export const SEQ_VOICES = 8
+export const SEQ_VOICES = 16
