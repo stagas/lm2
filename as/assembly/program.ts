@@ -10,7 +10,7 @@ import { Op } from './shared'
 
 export class GenPool<T> {
   private index: i32 = 0
-  private gens: T[] = []
+  gens: T[] = []
   constructor(private ctor: () => T) {}
   resetIndex(): void {
     this.index = 0
@@ -125,7 +125,7 @@ export class Program {
   // When inSeqForEach is true, buffer indices in range [bodyBufBase, bodyBufBase+BUFS_PER_VOICE)
   // get remapped to per-voice buffers starting at 500
   inSeqForEach: bool = false
-  bodyBufBase: i32 = 0  // First buffer index used in SeqForEach body
+  bodyBufBase: i32 = 0 // First buffer index used in SeqForEach body
 
   constructor() {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
