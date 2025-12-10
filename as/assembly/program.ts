@@ -1,6 +1,7 @@
-import { ARRAYS_COUNT, LITERALS_COUNT, OPS_COUNT, RING_BUFFER_SIZE, SEQ_VOICES } from './constants'
+import { ARRAYS_COUNT, CHUNK_SIZE, LITERALS_COUNT, OPS_COUNT, RING_BUFFER_SIZE, SEQ_VOICES } from './constants'
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
+import { Analyser } from './gen/analyser'
 import { Gen } from './gen/gen'
 import { Seq } from './gen/seq'
 import { SeqMap } from './gen/seqmap'
@@ -31,12 +32,14 @@ class GensPool {
   private adsrs: GenPool<Adsr> = new GenPool<Adsr>(() => new Adsr())
   private seqs: GenPool<Seq> = new GenPool<Seq>(() => new Seq())
   private seqmaps: GenPool<SeqMap> = new GenPool<SeqMap>(() => new SeqMap())
+  private analysers: GenPool<Analyser> = new GenPool<Analyser>(() => new Analyser())
   resetIndices(): void {
     this.sins.resetIndex()
     this.ads.resetIndex()
     this.adsrs.resetIndex()
     this.seqs.resetIndex()
     this.seqmaps.resetIndex()
+    this.analysers.resetIndex()
   }
   resetAllSeqs(): void {
     for (let i = 0; i < this.seqs.gens.length; i++) {
@@ -55,6 +58,8 @@ class GensPool {
         return this.seqs.get()
       case Op.SeqMap:
         return this.seqmaps.get()
+      case Op.Analyser:
+        return this.analysers.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -62,6 +67,18 @@ class GensPool {
 
 class OutsPool {
   outs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(1024)
+  constructor() {
+    for (let i = 0; i < this.outs.length; i++) {
+      this.outs[i] = new StaticArray<f32>(CHUNK_SIZE)
+    }
+  }
+  get(index: i32): usize {
+    return changetype<usize>(this.outs[index])
+  }
+}
+
+class AnalyserOutsPool {
+  outs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(64)
   constructor() {
     for (let i = 0; i < this.outs.length; i++) {
       this.outs[i] = new StaticArray<f32>(RING_BUFFER_SIZE)
@@ -103,12 +120,13 @@ class ProgramData {
 }
 
 // Buffers per voice for SeqForEach remapping (enough for complex synth voices)
-const BUFS_PER_VOICE: i32 = 32
+const BUFFERS_PER_VOICE: i32 = 32
 
 export class Program {
   data: ProgramData = new ProgramData()
   ops: StaticArray<i32> = new StaticArray<i32>(OPS_COUNT)
   outsPool: OutsPool = new OutsPool()
+  analyserOutsPool: AnalyserOutsPool = new AnalyserOutsPool()
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
 
@@ -125,7 +143,7 @@ export class Program {
   // When inSeqForEach is true, buffer indices in range [bodyBufBase, bodyBufBase+BUFS_PER_VOICE)
   // get remapped to per-voice buffers starting at 500
   inSeqForEach: bool = false
-  bodyBufBase: i32 = 0 // First buffer index used in SeqForEach body
+  bodyBufferBase: i32 = 0 // First buffer index used in SeqForEach body
 
   constructor() {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
@@ -134,11 +152,11 @@ export class Program {
   }
 
   // Get buffer with remapping applied when inside SeqForEach
-  getBuf(index: i32): usize {
-    if (this.inSeqForEach && index >= this.bodyBufBase) {
+  getOutBuffer(index: i32): usize {
+    if (this.inSeqForEach && index >= this.bodyBufferBase) {
       // Remap to per-voice buffer: 500 + voice * BUFS_PER_VOICE + offset
-      const offset = index - this.bodyBufBase
-      const remapped = 500 + this.currentVoiceIndex * BUFS_PER_VOICE + offset
+      const offset = index - this.bodyBufferBase
+      const remapped = 500 + this.currentVoiceIndex * BUFFERS_PER_VOICE + offset
       return this.outsPool.get(remapped)
     }
     return this.outsPool.get(index)

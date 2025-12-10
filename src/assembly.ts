@@ -10,6 +10,11 @@ export const OutsPoolStruct = Struct({
 })
 export type OutsPool = typeof OutsPoolStruct.type
 
+export const AnalyserOutsPoolStruct = Struct({
+  outs: 'usize',
+})
+export type AnalyserOutsPool = typeof AnalyserOutsPoolStruct.type
+
 export const ProgramDataStruct = Struct({
   lock: 'i32',
 
@@ -22,5 +27,6 @@ export const ProgramStruct = Struct({
   data: 'usize',
   ops: 'usize',
   outsPool: 'usize',
+  analyserOutsPool: 'usize',
 })
 export type Program = typeof ProgramStruct.type

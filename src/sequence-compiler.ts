@@ -263,6 +263,36 @@ function parseModifiers(str: string, parentMods: Modifiers, isSquareBracket?: bo
   return mods
 }
 
+function countLeafEvents(token: string, parentMods: Modifiers): number {
+  // Count total leaf events recursively (for spread mode)
+  if (token.startsWith('<') || token.startsWith('[')) {
+    const isSquare = token.startsWith('[')
+    const closingChar = isSquare ? ']' : '>'
+    const closingIndex = token.lastIndexOf(closingChar)
+    const content = token.slice(1, closingIndex)
+    const innerTokens = tokenize(content)
+    let total = 0
+    for (const inner of innerTokens) {
+      total += countLeafEvents(inner, parentMods)
+    }
+    return total
+  }
+  else if (token.startsWith('_') || token.startsWith('~')) {
+    return 1 // Rest counts as 1 slot
+  }
+  else {
+    // Leaf event (note or chord)
+    const eventMatch = token.match(/^([^\.*;!?#\\<>@%/$]+)(.*)$/)
+    if (eventMatch) {
+      const modifiersStr = eventMatch[2]
+      const mods = parseModifiers(modifiersStr, parentMods)
+      // *N repeats count as N leaf events for spread purposes
+      return mods.repeat
+    }
+    return 1
+  }
+}
+
 function getTokenSlotCount(token: string, parentMods: Modifiers): number {
   // Slot count = how many parent slots this token consumes
   if (token.startsWith('<') || token.startsWith('[')) {
@@ -398,6 +428,75 @@ function tokenize(input: string): string[] {
   return tokens
 }
 
+function compileTokenFlattened(
+  token: string,
+  bc: SequenceBytecode,
+  parentMods: Modifiers,
+): void {
+  // Compile token with nested brackets flattened into individual events
+  // Used for spread mode where /N spreads ALL leaf events across N cycles
+  if (token.startsWith('<') || token.startsWith('[')) {
+    const isSquare = token.startsWith('[')
+    const closingChar = isSquare ? ']' : '>'
+    const closingIndex = token.lastIndexOf(closingChar)
+    const content = token.slice(1, closingIndex)
+    const modifiersStr = token.slice(closingIndex + 1)
+    const mods = parseModifiers(modifiersStr, parentMods, isSquare)
+
+    const innerTokens = tokenize(content)
+
+    // Children inherit velocity
+    const childMods: Modifiers = {
+      velocity: mods.velocity,
+      prob: 1,
+      hold: 0,
+      repeat: 1,
+      density: 1,
+      speed: 1,
+      offset: 0,
+      jitter: 0,
+      glide: 0,
+      strum: 0,
+      spreadCycles: 0,
+      replicate: 1,
+    }
+
+    // Recursively flatten all children
+    for (const innerToken of innerTokens) {
+      compileTokenFlattened(innerToken, bc, childMods)
+    }
+  }
+  else if (token.startsWith('_') || token.startsWith('~')) {
+    // Rest - compile as single rest slot
+    const modifiersStr = token.slice(1)
+    const mods = parseModifiers(modifiersStr, parentMods)
+    bc.rest(mods.repeat)
+  }
+  else {
+    // Leaf event (note or chord) - compile directly
+    compileToken(token, bc, parentMods)
+  }
+}
+
+// Helper to collect all leaf tokens from a token (for spread mode metadata tracking)
+function collectLeafTokens(token: string, parentMods: Modifiers): string[] {
+  if (token.startsWith('<') || token.startsWith('[')) {
+    const isSquare = token.startsWith('[')
+    const closingChar = isSquare ? ']' : '>'
+    const closingIndex = token.lastIndexOf(closingChar)
+    const content = token.slice(1, closingIndex)
+    const innerTokens = tokenize(content)
+    const leaves: string[] = []
+    for (const inner of innerTokens) {
+      leaves.push(...collectLeafTokens(inner, parentMods))
+    }
+    return leaves
+  }
+  else {
+    return [token]
+  }
+}
+
 function compileToken(
   token: string,
   bc: SequenceBytecode,
@@ -488,8 +587,8 @@ function compileToken(
       replicate: 1,
     }
 
-    // If /N is used (spreadCycles > 0), spread children across N cycles (one per cycle)
-    // Otherwise, play all children in sequence within one cycle
+    // If /N is used (spreadCycles > 0), spread children across N cycles
+    // Each child keeps its internal structure (nested brackets are NOT flattened)
     if (mods.spreadCycles > 0) {
       // Spread mode: one slot per child, repeat = spreadCycles
       const slotCount = innerTokens.length
@@ -812,8 +911,8 @@ export function compileSequence(input: string): CompiledSequence {
       }
 
       if (isSquare) {
-        // If /N is used (spreadCycles > 0), spread children across N cycles (one per cycle)
-        // Otherwise, play all children in sequence within one cycle
+        // If /N is used (spreadCycles > 0), spread children across N cycles
+        // Each child keeps its internal structure (nested brackets are NOT flattened)
         if (mods.spreadCycles > 0) {
           // Spread mode: one slot per child, repeat = spreadCycles
           const slotCount = innerTokens.length

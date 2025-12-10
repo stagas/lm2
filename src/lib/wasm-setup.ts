@@ -1,4 +1,5 @@
 import { wasmSourceMap } from './wasm-sourcemap.ts'
+import { generateSequenceEventsHost } from '../seq-event-generator.ts'
 
 interface SetupOptions {
   binary: ArrayBuffer
@@ -41,6 +42,31 @@ export async function wasmSetup<T>({ binary, sourcemapUrl, config }: SetupOption
       },
       'console.warn': (textPtr: number) => {
         console.warn(__liftString(textPtr))
+      },
+      // Host function for unified event generation
+      generateSequenceEvents: (
+        bytecodePtr: number,
+        bytecodeLength: number,
+        historyPtr: number,
+        historyWritePosPtr: number,
+        fromSample: number,
+        toSample: number,
+        sampleRate: number,
+        bpm: number,
+        seed: number,
+      ) => {
+        return generateSequenceEventsHost(
+          memory,
+          bytecodePtr,
+          bytecodeLength,
+          historyPtr,
+          historyWritePosPtr,
+          fromSample,
+          toSample,
+          sampleRate,
+          bpm,
+          seed,
+        )
       },
     },
   })

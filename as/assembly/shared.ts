@@ -15,6 +15,7 @@ export enum Op {
   SeqVoiceTrig,
   SeqVoiceVelocity,
   SeqVoiceValue,
+  Analyser,
 }
 
 export enum SeqOp {

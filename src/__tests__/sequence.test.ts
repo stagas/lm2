@@ -199,10 +199,10 @@ describe('Sequences', () => {
   })
 
   it('c4 [e4 [g4 a4]]/2', async () => {
-    // /2 on outer bracket spreads its children across 2 cycles
-    // Children are: e4 and [g4 a4]
+    // /2 on outer bracket spreads its 2 children across 2 cycles
+    // Children are: e4 and [g4 a4] (each child keeps its internal structure)
     // Cycle 1: c4, e4
-    // Cycle 2: c4, [g4 a4]
+    // Cycle 2: c4, [g4 a4] (with subdivision: g4 then a4)
     const result = await executeSequence('c4 [e4 [g4 a4]]/2', { totalCycles: 2 })
     const notes = getUniqueNotes(result.events)
     expect(notes).toContain('C4')
@@ -229,8 +229,75 @@ describe('Sequences', () => {
     expectEventCount(result.events, 'E4', 1)
     expectEventCount(result.events, 'G4', 1)
     expectEventCount(result.events, 'A4', 1)
+  })
 
-    // Verify G4 and A4 each appear once
+  it('c4 [e4 [g4 a4]]/3', async () => {
+    // /3 stretches [e4 [g4 a4]] proportionally across 3 cycles (Tidal-style)
+    // Total slot time = 3 * 0.5 = 1.5 beats
+    // e4 (50%): 0.75 beats, g4 (25%): 0.375 beats, a4 (25%): 0.375 beats
+    // Slot time mapping: 0-0.5→0.5-1.0, 0.5-1.0→1.5-2.0, 1.0-1.5→2.5-3.0
+    const result = await executeSequence('c4 [e4 [g4 a4]]/3', { totalCycles: 3 })
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+    expect(notes).toContain('A4')
+
+    // Root cycle has 2 slots: c4 (1), [e4 [g4 a4]]/3 (1)
+    // Each slot = 0.5 beats
+
+    // Cycle 1: c4 at 0, e4 at 0.5 (slot time 0)
+    expectEventAtTime(result.events, 'C4', 0, 0)
+    expectEventAtTime(result.events, 'E4', 0.5, 0)
+
+    // Cycle 2: c4 at 1.0, g4 at 1.75 (slot time 0.75)
+    expectEventAtTime(result.events, 'C4', 1.0, 1)
+    expectEventAtTime(result.events, 'G4', 1.75, 0)
+
+    // Cycle 3: c4 at 2.0, a4 at 2.5 (spread slot start in cycle 3)
+    expectEventAtTime(result.events, 'C4', 2.0, 2)
+    expectEventAtTime(result.events, 'A4', 2.5, 0)
+
+    // Verify counts: C4 appears 3 times, others appear once
+    expectEventCount(result.events, 'C4', 3)
+    expectEventCount(result.events, 'E4', 1)
+    expectEventCount(result.events, 'G4', 1)
+    expectEventCount(result.events, 'A4', 1)
+  })
+
+  it('c4 [e4 [g4 a4]]/4', async () => {
+    // /4 stretches [e4 [g4 a4]] proportionally across 4 cycles (Tidal-style)
+    // Total slot time = 4 * 0.5 = 2.0 beats
+    // e4 (50%): 1.0 beat, g4 (25%): 0.5 beats, a4 (25%): 0.5 beats
+    // Slot time mapping: 0-0.5→0.5-1.0, 0.5-1.0→1.5-2.0, 1.0-1.5→2.5-3.0, 1.5-2.0→3.5-4.0
+    const result = await executeSequence('c4 [e4 [g4 a4]]/4', { totalCycles: 4 })
+    const notes = getUniqueNotes(result.events)
+    expect(notes).toContain('C4')
+    expect(notes).toContain('E4')
+    expect(notes).toContain('G4')
+    expect(notes).toContain('A4')
+
+    // Root cycle has 2 slots: c4 (1), [e4 [g4 a4]]/4 (1)
+    // Each slot = 0.5 beats
+
+    // Cycle 1: c4 at 0, e4 at 0.5 (slot time 0)
+    expectEventAtTime(result.events, 'C4', 0, 0)
+    expectEventAtTime(result.events, 'E4', 0.5, 0)
+
+    // Cycle 2: c4 at 1.0, nothing (e4 slot time continues)
+    expectEventAtTime(result.events, 'C4', 1.0, 1)
+
+    // Cycle 3: c4 at 2.0, g4 at 2.5 (slot time 1.0)
+    expectEventAtTime(result.events, 'C4', 2.0, 2)
+    expectEventAtTime(result.events, 'G4', 2.5, 0)
+
+    // Cycle 4: c4 at 3.0, a4 at 3.5 (slot time 1.5)
+    expectEventAtTime(result.events, 'C4', 3.0, 3)
+    expectEventAtTime(result.events, 'A4', 3.5, 0)
+
+    // Verify counts: C4 appears 4 times, others appear once
+    expectEventCount(result.events, 'C4', 4)
+    expectEventCount(result.events, 'E4', 1)
     expectEventCount(result.events, 'G4', 1)
     expectEventCount(result.events, 'A4', 1)
   })

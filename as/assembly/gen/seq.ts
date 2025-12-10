@@ -48,6 +48,14 @@ class Frame {
   eventRepeatCount: i32 = 0 // Total repeats for current event
   eventStartPc: i32 = 0 // PC position where current event started
   eventSlotCount: f32 = 0 // Slot count for current event
+  // Stretched spread mode tracking (Tidal-style /N)
+  isStretchedSpread: bool = false // True if this is a stretched spread cycle
+  slotTimeAccum: f64 = 0 // Accumulated slot time within stretched content
+  totalSlotTime: f64 = 0 // Total slot time for stretched content (N * slot_duration)
+  spreadSlotDuration: f64 = 0 // Duration of each spread slot
+  spreadGapDuration: f64 = 0 // Gap between spread slots (other slots in parent cycle)
+  spreadRealStart: f64 = 0 // Real time when this spread slot starts
+  spreadRepeatIndex: i32 = 0 // Repeat index of the originating spread frame
 }
 
 export class Seq extends Gen {
@@ -126,6 +134,28 @@ export class Seq extends Gen {
       const historyOffset = 3 + historyPos * 3
       array[historyOffset + 2] = endSample as f32
     }
+  }
+
+  // Map slot time to real time for stretched spread mode
+  // Slot time is continuous (0 to totalSlotTime)
+  // Real time has gaps where other slots (like c4) play
+  private mapSlotTimeToRealTime(
+    slotTime: f64,
+    spreadSlotDuration: f64,
+    spreadGapDuration: f64,
+    spreadRealStart: f64,
+    repeatIndex: i32
+  ): f64 {
+    // Find which spread slot this slot time falls in
+    const slotIndex = Math.floor(slotTime / spreadSlotDuration) as i32
+    // Offset within that spread slot
+    const offsetInSlot = slotTime - (slotIndex as f64) * spreadSlotDuration
+    // Real time = spreadRealStart for the first slot
+    // For subsequent slots, add (slotIndex - repeatIndex) * (spreadSlotDuration + spreadGapDuration)
+    // because each cycle has one spread slot plus one gap
+    const cycleOffset = slotIndex - repeatIndex
+    const realTime = spreadRealStart + (cycleOffset as f64) * (spreadSlotDuration + spreadGapDuration) + offsetInSlot
+    return realTime
   }
 
   process(out$: usize, length: i32): void {
@@ -368,25 +398,31 @@ export class Seq extends Gen {
       let frame = this.stack[this.stack.length - 1]
 
       // Check if frame is complete
-      // For spread mode (square bracket with repeatCount <= slotCount and repeatCount > 1), we spread children across cycles
+      // For spread mode (square bracket with /N modifier), we spread children across N cycles
       // Normal mode: repeatCount == 1 (no spread modifier)
       // Repeat mode (*N): repeatCount > 1 but isRepeatMode is true - play all slots repeatCount times within one parent slot
-      const isSpreadMode = !frame.isRepeatMode && f32(frame.repeatCount) <= frame.slotCount && frame.slotCount > 0
-        && frame.repeatCount > 1
+      // Stretched spread mode: process all slots sequentially with stretched timing
+      const isSpreadMode = !frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0 && !frame.isStretchedSpread
 
       if (isSpreadMode) {
-        // Spread mode: play multiple slots per repeat cycle
-        // childrenPerCycle = slotCount / repeatCount (e.g., 4 children / 2 cycles = 2 per cycle)
-        // On repeatIndex K, play slots from K * childrenPerCycle to (K+1) * childrenPerCycle - 1
+        // Spread mode: distribute slotCount children across repeatCount cycles
+        // childrenPerCycle = slotCount / repeatCount (e.g., 2 children / 4 cycles = 0.5 per cycle)
+        // On repeatIndex K, play the integer slot(s) that fall within range [K * childrenPerCycle, (K+1) * childrenPerCycle)
         const childrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
         const startSlot = (frame.repeatIndex as f32) * childrenPerCycle
-        // endSlot is exclusive: play slots from startSlot (inclusive) to endSlot (exclusive)
         const endSlot = startSlot + childrenPerCycle
 
-        // Use a small epsilon for floating point comparison
-        if (frame.slotIndex >= endSlot - 0.0001) {
-          // We've played all slots for this repeat - pop frame
-          // In spread mode, the cycle takes exactly 1 slot in the parent
+        // Find the first integer slot to play in this cycle's range
+        // This is ceil(startSlot) if startSlot is not integer, or startSlot if it is
+        const firstIntSlot = Mathf.ceil(startSlot) as i32
+        const actualSlots = frame.actualSlotCount > 0 ? frame.actualSlotCount : i32(frame.slotCount)
+        const effectiveSlots = i32(frame.slotCount)
+
+        // Check if there's any integer slot to play in this cycle's range
+        // A slot is valid if firstIntSlot < endSlot AND firstIntSlot < effectiveSlots
+        // Use effectiveSlots (not actualSlots) because angle brackets with *N have more effective slots
+        if ((firstIntSlot as f32) >= endSlot - 0.0001 || firstIntSlot >= effectiveSlots) {
+          // No slot to play in this cycle - pop frame (empty cycle)
           const slotsUsed: f32 = 1.0
           this.stack.pop()
           if (this.stack.length > 0) {
@@ -400,27 +436,35 @@ export class Seq extends Gen {
           continue
         }
 
-        // For spread mode with repeat multiplier, use modulo to wrap around
-        const actualSlots = frame.actualSlotCount > 0 ? frame.actualSlotCount : i32(frame.slotCount)
-        const actualSlotIndex = i32(frame.slotIndex) % actualSlots
+        // Use a small epsilon for floating point comparison
+        if (frame.slotIndex >= endSlot - 0.0001) {
+          // We've played all slots for this repeat - pop frame
+          const slotsUsed: f32 = 1.0
+          this.stack.pop()
+          if (this.stack.length > 0) {
+            const parentFrame = this.stack[this.stack.length - 1]
+            parentFrame.slotIndex += slotsUsed
+          }
+          else {
+            this.nextEventTime = f64.MAX_VALUE
+            return
+          }
+          continue
+        }
 
-        // Position PC at the actual slot (with wrapping)
+        // Set slotIndex to the first integer slot in this cycle's range
+        if (frame.slotIndex < (firstIntSlot as f32)) {
+          frame.slotIndex = firstIntSlot as f32
+        }
+
+        // Position PC at the actual slot
+        const actualSlotIndex = (i32(frame.slotIndex)) % actualSlots
         let expectedPc = frame.pcStart
         for (let i = 0; i < actualSlotIndex; i++) {
           expectedPc += this.countSlotBytes(array, arrayLength, expectedPc, 1)
         }
         if (frame.pc !== expectedPc) {
           frame.pc = expectedPc
-        }
-
-        // If slotIndex is before startSlot, advance to startSlot
-        if (frame.slotIndex < startSlot) {
-          frame.slotIndex = startSlot
-          const actualStart = i32(startSlot) % actualSlots
-          frame.pc = frame.pcStart
-          for (let i = 0; i < actualStart; i++) {
-            frame.pc += this.countSlotBytes(array, arrayLength, frame.pc, 1)
-          }
         }
       }
       else {
@@ -512,10 +556,10 @@ export class Seq extends Gen {
         const newFrame = new Frame()
         newFrame.pcStart = nestedStartPc
 
-        // For square brackets with spread cycles (/N): detect if repeatCount <= slotCount and repeatCount > 1
-        // AND density is positive (spread mode uses positive density, repeat mode uses negative density)
-        // This indicates spread mode where we spread children across cycles
-        const isSpreadMode = isSquare === 1 && repeatCountI <= cycleLength && repeatCountI > 1 && density > 0
+        // For square brackets with spread cycles (/N): repeatCount > 1 and density is positive
+        // (spread mode uses positive density, repeat mode uses negative density)
+        // This indicates spread mode where we spread children across N cycles
+        const isSpreadMode = isSquare === 1 && repeatCountI > 1 && density > 0
         // Repeat mode (*N): density is negative, meaning repeat the cycle within one parent slot
         const isRepeatMode = density < 0
 
@@ -539,12 +583,35 @@ export class Seq extends Gen {
           const startSlot = (newFrame.repeatIndex as f32) * childrenPerCycle
           // Store effective slots in slotCount so the frame knows how many to play
           newFrame.slotCount = effectiveSlots
-          newFrame.slotIndex = startSlot
-          // Skip to the PC position of the starting slot (modulo cycleLength for wrapping)
-          const actualStartSlot = i32(startSlot) % cycleLength
-          newFrame.pc = nestedStartPc
-          for (let i = 0; i < actualStartSlot; i++) {
-            newFrame.pc += this.countSlotBytes(array, arrayLength, newFrame.pc, 1)
+
+          // Set up stretched spread mode (Tidal-style /N) BEFORE slot setup
+          if (repeatMultiplier <= 1.0) {
+            // Stretched spread: process ALL slots from beginning with stretched timing
+            newFrame.isStretchedSpread = true
+            newFrame.slotIndex = 0
+            newFrame.pc = nestedStartPc
+            // Total slot time = N spread slots, each of duration frame.slotDuration
+            const parentSlotDuration = frame.slotDuration
+            newFrame.spreadSlotDuration = parentSlotDuration
+            newFrame.totalSlotTime = parentSlotDuration * (repeatCountI as f64)
+            // Gap between spread slots = cycle duration - spread slot duration
+            const parentCycleDuration = frame.slotDuration * (frame.slotCount as f64)
+            newFrame.spreadGapDuration = parentCycleDuration - parentSlotDuration
+            // Real time when this spread slot starts
+            newFrame.spreadRealStart = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration
+            // Accumulated slot time starts at 0 (we process all slots, timing is stretched)
+            newFrame.slotTimeAccum = 0
+            // Store the repeat index for mapping slot time to real time
+            newFrame.spreadRepeatIndex = newFrame.repeatIndex
+          }
+          else {
+            // Non-stretched spread (angle bracket *N): skip to startSlot
+            newFrame.slotIndex = startSlot
+            const actualStartSlot = i32(startSlot) % cycleLength
+            newFrame.pc = nestedStartPc
+            for (let i = 0; i < actualStartSlot; i++) {
+              newFrame.pc += this.countSlotBytes(array, arrayLength, newFrame.pc, 1)
+            }
           }
         }
         else {
@@ -556,16 +623,23 @@ export class Seq extends Gen {
 
         newFrame.speed = speed // Store speed for parent slot advancement when popping
         // Calculate start time for this nested cycle (current slot's time)
-        // For spread mode, we need to use relative slot index (within current cycle's allocation)
-        const parentIsSpreadMode = !frame.isRepeatMode && f32(frame.repeatCount) <= frame.slotCount
-          && frame.slotCount > 0 && frame.repeatCount > 1
+        // For spread mode with density > 1 (angle bracket *N), children are subdivided within cycles
+        // For spread mode with density = 1 (square bracket /N), each child gets the full parent slot
+        const parentIsSpreadMode = !frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0
         let slotTime: f64
         if (parentIsSpreadMode) {
-          // In spread mode, calculate relative slot position
+          // Check if parent has repeat multiplier (density > 1 means multiple children per cycle)
           const parentChildrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
-          const parentStartSlot = (frame.repeatIndex as f32) * parentChildrenPerCycle
-          const relativeSlotIndex = frame.slotIndex - parentStartSlot
-          slotTime = frame.startTime + (relativeSlotIndex as f64) * frame.slotDuration
+          if (parentChildrenPerCycle > 1) {
+            // Multiple children per cycle - use relative slot position
+            const parentStartSlot = (frame.repeatIndex as f32) * parentChildrenPerCycle
+            const relativeSlotIndex = frame.slotIndex - parentStartSlot
+            slotTime = frame.startTime + (relativeSlotIndex as f64) * frame.slotDuration
+          }
+          else {
+            // Single child per cycle - child plays at the start of the parent slot
+            slotTime = frame.startTime
+          }
         }
         else {
           slotTime = frame.startTime + (frame.slotIndex as f64) * frame.slotDuration
@@ -630,20 +704,24 @@ export class Seq extends Gen {
         }
         else {
           // Square bracket: standard calculation
-          // For spread mode (repeatCount >= slotCount), calculate based on children per cycle
+          // For spread mode, each child gets the full parent slot (they play in different cycles)
           // For normal mode, each slot takes cycleDuration / slotCount
           if (isSpreadMode) {
-            // Spread mode: calculate slot duration based on effective slots
-            // For angle brackets with *N: effectiveSlots = cycleLength * density
-            // Each slot takes parentSlotDuration / effectiveSlots_perCycle
-            // effectiveSlots_perCycle = effectiveSlots / repeatCount
-            // = (cycleLength * density) / repeatCount
-            // For <c4 e4 g4>*2: (3 * 2) / 3 = 2 slots per cycle
-            // Each slot = parentSlotDuration / 2 = 1 / 2 = 0.5 beats
+            // Spread mode: each child gets the full parent slot duration
+            // The children play in different cycles, not subdivided within one cycle
+            // For angle brackets with *N (density > 1): multiple children per cycle
             const repeatMultiplier = density > 0 ? density : 1.0
-            const effectiveSlots = (cycleLength as f64) * (repeatMultiplier as f64)
-            const effectiveSlotsPerCycle = effectiveSlots / (repeatCountI as f64)
-            newFrame.slotDuration = frame.slotDuration / effectiveSlotsPerCycle / (speed as f64)
+            if (repeatMultiplier > 1) {
+              // Angle bracket with *N: multiple children per cycle
+              // Each slot = parentSlotDuration / repeatMultiplier
+              newFrame.slotDuration = frame.slotDuration / (repeatMultiplier as f64) / (speed as f64)
+            }
+            else {
+              // Stretched spread: slotDuration = totalSlotTime / slotCount
+              // This is the "slot time" duration, not real time
+              // Real time is calculated by mapping slot time through the spread slots
+              newFrame.slotDuration = newFrame.totalSlotTime / (cycleLength as f64) / (speed as f64)
+            }
           }
           else if (repeatCountI > 1) {
             // Repeat mode: cycle repeats within 1 parent slot
@@ -659,6 +737,22 @@ export class Seq extends Gen {
         newFrame.offset = frame.offset + offset
         newFrame.jitter = Mathf.min(1.0, frame.jitter + jitter)
         newFrame.prob = 1.0 // Prob is not inherited - only applies to this cycle's trigger
+
+        // Inherit stretched spread timing from parent if not creating a new stretched spread
+        if (!newFrame.isStretchedSpread && frame.isStretchedSpread) {
+          newFrame.isStretchedSpread = true
+          newFrame.spreadSlotDuration = frame.spreadSlotDuration
+          newFrame.spreadGapDuration = frame.spreadGapDuration
+          newFrame.spreadRealStart = frame.spreadRealStart
+          newFrame.totalSlotTime = frame.totalSlotTime
+          newFrame.spreadRepeatIndex = frame.spreadRepeatIndex
+          // Calculate accumulated slot time based on parent's position
+          newFrame.slotTimeAccum = frame.slotTimeAccum + (frame.slotIndex as f64) * frame.slotDuration
+          // Nested cycle's slot duration is proportional to its weight
+          // Total time for this nested cycle = frame.slotDuration (parent's slot = this nested cycle's total)
+          // Divide by number of children
+          newFrame.slotDuration = frame.slotDuration / (cycleLength as f64) / (speed as f64)
+        }
 
         this.stack.push(newFrame)
 
@@ -683,8 +777,38 @@ export class Seq extends Gen {
         // Combine frame jitter (from parent) with event jitter
         const totalJitter = Mathf.min(1.0, frame.jitter + eventJitter) as f32
 
-        const isSpreadMode = !frame.isRepeatMode && f32(frame.repeatCount) <= frame.slotCount && frame.slotCount > 0
-          && frame.repeatCount > 1
+        // Stretched spread uses normal sequential processing with stretched timing
+        const isSpreadMode = !frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0 && !frame.isStretchedSpread
+
+        // In stretched spread mode, skip events whose trigger time is outside this cycle's spread slot
+        if (frame.isStretchedSpread) {
+          const currentSlotTime = frame.slotTimeAccum + (frame.slotIndex as f64) * frame.slotDuration
+          const eventRealTime = this.mapSlotTimeToRealTime(
+            currentSlotTime,
+            frame.spreadSlotDuration,
+            frame.spreadGapDuration,
+            frame.spreadRealStart,
+            frame.spreadRepeatIndex
+          )
+          // Events before the current spread slot's real start were triggered in previous cycles
+          if (eventRealTime < frame.spreadRealStart - 0.0001) {
+            // Skip this event - it was triggered in a previous cycle
+            frame.slotIndex += slotCount
+            continue
+          }
+          // Events after the current spread slot end are for future cycles
+          if (eventRealTime >= frame.spreadRealStart + frame.spreadSlotDuration - 0.0001) {
+            // Skip remaining events - they're for future cycles
+            // Pop this frame and advance parent
+            this.stack.pop()
+            if (this.stack.length > 0) {
+              const parentFrame = this.stack[this.stack.length - 1]
+              parentFrame.slotIndex += 1.0
+            }
+            this.calculateNextEventTime(array, arrayLength, secondsPerBeat)
+            return
+          }
+        }
 
         // In spread mode, check if we're at a slot that was already played in a previous cycle
         // This happens when startSlot is fractional (e.g., 1.5) and we're processing slot 1
@@ -864,9 +988,28 @@ export class Seq extends Gen {
         // Advance slot by slotCount
         frame.slotIndex += slotCount
 
-        // For spread mode, check if we've reached the end slot immediately after incrementing
-        // (isSpreadMode is already declared above in this block)
-        if (isSpreadMode) {
+        // For stretched spread mode, check if we've processed all slots
+        if (frame.isStretchedSpread) {
+          // Calculate actual slot count (before any spreading)
+          const actualSlotCount = frame.actualSlotCount > 0 ? frame.actualSlotCount : i32(frame.slotCount)
+          if (frame.slotIndex >= (actualSlotCount as f32)) {
+            // We've processed all slots for this stretched spread
+            const slotsUsed: f32 = 1.0
+            this.stack.pop()
+            if (this.stack.length > 0) {
+              const parentFrame = this.stack[this.stack.length - 1]
+              parentFrame.slotIndex += slotsUsed
+            }
+            else {
+              this.nextEventTime = f64.MAX_VALUE
+              return
+            }
+            this.calculateNextEventTime(array, arrayLength, secondsPerBeat)
+            return
+          }
+        }
+        // For non-stretched spread mode, check if we've reached the end slot
+        else if (!frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0) {
           const childrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
           const startSlot = (frame.repeatIndex as f32) * childrenPerCycle
           const endSlot = startSlot + childrenPerCycle
@@ -1080,20 +1223,37 @@ export class Seq extends Gen {
     const frame = this.stack[this.stack.length - 1]
 
     // Check if this is spread mode
-    const isSpreadMode = !frame.isRepeatMode && f32(frame.repeatCount) <= frame.slotCount && frame.slotCount > 0
-      && frame.repeatCount > 1
+    const isSpreadMode = !frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0
 
     // Calculate base time for next event
     // slotDuration is in seconds, startTime is in seconds, so eventTime is in seconds
     // this.time is also in seconds, so nextEventTime should be in seconds (no conversion needed)
     let slotTime: f64
-    if (isSpreadMode) {
-      // Spread mode: calculate time based on relative slot position within current cycle's slots
-      // slotIndex is absolute (e.g., 2 for cycle 2), but timing should be relative to startSlot
+    if (frame.isStretchedSpread) {
+      // Stretched spread mode: calculate slot time and map to real time
+      // slotTimeAccum tracks accumulated slot time, slotIndex * slotDuration gives current position
+      const currentSlotTime = frame.slotTimeAccum + (frame.slotIndex as f64) * frame.slotDuration
+      slotTime = this.mapSlotTimeToRealTime(
+        currentSlotTime,
+        frame.spreadSlotDuration,
+        frame.spreadGapDuration,
+        frame.spreadRealStart,
+        frame.spreadRepeatIndex
+      )
+    }
+    else if (isSpreadMode) {
+      // Check if this spread mode has multiple children per cycle (angle bracket *N)
       const childrenPerCycle = frame.slotCount / (frame.repeatCount as f32)
-      const startSlot = (frame.repeatIndex as f32) * childrenPerCycle
-      const relativeSlotIndex = frame.slotIndex - startSlot
-      slotTime = frame.startTime + (relativeSlotIndex as f64) * frame.slotDuration
+      if (childrenPerCycle > 1) {
+        // Multiple children per cycle - use relative slot position
+        const startSlot = (frame.repeatIndex as f32) * childrenPerCycle
+        const relativeSlotIndex = frame.slotIndex - startSlot
+        slotTime = frame.startTime + (relativeSlotIndex as f64) * frame.slotDuration
+      }
+      else {
+        // Single child per cycle - child plays at the start of the parent slot
+        slotTime = frame.startTime
+      }
     }
     else {
       // Normal mode: standard calculation

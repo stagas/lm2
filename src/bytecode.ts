@@ -9,6 +9,7 @@ export class Bytecode {
 
   stack: number[] = []
   outsCount = 0
+  analyserOutsCount = 0
 
   emit(op: Op, ...args: any[]) {
     this.ops[this.pc++] = op
@@ -73,6 +74,13 @@ export class Bytecode {
     const outRight = this.stack.pop()
     const outLeft = this.stack.pop()
     this.emit(Op.Out, outLeft, outRight)
+  }
+
+  Analyser = () => {
+    const out = this.analyserOutsCount++
+    const input = this.Peek()
+    this.emit(Op.Analyser, out, input)
+    return out
   }
 
   ArrayAt = (index: number) => {

@@ -1,6 +1,7 @@
 import { ARRAY_HEADER_SIZE, SEQ_VOICES } from './constants'
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
+import { Analyser } from './gen/analyser'
 import { Seq } from './gen/seq'
 import { SeqMap } from './gen/seqmap'
 import { Sin } from './gen/sin'
@@ -62,18 +63,18 @@ export class Dsp {
       }
 
       case Op.Out: {
-        const outLeft$ = program.getBuf(ops[pc++]) + pos
-        const outRight$ = program.getBuf(ops[pc++]) + pos
+        const outLeft$ = program.getOutBuffer(ops[pc++])
+        const outRight$ = program.getOutBuffer(ops[pc++])
         addAudio(left$, left$, outLeft$, length)
         addAudio(right$, right$, outRight$, length)
         break
       }
 
       case Op.ArrayAt: {
-        let out$ = program.getBuf(ops[pc++]) + pos
+        let out$ = program.getOutBuffer(ops[pc++])
         const arrayIndex = ops[pc++]
         const array = changetype<StaticArray<f32>>(program.data.arrays[arrayIndex])
-        let element$ = program.getBuf(ops[pc++]) + pos
+        let element$ = program.getOutBuffer(ops[pc++])
         for (let i = 0; i < length; i++) {
           const element = load<f32>(element$)
           const index = Mathf.round(element)
@@ -86,7 +87,7 @@ export class Dsp {
       }
 
       case Op.Literal: {
-        let out$ = program.getBuf(ops[pc++]) + pos
+        let out$ = program.getOutBuffer(ops[pc++])
         const literalIndex = ops[pc++]
         const literal = program.data.readLiteral(literalIndex)
         for (let i = 0; i < length; i++) {
@@ -97,7 +98,7 @@ export class Dsp {
       }
 
       case Op.LiteralSmoothed: {
-        let out$ = program.getBuf(ops[pc++]) + pos
+        let out$ = program.getOutBuffer(ops[pc++])
         const literalIndex = ops[pc++]
         const literalSmoothed = program.literalsSmoothed[literalIndex]
         const literalTarget = program.data.readLiteral(literalIndex)
@@ -111,26 +112,26 @@ export class Dsp {
       }
 
       case Op.Add: {
-        const out$ = program.getBuf(ops[pc++]) + pos
-        const a1$ = program.getBuf(ops[pc++]) + pos
-        const a2$ = program.getBuf(ops[pc++]) + pos
+        const out$ = program.getOutBuffer(ops[pc++])
+        const a1$ = program.getOutBuffer(ops[pc++])
+        const a2$ = program.getOutBuffer(ops[pc++])
         addAudio(out$, a1$, a2$, length)
         break
       }
 
       case Op.Mul: {
-        const out$ = program.getBuf(ops[pc++]) + pos
-        const a1$ = program.getBuf(ops[pc++]) + pos
-        const a2$ = program.getBuf(ops[pc++]) + pos
+        const out$ = program.getOutBuffer(ops[pc++])
+        const a1$ = program.getOutBuffer(ops[pc++])
+        const a2$ = program.getOutBuffer(ops[pc++])
         mulAudio(out$, a1$, a2$, length)
         break
       }
 
       case Op.Sin: {
         const sin = gensPool.get(Op.Sin) as Sin
-        const out$ = program.getBuf(ops[pc++]) + pos
-        const hz$ = program.getBuf(ops[pc++]) + pos
-        const trig$ = program.getBuf(ops[pc++]) + pos
+        const out$ = program.getOutBuffer(ops[pc++])
+        const hz$ = program.getOutBuffer(ops[pc++])
+        const trig$ = program.getOutBuffer(ops[pc++])
         sin.hz$ = hz$
         sin.trig$ = trig$
         sin.process(out$, length)
@@ -139,10 +140,10 @@ export class Dsp {
 
       case Op.Ad: {
         const ad = gensPool.get(Op.Ad) as Ad
-        const out$ = program.getBuf(ops[pc++]) + pos
-        const attack$ = program.getBuf(ops[pc++]) + pos
-        const decay$ = program.getBuf(ops[pc++]) + pos
-        const trig$ = program.getBuf(ops[pc++]) + pos
+        const out$ = program.getOutBuffer(ops[pc++])
+        const attack$ = program.getOutBuffer(ops[pc++])
+        const decay$ = program.getOutBuffer(ops[pc++])
+        const trig$ = program.getOutBuffer(ops[pc++])
         ad.attack$ = attack$
         ad.decay$ = decay$
         ad.trig$ = trig$
@@ -152,12 +153,12 @@ export class Dsp {
 
       case Op.Adsr: {
         const adsr = gensPool.get(Op.Adsr) as Adsr
-        const out$ = program.getBuf(ops[pc++]) + pos
-        const attack$ = program.getBuf(ops[pc++]) + pos
-        const decay$ = program.getBuf(ops[pc++]) + pos
-        const sustain$ = program.getBuf(ops[pc++]) + pos
-        const release$ = program.getBuf(ops[pc++]) + pos
-        const trig$ = program.getBuf(ops[pc++]) + pos
+        const out$ = program.getOutBuffer(ops[pc++])
+        const attack$ = program.getOutBuffer(ops[pc++])
+        const decay$ = program.getOutBuffer(ops[pc++])
+        const sustain$ = program.getOutBuffer(ops[pc++])
+        const release$ = program.getOutBuffer(ops[pc++])
+        const trig$ = program.getOutBuffer(ops[pc++])
         adsr.attack$ = attack$
         adsr.decay$ = decay$
         adsr.sustain$ = sustain$
@@ -179,13 +180,13 @@ export class Dsp {
           program.lastSeqTrigOuts[v] = trigOut
           program.lastSeqVelocityOuts[v] = velocityOut
           program.lastSeqValueOuts[v] = valueOut
-          seq.outTrig$[v] = program.outsPool.get(trigOut) + pos
-          seq.outVelocity$[v] = program.outsPool.get(velocityOut) + pos
-          seq.outValue$[v] = program.outsPool.get(valueOut) + pos
+          seq.outTrig$[v] = program.outsPool.get(trigOut)
+          seq.outVelocity$[v] = program.outsPool.get(velocityOut)
+          seq.outValue$[v] = program.outsPool.get(valueOut)
         }
 
         seq.bytecode$ = changetype<usize>(program.data.arrays[arrayIndex])
-        seq.outVoiceCount$ = program.outsPool.get(voiceCountOut) + pos
+        seq.outVoiceCount$ = program.outsPool.get(voiceCountOut)
 
         seq.process(0, length)
         program.lastSeqVoiceCountOut = voiceCountOut
@@ -194,28 +195,28 @@ export class Dsp {
 
       case Op.SeqVoiceTrig: {
         const outBuf = ops[pc++]
-        const out$ = program.getBuf(outBuf) + pos
+        const out$ = program.getOutBuffer(outBuf)
         const voiceIndex = program.currentVoiceIndex
         // Copy from Seq output (not remapped) to body buffer (remapped)
-        const src$ = program.outsPool.get(program.lastSeqTrigOuts[voiceIndex]) + pos
+        const src$ = program.outsPool.get(program.lastSeqTrigOuts[voiceIndex])
         copyAudio(out$, src$, length)
         break
       }
 
       case Op.SeqVoiceVelocity: {
         const outBuf = ops[pc++]
-        const out$ = program.getBuf(outBuf) + pos
+        const out$ = program.getOutBuffer(outBuf)
         const voiceIndex = program.currentVoiceIndex
-        const src$ = program.outsPool.get(program.lastSeqVelocityOuts[voiceIndex]) + pos
+        const src$ = program.outsPool.get(program.lastSeqVelocityOuts[voiceIndex])
         copyAudio(out$, src$, length)
         break
       }
 
       case Op.SeqVoiceValue: {
         const outBuf = ops[pc++]
-        const out$ = program.getBuf(outBuf) + pos
+        const out$ = program.getOutBuffer(outBuf)
         const voiceIndex = program.currentVoiceIndex
-        const src$ = program.outsPool.get(program.lastSeqValueOuts[voiceIndex]) + pos
+        const src$ = program.outsPool.get(program.lastSeqValueOuts[voiceIndex])
         copyAudio(out$, src$, length)
         break
       }
@@ -229,12 +230,12 @@ export class Dsp {
 
         program.seqForEachAudioOutsCount = 0
 
-        const voiceCount$ = program.outsPool.get(voiceCountIndex) + pos
+        const voiceCount$ = program.outsPool.get(voiceCountIndex)
         const numVoices = Mathf.round(load<f32>(voiceCount$)) as i32
         const voicesToProcess = numVoices < SEQ_VOICES ? numVoices : SEQ_VOICES
 
         // Set up remapping context
-        program.bodyBufBase = bodyBufBase
+        program.bodyBufferBase = bodyBufBase
         program.inSeqForEach = true
 
         // Execute body for each active voice
@@ -261,19 +262,28 @@ export class Dsp {
 
       case Op.SeqMap: {
         const seqmap = gensPool.get(Op.SeqMap) as SeqMap
-        const out$ = program.getBuf(ops[pc++]) + pos
+        const out$ = program.getOutBuffer(ops[pc++])
 
         const numVoices = program.seqForEachAudioOutsCount
         seqmap.numVoices = numVoices
 
         for (let v = 0; v < numVoices; v++) {
-          seqmap.inTrig$[v] = program.outsPool.get(program.lastSeqTrigOuts[v]) + pos
-          seqmap.inVelocity$[v] = program.outsPool.get(program.lastSeqVelocityOuts[v]) + pos
-          seqmap.inValue$[v] = program.outsPool.get(program.lastSeqValueOuts[v]) + pos
-          seqmap.inAudio$[v] = program.outsPool.get(program.seqForEachAudioOuts[v]) + pos
+          seqmap.inTrig$[v] = program.outsPool.get(program.lastSeqTrigOuts[v])
+          seqmap.inVelocity$[v] = program.outsPool.get(program.lastSeqVelocityOuts[v])
+          seqmap.inValue$[v] = program.outsPool.get(program.lastSeqValueOuts[v])
+          seqmap.inAudio$[v] = program.outsPool.get(program.seqForEachAudioOuts[v])
         }
 
         seqmap.process(out$, length)
+        break
+      }
+
+      case Op.Analyser: {
+        const analyser = gensPool.get(Op.Analyser) as Analyser
+        const out$ = program.analyserOutsPool.get(ops[pc++]) + pos
+        const in$ = program.getOutBuffer(ops[pc++])
+        analyser.in$ = in$
+        analyser.process(out$, length)
         break
       }
     }
