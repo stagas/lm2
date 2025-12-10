@@ -1,5 +1,5 @@
-import { wasmSourceMap } from './wasm-sourcemap.ts'
 import { generateSequenceEventsHost } from '../seq-event-generator.ts'
+import { wasmSourceMap } from './wasm-sourcemap.ts'
 
 interface SetupOptions {
   binary: ArrayBuffer

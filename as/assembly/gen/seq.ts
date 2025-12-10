@@ -144,7 +144,7 @@ export class Seq extends Gen {
     spreadSlotDuration: f64,
     spreadGapDuration: f64,
     spreadRealStart: f64,
-    repeatIndex: i32
+    repeatIndex: i32,
   ): f64 {
     // Find which spread slot this slot time falls in
     const slotIndex = Math.floor(slotTime / spreadSlotDuration) as i32
@@ -402,7 +402,8 @@ export class Seq extends Gen {
       // Normal mode: repeatCount == 1 (no spread modifier)
       // Repeat mode (*N): repeatCount > 1 but isRepeatMode is true - play all slots repeatCount times within one parent slot
       // Stretched spread mode: process all slots sequentially with stretched timing
-      const isSpreadMode = !frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0 && !frame.isStretchedSpread
+      const isSpreadMode = !frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0
+        && !frame.isStretchedSpread
 
       if (isSpreadMode) {
         // Spread mode: distribute slotCount children across repeatCount cycles
@@ -778,7 +779,8 @@ export class Seq extends Gen {
         const totalJitter = Mathf.min(1.0, frame.jitter + eventJitter) as f32
 
         // Stretched spread uses normal sequential processing with stretched timing
-        const isSpreadMode = !frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0 && !frame.isStretchedSpread
+        const isSpreadMode = !frame.isRepeatMode && frame.repeatCount > 1 && frame.slotCount > 0
+          && !frame.isStretchedSpread
 
         // In stretched spread mode, skip events whose trigger time is outside this cycle's spread slot
         if (frame.isStretchedSpread) {
@@ -788,7 +790,7 @@ export class Seq extends Gen {
             frame.spreadSlotDuration,
             frame.spreadGapDuration,
             frame.spreadRealStart,
-            frame.spreadRepeatIndex
+            frame.spreadRepeatIndex,
           )
           // Events before the current spread slot's real start were triggered in previous cycles
           if (eventRealTime < frame.spreadRealStart - 0.0001) {
@@ -1238,7 +1240,7 @@ export class Seq extends Gen {
         frame.spreadSlotDuration,
         frame.spreadGapDuration,
         frame.spreadRealStart,
-        frame.spreadRepeatIndex
+        frame.spreadRepeatIndex,
       )
     }
     else if (isSpreadMode) {
