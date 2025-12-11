@@ -1,4 +1,4 @@
-export const MINI_EVENT_SIZE = 8
+export const MINI_EVENT_SIZE = 10
 export const MINI_BYTECODE_HEADER_SIZE = 1
 
 export interface MiniBytecodeResult {
@@ -22,6 +22,8 @@ export interface TimelineEvent {
   glide: number
   glidePower: number
   probability: number
+  stretch: number
+  stretchPhase: number
   source?: MiniSourceMapEntry
 }
 
@@ -41,6 +43,8 @@ export function writeEvent(
   glide: number,
   glidePower: number,
   probability: number,
+  stretch: number,
+  stretchPhase: number,
 ): void {
   const base = MINI_BYTECODE_HEADER_SIZE + eventIndex * MINI_EVENT_SIZE
   buffer[base + 0] = start
@@ -51,5 +55,6 @@ export function writeEvent(
   buffer[base + 5] = glide
   buffer[base + 6] = glidePower
   buffer[base + 7] = probability
+  buffer[base + 8] = stretch
+  buffer[base + 9] = stretchPhase
 }
-

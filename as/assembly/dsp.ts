@@ -55,6 +55,7 @@ export class Dsp {
   program: Program = new Program()
 
   // Execute a single op, returns new PC
+  @inline
   executeOp(op: Op, pc: i32, pos: i32, length: i32, left$: usize, right$: usize): i32 {
     const ops = this.program.data.ops
     const gensPool = this.program.gensPool
@@ -267,8 +268,15 @@ export class Dsp {
     return pc
   }
 
+  @inline
   process(left$: usize, right$: usize, begin: i32, length: i32): void {
-    this.program.waitProgramUnlock()
+    const lockPtr = changetype<usize>(this.program) + offsetof<Program>('lock')
+    while (true) {
+      const observed = atomic.cmpxchg<i32>(lockPtr, 0, 1)
+      if (observed === 0) break
+      atomic.wait<i32>(lockPtr, observed, -1)
+    }
+
     const ops = this.program.data.ops
     this.program.gensPool.resetIndices()
 
@@ -284,5 +292,8 @@ export class Dsp {
       pc++
       pc = this.executeOp(op, pc, pos, length, left$, right$)
     }
+
+    atomic.store<i32>(lockPtr, 0)
+    atomic.notify(lockPtr, 1)
   }
 }

@@ -240,7 +240,9 @@ function tokenize(input: string): Token[] {
         else if (input[i] === close) depth--
         i++
       }
-      while (i < input.length && MODIFIER_START.has(input[i]!)) {
+      while (i < input.length) {
+        const c = input[i]!
+        if (/\s/.test(c) || c === '[' || c === '<' || c === ']' || c === '>') break
         i++
       }
       tokens.push({ text: input.slice(start, i), start, end: i })
@@ -312,7 +314,14 @@ function tokensToNodes(tokens: Token[], input: string): Node[] {
       const inner = raw.slice(1, closingIndex)
       const { mods: modText } = splitValueAndModifiers(raw.slice(closingIndex + 1))
       const modifiers = parseModifiers(modText)
-      const children = tokensToNodes(tokenize(inner), input)
+      const innerTokens = tokenize(inner)
+      // Adjust inner token positions to be relative to original input
+      const adjustedInnerTokens = innerTokens.map(t => ({
+        ...t,
+        start: t.start + token.start + 1, // +1 to account for opening bracket
+        end: t.end + token.start + 1,
+      }))
+      const children = tokensToNodes(adjustedInnerTokens, input)
       nodes.push({
         type: 'group',
         angle: first === '<',
@@ -366,7 +375,7 @@ function slotSpan(node: Node): number {
       ? node.children.reduce((sum, child) => sum + slotSpan(child), 0) || 1
       : 1)
     : 1
-  return base * node.modifiers.elongate * node.modifiers.stretch * node.modifiers.replicate
+  return base * node.modifiers.elongate * node.modifiers.replicate
 }
 
 function clamp01(v: number): number {
@@ -382,35 +391,115 @@ function emitNode(
   events: TimelineEvent[],
   source: MiniSourceMapEntry[],
   rng: Lcg,
+  parentStretch: number,
+  inheritedStretch: boolean,
+  stretchStart: number,
+  stretchDuration: number,
 ): void {
   const mods = node.modifiers
   const replicate = Math.max(1, Math.round(mods.replicate))
+  const nodeStretch = mods.stretch > 0 ? mods.stretch : 1
+  const effectiveStretch = parentStretch * nodeStretch
   const repDuration = duration / replicate
 
   for (let rep = 0; rep < replicate; rep++) {
     const repStart = start + rep * repDuration
 
     if (node.type === 'group') {
-      if (node.angle) {
-        const childCount = node.children.length || 1
-        const angleDuration = repDuration * childCount * mods.elongate * mods.stretch
-        const childDuration = angleDuration / childCount
-        let cursor = repStart
-        for (const child of node.children) {
-          emitNode(child, cursor, childDuration, events, source, rng)
-          cursor += childDuration
-        }
-        continue
-      }
+      const repeat = Math.max(1, Math.round(mods.repeat))
+      const repeatDuration = repDuration / repeat
+      const prob = clamp01(mods.probability)
 
-      const total = node.children.reduce((sum, child) => sum + slotSpan(child), 0)
-      const slotDuration = total > 0 ? repDuration / total : repDuration
-      let cursor = repStart
-      for (const child of node.children) {
-        const span = slotSpan(child)
-        const childDuration = slotDuration * span
-        emitNode(child, cursor, childDuration, events, source, rng)
-        cursor += childDuration
+      for (let r = 0; r < repeat; r++) {
+        if (prob > 0 && rng.next() < prob) continue
+
+        const jitter = mods.jitter !== 0 ? (rng.next() * 2 - 1) * mods.jitter * repeatDuration : 0
+        const offset = mods.offset * repeatDuration
+        const baseStart = repStart + r * repeatDuration
+        const groupStart = baseStart + offset + jitter
+
+        if (node.angle) {
+          const childCount = node.children.length || 1
+          const angleDuration = repeatDuration * childCount * mods.elongate
+          const childDuration = angleDuration / childCount
+          let cursor = groupStart
+          for (const child of node.children) {
+            emitNode(
+              child,
+              cursor,
+              childDuration,
+              events,
+              source,
+              rng,
+              effectiveStretch,
+              inheritedStretch || nodeStretch > 1,
+              groupStart,
+              repeatDuration,
+            )
+            cursor += childDuration
+          }
+          continue
+        }
+
+        const stretchInt = nodeStretch > 1 ? Math.round(nodeStretch) : 1
+        const total = node.children.reduce((sum, child) => sum + slotSpan(child), 0)
+        const slotDuration = total > 0 ? repeatDuration / total : repeatDuration
+        let cursor = groupStart
+        let idx = 0
+        for (const child of node.children) {
+          const span = slotSpan(child)
+          const childDuration = slotDuration * span
+          const relStart = cursor - groupStart
+
+          // Calculate phase based on relative position within the stretched group
+          let childStretch = effectiveStretch
+          let childStretchStart = stretchStart
+          let childStretchDuration = stretchDuration
+
+          if (stretchInt > 1 && !inheritedStretch) {
+            // This group is stretched - distribute children across phases
+            const phase = Math.min(stretchInt - 1, Math.round((idx * stretchInt) / Math.max(1, node.children.length)))
+            childStretch = stretchInt
+            // Set stretch context so child calculates phase correctly
+            childStretchStart = groupStart
+            childStretchDuration = repeatDuration * stretchInt
+          }
+          let childEmitStart = cursor
+
+          if (inheritedStretch && effectiveStretch > 1) {
+            // Inheriting stretch - distribute children across phases within the inherited stretch
+            const inheritedStretchInt = Math.round(effectiveStretch)
+            // Distribute children across phases based on their index
+            // For nested groups, distribute across phases 1 to inheritedStretchInt-1
+            const phase = idx === 0
+              ? 1
+              : Math.min(inheritedStretchInt - 1,
+                Math.round((idx * (inheritedStretchInt - 1)) / Math.max(1, node.children.length - 1)))
+            childStretch = inheritedStretchInt
+            // Adjust stretch context so position-based phase calculation gives the assigned phase
+            // We want: (cursor - childStretchStart) / childStretchDuration * inheritedStretchInt = phase
+            // So: childStretchStart = cursor - (phase / inheritedStretchInt) * childStretchDuration
+            childStretchDuration = repeatDuration * inheritedStretchInt
+            childStretchStart = cursor - (phase / inheritedStretchInt) * childStretchDuration
+            // Keep start at original position
+            childEmitStart = cursor
+          }
+
+          emitNode(
+            child,
+            childEmitStart,
+            childDuration,
+            events,
+            source,
+            rng,
+            childStretch,
+            inheritedStretch || nodeStretch > 1,
+            childStretchStart,
+            childStretchDuration,
+          )
+          cursor += childDuration
+          idx++
+        }
       }
       continue
     }
@@ -437,16 +526,43 @@ function emitNode(
 
       if (node.values.length === 0) continue
 
-      if (node.values.length === 1 || mods.strum === 0) {
+      const voices = node.values.length
+      if (voices === 0) continue
+
+      const strumStep = mods.strum === 0
+        ? 0
+        : mods.strum * repeatDuration / Math.max(1, voices - 1)
+
+      for (let i = 0; i < voices; i++) {
+        let stretchInt = effectiveStretch > 1 ? Math.round(effectiveStretch) : 1
+        let phase = 0
+
+        if (stretchInt > 1) {
+          if (!inheritedStretch && nodeStretch > 1) {
+            // Individual event with stretch modifier - use last phase
+            phase = stretchInt - 1
+          }
+          else {
+            // Calculate phase from relative position within stretch context
+            const baseStart = stretchInt > 1 ? stretchStart : start
+            const baseDuration = stretchInt > 1 ? stretchDuration : duration
+            const rel = (eventStart - baseStart) / baseDuration
+            phase = Math.min(stretchInt - 1, Math.max(0, Math.round(rel * stretchInt)))
+          }
+        }
+
+        const noteStart = eventStart + i * strumStep
         events.push({
-          start: eventStart,
-          end: eventStart + eventDuration,
+          start: noteStart,
+          end: noteStart + eventDuration,
           trigger: mods.hold,
           velocity: mods.velocity,
-          value: node.values[0]!,
+          value: node.values[i]!,
           glide,
           glidePower,
           probability: prob,
+          stretch: stretchInt,
+          stretchPhase: phase,
         })
         source.push({
           eventIndex: events.length - 1,
@@ -454,28 +570,6 @@ function emitNode(
           length: node.sourceLength,
           text: node.sourceText,
         })
-      }
-      else {
-        const strumStep = mods.strum * repeatDuration / Math.max(1, node.values.length - 1)
-        for (let i = 0; i < node.values.length; i++) {
-          const noteStart = eventStart + i * strumStep
-          events.push({
-            start: noteStart,
-            end: noteStart + eventDuration,
-            trigger: mods.hold,
-            velocity: mods.velocity,
-            value: node.values[i]!,
-            glide,
-            glidePower,
-            probability: prob,
-          })
-          source.push({
-            eventIndex: events.length - 1,
-            start: node.sourceStart,
-            length: node.sourceLength,
-            text: node.sourceText,
-          })
-        }
       }
     }
   }
@@ -499,17 +593,42 @@ export function compileMiniNotation(input: string, options: CompileOptions = {})
   for (const node of nodes) {
     const span = slotSpan(node)
     const duration = slotDuration * span
-    emitNode(node, cursor, duration, events, source, rng)
+    emitNode(node, cursor, duration, events, source, rng, 1, false, cursor, duration)
     cursor += duration
   }
 
-  events.sort((a, b) => a.start - b.start)
-  const bytecode = allocateBytecode(events.length)
-  bytecode[0] = events.length
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i]!
-    writeEvent(bytecode, i, e.start, e.end, e.trigger, e.velocity, e.value, e.glide, e.glidePower, e.probability)
+  // Sort events and corresponding source map entries by start time
+  const sortedIndices = events
+    .map((_, index) => index)
+    .sort((a, b) => events[a]!.start - events[b]!.start)
+
+  const sortedEvents = sortedIndices.map(i => events[i]!)
+  const sortedSource = sortedIndices.map(i => source[i]!)
+
+  // Update source map event indices to match new sorted order
+  sortedSource.forEach((entry, newIndex) => {
+    entry.eventIndex = newIndex
+  })
+
+  const bytecode = allocateBytecode(sortedEvents.length)
+  bytecode[0] = sortedEvents.length
+  for (let i = 0; i < sortedEvents.length; i++) {
+    const e = sortedEvents[i]!
+    writeEvent(
+      bytecode,
+      i,
+      e.start,
+      e.end,
+      e.trigger,
+      e.velocity,
+      e.value,
+      e.glide,
+      e.glidePower,
+      e.probability,
+      e.stretch,
+      e.stretchPhase,
+    )
   }
 
-  return { bytecode, sourceMap: source }
+  return { bytecode, sourceMap: sortedSource }
 }

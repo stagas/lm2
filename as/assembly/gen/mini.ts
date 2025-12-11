@@ -1,4 +1,5 @@
-import { ARRAY_HEADER_SIZE, MINI_EVENT_SIZE, MINI_HEADER_SIZE, SEQ_HISTORY_SIZE, SEQ_VOICES } from '../constants'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, MINI_EVENT_SIZE, MINI_HEADER_SIZE, SEQ_HISTORY_SIZE,
+  SEQ_VOICES } from '../constants'
 import { Gen } from './gen'
 
 class MiniVoice {
@@ -7,6 +8,14 @@ class MiniVoice {
   holdEndSample: i32 = 0
   value: f32 = 0
   velocity: f32 = 0
+
+  copyFrom(other: MiniVoice): void {
+    this.active = other.active
+    this.triggerSample = other.triggerSample
+    this.holdEndSample = other.holdEndSample
+    this.value = other.value
+    this.velocity = other.velocity
+  }
 }
 
 class MiniRng {
@@ -14,6 +23,10 @@ class MiniRng {
   next(): f32 {
     this.state = (this.state * 1664525 + 1013904223) as u32
     return (this.state as f32) / (u32.MAX_VALUE as f32)
+  }
+
+  copyFrom(other: MiniRng): void {
+    this.state = other.state
   }
 }
 
@@ -25,16 +38,24 @@ export class Mini extends Gen {
   outValue$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
 
   private voices: StaticArray<MiniVoice> = new StaticArray<MiniVoice>(SEQ_VOICES)
+  private eventVoices: StaticArray<i32> = new StaticArray<i32>(ARRAY_SIZE)
+  private voiceEventIndex: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
+  private voiceCursor: i32 = 0
   private rng: MiniRng = new MiniRng()
+  private lastBytecode$: usize = 0
 
   constructor() {
     super()
     for (let i = 0; i < SEQ_VOICES; i++) {
       this.voices[i] = new MiniVoice()
     }
+    this.resetVoiceMaps()
   }
 
   reset(): void {
+    this.voiceCursor = 0
+    this.lastBytecode$ = 0
+    this.resetVoiceMaps()
     for (let i = 0; i < SEQ_VOICES; i++) {
       const voice = this.voices[i]
       voice.active = false
@@ -45,15 +66,76 @@ export class Mini extends Gen {
     }
   }
 
-  private allocateVoice(): i32 {
-    for (let v = 0; v < SEQ_VOICES; v++) {
-      if (!this.voices[v].active) return v
+  copyFrom(other: Gen): void {
+    const src = other as Mini
+    this.bytecode$ = src.bytecode$
+    this.outVoiceCount$ = src.outVoiceCount$
+    this.voiceCursor = src.voiceCursor
+    this.lastBytecode$ = src.lastBytecode$
+
+    for (let i = 0; i < SEQ_VOICES; i++) {
+      this.outTrig$[i] = src.outTrig$[i]
+      this.outVelocity$[i] = src.outVelocity$[i]
+      this.outValue$[i] = src.outValue$[i]
+      this.voices[i].copyFrom(src.voices[i])
+      this.voiceEventIndex[i] = src.voiceEventIndex[i]
     }
-    return 0 // fall back to voice 0 if all busy
+
+    for (let i = 0; i < ARRAY_SIZE; i++) {
+      this.eventVoices[i] = src.eventVoices[i]
+    }
+
+    this.rng.copyFrom(src.rng)
+  }
+
+  private resetVoiceMaps(): void {
+    for (let i = 0; i < ARRAY_SIZE; i++) {
+      this.eventVoices[i] = -1
+    }
+    for (let v = 0; v < SEQ_VOICES; v++) {
+      this.voiceEventIndex[v] = -1
+    }
+  }
+
+  private allocateVoice(): i32 {
+    const start = this.voiceCursor
+    for (let i = 0; i < SEQ_VOICES; i++) {
+      const v = (start + i) % SEQ_VOICES
+      if (!this.voices[v].active) {
+        this.voiceCursor = (v + 1) % SEQ_VOICES
+        return v
+      }
+    }
+    const v = this.voiceCursor
+    this.voiceCursor = (this.voiceCursor + 1) % SEQ_VOICES
+    return v
+  }
+
+  private claimVoice(eventIndex: i32): i32 {
+    if (eventIndex >= 0 && eventIndex < ARRAY_SIZE) {
+      const existing = this.eventVoices[eventIndex]
+      if (existing >= 0) return existing
+    }
+
+    const voiceIndex = this.allocateVoice()
+    const prevEvent = this.voiceEventIndex[voiceIndex]
+    if (prevEvent >= 0 && prevEvent < ARRAY_SIZE) {
+      this.eventVoices[prevEvent] = -1
+    }
+    this.voiceEventIndex[voiceIndex] = eventIndex
+    if (eventIndex >= 0 && eventIndex < ARRAY_SIZE) {
+      this.eventVoices[eventIndex] = voiceIndex
+    }
+    return voiceIndex
   }
 
   process(_: usize, length: i32): void {
     if (this.bytecode$ === 0) return
+
+    if (this.bytecode$ !== this.lastBytecode$) {
+      this.lastBytecode$ = this.bytecode$
+      this.resetVoiceMaps()
+    }
 
     const array = changetype<StaticArray<f32>>(this.bytecode$)
     let historySize = i32(array[2])
@@ -96,17 +178,24 @@ export class Mini extends Gen {
         const velocity = array[base + 3]
         const value = array[base + 4]
         const prob = array[base + 7]
+        const stretch = array[base + 8]
+        const stretchPhase = array[base + 9]
 
         if (prob > 0 && this.rng.next() < prob) continue
+        const stretchInt = stretch <= 1 ? 1 : i32(Mathf.round(stretch))
+        const phase = stretchInt <= 1 ? 0 : i32(Mathf.round(stretchPhase))
+        if ((cycle % stretchInt) !== phase) continue
 
         const eventStartSample = i32(Mathf.floor(f32(start * cycleSamples))) + cycleStartSample
         const eventEndSample = i32(Mathf.floor(f32(end * cycleSamples))) + cycleStartSample
-        const holdSamples = hold <= 0 ? 1 : i32(Mathf.round(f32(hold * cycleSamples)))
-        const holdEndSample = eventStartSample + holdSamples
+        const slotDuration = eventEndSample - eventStartSample
+        const holdSamples = hold <= 0 ? 1 : i32(Mathf.round(hold * f32(slotDuration)))
+        const clampedHoldSamples = holdSamples < 1 ? 1 : holdSamples
+        const holdEndSample = eventStartSample + clampedHoldSamples
 
         if (eventEndSample <= windowStart || eventStartSample >= windowEnd) continue
 
-        const voiceIndex = this.allocateVoice()
+        const voiceIndex = this.claimVoice(i)
         const voice = this.voices[voiceIndex]
         voice.active = true
         voice.triggerSample = eventStartSample

@@ -8,6 +8,12 @@ export class Sin extends Gen {
   private lastTrig: f64 = 0
   private phase: f64 = 0
 
+  copyFrom(other: Gen): void {
+    const src = other as Sin
+    this.lastTrig = src.lastTrig
+    this.phase = src.phase
+  }
+
   @inline
   generate(hz: f32, trig: f32): f32 {
     hz = clampNyquist(hz)

@@ -41,6 +41,8 @@ export function evaluateMiniBytecode(
     const glide = bytecode[base + 5]
     const glidePower = bytecode[base + 6]
     const probability = bytecode[base + 7]
+    const stretch = bytecode[base + 8]
+    const stretchPhase = bytecode[base + 9]
 
     if (probability > 0 && rng.next() < probability) continue
     if (end <= from || start >= to) continue
@@ -54,6 +56,8 @@ export function evaluateMiniBytecode(
     out[outBase + 5] = glide
     out[outBase + 6] = glidePower
     out[outBase + 7] = probability
+    out[outBase + 8] = stretch
+    out[outBase + 9] = stretchPhase
     write++
   }
 

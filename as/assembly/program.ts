@@ -1,4 +1,6 @@
 import {
+  ARRAY_HEADER_SIZE,
+  ARRAY_SIZE,
   ARRAYS_COUNT,
   CALLBACK_SCOPE_MAX_BINDINGS,
   CALLBACK_SCOPE_MAX_DEPTH,
@@ -17,7 +19,7 @@ import { Sin } from './gen/sin'
 import { Smoothed } from './lib/smoothed'
 import { Op } from './shared'
 
-export class GenPool<T> {
+export class GenPool<T extends Gen> {
   private index: i32 = 0
   gens: T[] = []
   constructor(private ctor: () => T) {}
@@ -31,6 +33,17 @@ export class GenPool<T> {
     }
     const gen = this.gens[this.index++]
     return gen
+  }
+
+  copyFrom(source: GenPool<T>): void {
+    this.index = source.index
+    const needed = source.gens.length
+    while (this.gens.length < needed) {
+      this.gens.push(this.ctor())
+    }
+    for (let i = 0; i < needed; i++) {
+      this.gens[i].copyFrom(source.gens[i])
+    }
   }
 }
 
@@ -66,6 +79,14 @@ class GensPool {
         return this.analysers.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
+  }
+
+  copyFrom(source: GensPool): void {
+    this.sins.copyFrom(source.sins)
+    this.ads.copyFrom(source.ads)
+    this.adsrs.copyFrom(source.adsrs)
+    this.minis.copyFrom(source.minis)
+    this.analysers.copyFrom(source.analysers)
   }
 }
 
@@ -121,6 +142,36 @@ export class ProgramData {
     const literal = this.literals[index]
     this.releaseLock()
     return literal
+  }
+
+  copyFrom(source: ProgramData): void {
+    this.lock = source.lock
+
+    memory.copy(
+      changetype<usize>(this.ops),
+      changetype<usize>(source.ops),
+      OPS_COUNT << 2,
+    )
+
+    memory.copy(
+      changetype<usize>(this.literals),
+      changetype<usize>(source.literals),
+      LITERALS_COUNT << 2,
+    )
+
+    memory.copy(
+      changetype<usize>(this.arrays),
+      changetype<usize>(source.arrays),
+      ARRAYS_COUNT * sizeof<usize>(),
+    )
+
+    const arrayBytes = (ARRAY_SIZE + ARRAY_HEADER_SIZE) << 2
+    for (let i = 0; i < ARRAYS_COUNT; i++) {
+      const src$ = source.arrays[i]
+      const dst$ = this.arrays[i]
+      if (src$ === 0 || dst$ === 0) continue
+      memory.copy(dst$, src$, arrayBytes)
+    }
   }
 }
 
@@ -204,5 +255,57 @@ export class Program {
       }
     }
     return this.outsPool.get(index)
+  }
+
+  copyFrom(source: Program): void {
+    this.lock = source.lock
+    // this.data.copyFrom(source.data)
+
+    const outBytes = CHUNK_SIZE << 2
+    for (let i = 0; i < this.outsPool.outs.length; i++) {
+      const src$ = changetype<usize>(source.outsPool.outs[i])
+      const dst$ = changetype<usize>(this.outsPool.outs[i])
+      memory.copy(dst$, src$, outBytes)
+    }
+
+    const analyserBytes = RING_BUFFER_SIZE << 2
+    for (let i = 0; i < this.analyserOutsPool.outs.length; i++) {
+      const src$ = changetype<usize>(source.analyserOutsPool.outs[i])
+      const dst$ = changetype<usize>(this.analyserOutsPool.outs[i])
+      memory.copy(dst$, src$, analyserBytes)
+    }
+
+    this.callbackDepth = source.callbackDepth
+    memory.copy(
+      changetype<usize>(this.callbackBodyBase),
+      changetype<usize>(source.callbackBodyBase),
+      CALLBACK_SCOPE_MAX_DEPTH << 2,
+    )
+    memory.copy(
+      changetype<usize>(this.callbackRemapBase),
+      changetype<usize>(source.callbackRemapBase),
+      CALLBACK_SCOPE_MAX_DEPTH << 2,
+    )
+    memory.copy(
+      changetype<usize>(this.callbackBindingCount),
+      changetype<usize>(source.callbackBindingCount),
+      CALLBACK_SCOPE_MAX_DEPTH << 2,
+    )
+    memory.copy(
+      changetype<usize>(this.callbackBindingIndices),
+      changetype<usize>(source.callbackBindingIndices),
+      CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS << 2,
+    )
+    memory.copy(
+      changetype<usize>(this.callbackBindingOuts),
+      changetype<usize>(source.callbackBindingOuts),
+      CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS * sizeof<usize>(),
+    )
+
+    for (let i = 0; i < this.literalsSmoothed.length; i++) {
+      this.literalsSmoothed[i].copyFrom(source.literalsSmoothed[i])
+    }
+
+    this.gensPool.copyFrom(source.gensPool)
   }
 }

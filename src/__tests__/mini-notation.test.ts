@@ -70,12 +70,73 @@ describe('Mini-Notation compiler/evaluator', () => {
     ])
   })
 
+  it('repeats square-bracket groups within their slot', () => {
+    const events = runMiniNotation('c4 e4 [g4 a4]*2')
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 3 },
+      { value: 'e4', start: 1 / 3, end: 2 / 3 },
+      { value: 'g4', start: 2 / 3, end: 3 / 4 },
+      { value: 'a4', start: 3 / 4, end: 5 / 6 },
+      { value: 'g4', start: 5 / 6, end: 11 / 12 },
+      { value: 'a4', start: 11 / 12, end: 1 },
+    ])
+  })
+
+  it('replicates square-bracket groups across slots', () => {
+    const events = runMiniNotation('c4 e4 [g4 a4]!2')
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 4 },
+      { value: 'e4', start: 1 / 4, end: 1 / 2 },
+      { value: 'g4', start: 1 / 2, end: 5 / 8 },
+      { value: 'a4', start: 5 / 8, end: 3 / 4 },
+      { value: 'g4', start: 3 / 4, end: 7 / 8 },
+      { value: 'a4', start: 7 / 8, end: 1 },
+    ])
+  })
+
   it('strums chords with $', () => {
     const events = runMiniNotation('c4e4g4$0.5')
     expectTimeline(events, [
       { value: toValue('c4'), start: 0, end: 1 },
       { value: toValue('e4'), start: 1 / 4, end: 5 / 4 },
       { value: toValue('g4'), start: 1 / 2, end: 3 / 2 },
+    ])
+  })
+
+  it('stretches events across cycles with /N', () => {
+    const events = runMiniNotation('c4 e4/2')
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 2 },
+      { value: 'c4', start: 1, end: 3 / 2 },
+      { value: 'e4', start: 3 / 2, end: 2 },
+    ])
+  })
+
+  it('spreads stretched groups across cycles', () => {
+    const events = runMiniNotation('c4 [e4 [g4 a4]]/2')
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 2 },
+      { value: 'e4', start: 1 / 2, end: 1 },
+      { value: 'c4', start: 1, end: 1 + 1 / 2 },
+      { value: 'g4', start: 1 + 1 / 2, end: 1 + 3 / 4 },
+      { value: 'a4', start: 1 + 3 / 4, end: 2 },
+    ])
+  })
+
+  it('spreads stretched groups across 3 cycles', () => {
+    const events = runMiniNotation('c4 [e4 [g4 a4]]/3')
+    console.log(events)
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 2 },
+      { value: 'c4', start: 1, end: 3 / 2 },
+      { value: 'c4', start: 2, end: 5 / 2 },
+      { value: 'c4', start: 3, end: 7 / 2 },
+      { value: 'e4', start: 1 / 2, end: 5 / 4 },
+      { value: 'e4', start: 1, end: 7 / 4 },
+      { value: 'g4', start: 7 / 4, end: 17 / 8 },
+      { value: 'g4', start: 9 / 4, end: 21 / 8 },
+      { value: 'a4', start: 21 / 8, end: 3 },
+      { value: 'e4', start: 7 / 2, end: 17 / 4 },
     ])
   })
 

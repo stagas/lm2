@@ -15,6 +15,13 @@ export class Ad extends Gen {
   private position: f32 = 0
   private lastTrig: f32 = 0
 
+  copyFrom(other: Gen): void {
+    const src = other as Ad
+    this.phase = src.phase
+    this.position = src.position
+    this.lastTrig = src.lastTrig
+  }
+
   @inline
   generate(attack: f32, decay: f32, trig: f32): f32 {
     const isTrigger = trig > 0 && this.lastTrig <= 0

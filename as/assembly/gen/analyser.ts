@@ -3,6 +3,10 @@ import { Gen } from './gen'
 export class Analyser extends Gen {
   in$: usize = 0
 
+  copyFrom(other: Gen): void {
+    const src = other as Analyser
+  }
+
   process(out$: usize, length: i32): void {
     let in$ = this.in$
 

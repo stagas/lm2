@@ -9,4 +9,11 @@ export class Smoothed {
   update(): void {
     this.value += (this.target - this.value) * this.smoothingValue
   }
+
+  copyFrom(other: Smoothed): void {
+    this.value = other.value
+    this.target = other.target
+    this.smoothingTarget = other.smoothingTarget
+    this.smoothingValue = other.smoothingValue
+  }
 }

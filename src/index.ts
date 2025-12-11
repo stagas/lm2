@@ -1,7 +1,7 @@
 import { type Ring, toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, LITERALS_COUNT, OPS_COUNT, RING_BUFFER_SIZE,
-  SEQ_HISTORY_SIZE } from '../as/assembly/constants.ts'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, LITERALS_COUNT, MAX_DSP_INSTANCES, OPS_COUNT,
+  RING_BUFFER_SIZE, SEQ_HISTORY_SIZE } from '../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
 import { compileMiniNotation } from './mini-notation.ts'
@@ -22,9 +22,12 @@ type VmArray = {
 }
 
 let wasmMemory: WebAssembly.Memory | undefined
-let wasmRings: Ring[] | undefined
 let wasmDsp: Dsp | undefined
-let program: Program | undefined
+let wasmDspPtr = 0
+let extraDsp: Dsp | undefined
+let extraDspPtr = 0
+let program1: { program: Program; clear: () => void } | undefined
+let program2: { program: Program; clear: () => void } | undefined
 
 const MINI_ARRAY_INDEX = 0
 const LIT_ATTACK = 0
@@ -36,28 +39,29 @@ const LIT_MASTER = 4
 type Program = Awaited<ReturnType<typeof createProgram>>
 type ProgramDataView = ReturnType<typeof createProgramDataView>
 
-function buildProgramFromSequence(data: ProgramDataView, sequence: string) {
+function updateSequence(data: ProgramDataView, sequence: string) {
   const compiled = compileMiniNotation(sequence)
-
   const target = data.arrays[MINI_ARRAY_INDEX]
   target.raw.fill(0)
   target.raw[2] = SEQ_HISTORY_SIZE
   target.raw.set(compiled.bytecode, ARRAY_HEADER_SIZE)
   target.length = compiled.bytecode.length
+}
 
+function buildProgram(data: ProgramDataView) {
   const bytecode = new Bytecode()
 
-  data.writeLiteral(LIT_ATTACK, 0.05)
-  data.writeLiteral(LIT_DECAY, 0.05)
+  data.writeLiteral(LIT_ATTACK, 0.02)
+  data.writeLiteral(LIT_DECAY, 0.02)
   data.writeLiteral(LIT_SUSTAIN, 0.7)
-  data.writeLiteral(LIT_RELEASE, 0.2)
+  data.writeLiteral(LIT_RELEASE, 0.3)
   data.writeLiteral(LIT_MASTER, 0.25)
 
   bytecode.Mini(MINI_ARRAY_INDEX)
 
   bytecode.SeqForEach(() => {
     bytecode.SeqVoiceValue()
-    bytecode.SeqVoiceTrig()
+    bytecode.Literal(5)
     bytecode.Sin()
 
     bytecode.Literal(LIT_ATTACK)
@@ -82,9 +86,6 @@ function buildProgramFromSequence(data: ProgramDataView, sequence: string) {
   data.ops.fill(0)
   data.ops.set(bytecode.ops.subarray(0, bytecode.pc))
 }
-
-const programDataPool: ProgramDataView[] = []
-let programDataPoolIndex = 0
 
 function createProgramDataView(data$: number, arrays$: number[]) {
   if (!wasmMemory) throw new Error('Wasm memory not initialized')
@@ -135,18 +136,19 @@ function createProgramDataView(data$: number, arrays$: number[]) {
     ops,
     arrays,
     literals,
-    acquireLock() {
-      while (Atomics.load(this.lock, 0) !== 0) {
-        Atomics.wait(this.lock, 0, 0)
+    async acquireLock() {
+      while (true) {
+        const prev = Atomics.compareExchange(this.lock, 0, 0, 1)
+        if (prev === 0) return
+        await Atomics.waitAsync(this.lock, 0, prev).value
       }
-      Atomics.store(this.lock, 0, 1)
     },
     releaseLock() {
       Atomics.store(this.lock, 0, 0)
       Atomics.notify(this.lock, 0)
     },
-    withLock(fn: () => void) {
-      this.acquireLock()
+    async withLock(fn: () => void) {
+      await this.acquireLock()
       fn()
       this.releaseLock()
     },
@@ -166,19 +168,6 @@ async function createProgramData() {
   return data
 }
 
-async function ensureProgramData(count = 2) {
-  while (programDataPool.length < count) {
-    programDataPool.push(await createProgramData())
-  }
-}
-
-async function nextProgramData(): Promise<ProgramDataView> {
-  await ensureProgramData()
-  const data = programDataPool[programDataPoolIndex]
-  programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length
-  return data
-}
-
 async function fetchWasmBinary() {
   const wasmUrl = new URL('/as/build/index.wasm', location.origin).toString()
   const response = await fetch(wasmUrl + '?t=' + Date.now())
@@ -191,24 +180,35 @@ async function fetchWasmBinary() {
 
 async function updateWasmBinary() {
   const binary = await fetchWasmBinary()
-  const { memory, rings, dsp$ } = await worklet.setWasmBinary(binary)
+  const { memory, dsp$ } = await worklet.setWasmBinary(binary)
   wasmMemory = memory
-  wasmRings = rings
   wasmDsp = DspStruct(wasmMemory.buffer, dsp$)
-  program = await createProgram()
-  wasmDsp.program = program.ptr$
+  wasmDspPtr = dsp$
+
+  program1?.clear()
+  program2?.clear()
+
+  program1 = await createProgramAndUI(0)
+  program2 = await createProgramAndUI(1)
+  wasmDsp!.program = program1.program.ptr$
+
+  extraDsp = undefined
+  extraDspPtr = 0
 }
 
 async function createWorklet() {
   const audioContext = new AudioContext({ latencyHint: 0.05 })
   await audioContext.audioWorklet.addModule(workletUrl)
   const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
-  const ringPos = new Uint8Array(new SharedArrayBuffer(4))
-  const control = new Uint32Array(new SharedArrayBuffer(4))
-  const bpmValue = new Float32Array(new SharedArrayBuffer(4))
+  const ringPos = new Uint8Array(new SharedArrayBuffer(1 * Uint8Array.BYTES_PER_ELEMENT))
+  const control = new Uint32Array(new SharedArrayBuffer(1 * Uint32Array.BYTES_PER_ELEMENT))
+  const bpmValue = new Float32Array(new SharedArrayBuffer(1 * Float32Array.BYTES_PER_ELEMENT))
   bpmValue[0] = 60 // Initialize BPM to 60
-  const globalSampleCount = new Int32Array(new SharedArrayBuffer(4))
+  const globalSampleCount = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
   globalSampleCount[0] = 0
+  const programSwap = new Uint32Array(
+    new SharedArrayBuffer(3 * MAX_DSP_INSTANCES * Uint32Array.BYTES_PER_ELEMENT),
+  ) // old, new, dsp$ per instance
   const dsp = new AudioWorkletNode(audioContext, 'dsp', {
     outputChannelCount: [2],
     processorOptions: {
@@ -217,50 +217,87 @@ async function createWorklet() {
       control,
       bpmValue,
       globalSampleCount,
+      programSwap,
     },
   } satisfies DspProcessorOptions)
   dsp.connect(audioContext.destination)
   const worklet = rpc<DspProcessor>(dsp.port)
-  return { ringPos, control, bpmValue, globalSampleCount, worklet, audioContext }
+  return { ringPos, control, bpmValue, globalSampleCount, programSwap, worklet, audioContext }
 }
 
-const { ringPos, control, bpmValue, globalSampleCount, worklet, audioContext } = await createWorklet()
+const {
+  ringPos,
+  control,
+  bpmValue,
+  globalSampleCount,
+  programSwap,
+  worklet,
+  audioContext,
+} = await createWorklet()
 
-async function createProgram() {
+async function createProgram(sequence: string) {
   if (!wasmMemory) throw new Error('Wasm memory not initialized')
-  await ensureProgramData()
   const program$ = await worklet.createProgram()
   const program = ProgramStruct(wasmMemory.buffer, program$)
   const lock = new Int32Array(wasmMemory.buffer, program.lock, 1)
+
+  let programDataPoolIndex = 0
+  const programDataPool: ProgramDataView[] = [
+    await createProgramData(),
+    await createProgramData(),
+  ]
+
+  function nextProgramData() {
+    const data = programDataPool[programDataPoolIndex]
+    programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length
+    return data
+  }
+
   const analyserOutsPool = AnalyserOutsPoolStruct(wasmMemory.buffer, program.analyserOutsPool)
   const analyserOuts$ = new Uint32Array(wasmMemory.buffer, analyserOutsPool.outs, 64)
-  const _analyserOuts = [...analyserOuts$].map(out$ =>
+  const analyserOuts = [...analyserOuts$].map(out$ =>
     toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
   )
-  let data = await nextProgramData()
-  buildProgramFromSequence(data, currentSequenceString)
+  let programData: ProgramDataView | undefined
   const out = {
     ptr$: program$,
     lock,
-    get data() {
-      return data
+    analyserOuts,
+    async updateSequence(sequence: string, data: ProgramDataView | undefined = programData) {
+      if (!data) throw new Error('Data not set')
+      await this.withLock(() => {
+        updateSequence(data, sequence)
+      })
     },
-    set data(value: ProgramDataView) {
-      while (Atomics.load(this.lock, 0) !== 0) {
-        Atomics.wait(this.lock, 0, 0)
+    async buildFromSequence(sequence: string) {
+      let data = nextProgramData()
+      buildProgram(data)
+      await this.updateSequence(sequence, data)
+      await this.setData(data)
+    },
+    async acquireLock() {
+      while (true) {
+        const prev = Atomics.compareExchange(this.lock, 0, 0, 1)
+        if (prev === 0) break
+        await Atomics.waitAsync(this.lock, 0, prev).value
       }
-      Atomics.store(this.lock, 0, 1)
-      try {
-        data = value
-        program.data = data.ptr$
-      }
-      finally {
-        Atomics.store(this.lock, 0, 0)
-        Atomics.notify(this.lock, 0)
-      }
+    },
+    releaseLock() {
+      Atomics.store(this.lock, 0, 0)
+      Atomics.notify(this.lock, 0)
+    },
+    async withLock(fn: () => void) {
+      await this.acquireLock()
+      fn()
+      this.releaseLock()
+    },
+    async setData(value: ProgramDataView) {
+      await this.withLock(() => {
+        programData = value
+        program.data = programData.ptr$
+      })
     },
   }
-  out.data = data
   return out
 }
 
@@ -304,35 +341,86 @@ const stopButton = Object.assign(
 )
 document.body.appendChild(stopButton)
 
-const SEQUENCE_STORAGE_KEY = 'engine2:sequence'
-const DEFAULT_SEQUENCE = 'c4 e4 [g4 a4]*2'
-let currentSequenceString = localStorage.getItem(SEQUENCE_STORAGE_KEY) ?? DEFAULT_SEQUENCE
-
-const sequenceInput = Object.assign(
-  document.createElement('input'),
+const swapButton = Object.assign(
+  document.createElement('button'),
   {
-    type: 'text',
-    value: currentSequenceString,
-    className: 'bg-gray-800 text-white p-2 rounded-md border border-gray-600 w-full max-w-md',
-    oninput: (e: InputEvent & { target: HTMLInputElement }) => {
-      void updateSequence(e.target.value)
+    textContent: 'Swap',
+    className: 'bg-purple-500 text-white p-2 rounded-md',
+    onmousedown: async () => {
+      if (!program1 || !program2 || !programSwap) return
+      for (let i = 0; i < programSwap.length; i++) {
+        Atomics.store(programSwap, i, 0)
+      }
+      Atomics.store(programSwap, 0, program1.program.ptr$)
+      Atomics.store(programSwap, 1, program2.program.ptr$)
+      Atomics.store(programSwap, 2, wasmDspPtr)
+      Atomics.store(control, 0, ControlOp.Swap)
+      ;[program1, program2] = [program2, program1]
     },
   },
 )
-document.body.appendChild(sequenceInput)
+document.body.appendChild(swapButton)
 
-async function updateSequence(newSequence: string) {
-  currentSequenceString = newSequence
-  localStorage.setItem(SEQUENCE_STORAGE_KEY, newSequence)
-  if (program) {
-    const data = await nextProgramData()
-    buildProgramFromSequence(data, currentSequenceString)
-    program.data = data
-    Atomics.store(globalSampleCount, 0, 0)
+const playBothButton = Object.assign(
+  document.createElement('button'),
+  {
+    textContent: 'Play Both',
+    className: 'bg-emerald-600 text-white p-2 rounded-md',
+    onmousedown: async () => {
+      if (!program1 || !program2 || !wasmDsp) return
+      wasmDsp.program = program1.program.ptr$
+      await ensureExtraDsp()
+      if (!extraDsp) return
+      extraDsp.program = program2.program.ptr$
+      Atomics.store(control, 0, ControlOp.Start)
+      state = 'running'
+    },
+  },
+)
+document.body.appendChild(playBothButton)
+
+const DEFAULT_SEQUENCES = ['c4 e4 [g4 a4]*2', 'a3 c4 [d4 f4 a4]*2']
+
+async function createProgramAndUI(index: number) {
+  const sequence = localStorage.getItem(`engine2:sequence-${index}`) ?? DEFAULT_SEQUENCES[index]
+  const program = await createProgram(sequence)
+  await program.buildFromSequence(sequence)
+
+  const sequenceInput = Object.assign(
+    document.createElement('input'),
+    {
+      type: 'text',
+      value: sequence,
+      className: 'bg-gray-800 text-white p-2 rounded-md border border-gray-600 w-full max-w-md',
+      oninput: (e: InputEvent & { target: HTMLInputElement }) => {
+        program.buildFromSequence(e.target.value)
+        localStorage.setItem(`engine2:sequence-${index}`, e.target.value)
+      },
+    },
+  )
+  document.body.appendChild(sequenceInput)
+
+  function clear() {
+    sequenceInput.remove()
+  }
+
+  return { program, clear }
+}
+
+async function ensureExtraDsp() {
+  if (!wasmMemory || !program2) return
+  if (!extraDspPtr) {
+    const dsp$ = await worklet.createDsp(program2.program.ptr$)
+    extraDspPtr = dsp$
+    extraDsp = DspStruct(wasmMemory.buffer, dsp$)
+  }
+  if (extraDsp) {
+    extraDsp.program = program2.program.ptr$
   }
 }
 
-updateWasmBinary()
+await updateWasmBinary()
+
 if (import.meta.hot) {
   import.meta.hot.on('vite:beforeUpdate', updateWasmBinary)
 }

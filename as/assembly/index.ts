@@ -21,6 +21,12 @@ export function createProgram(): usize {
   return changetype<usize>(new Program())
 }
 
+export function copyProgram(target$: usize, source$: usize): void {
+  const target = changetype<Program>(target$)
+  const source = changetype<Program>(source$)
+  target.copyFrom(source)
+}
+
 export function createProgramData(): usize {
   return changetype<usize>(new ProgramData())
 }
