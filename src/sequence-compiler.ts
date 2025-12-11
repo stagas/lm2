@@ -428,75 +428,6 @@ function tokenize(input: string): string[] {
   return tokens
 }
 
-function compileTokenFlattened(
-  token: string,
-  bc: SequenceBytecode,
-  parentMods: Modifiers,
-): void {
-  // Compile token with nested brackets flattened into individual events
-  // Used for spread mode where /N spreads ALL leaf events across N cycles
-  if (token.startsWith('<') || token.startsWith('[')) {
-    const isSquare = token.startsWith('[')
-    const closingChar = isSquare ? ']' : '>'
-    const closingIndex = token.lastIndexOf(closingChar)
-    const content = token.slice(1, closingIndex)
-    const modifiersStr = token.slice(closingIndex + 1)
-    const mods = parseModifiers(modifiersStr, parentMods, isSquare)
-
-    const innerTokens = tokenize(content)
-
-    // Children inherit velocity
-    const childMods: Modifiers = {
-      velocity: mods.velocity,
-      prob: 1,
-      hold: 0,
-      repeat: 1,
-      density: 1,
-      speed: 1,
-      offset: 0,
-      jitter: 0,
-      glide: 0,
-      strum: 0,
-      spreadCycles: 0,
-      replicate: 1,
-    }
-
-    // Recursively flatten all children
-    for (const innerToken of innerTokens) {
-      compileTokenFlattened(innerToken, bc, childMods)
-    }
-  }
-  else if (token.startsWith('_') || token.startsWith('~')) {
-    // Rest - compile as single rest slot
-    const modifiersStr = token.slice(1)
-    const mods = parseModifiers(modifiersStr, parentMods)
-    bc.rest(mods.repeat)
-  }
-  else {
-    // Leaf event (note or chord) - compile directly
-    compileToken(token, bc, parentMods)
-  }
-}
-
-// Helper to collect all leaf tokens from a token (for spread mode metadata tracking)
-function collectLeafTokens(token: string, parentMods: Modifiers): string[] {
-  if (token.startsWith('<') || token.startsWith('[')) {
-    const isSquare = token.startsWith('[')
-    const closingChar = isSquare ? ']' : '>'
-    const closingIndex = token.lastIndexOf(closingChar)
-    const content = token.slice(1, closingIndex)
-    const innerTokens = tokenize(content)
-    const leaves: string[] = []
-    for (const inner of innerTokens) {
-      leaves.push(...collectLeafTokens(inner, parentMods))
-    }
-    return leaves
-  }
-  else {
-    return [token]
-  }
-}
-
 function compileToken(
   token: string,
   bc: SequenceBytecode,
@@ -809,15 +740,18 @@ function compileToken(
       // !N: take N slots, trigger once per slot
       slotCount = mods.replicate
       repeatCount = mods.replicate
-    } else if (mods.repeat > 1 && mods.speed < 1) {
+    }
+    else if (mods.repeat > 1 && mods.speed < 1) {
       // @N*M: take N slots (from @N), trigger M times (from *M)
       slotCount = 1 / mods.speed
       repeatCount = mods.repeat
-    } else if (mods.repeat > 1) {
+    }
+    else if (mods.repeat > 1) {
       // *N: take 1 slot, trigger N times
       slotCount = 1
       repeatCount = mods.repeat
-    } else {
+    }
+    else {
       // @N or normal: take N slots (or 1), trigger once
       slotCount = 1 / mods.speed
       repeatCount = 1
@@ -861,7 +795,7 @@ export interface TokenMetadata {
   length: number
   flatIndices: number[]
   bytecodePos: number
-  bytecodePositions: number[] // All bytecode positions for this token (for repeated events)
+  bytecodePositions: number[] | undefined // All bytecode positions for this token (for repeated events)
 }
 
 export interface CompiledSequence {

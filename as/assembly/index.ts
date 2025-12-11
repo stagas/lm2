@@ -1,7 +1,7 @@
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, SEQ_VOICES } from './constants'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, OPS_COUNT } from './constants'
 import { Dsp } from './dsp'
-import { Seq } from './gen/seq'
-import { Program } from './program'
+import { evaluateMiniBytecode } from './mini-notation'
+import { Program, ProgramData } from './program'
 
 export * from './globals'
 
@@ -21,15 +21,19 @@ export function createProgram(): usize {
   return changetype<usize>(new Program())
 }
 
+export function createProgramData(): usize {
+  return changetype<usize>(new ProgramData())
+}
+
+export function createOps(): usize {
+  return changetype<usize>(new StaticArray<i32>(OPS_COUNT))
+}
+
 export function createArray(): usize {
   const array = new StaticArray<f32>(ARRAY_SIZE + ARRAY_HEADER_SIZE)
   array[1] = 0 // history write position
   array[2] = 0 // history size (only set for sequence bytecode)
   return changetype<usize>(array)
-}
-
-export function createSeq(): usize {
-  return changetype<usize>(new Seq())
 }
 
 export function processAudio(dsp$: usize, left$: usize, right$: usize, begin: i32, length: i32): void {
@@ -62,50 +66,13 @@ export function resetDsp(dsp$: usize): void {
   dsp.program.gensPool.resetAllSeqs()
 }
 
-// Debug exports for Seq diagnostics
-export function debugSeqGetCycleCount(seq$: usize): i32 {
-  const seq = changetype<Seq>(seq$)
-  return seq.getCycleCount()
-}
-
-export function debugSeqGetStackLength(seq$: usize): i32 {
-  const seq = changetype<Seq>(seq$)
-  return seq.getStackLength()
-}
-
-export function debugSeqGetNextEventTime(seq$: usize): f64 {
-  const seq = changetype<Seq>(seq$)
-  return seq.getNextEventTime()
-}
-
-export function debugSeqGetTime(seq$: usize): f64 {
-  const seq = changetype<Seq>(seq$)
-  return seq.getTime()
-}
-
-export function debugSeqReset(seq$: usize): void {
-  const seq = changetype<Seq>(seq$)
-  seq.reset()
-}
-
-export function debugSeqSetSeed(seq$: usize, seed: u32): void {
-  const seq = changetype<Seq>(seq$)
-  seq.setSeed(seed)
-}
-
-// Debug: Process Seq directly for diagnostics
-export function debugSeqProcess(seq$: usize, bytecode$: usize, outTrig$: usize, outVelocity$: usize, outValue$: usize,
-  outVoiceCount$: usize, length: i32): void
-{
-  const seq = changetype<Seq>(seq$)
-  seq.bytecode$ = bytecode$
-  // Set up output buffers for all voices
-  // Each voice gets its own buffer: voice v starts at offset v * length * 4 bytes
-  for (let v = 0; v < SEQ_VOICES; v++) {
-    seq.outTrig$[v] = outTrig$ + (v * length * 4)
-    seq.outVelocity$[v] = outVelocity$ + (v * length * 4)
-    seq.outValue$[v] = outValue$ + (v * length * 4)
-  }
-  seq.outVoiceCount$ = outVoiceCount$
-  seq.process(0, length)
+export function evalMiniBytecode(
+  bytecode$: usize,
+  bytecodeLength: i32,
+  from: f32,
+  to: f32,
+  out$: usize,
+  seed: u32 = 1,
+): i32 {
+  return evaluateMiniBytecode(bytecode$, bytecodeLength, from, to, out$, seed)
 }

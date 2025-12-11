@@ -18,14 +18,15 @@ export type AnalyserOutsPool = typeof AnalyserOutsPoolStruct.type
 export const ProgramDataStruct = Struct({
   lock: 'i32',
 
+  ops: 'usize',
   arrays: 'usize',
   literals: 'usize',
 })
 export type ProgramData = typeof ProgramDataStruct.type
 
 export const ProgramStruct = Struct({
+  lock: 'i32',
   data: 'usize',
-  ops: 'usize',
   outsPool: 'usize',
   analyserOutsPool: 'usize',
 })

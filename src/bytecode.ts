@@ -10,6 +10,8 @@ export class Bytecode {
   stack: number[] = []
   outsCount = 0
   analyserOutsCount = 0
+  private miniCallbacks: { patchPc: number }[] = []
+  private callbackScopes: { trig: number; velocity: number; value: number }[] = []
 
   emit(op: Op, ...args: any[]) {
     this.ops[this.pc++] = op
@@ -146,7 +148,7 @@ export class Bytecode {
     this.stack.push(out)
   }
 
-  Seq = (arrayIndex: number) => {
+  Mini = (arrayIndex: number) => {
     const voiceCountOut = this.outsCount++
     const voiceOuts: number[][] = []
 
@@ -162,65 +164,100 @@ export class Bytecode {
       emitArgs.push(...voice)
     }
 
-    this.emit(Op.Seq, ...emitArgs)
+    const callbackBaseIndex = emitArgs.length
+    // Callback metadata placeholders:
+    // hasCallback, bodyStartPc, bodyLength, bodyBufBase, scopeTrig, scopeVelocity, scopeValue, bodyAudioOut, mixOut
+    emitArgs.push(0, 0, 0, 0, 0, 0, 0, 0, 0)
 
-    // Push voice outputs first, then voice count last (so it's on top for SeqForEach to pop)
+    const miniPc = this.pc
+    this.emit(Op.Mini, ...emitArgs)
+    const patchPc = miniPc + 1 + callbackBaseIndex
+    this.miniCallbacks.push({ patchPc })
+
     for (const voice of voiceOuts) {
-      this.stack.push(voice[0]) // trig
-      this.stack.push(voice[1]) // velocity
-      this.stack.push(voice[2]) // value
+      this.stack.push(voice[0])
+      this.stack.push(voice[1])
+      this.stack.push(voice[2])
     }
-    this.stack.push(voiceCountOut) // voice count (on top)
+    this.stack.push(voiceCountOut)
+  }
+
+  Seq = (arrayIndex: number) => {
+    // Backward compatibility: route Seq to Mini
+    this.Mini(arrayIndex)
   }
 
   SeqForEach = (bodyFn: () => void) => {
-    // Runtime loop: execute body for each active voice
-    // Voice count is on top of stack from Seq
+    const miniInfo = this.miniCallbacks.pop()
+    if (!miniInfo) {
+      throw new Error('SeqForEach must follow a Mini call')
+    }
 
-    const voiceCount = this.stack.pop()! // Pop voice count
-    const bodyBufBase = this.outsCount // First buffer index used in body (for remapping)
+    this.stack.pop() // voice count (top of stack)
 
-    const seqForEachPc = this.pc
-    this.emit(Op.SeqForEach, voiceCount, 0, 0, bodyBufBase, 0) // voiceCount, body start, body length, bodyBufBase, audioOutBuf
+    // Final mixed output sits outside the remapped range
+    const mixOut = this.outsCount++
+
+    // Body buffers (remapped per voice)
+    const bodyBufBase = this.outsCount
+    const scopeTrig = this.outsCount++
+    const scopeVelocity = this.outsCount++
+    const scopeValue = this.outsCount++
+
+    // Expose scoped inputs to SeqVoice* helpers
+    this.callbackScopes.push({ trig: scopeTrig, velocity: scopeVelocity, value: scopeValue })
 
     const bodyStartPc = this.pc
     bodyFn() // Generate the loop body bytecode once
     const bodyLength = this.pc - bodyStartPc
 
-    // The audio output is whatever is on top of stack after body
-    const audioOutBuf = this.stack.at(-1)!
+    // Audio output from the body is what remains on top of the stack
+    const bodyAudioOut = this.Peek()
 
-    // Patch the offsets
-    this.ops[seqForEachPc + 2] = bodyStartPc // body start offset
-    this.ops[seqForEachPc + 3] = bodyLength // body length
-    this.ops[seqForEachPc + 5] = audioOutBuf // audio output buffer (compile-time)
+    this.callbackScopes.pop()
+
+    // Patch Seq metadata
+    const patchPc = miniInfo.patchPc
+    this.ops[patchPc] = 1
+    this.ops[patchPc + 1] = bodyStartPc
+    this.ops[patchPc + 2] = bodyLength
+    this.ops[patchPc + 3] = bodyBufBase
+    this.ops[patchPc + 4] = scopeTrig
+    this.ops[patchPc + 5] = scopeVelocity
+    this.ops[patchPc + 6] = scopeValue
+    this.ops[patchPc + 7] = bodyAudioOut
+    this.ops[patchPc + 8] = mixOut
+
+    // Push final mixed audio output onto the stack
+    this.stack.push(mixOut)
   }
 
   SeqVoiceTrig = () => {
-    // Runtime: reads current voice's trig (voice index determined at runtime)
-    const out = this.outsCount++
-    this.emit(Op.SeqVoiceTrig, out)
-    this.stack.push(out)
+    const scope = this.callbackScopes.at(-1)
+    if (!scope) {
+      throw new Error('SeqVoiceTrig must be used inside SeqForEach body')
+    }
+    this.stack.push(scope.trig)
   }
 
   SeqVoiceVelocity = () => {
-    // Runtime: reads current voice's velocity
-    const out = this.outsCount++
-    this.emit(Op.SeqVoiceVelocity, out)
-    this.stack.push(out)
+    const scope = this.callbackScopes.at(-1)
+    if (!scope) {
+      throw new Error('SeqVoiceVelocity must be used inside SeqForEach body')
+    }
+    this.stack.push(scope.velocity)
   }
 
   SeqVoiceValue = () => {
-    // Runtime: reads current voice's value
-    const out = this.outsCount++
-    this.emit(Op.SeqVoiceValue, out)
-    this.stack.push(out)
+    const scope = this.callbackScopes.at(-1)
+    if (!scope) {
+      throw new Error('SeqVoiceValue must be used inside SeqForEach body')
+    }
+    this.stack.push(scope.value)
   }
 
   SeqMap = () => {
-    // Mixes audio from voices (audio indices tracked in runtime by SeqForEach)
-    const out = this.outsCount++
-    this.emit(Op.SeqMap, out)
-    this.stack.push(out)
+    // Mixing now happens inside Seq with callbacks; keep method for compatibility
+    return this.Peek()
   }
 }

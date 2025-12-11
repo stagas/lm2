@@ -9,13 +9,8 @@ export enum Op {
   Sin,
   Ad,
   Adsr,
-  Seq,
-  SeqMap,
-  SeqForEach,
-  SeqVoiceTrig,
-  SeqVoiceVelocity,
-  SeqVoiceValue,
   Analyser,
+  Mini,
 }
 
 export enum SeqOp {

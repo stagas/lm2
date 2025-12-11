@@ -1,9 +1,13 @@
-import { ARRAY_HEADER_SIZE, SEQ_VOICES } from './constants'
+import {
+  ARRAY_HEADER_SIZE,
+  CALLBACK_SCOPE_BASE,
+  CALLBACK_SCOPE_BUFFERS_PER_VOICE,
+  SEQ_VOICES,
+} from './constants'
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
-import { Seq } from './gen/seq'
-import { SeqMap } from './gen/seqmap'
+import { Mini } from './gen/mini'
 import { Sin } from './gen/sin'
 import { Program } from './program'
 import { Op } from './shared'
@@ -52,7 +56,7 @@ export class Dsp {
 
   // Execute a single op, returns new PC
   executeOp(op: Op, pc: i32, pos: i32, length: i32, left$: usize, right$: usize): i32 {
-    const ops = this.program.ops
+    const ops = this.program.data.ops
     const gensPool = this.program.gensPool
     const program = this.program
 
@@ -168,113 +172,85 @@ export class Dsp {
         break
       }
 
-      case Op.Seq: {
-        const seq = gensPool.get(Op.Seq) as Seq
+      case Op.Mini: {
+        const mini = gensPool.get(Op.Mini) as Mini
         const arrayIndex = ops[pc++]
         const voiceCountOut = ops[pc++]
+
+        const trigOuts = new StaticArray<i32>(SEQ_VOICES)
+        const velocityOuts = new StaticArray<i32>(SEQ_VOICES)
+        const valueOuts = new StaticArray<i32>(SEQ_VOICES)
 
         for (let v = 0; v < SEQ_VOICES; v++) {
           const trigOut = ops[pc++]
           const velocityOut = ops[pc++]
           const valueOut = ops[pc++]
-          program.lastSeqTrigOuts[v] = trigOut
-          program.lastSeqVelocityOuts[v] = velocityOut
-          program.lastSeqValueOuts[v] = valueOut
-          seq.outTrig$[v] = program.outsPool.get(trigOut)
-          seq.outVelocity$[v] = program.outsPool.get(velocityOut)
-          seq.outValue$[v] = program.outsPool.get(valueOut)
+          trigOuts[v] = trigOut
+          velocityOuts[v] = velocityOut
+          valueOuts[v] = valueOut
+          mini.outTrig$[v] = program.outsPool.get(trigOut)
+          mini.outVelocity$[v] = program.outsPool.get(velocityOut)
+          mini.outValue$[v] = program.outsPool.get(valueOut)
         }
 
-        seq.bytecode$ = changetype<usize>(program.data.arrays[arrayIndex])
-        seq.outVoiceCount$ = program.outsPool.get(voiceCountOut)
-
-        seq.process(0, length)
-        program.lastSeqVoiceCountOut = voiceCountOut
-        break
-      }
-
-      case Op.SeqVoiceTrig: {
-        const outBuf = ops[pc++]
-        const out$ = program.getOutBuffer(outBuf)
-        const voiceIndex = program.currentVoiceIndex
-        // Copy from Seq output (not remapped) to body buffer (remapped)
-        const src$ = program.outsPool.get(program.lastSeqTrigOuts[voiceIndex])
-        copyAudio(out$, src$, length)
-        break
-      }
-
-      case Op.SeqVoiceVelocity: {
-        const outBuf = ops[pc++]
-        const out$ = program.getOutBuffer(outBuf)
-        const voiceIndex = program.currentVoiceIndex
-        const src$ = program.outsPool.get(program.lastSeqVelocityOuts[voiceIndex])
-        copyAudio(out$, src$, length)
-        break
-      }
-
-      case Op.SeqVoiceValue: {
-        const outBuf = ops[pc++]
-        const out$ = program.getOutBuffer(outBuf)
-        const voiceIndex = program.currentVoiceIndex
-        const src$ = program.outsPool.get(program.lastSeqValueOuts[voiceIndex])
-        copyAudio(out$, src$, length)
-        break
-      }
-
-      case Op.SeqForEach: {
-        const voiceCountIndex = ops[pc++]
+        // Callback metadata (always present, bodyLength == 0 when unused)
+        const hasCallback = ops[pc++]
         const bodyStartPc = ops[pc++]
         const bodyLength = ops[pc++]
         const bodyBufBase = ops[pc++]
-        const audioOutBuf = ops[pc++] // Compile-time audio output buffer
+        const scopeTrigIndex = ops[pc++]
+        const scopeVelocityIndex = ops[pc++]
+        const scopeValueIndex = ops[pc++]
+        const bodyAudioOutIndex = ops[pc++]
+        const mixOutIndex = ops[pc++]
 
-        program.seqForEachAudioOutsCount = 0
+        mini.bytecode$ = changetype<usize>(program.data.arrays[arrayIndex])
+        mini.outVoiceCount$ = program.outsPool.get(voiceCountOut)
 
-        const voiceCount$ = program.outsPool.get(voiceCountIndex)
-        const numVoices = Mathf.round(load<f32>(voiceCount$)) as i32
-        const voicesToProcess = numVoices < SEQ_VOICES ? numVoices : SEQ_VOICES
+        mini.process(0, length)
 
-        // Set up remapping context
-        program.bodyBufferBase = bodyBufBase
-        program.inSeqForEach = true
+        if (hasCallback) {
+          const mixOut$ = program.outsPool.get(mixOutIndex)
+          clearAudio(mixOut$, length)
 
-        // Execute body for each active voice
-        for (let v = 0; v < voicesToProcess; v++) {
-          program.currentVoiceIndex = v
+          let numVoices = 0
+          const voiceCount$ = program.outsPool.get(voiceCountOut)
+          for (let i = 0; i < length; i++) {
+            const v = Mathf.round(load<f32>(voiceCount$ + i * 4)) as i32
+            if (v > numVoices) numVoices = v
+          }
+          if (numVoices > SEQ_VOICES) numVoices = SEQ_VOICES
 
-          // Execute body bytecode with remapping active
-          let bodyPc = bodyStartPc
-          const bodyEndPc = bodyStartPc + bodyLength
-          while (bodyPc < bodyEndPc) {
-            const bodyOp = ops[bodyPc] as Op
-            bodyPc++
-            bodyPc = this.executeOp(bodyOp, bodyPc, pos, length, left$, right$)
+          for (let v = 0; v < numVoices; v++) {
+            const remapBase = CALLBACK_SCOPE_BASE + v * CALLBACK_SCOPE_BUFFERS_PER_VOICE
+            program.pushCallbackScope(bodyBufBase, remapBase)
+            program.bindScope(scopeTrigIndex, program.outsPool.get(trigOuts[v]))
+            program.bindScope(scopeVelocityIndex, program.outsPool.get(velocityOuts[v]))
+            program.bindScope(scopeValueIndex, program.outsPool.get(valueOuts[v]))
+
+            let bodyPc = bodyStartPc
+            const bodyEndPc = bodyStartPc + bodyLength
+            while (bodyPc < bodyEndPc) {
+              const bodyOp = ops[bodyPc] as Op
+              bodyPc++
+              bodyPc = this.executeOp(bodyOp, bodyPc, pos, length, left$, right$)
+            }
+
+            const voiceAudio$ = program.getOutBuffer(bodyAudioOutIndex)
+            program.popCallbackScope()
+            addAudio(mixOut$, mixOut$, voiceAudio$, length)
           }
 
-          // Track remapped audio output for this voice
-          const remappedAudio = 500 + v * 32 + (audioOutBuf - bodyBufBase)
-          program.seqForEachAudioOuts[program.seqForEachAudioOutsCount++] = remappedAudio
+          // Normalize summed voices to avoid hard clipping on chords
+          if (numVoices > 0) {
+            let mix$ = mixOut$
+            for (let i = 0; i < length; i++) {
+              const s = load<f32>(mix$)
+              store<f32>(mix$, s)
+              mix$ += 4
+            }
+          }
         }
-
-        program.inSeqForEach = false
-        break
-      }
-
-      case Op.SeqMap: {
-        const seqmap = gensPool.get(Op.SeqMap) as SeqMap
-        const out$ = program.getOutBuffer(ops[pc++])
-
-        const numVoices = program.seqForEachAudioOutsCount
-        seqmap.numVoices = numVoices
-
-        for (let v = 0; v < numVoices; v++) {
-          seqmap.inTrig$[v] = program.outsPool.get(program.lastSeqTrigOuts[v])
-          seqmap.inVelocity$[v] = program.outsPool.get(program.lastSeqVelocityOuts[v])
-          seqmap.inValue$[v] = program.outsPool.get(program.lastSeqValueOuts[v])
-          seqmap.inAudio$[v] = program.outsPool.get(program.seqForEachAudioOuts[v])
-        }
-
-        seqmap.process(out$, length)
         break
       }
 
@@ -292,7 +268,8 @@ export class Dsp {
   }
 
   process(left$: usize, right$: usize, begin: i32, length: i32): void {
-    const ops = this.program.ops
+    this.program.waitProgramUnlock()
+    const ops = this.program.data.ops
     this.program.gensPool.resetIndices()
 
     const pos = begin * 4

@@ -67,6 +67,14 @@ export class DspProcessor extends AudioWorkletProcessor {
     return Array.from({ length: ARRAYS_COUNT }, () => this.core!.wasm.createArray())
   }
 
+  async createProgramData() {
+    return this.core!.wasm.createProgramData()
+  }
+
+  async createOps() {
+    return this.core!.wasm.createOps()
+  }
+
   process(
     inputs: Float32Array[][],
     outputs: Float32Array[][],
