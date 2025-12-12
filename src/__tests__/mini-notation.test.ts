@@ -16,6 +16,16 @@ describe('Mini-Notation compiler/evaluator', () => {
     ])
   })
 
+  it('handles nested groups', () => {
+    const events = runMiniNotation('c4 [e4 [g4 a4]]')
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 2 },
+      { value: 'e4', start: 1 / 2, end: 3 / 4 },
+      { value: 'g4', start: 3 / 4, end: 7 / 8 },
+      { value: 'a4', start: 7 / 8, end: 1 },
+    ])
+  })
+
   it('spreads angle brackets across children', () => {
     const events = runMiniNotation('<c4 e4 g4>')
     expectTimeline(events, [
@@ -109,6 +119,26 @@ describe('Mini-Notation compiler/evaluator', () => {
       { value: 'c4', start: 0, end: 1 / 2 },
       { value: 'c4', start: 1, end: 3 / 2 },
       { value: 'e4', start: 3 / 2, end: 2 },
+    ])
+  })
+
+  it('stretches groups across cycles', () => {
+    const events = runMiniNotation('c4 [g4 a4]/2')
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 2 },
+      { value: 'g4', start: 1 / 2, end: 3 / 4 },
+      { value: 'c4', start: 1, end: 3 / 2 },
+      { value: 'a4', start: 3 / 2, end: 7 / 4 },
+    ])
+  })
+
+  it('stretches groups across cycles', () => {
+    const events = runMiniNotation('c4 [g4 a4]/2')
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 2 },
+      { value: 'g4', start: 1 / 2, end: 1 },
+      { value: 'c4', start: 1, end: 3 / 2 },
+      { value: 'a4', start: 3 / 2, end: 2 },
     ])
   })
 

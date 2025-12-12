@@ -2,7 +2,7 @@ import { midiToFrequency, noteNameToMidi } from './note-utils.ts'
 
 type NodeType = 'event' | 'rest' | 'group'
 
-interface Modifiers {
+export interface Modifiers {
   velocity: number
   hold: number
   repeat: number
@@ -11,8 +11,8 @@ interface Modifiers {
   stretch: number
   offset: number
   jitter: number
-  probability: number
-  glidePower: number
+  prob: number
+  glide: number
   strum: number
 }
 
@@ -22,15 +22,19 @@ interface Token {
   end: number
 }
 
+export interface NodeSource {
+  start: number
+  length: number
+  text: string
+}
+
 export interface Node {
   type: NodeType
   values: number[] // empty for rest/group
   children: Node[]
   modifiers: Modifiers
   angle: boolean
-  sourceStart: number
-  sourceLength: number
-  sourceText: string
+  source: NodeSource
 }
 
 const DEFAULT_MODS: Modifiers = {
@@ -42,8 +46,8 @@ const DEFAULT_MODS: Modifiers = {
   stretch: 1,
   offset: 0,
   jitter: 0,
-  probability: 0,
-  glidePower: 0,
+  prob: 0,
+  glide: 0,
   strum: 0,
 }
 
@@ -53,8 +57,12 @@ function cloneMods(mods: Modifiers): Modifiers {
   return { ...mods }
 }
 
+export function getDefaultMods(): Modifiers {
+  return cloneMods(DEFAULT_MODS)
+}
+
 function parseModifiers(text: string): Modifiers {
-  const mods = cloneMods(DEFAULT_MODS)
+  const mods = getDefaultMods()
   let i = 0
 
   while (i < text.length) {
@@ -108,11 +116,11 @@ function parseModifiers(text: string): Modifiers {
       case '\\': {
         const m = rest.match(/^([\d.]+)/)
         if (m && m[1]) {
-          mods.glidePower = parseFloat(m[1]!)
+          mods.glide = parseFloat(m[1]!)
           i += m[0]!.length + 1
         }
         else {
-          mods.glidePower = 1
+          mods.glide = 1
           i++
         }
         break
@@ -142,7 +150,7 @@ function parseModifiers(text: string): Modifiers {
       case '?': {
         const m = rest.match(/^([\d.]+)/)
         if (m) {
-          mods.probability = parseFloat(m[1]!)
+          mods.prob = parseFloat(m[1]!)
           i += m[0]!.length + 1
         }
         else {
@@ -308,9 +316,11 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
         values: [],
         children,
         modifiers,
-        sourceStart: token.start,
-        sourceLength: token.end - token.start,
-        sourceText: input.slice(token.start, token.end),
+        source: {
+          start: token.start,
+          length: token.end - token.start,
+          text: input.slice(token.start, token.end),
+        },
       })
       continue
     }
@@ -325,9 +335,11 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
         values: [],
         children: [],
         modifiers,
-        sourceStart: token.start,
-        sourceLength: token.end - token.start,
-        sourceText: input.slice(token.start, token.end),
+        source: {
+          start: token.start,
+          length: token.end - token.start,
+          text: input.slice(token.start, token.end),
+        },
       })
       continue
     }
@@ -341,9 +353,11 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
       values,
       children: [],
       modifiers,
-      sourceStart: token.start,
-      sourceLength: token.end - token.start,
-      sourceText: input.slice(token.start, token.end),
+      source: {
+        start: token.start,
+        length: token.end - token.start,
+        text: input.slice(token.start, token.end),
+      },
     })
   }
   return nodes

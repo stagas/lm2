@@ -55,7 +55,6 @@ export class Dsp {
   program: Program = new Program()
 
   // Execute a single op, returns new PC
-  @inline
   executeOp(op: Op, pc: i32, pos: i32, length: i32, left$: usize, right$: usize): i32 {
     const ops = this.program.data.ops
     const gensPool = this.program.gensPool

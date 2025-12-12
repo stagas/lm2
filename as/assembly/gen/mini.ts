@@ -145,10 +145,20 @@ export class Mini extends Gen {
     const totalLength = array[bytecodeBase] as i32
     if (totalLength <= 0) return
 
+    // Calculate cycle length from maximum end value of events
+    let maxEnd = 0.0 as f32
+    for (let i = 0; i < totalLength; i++) {
+      const base = bytecodeBase + MINI_HEADER_SIZE + i * MINI_EVENT_SIZE
+      const end = array[base + 1]
+      if (end > maxEnd) maxEnd = end
+    }
+    const cycleLength = Mathf.ceil(maxEnd)
+    if (cycleLength <= 0) return
+
     const windowStart = globalSampleCount
     const windowEnd = windowStart + length
     const secondsPerBeat = 60.0 / (bpm as f32)
-    const cycleSeconds = secondsPerBeat // 1 cycle = 1 bar = 1 second at 60 BPM
+    const cycleSeconds = cycleLength * secondsPerBeat
     const cycleSamples = cycleSeconds * sampleRate
 
     // Zero outputs
@@ -174,20 +184,16 @@ export class Mini extends Gen {
         const base = bytecodeBase + MINI_HEADER_SIZE + i * MINI_EVENT_SIZE
         const start = array[base + 0]
         const end = array[base + 1]
-        const hold = array[base + 2]
+        const value = array[base + 2]
         const velocity = array[base + 3]
-        const value = array[base + 4]
-        const prob = array[base + 7]
-        const stretch = array[base + 8]
-        const stretchPhase = array[base + 9]
+        const hold = array[base + 4]
+        const prob = array[base + 6]
 
         if (prob > 0 && this.rng.next() < prob) continue
-        const stretchInt = stretch <= 1 ? 1 : i32(Mathf.round(stretch))
-        const phase = stretchInt <= 1 ? 0 : i32(Mathf.round(stretchPhase))
-        if ((cycle % stretchInt) !== phase) continue
 
-        const eventStartSample = i32(Mathf.floor(f32(start * cycleSamples))) + cycleStartSample
-        const eventEndSample = i32(Mathf.floor(f32(end * cycleSamples))) + cycleStartSample
+        // Events repeat every cycle, convert event times (0 to cycleLength) to samples within the cycle
+        const eventStartSample = cycleStartSample + i32(Mathf.floor((start * cycleSamples) / cycleLength as f32))
+        const eventEndSample = cycleStartSample + i32(Mathf.floor((end * cycleSamples) / cycleLength as f32))
         const slotDuration = eventEndSample - eventStartSample
         const holdSamples = hold <= 0 ? 1 : i32(Mathf.round(hold * f32(slotDuration)))
         const clampedHoldSamples = holdSamples < 1 ? 1 : holdSamples

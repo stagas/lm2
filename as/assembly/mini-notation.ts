@@ -35,29 +35,23 @@ export function evaluateMiniBytecode(
 
     const start = bytecode[base + 0]
     const end = bytecode[base + 1]
-    const trigger = bytecode[base + 2]
+    const value = bytecode[base + 2]
     const velocity = bytecode[base + 3]
-    const value = bytecode[base + 4]
+    const hold = bytecode[base + 4]
     const glide = bytecode[base + 5]
-    const glidePower = bytecode[base + 6]
-    const probability = bytecode[base + 7]
-    const stretch = bytecode[base + 8]
-    const stretchPhase = bytecode[base + 9]
+    const prob = bytecode[base + 6]
 
-    if (probability > 0 && rng.next() < probability) continue
+    if (prob > 0 && rng.next() < prob) continue
     if (end <= from || start >= to) continue
 
     const outBase = write * MINI_EVENT_SIZE
     out[outBase + 0] = start
     out[outBase + 1] = end
-    out[outBase + 2] = trigger
+    out[outBase + 2] = value
     out[outBase + 3] = velocity
-    out[outBase + 4] = value
+    out[outBase + 4] = hold
     out[outBase + 5] = glide
-    out[outBase + 6] = glidePower
-    out[outBase + 7] = probability
-    out[outBase + 8] = stretch
-    out[outBase + 9] = stretchPhase
+    out[outBase + 6] = prob
     write++
   }
 

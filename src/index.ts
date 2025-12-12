@@ -5,6 +5,7 @@ import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, LITERALS_COUNT
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
 import { compileMiniNotation } from './mini/compiler.ts'
+import { frequencyToNoteName } from './mini/note-utils.ts'
 import { ControlOp } from './worklet-shared.ts'
 import workletUrl from './worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from './worklet.ts'
@@ -41,6 +42,9 @@ type ProgramDataView = ReturnType<typeof createProgramDataView>
 
 function updateSequence(data: ProgramDataView, sequence: string) {
   const compiled = compileMiniNotation(sequence)
+  eventsDiv.textContent = compiled.events.map(event =>
+    `${frequencyToNoteName(event.value)} ${event.start.toFixed(2)} ${event.end.toFixed(2)}`
+  ).join('\n')
   const target = data.arrays[MINI_ARRAY_INDEX]
   target.raw.fill(0)
   target.raw[2] = SEQ_HISTORY_SIZE
@@ -189,7 +193,7 @@ async function updateWasmBinary() {
   program2?.clear()
 
   program1 = await createProgramAndUI(0)
-  program2 = await createProgramAndUI(1)
+  // program2 = await createProgramAndUI(1)
   wasmDsp!.program = program1.program.ptr$
 
   extraDsp = undefined
@@ -378,6 +382,12 @@ const playBothButton = Object.assign(
   },
 )
 document.body.appendChild(playBothButton)
+
+const eventsDiv = Object.assign(
+  document.createElement('div'),
+  { className: 'text-white p-2 rounded-md border border-gray-600 w-full max-w-md whitespace-pre-wrap font-mono' },
+)
+document.body.appendChild(eventsDiv)
 
 const DEFAULT_SEQUENCES = ['c4 e4 [g4 a4]*2', 'a3 c4 [d4 f4 a4]*2']
 
