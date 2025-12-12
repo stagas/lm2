@@ -15,7 +15,7 @@ import { AnalyserOutsPoolStruct, type Dsp, DspStruct, OutsPoolStruct, ProgramDat
   ProgramStruct } from './assembly.ts'
 import { Bytecode, SeqOp } from './bytecode.ts'
 import { WaveformBuffer } from './lib/waveform-buffer.ts'
-import { compileMiniNotation } from './mini-notation.ts'
+import { compileMiniNotation } from './mini/compiler.ts'
 import { generateSequenceEvents } from './seq-event-generator.ts'
 import { compileSequence, type TokenMetadata } from './sequence-compiler.ts'
 import { buildSourceMap, type SourceLocation } from './source-map.ts'

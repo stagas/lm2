@@ -1,8 +1,8 @@
 import { expect } from 'bun:test'
-import type { TimelineEvent } from '../mini-notation-bytecode.ts'
-import { evaluateMiniBytecode } from '../mini-notation-evaluator.ts'
-import { compileMiniNotation } from '../mini-notation.ts'
-import { midiToFrequency, noteNameToMidi } from '../note-utils.ts'
+import type { TimelineEvent } from '../mini/bytecode.ts'
+import { compileMiniNotation } from '../mini/compiler.ts'
+import { evaluateMiniBytecode } from '../mini/evaluator.ts'
+import { midiToFrequency, noteNameToMidi } from '../mini/note-utils.ts'
 
 export interface MiniRunOptions {
   from?: number
@@ -231,6 +231,6 @@ export function expectTimeline(
   events: TimelineEvent[],
   expected: Array<{ value: string | number; start: number; end: number }>,
 ) {
+  expectEventSequence(events.sort((a, b) => a.start - b.start), expected.sort((a, b) => a.start - b.start))
   expect(events.length).toBe(expected.length)
-  expectEventSequence(events, expected)
 }

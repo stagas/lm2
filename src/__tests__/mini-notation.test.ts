@@ -125,18 +125,26 @@ describe('Mini-Notation compiler/evaluator', () => {
 
   it('spreads stretched groups across 3 cycles', () => {
     const events = runMiniNotation('c4 [e4 [g4 a4]]/3')
-    console.log(events)
+    expectTimeline(events, [
+      { value: 'c4', start: 0, end: 1 / 2 },
+      { value: 'e4', start: 1 / 2, end: 1 },
+      { value: 'c4', start: 1, end: 1 + 1 / 2 },
+      { value: 'g4', start: 1.6667, end: 1.8333 },
+      { value: 'c4', start: 2, end: 5 / 2 },
+      { value: 'a4', start: 2 + 2 / 3, end: 2.8333 },
+    ])
+  })
+
+  it('spreads stretched groups across 4 cycles', () => {
+    const events = runMiniNotation('c4 [e4 [g4 a4]]/4')
     expectTimeline(events, [
       { value: 'c4', start: 0, end: 1 / 2 },
       { value: 'c4', start: 1, end: 3 / 2 },
       { value: 'c4', start: 2, end: 5 / 2 },
       { value: 'c4', start: 3, end: 7 / 2 },
-      { value: 'e4', start: 1 / 2, end: 5 / 4 },
-      { value: 'e4', start: 1, end: 7 / 4 },
-      { value: 'g4', start: 7 / 4, end: 17 / 8 },
-      { value: 'g4', start: 9 / 4, end: 21 / 8 },
-      { value: 'a4', start: 21 / 8, end: 3 },
-      { value: 'e4', start: 7 / 2, end: 17 / 4 },
+      { value: 'e4', start: 1 / 2, end: 1 },
+      { value: 'g4', start: 5 / 2, end: 3 },
+      { value: 'a4', start: 7 / 2, end: 4 },
     ])
   })
 

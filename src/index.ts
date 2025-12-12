@@ -4,7 +4,7 @@ import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, LITERALS_COUNT
   RING_BUFFER_SIZE, SEQ_HISTORY_SIZE } from '../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
-import { compileMiniNotation } from './mini-notation.ts'
+import { compileMiniNotation } from './mini/compiler.ts'
 import { ControlOp } from './worklet-shared.ts'
 import workletUrl from './worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from './worklet.ts'
