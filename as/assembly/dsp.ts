@@ -53,6 +53,7 @@ function copyAudio(out$: usize, in$: usize, length: i32): void {
 
 export class Dsp {
   program: Program = new Program()
+  private historyUpdateCounter: i32 = 0
 
   // Execute a single op, returns new PC
   executeOp(op: Op, pc: i32, pos: i32, length: i32, left$: usize, right$: usize): i32 {
@@ -290,6 +291,13 @@ export class Dsp {
       const op = ops[pc] as Op
       pc++
       pc = this.executeOp(op, pc, pos, length, left$, right$)
+    }
+
+    // Update history buffers periodically (every 10 chunks ~= 1.3ms at 48kHz)
+    this.historyUpdateCounter++
+    if (this.historyUpdateCounter >= 10) {
+      this.historyUpdateCounter = 0
+      this.program.updateHistoryBuffers()
     }
 
     atomic.store<i32>(lockPtr, 0)

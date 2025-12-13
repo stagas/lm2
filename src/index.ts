@@ -1,9 +1,13 @@
 import { type Ring, toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, LITERALS_COUNT, MAX_DSP_INSTANCES, OPS_COUNT,
-  RING_BUFFER_SIZE, SEQ_HISTORY_SIZE } from '../as/assembly/constants.ts'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, LITERALS_COUNT, MAX_DSP_INSTANCES, MINI_HEADER_SIZE,
+  OPS_COUNT, RING_BUFFER_SIZE, SEQ_HISTORY_SIZE } from '../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
+import { AnimationManager } from './lib/animation-manager.ts'
+import { buildMiniSourceMap, type SourceLocation } from './lib/mini-source-map.ts'
+import { createPianorollVisualization } from './lib/pianoroll-visualizer.ts'
+import { createSequenceVisualization } from './lib/sequence-visualizer.ts'
 import { compileMiniNotation } from './mini/compiler.ts'
 import { frequencyToNoteName } from './mini/note-utils.ts'
 import { ControlOp } from './worklet-shared.ts'
@@ -29,6 +33,10 @@ let extraDsp: Dsp | undefined
 let extraDspPtr = 0
 let program1: { program: Program; clear: () => void } | undefined
 let program2: { program: Program; clear: () => void } | undefined
+const animationManager = new AnimationManager()
+let sequenceVisualization: { canvas: HTMLCanvasElement;
+  update: (sequence: string, sourceMap: Map<number, SourceLocation>) => void; destroy: () => void } | undefined
+let pianorollVisualization: { canvas: HTMLCanvasElement; clear: () => void; destroy: () => void } | undefined
 
 const MINI_ARRAY_INDEX = 0
 const LIT_ATTACK = 0
@@ -109,10 +117,96 @@ async function readMiniEvents(
 async function updateSequence(data: ProgramDataView, sequence: string) {
   const compiled = compileMiniNotation(sequence)
   const target = data.arrays[MINI_ARRAY_INDEX]
+
+  // Check if bytecode changed by comparing length and content
+  const oldBytecodeLength = target.raw[ARRAY_HEADER_SIZE] || 0
+  const newBytecodeLength = compiled.bytecode.length - ARRAY_HEADER_SIZE - MINI_HEADER_SIZE
+  const lengthChanged = oldBytecodeLength !== newBytecodeLength
+
+  // If length is the same, compare content byte-by-byte
+  let contentChanged = false
+  if (!lengthChanged && oldBytecodeLength > 0) {
+    const compareLength = Math.min(oldBytecodeLength, newBytecodeLength)
+    for (let i = 0; i < compareLength; i++) {
+      const oldVal = target.raw[ARRAY_HEADER_SIZE + MINI_HEADER_SIZE + i] || 0
+      const newVal = compiled.bytecode[ARRAY_HEADER_SIZE + MINI_HEADER_SIZE + i] || 0
+      if (oldVal !== newVal) {
+        contentChanged = true
+        break
+      }
+    }
+  }
+
+  const bytecodeChanged = lengthChanged || contentChanged
+
+  // Preserve history buffer only if bytecode didn't change
+  let oldHistoryWritePos = 0
+  let oldHistorySize = 0
+  const historyData = new Float32Array(SEQ_HISTORY_SIZE * 3)
+  if (!bytecodeChanged) {
+    oldHistoryWritePos = target.raw[1] || 0
+    oldHistorySize = target.raw[2] || SEQ_HISTORY_SIZE
+    for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
+      historyData[i] = target.raw[3 + i] || 0
+    }
+  }
+
   target.raw.fill(0)
   const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE)
   target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE)
   target.length = maxSize
+
+  // Restore history buffer only if bytecode didn't change
+  // When bytecode changes, clear history so new events can be generated
+  if (!bytecodeChanged) {
+    target.raw[1] = oldHistoryWritePos
+    target.raw[2] = oldHistorySize || SEQ_HISTORY_SIZE
+    for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
+      target.raw[3 + i] = historyData[i] || 0
+    }
+  }
+  else {
+    // Clear history buffer when bytecode changes - old opIndex values are invalid
+    // prepareProgram() will generate new events for the new bytecode
+    target.raw[1] = 0
+    target.raw[2] = SEQ_HISTORY_SIZE
+    for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
+      target.raw[3 + i] = 0
+    }
+  }
+
+  const sourceMap = buildMiniSourceMap(compiled.nodes, target.raw)
+
+  if (sequenceVisualization) {
+    sequenceVisualization.update(sequence, sourceMap)
+  }
+  else {
+    sequenceVisualization = createSequenceVisualization(
+      target,
+      sequence,
+      sourceMap,
+      audioContext,
+      bpmValue,
+      globalSampleCount,
+      animationManager,
+      600,
+      50,
+    )
+  }
+
+  // Don't clear pianoroll visualization - preserve playback history
+  // Events with invalid opIndex will be handled by the visualizer
+  if (!pianorollVisualization) {
+    pianorollVisualization = createPianorollVisualization(
+      target,
+      audioContext,
+      bpmValue,
+      globalSampleCount,
+      animationManager,
+      800,
+      400,
+    )
+  }
 
   const checkEvents = async () => {
     const programData = ProgramDataStruct(wasmMemory!.buffer, data.ptr$)
@@ -157,7 +251,6 @@ async function updateSequence(data: ProgramDataView, sequence: string) {
     }
   }
 
-  // Use event emitter to get events
   setTimeout(checkEvents, 50)
 }
 
@@ -300,6 +393,17 @@ async function updateWasmBinary() {
 
   program1?.clear()
   program2?.clear()
+
+  if (sequenceVisualization) {
+    sequenceVisualization.destroy()
+    sequenceVisualization = undefined
+  }
+  if (pianorollVisualization) {
+    pianorollVisualization.destroy()
+    pianorollVisualization = undefined
+  }
+
+  animationManager.start()
 
   program1 = await createProgramAndUI(0)
   // program2 = await createProgramAndUI(1)

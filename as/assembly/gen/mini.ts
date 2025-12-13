@@ -1,5 +1,4 @@
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, MINI_HEADER_SIZE, SEQ_VOICES } from '../constants'
-import { MiniEventBuffer, MiniEvents } from '../mini/events'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, MINI_HEADER_SIZE, OP_EVENT, SEQ_HISTORY_SIZE, SEQ_VOICES } from '../constants'
 import { Gen } from './gen'
 
 class MiniVoice {
@@ -43,8 +42,6 @@ export class Mini extends Gen {
   private voiceCursor: i32 = 0
   private rng: MiniRng = new MiniRng()
   private lastBytecode$: usize = 0
-  private eventEmitter: MiniEvents = new MiniEvents()
-  private eventBuffer: MiniEventBuffer = new MiniEventBuffer()
 
   constructor() {
     super()
@@ -139,23 +136,15 @@ export class Mini extends Gen {
     if (this.bytecode$ !== this.lastBytecode$) {
       this.lastBytecode$ = this.bytecode$
       this.resetVoiceMaps()
-      // History is now prepared by Program.prepareProgram(), not here
     }
 
-    const array = changetype<StaticArray<f32>>(this.bytecode$)
+    const bytecodeArray = changetype<StaticArray<f32>>(this.bytecode$)
     const bytecodeBase = ARRAY_HEADER_SIZE
-    const opLength = i32(array[bytecodeBase])
+    const opLength = i32(bytecodeArray[bytecodeBase])
     if (opLength <= 0) return
 
-    const opStart = bytecodeBase + MINI_HEADER_SIZE
-    const opEnd = opStart + opLength
-
-    const cycleLength = 1.0 as f32
     const windowStart = globalSampleCount
     const windowEnd = windowStart + length
-    const secondsPerBeat = 60.0 / (bpm as f32)
-    const cycleSeconds = cycleLength * secondsPerBeat
-    const cycleSamples = (cycleSeconds * sampleRate) as f32
 
     // Zero outputs
     for (let v = 0; v < SEQ_VOICES; v++) {
@@ -169,52 +158,50 @@ export class Mini extends Gen {
       }
     }
 
-    // Use event emitter to generate events for cycles intersecting the window
-    const startCycle = i32(Mathf.floor(f32((windowStart as f32) / cycleSamples)))
-    const endCycle = i32(Mathf.floor(f32(((windowEnd - 1) as f32) / cycleSamples)))
+    // Read events from history buffer and schedule voices
+    let historyWritePos = i32(bytecodeArray[1])
+    let historySize = i32(bytecodeArray[2])
+    if (historySize <= 0) historySize = SEQ_HISTORY_SIZE
 
-    this.eventBuffer.clear()
+    const historyBase = 3
+    const opStart = bytecodeBase + MINI_HEADER_SIZE
 
-    for (let cycle = startCycle; cycle <= endCycle; cycle++) {
-      const cycleStartSample = i32(cycleSamples * (cycle as f32))
-      this.eventEmitter.emitEvents(
-        this.bytecode$,
-        this.eventBuffer,
-        cycleStartSample,
-        cycleLength,
-        cycleSamples,
-        windowStart,
-        windowEnd,
-      )
-    }
+    // Read all events from history buffer that intersect with current window
+    for (let n = 0; n < historySize; n++) {
+      const readPos = (historyWritePos - 1 - n + historySize) % historySize
+      const historyIdx = readPos * 3
+      const opIndex = i32(bytecodeArray[historyBase + historyIdx])
+      const startSample = i32(bytecodeArray[historyBase + historyIdx + 1])
+      const endSample = i32(bytecodeArray[historyBase + historyIdx + 2])
 
-    // Process emitted events to schedule voices
-    let processedCount = 0
-    let skippedOpIndex = 0
-    let skippedValue = 0
-    for (let i = 0; i < this.eventBuffer.writePos; i++) {
-      const event = this.eventBuffer.events[i]
-      if (!event) {
-        continue
-      }
-      if (event.opIndex < MINI_HEADER_SIZE) {
-        skippedOpIndex++
-        continue
-      }
-      if (event.value <= 0) {
-        skippedValue++
-        continue
-      }
+      // Skip invalid entries
+      if (startSample === 0 && endSample === 0) continue
 
-      const eventIndex = (event.opIndex << 8) | (i & 0xFF)
+      // Check if event intersects with current window
+      if (endSample <= windowStart || startSample >= windowEnd) continue
+
+      // Read event value from bytecode
+      const eventOffset = opStart + opIndex
+      const opcode = i32(bytecodeArray[eventOffset])
+      if (opcode !== OP_EVENT) continue
+
+      const valueCount = i32(bytecodeArray[eventOffset + 1])
+      if (valueCount <= 0) continue
+
+      const value = bytecodeArray[eventOffset + 7]
+      if (value <= 0) continue
+
+      const velocity = bytecodeArray[eventOffset + 2]
+
+      // Schedule voice
+      const eventIndex = ((opIndex + MINI_HEADER_SIZE) << 8) | (n & 0xFF)
       const voiceIndex = this.claimVoice(eventIndex)
       const voice = this.voices[voiceIndex]
       voice.active = true
-      voice.triggerSample = event.startSample
-      voice.holdEndSample = event.endSample <= event.startSample ? event.startSample + 1 : event.endSample
-      voice.velocity = event.velocity
-      voice.value = event.value
-      processedCount++
+      voice.triggerSample = startSample
+      voice.holdEndSample = endSample <= startSample ? startSample + 1 : endSample
+      voice.velocity = velocity
+      voice.value = value
     }
 
     let maxActive = 0

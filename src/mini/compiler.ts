@@ -55,5 +55,5 @@ export function compileMiniNotation(
 
   const sourceMap: MiniSourceMapEntry[] = []
 
-  return { bytecode: trimmedBytecode, sourceMap }
+  return { bytecode: trimmedBytecode, sourceMap, nodes }
 }
