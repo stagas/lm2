@@ -1,9 +1,7 @@
 export const RING_BUFFER_SIZE = 16384
 export const CHUNK_SIZE = 128
 export const ARRAY_SIZE = 1024
-// Ring buffer for event history - sized for 16 seconds (4s past + 12s future) at worst case ~50 events/sec
-// 16 seconds * HISTORY_ENTRY_SIZE0 events/sec = 800 events, using 4096 for safety margin and thousands of events
-export const HISTORY_SIZE = 512 // ring buffer for event history
+export const HISTORY_SIZE = 4096 // ring buffer for event history
 export const HISTORY_HEADER_SIZE = 1 // writePos
 export const HISTORY_ENTRY_SIZE = 5 // opIndex, value, velocity, startSample, endSample
 export const HISTORY_WRITE_POS_OFFSET = 0
