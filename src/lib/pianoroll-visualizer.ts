@@ -1,6 +1,7 @@
 import {
   FUTURE_SECONDS,
   HISTORY_DATA_OFFSET,
+  HISTORY_ENTRY_SIZE,
   PAST_SECONDS,
   TIME_WINDOW_SECONDS,
 } from '../../as/assembly/constants.ts'
@@ -67,13 +68,23 @@ export function createPianorollVisualization(
     const windowStartTime = currentTimeSeconds - PAST_SECONDS
     const windowEndTime = currentTimeSeconds + FUTURE_SECONDS
 
-    // Read all events from history buffer
-    for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += 5) {
+    // Read events from history buffer
+    // After defragmentation, preserved events are at slots 0 to writePos-1
+    // New events are written from writePos onwards
+    // Read all slots to catch both preserved and newly written events
+    const historySize = currentHistory.size || Math.floor((historyRaw.length - HISTORY_DATA_OFFSET) / 5)
+    const writePos = currentHistory.writePos || 0
+    // Read all slots up to historySize (preserved events + new events)
+    for (let slot = 0; slot < historySize; slot++) {
+      const idx = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
+      if (idx + 4 >= historyRaw.length) break
+
       const noteValue = historyRaw[idx + 1]
       const velocity = historyRaw[idx + 2]
       const startSample = Math.floor(historyRaw[idx + 3])
       const endSample = Math.floor(historyRaw[idx + 4])
 
+      // Skip invalid entries
       if (startSample === 0 && endSample === 0) continue
 
       if (noteValue <= 0) continue

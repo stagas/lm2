@@ -1,8 +1,8 @@
 import { type Ring, toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
 import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, HISTORIES_COUNT, HISTORY_DATA_OFFSET,
-  HISTORY_HEADER_SIZE, HISTORY_SIZE, HISTORY_SIZE_OFFSET, HISTORY_WRITE_POS_OFFSET, LITERALS_COUNT, MAX_DSP_INSTANCES,
-  MINI_HEADER_SIZE, OPS_COUNT, RING_BUFFER_SIZE } from '../as/assembly/constants.ts'
+  HISTORY_ENTRY_SIZE, HISTORY_HEADER_SIZE, HISTORY_SIZE, HISTORY_SIZE_OFFSET, HISTORY_WRITE_POS_OFFSET, LITERALS_COUNT,
+  MAX_DSP_INSTANCES, MINI_HEADER_SIZE, OPS_COUNT, RING_BUFFER_SIZE } from '../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
 import { AnimationManager } from './lib/animation-manager.ts'
@@ -276,9 +276,8 @@ function createProgramDataView(data$: number, arrays$: number[]) {
   const arrayBuffers = new Uint32Array(wasmMemory.buffer, programData.arrays, ARRAYS_COUNT)
   const arrays = new Array<VmArray>(ARRAYS_COUNT)
   for (let i = 0; i < ARRAYS_COUNT; i++) {
-    arrayBuffers[i] = arrays$[i]
-    const arrayBase = arrays$[i]
-    const length = new Float32Array(wasmMemory.buffer, arrayBase, 1)
+    const byteOffset = arrayBuffers[i] = arrays$[i]
+    const length = new Float32Array(wasmMemory.buffer, byteOffset, 1)
     arrays[i] = {
       get length() {
         return length[0]
@@ -286,10 +285,10 @@ function createProgramDataView(data$: number, arrays$: number[]) {
       set length(value: number) {
         length[0] = value
       },
-      raw: new Float32Array(wasmMemory.buffer, arrayBase, ARRAY_SIZE + ARRAY_HEADER_SIZE),
+      raw: new Float32Array(wasmMemory.buffer, byteOffset, ARRAY_SIZE + ARRAY_HEADER_SIZE),
       data: new Float32Array(
         wasmMemory.buffer,
-        arrayBase + ARRAY_HEADER_SIZE * Float32Array.BYTES_PER_ELEMENT,
+        byteOffset + ARRAY_HEADER_SIZE * Float32Array.BYTES_PER_ELEMENT,
         ARRAY_SIZE,
       ),
     }
@@ -429,15 +428,19 @@ async function createProgram(sequence: string) {
   const historyBuffers = new Uint32Array(wasmMemory.buffer, program.histories, HISTORIES_COUNT)
   const histories = new Array<VmHistory>(ARRAYS_COUNT)
   for (let i = 0; i < ARRAYS_COUNT; i++) {
-    historyBuffers[i] = histories$[i]
+    const byteOffset = historyBuffers[i] = histories$[i]
+    const writePos = new Float32Array(wasmMemory.buffer,
+      byteOffset + HISTORY_WRITE_POS_OFFSET * Float32Array.BYTES_PER_ELEMENT, 1)
+    const size = new Float32Array(wasmMemory.buffer, byteOffset + HISTORY_SIZE_OFFSET * Float32Array.BYTES_PER_ELEMENT,
+      1)
     histories[i] = {
       get writePos() {
-        return historyBuffers[i + HISTORY_WRITE_POS_OFFSET]
+        return writePos[0] || 0
       },
       get size() {
-        return historyBuffers[i + HISTORY_SIZE_OFFSET]
+        return size[0] || HISTORY_SIZE
       },
-      raw: new Float32Array(wasmMemory.buffer, historyBuffers[i], HISTORY_HEADER_SIZE + HISTORY_SIZE * 3),
+      raw: new Float32Array(wasmMemory.buffer, byteOffset, HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE),
     }
   }
 

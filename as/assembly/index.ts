@@ -1,4 +1,5 @@
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, HISTORY_HEADER_SIZE, HISTORY_SIZE, OPS_COUNT } from './constants'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, HISTORY_ENTRY_SIZE, HISTORY_HEADER_SIZE, HISTORY_SIZE,
+  OPS_COUNT } from './constants'
 import { Dsp } from './dsp'
 import { Program, ProgramData } from './program'
 
@@ -40,7 +41,7 @@ export function createArray(): usize {
 }
 
 export function createHistoryArray(): usize {
-  const array = new StaticArray<f32>(HISTORY_HEADER_SIZE + HISTORY_SIZE * 5)
+  const array = new StaticArray<f32>(HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE)
   return changetype<usize>(array)
 }
 

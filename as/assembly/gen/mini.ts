@@ -1,5 +1,6 @@
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, FUTURE_SECONDS, HISTORY_DATA_OFFSET, HISTORY_SIZE, HISTORY_SIZE_OFFSET,
-  HISTORY_WRITE_POS_OFFSET, MINI_HEADER_SIZE, OP_EVENT, PAST_SECONDS, SEQ_VOICES } from '../constants'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, FUTURE_SECONDS, HISTORY_DATA_OFFSET, HISTORY_ENTRY_SIZE, HISTORY_HEADER_SIZE,
+  HISTORY_SIZE, HISTORY_SIZE_OFFSET, HISTORY_WRITE_POS_OFFSET, MINI_HEADER_SIZE, OP_EVENT, PAST_SECONDS,
+  SEQ_VOICES } from '../constants'
 import { MiniEventBuffer, MiniEvents } from '../mini/events'
 import { MiniEvent } from '../mini/util'
 import { Gen } from './gen'
@@ -49,6 +50,9 @@ export class Mini extends Gen {
   private lastVersion: i32 = -1
   private eventEmitter: MiniEvents = new MiniEvents()
   private eventBuffer: MiniEventBuffer = new MiniEventBuffer()
+  private scratchHistory: StaticArray<f32> = new StaticArray<f32>(
+    HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE,
+  )
 
   constructor() {
     super()
@@ -105,60 +109,124 @@ export class Mini extends Gen {
     }
   }
 
-  private clearFutureEvents(historyArray: StaticArray<f32>, windowStart: i32): void {
+  private defragmentHistory(historyArray: StaticArray<f32>, windowStart: i32, windowEnd: i32): void {
     let historySize = i32(historyArray[HISTORY_SIZE_OFFSET])
     if (historySize <= 0) historySize = HISTORY_SIZE
 
-    for (let n = 0; n < historySize; n++) {
-      const historyIdx = HISTORY_DATA_OFFSET + n * 5
-      const startSample = i32(historyArray[historyIdx + 3])
+    // Calculate past window boundary (only keep events within PAST_SECONDS)
+    const pastWindowStart = windowStart - i32(<f32> PAST_SECONDS * sampleRate)
 
-      // Only clear events that start well beyond the visualizer's visible window
-      // This preserves events that the visualizer needs to display
-      if (startSample > windowStart) {
+    // First, clear ALL slots in the buffer to ensure no future events remain
+    for (let n = 0; n < historySize; n++) {
+      const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
+      const startSample = i32(historyArray[historyIdx + 3])
+      const endSample = i32(historyArray[historyIdx + 4])
+
+      // Clear all future events (startSample >= windowStart)
+      if (startSample >= windowStart) {
         historyArray[historyIdx] = 0
         historyArray[historyIdx + 1] = 0
         historyArray[historyIdx + 2] = 0
         historyArray[historyIdx + 3] = 0
         historyArray[historyIdx + 4] = 0
+        continue
       }
     }
-  }
 
-  private addEventToHistory(
-    historyArray: StaticArray<f32>,
-    slotIdx: i32,
-    opIndex: i32,
-    value: f32,
-    velocity: f32,
-    startSample: i32,
-    endSample: i32,
-    windowStart: i32,
-    windowEnd: i32,
-  ): bool {
-    if (slotIdx < 0) return false
+    // Collect all valid past events within the time window (use separate arrays for sorting)
+    const startSamples: StaticArray<i32> = new StaticArray<i32>(historySize)
+    const eventData: StaticArray<f32> = new StaticArray<f32>(historySize * 4) // [opIndex, value, velocity, endSample] per event
+    let eventCount = 0
 
-    const historyIdx = HISTORY_DATA_OFFSET + slotIdx * 5
+    for (let n = 0; n < historySize; n++) {
+      const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
+      const endSample = i32(historyArray[historyIdx + 4])
 
-    // Safety check: never overwrite events that are currently active
-    // The slot finding methods handle finding appropriate slots to overwrite
-    const existingStartSample = i32(historyArray[historyIdx + 3])
-    const existingEndSample = i32(historyArray[historyIdx + 4])
+      // Skip invalid entries
+      if (endSample === 0) continue
 
-    // Protect events that are currently active (have started but not ended)
-    // This prevents interrupting notes that are currently playing
-    if (existingEndSample > 0 && existingStartSample <= windowStart && existingEndSample > windowStart) {
-      return false
+      const startSample = i32(historyArray[historyIdx + 3])
+
+      // We already cleared future events above, so all remaining events have startSample < windowStart
+      // Keep active events (started before windowStart, may still be playing)
+      // For past events (ended before windowStart), only keep those within PAST_SECONDS
+      const isPastEvent = endSample < windowStart
+      if (isPastEvent && startSample < pastWindowStart) {
+        // Past event outside the time window - skip it
+        continue
+      }
+      // Keep: active events (startSample < windowStart && endSample >= windowStart)
+      // Keep: past events within PAST_SECONDS (startSample >= pastWindowStart && endSample < windowStart)
+
+      startSamples[eventCount] = startSample
+      const base = eventCount * 4
+      eventData[base] = historyArray[historyIdx] // opIndex
+      eventData[base + 1] = historyArray[historyIdx + 1] // value
+      eventData[base + 2] = historyArray[historyIdx + 2] // velocity
+      eventData[base + 3] = historyArray[historyIdx + 4] // endSample
+      eventCount++
     }
 
-    // Write the event
-    historyArray[historyIdx] = opIndex as f32
-    historyArray[historyIdx + 1] = value as f32
-    historyArray[historyIdx + 2] = velocity as f32
-    historyArray[historyIdx + 3] = startSample as f32
-    historyArray[historyIdx + 4] = endSample as f32
+    // Sort events by startSample (simple insertion sort)
+    for (let i = 1; i < eventCount; i++) {
+      const startSample = startSamples[i]
+      const base = i * 4
+      let j = i - 1
+      while (j >= 0 && startSamples[j] > startSample) {
+        // Swap startSamples
+        const tempStart = startSamples[j]
+        startSamples[j] = startSamples[j + 1]
+        startSamples[j + 1] = tempStart
+        // Swap eventData
+        for (let k = 0; k < 4; k++) {
+          const temp = eventData[j * 4 + k]
+          eventData[j * 4 + k] = eventData[(j + 1) * 4 + k]
+          eventData[(j + 1) * 4 + k] = temp
+        }
+        j--
+      }
+    }
 
-    return true
+    // Clear scratch buffer
+    for (let i = 0; i < HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE; i++) {
+      this.scratchHistory[i] = 0
+    }
+
+    // Copy sorted events to scratch buffer sequentially
+    let newWritePos = 0
+    for (let i = 0; i < eventCount; i++) {
+      const scratchIdx = HISTORY_DATA_OFFSET + newWritePos * HISTORY_ENTRY_SIZE
+      const base = i * 4
+
+      this.scratchHistory[scratchIdx] = eventData[base] // opIndex
+      this.scratchHistory[scratchIdx + 1] = eventData[base + 1] // value
+      this.scratchHistory[scratchIdx + 2] = eventData[base + 2] // velocity
+      this.scratchHistory[scratchIdx + 3] = startSamples[i] as f32 // startSample
+      this.scratchHistory[scratchIdx + 4] = eventData[base + 3] // endSample
+
+      newWritePos++
+      if (newWritePos >= historySize) break
+    }
+
+    // Clear all slots beyond newWritePos to ensure no future events remain
+    for (let n = newWritePos; n < historySize; n++) {
+      const scratchIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
+      this.scratchHistory[scratchIdx] = 0
+      this.scratchHistory[scratchIdx + 1] = 0
+      this.scratchHistory[scratchIdx + 2] = 0
+      this.scratchHistory[scratchIdx + 3] = 0
+      this.scratchHistory[scratchIdx + 4] = 0
+    }
+
+    // Copy scratch buffer back to history buffer
+    for (let i = 0; i < HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE; i++) {
+      historyArray[i] = this.scratchHistory[i]
+    }
+
+    // Update write position to point after the last valid event (clean position for writing ahead)
+    // This ensures writePos is reset to only point to preserved events
+    historyArray[HISTORY_WRITE_POS_OFFSET] = newWritePos as f32
+    historyArray[HISTORY_SIZE_OFFSET] = historySize as f32
   }
 
   private allocateVoice(): i32 {
@@ -199,244 +267,11 @@ export class Mini extends Gen {
     historyArray: StaticArray<f32>,
     historyWritePos: i32,
     historySize: i32,
-    windowStart: i32,
-    windowEnd: i32,
-    currentCycle: i32,
-    cycleSamples: f32,
-    event: MiniEvent,
-    cycleStartSample: i32,
-    cycleEndSample: i32,
-    opLength: i32,
   ): i32 {
-    // First, try to find existing future event with same opIndex in same cycle
-    // Only if opIndex is valid in current bytecode
-    let existingSlot: i32 = -1
-    if (event.opIndex >= 0 && event.opIndex < opLength) {
-      existingSlot = this.findExistingEventInCycle(
-        historyArray,
-        historyWritePos,
-        historySize,
-        windowStart,
-        event,
-        cycleStartSample,
-        cycleEndSample,
-      )
-      if (existingSlot >= 0) return existingSlot
-    }
-
-    // Second, find empty slot - preferred since no protection issues
-    existingSlot = this.findEmptySlot(historyArray, historyWritePos, historySize)
-    if (existingSlot >= 0) return existingSlot
-
-    // Third, find the oldest past event (ended longest ago) - safest to overwrite
-    existingSlot = this.findDistantPastEvent(historyArray, historyWritePos, historySize, windowStart)
-    if (existingSlot >= 0) return existingSlot
-
-    // Fourth, find the farthest future event (regardless of opIndex validity)
-    existingSlot = this.findDistantFutureEvent(historyArray, historyWritePos, historySize, windowStart, opLength)
-    if (existingSlot >= 0) return existingSlot
-
-    // Fifth, find any event that's not currently active (last resort)
-    existingSlot = this.findAnyNonActiveEvent(historyArray, historyWritePos, historySize, windowStart)
-    if (existingSlot >= 0) return existingSlot
-
-    // Ultimate fallback: return the next write position (will overwrite whatever is there)
-    return HISTORY_DATA_OFFSET + historyWritePos * 5
-  }
-
-  private findExistingEventInCycle(
-    historyArray: StaticArray<f32>,
-    historyWritePos: i32,
-    historySize: i32,
-    windowStart: i32,
-    event: MiniEvent,
-    cycleStartSample: i32,
-    cycleEndSample: i32,
-  ): i32 {
-    // Search backwards from write position (most recent first)
-    for (let n = 0; n < historySize; n++) {
-      const readPos = (historyWritePos - 1 - n + historySize) % historySize
-      const historyIdx = HISTORY_DATA_OFFSET + readPos * 5
-      const existingOpIndex = i32(historyArray[historyIdx])
-      const existingStartSample = i32(historyArray[historyIdx + 3])
-      const existingEndSample = i32(historyArray[historyIdx + 4])
-
-      // Skip invalid entries
-      if (existingEndSample === 0) continue
-
-      // Never return events that are currently active (have started but not ended)
-      // But allow future events (haven't started yet) to be updated
-      if (existingStartSample < windowStart && existingEndSample >= windowStart) {
-        // This event has started but not ended - skip it
-        continue
-      }
-
-      // Same opIndex in same cycle AND future event
-      if (existingOpIndex === event.opIndex
-        && existingStartSample > windowStart
-        && existingStartSample >= cycleStartSample
-        && existingStartSample < cycleEndSample)
-      {
-        return historyIdx
-      }
-    }
-    return -1
-  }
-
-  private findAvailableSlot(
-    historyArray: StaticArray<f32>,
-    historyWritePos: i32,
-    historySize: i32,
-    windowStart: i32,
-    windowEnd: i32,
-    currentCycle: i32,
-    cycleSamples: f32,
-    opLength: i32,
-  ): i32 {
-    let bestSlot: i32 = -1
-    let bestSlotAge: i32 = -1
-    let hasPastEvent: bool = false
-    let attempts = 0
-    let currentWritePos = historyWritePos
-
-    while (attempts < historySize) {
-      const historyIdx = HISTORY_DATA_OFFSET + currentWritePos * 5
-      const existingStartSample = i32(historyArray[historyIdx + 3])
-      const existingEndSample = i32(historyArray[historyIdx + 4])
-
-      // Empty slot - use immediately
-      if (existingEndSample === 0) {
-        return historyIdx
-      }
-
-      // Skip current cycle events (don't overwrite events happening now)
-      const existingCycle = i32(Mathf.floor(f32((existingStartSample as f32) / cycleSamples)))
-      if (existingCycle === currentCycle) {
-        currentWritePos = (currentWritePos + 1) % historySize
-        attempts++
-        continue
-      }
-
-      // Consider events that have fully ended (can be safely overwritten)
-      if (existingEndSample > 0 && existingEndSample < windowStart) {
-        if (!hasPastEvent) {
-          if (bestSlot < 0 || existingStartSample < bestSlotAge) {
-            bestSlot = historyIdx
-            bestSlotAge = existingStartSample
-          }
-        }
-      }
-
-      // Also consider future events that haven't started yet (can be overwritten to reflect current sequence)
-      if (existingEndSample > 0 && existingStartSample > windowEnd) {
-        if (bestSlot < 0 || existingStartSample < bestSlotAge) {
-          bestSlot = historyIdx
-          bestSlotAge = existingStartSample
-        }
-      }
-
-      currentWritePos = (currentWritePos + 1) % historySize
-      attempts++
-    }
-
-    return bestSlot
-  }
-
-  private findEmptySlot(
-    historyArray: StaticArray<f32>,
-    historyWritePos: i32,
-    historySize: i32,
-  ): i32 {
-    for (let n = 0; n < historySize; n++) {
-      const checkIdx = HISTORY_DATA_OFFSET + (historyWritePos + n) % historySize * 5
-      const checkEndSample = i32(historyArray[checkIdx + 4])
-      if (checkEndSample === 0) {
-        return checkIdx
-      }
-    }
-    return -1
-  }
-
-  private findDistantFutureEvent(
-    historyArray: StaticArray<f32>,
-    historyWritePos: i32,
-    historySize: i32,
-    windowStart: i32,
-    opLength: i32,
-  ): i32 {
-    let maxStartSample = -1
-    let slotToUse = -1
-
-    for (let n = 0; n < historySize; n++) {
-      const checkIdx = HISTORY_DATA_OFFSET + (historyWritePos + n) % historySize * 5
-      const checkOpIndex = i32(historyArray[checkIdx])
-      const checkStartSample = i32(historyArray[checkIdx + 3])
-      const checkEndSample = i32(historyArray[checkIdx + 4])
-
-      // Future events can be overwritten (future should reflect current sequence)
-      if (checkEndSample > 0 && checkStartSample > windowStart) {
-        // Prefer events with invalid opIndex, but accept any future event
-        const isValidCandidate = checkOpIndex < 0 || checkOpIndex >= opLength || checkStartSample > maxStartSample
-        if (isValidCandidate && checkStartSample > maxStartSample) {
-          maxStartSample = checkStartSample
-          slotToUse = checkIdx
-        }
-      }
-    }
-
-    return slotToUse
-  }
-
-  private findDistantPastEvent(
-    historyArray: StaticArray<f32>,
-    historyWritePos: i32,
-    historySize: i32,
-    windowStart: i32,
-  ): i32 {
-    // This finds the event whose end is the farthest in the past (before windowStart)
-    // Useful for overwriting events that are no longer visible or relevant
-    let minEndSample = i32.MAX_VALUE
-    let slotToUse = -1
-
-    for (let n = 0; n < historySize; n++) {
-      const checkIdx = HISTORY_DATA_OFFSET + ((historyWritePos + n) % historySize) * 5
-      const checkStartSample = i32(historyArray[checkIdx + 3])
-      const checkEndSample = i32(historyArray[checkIdx + 4])
-
-      // Only consider events that ended before the visible window
-      if (checkEndSample > 0 && checkEndSample < windowStart) {
-        if (checkEndSample < minEndSample) {
-          minEndSample = checkEndSample
-          slotToUse = checkIdx
-        }
-      }
-    }
-    return slotToUse
-  }
-
-  private findAnyNonActiveEvent(
-    historyArray: StaticArray<f32>,
-    historyWritePos: i32,
-    historySize: i32,
-    windowStart: i32,
-  ): i32 {
-    // Find any event that's not currently active (not overlapping with windowStart)
-    // This is a last resort before overwriting at the write position
-    for (let n = 0; n < historySize; n++) {
-      const checkIdx = HISTORY_DATA_OFFSET + ((historyWritePos + n) % historySize) * 5
-      const checkStartSample = i32(historyArray[checkIdx + 3])
-      const checkEndSample = i32(historyArray[checkIdx + 4])
-
-      // Skip invalid entries
-      if (checkEndSample === 0) continue
-
-      // Find events that are not currently active
-      // An event is active if it started and hasn't ended yet
-      if (!(checkStartSample <= windowStart && checkEndSample > windowStart)) {
-        return checkIdx
-      }
-    }
-    return -1
+    // After defragmentation, simply write sequentially from writePos
+    // If we reach the end, wrap around to 0
+    const slotIndex = historyWritePos % historySize
+    return HISTORY_DATA_OFFSET + slotIndex * HISTORY_ENTRY_SIZE
   }
 
   process(_: usize, length: i32): void {
@@ -462,8 +297,8 @@ export class Mini extends Gen {
       this.lastVersion = currentVersion
       this.resetVoiceMaps()
 
-      // Clear all future events from the present forward so they can be regenerated
-      this.clearFutureEvents(historyArray, windowStart)
+      // Defragment history buffer: place old events first, then set writePos for clean writing ahead
+      this.defragmentHistory(historyArray, windowStart, windowEnd)
     }
 
     // Zero outputs
@@ -485,13 +320,16 @@ export class Mini extends Gen {
     const cycleSeconds = cycleLength * secondsPerBeat
     const cycleSamples = (cycleSeconds * sampleRate) as f32
     const lookAheadSamples = i32(<f32> FUTURE_SECONDS * sampleRate)
-    const targetEndSample = windowEnd + lookAheadSamples
+
+    // Limit generation to visible window: from windowStart to windowStart + FUTURE_SECONDS
+    // Don't generate beyond what the visualizer needs
+    const targetEndSample = windowStart + lookAheadSamples
 
     // Find latest event end sample to continue generating from there
+    // After defragmentation, events are sequential, so read all slots
     let latestEndSample = windowStart
     for (let n = 0; n < historySize; n++) {
-      const readPos = (historyWritePos - 1 - n + historySize) % historySize
-      const historyIdx = HISTORY_DATA_OFFSET + readPos * 5
+      const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const startSample = i32(historyArray[historyIdx + 3])
       const endSample = i32(historyArray[historyIdx + 4])
       // Only consider valid events that start after windowStart
@@ -503,13 +341,20 @@ export class Mini extends Gen {
     // Start generating from the latest event end, but not before windowStart
     const generationStartSample = latestEndSample > windowStart ? latestEndSample : windowStart
 
-    // Generate events for the current window plus lookahead
+    // Generate events for the visible window only (windowStart to windowStart + FUTURE_SECONDS)
     const currentCycle = i32(Mathf.floor(f32((windowStart as f32) / cycleSamples)))
     const startCycle = currentCycle
     const endCycle = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamples)))
 
     // Generate and write events to history buffer
+    // Stop if we've written too many events (leave some space)
+    const maxEventsToWrite = historySize - 32 // Leave some buffer space
+    let eventsWritten = 0
+
     for (let cycle = startCycle; cycle <= endCycle; cycle++) {
+      // Stop if we've written too many events
+      if (eventsWritten >= maxEventsToWrite) break
+
       const cycleStartSample = i32(cycleSamples * (cycle as f32))
       const cycleWindowStart = cycle === currentCycle ? generationStartSample : cycleStartSample
       const cycleWindowEnd = cycleStartSample + i32(cycleSamples)
@@ -535,51 +380,60 @@ export class Mini extends Gen {
         // Only write events that start at or after the current playback position
         if (event.startSample < windowStart) continue
 
-        const cycleEndSample = cycleStartSample + i32(cycleSamples)
-        const slotToUse = this.findSlotForEvent(
-          historyArray,
-          historyWritePos,
-          historySize,
-          windowStart,
-          windowEnd,
-          currentCycle,
-          cycleSamples,
-          event,
-          cycleStartSample,
-          cycleEndSample,
-          opLength,
-        )
+        // Check if this event already exists (same opIndex and startSample)
+        // Search backwards from writePos, but limit search to recent events to avoid duplicates
+        let alreadyExists = false
+        const searchLimit = 64 // Only check recent 64 events to avoid performance issues
+        for (let n = 0; n < searchLimit && n < historySize; n++) {
+          const checkPos = (historyWritePos - 1 - n + historySize) % historySize
+          const checkIdx = HISTORY_DATA_OFFSET + checkPos * HISTORY_ENTRY_SIZE
+          const existingOpIndex = i32(historyArray[checkIdx])
+          const existingStartSample = i32(historyArray[checkIdx + 3])
+          const existingEndSample = i32(historyArray[checkIdx + 4])
 
-        if (slotToUse < 0) continue // No slot available
+          // Skip invalid entries
+          if (existingEndSample === 0) continue
 
-        // Calculate slot index
-        const slotIndex = (slotToUse - HISTORY_DATA_OFFSET) / 5
-
-        // Write the event using the safe method
-        if (this.addEventToHistory(
-          historyArray,
-          slotIndex,
-          event.opIndex,
-          event.value,
-          event.velocity,
-          event.startSample,
-          event.endSample,
-          windowStart,
-          windowEnd,
-        )) {
-          // Advance write position only if write succeeded
-          historyWritePos = (slotIndex + 1) % historySize
+          // If we find the same event (same opIndex and startSample), skip writing
+          if (existingOpIndex === event.opIndex && existingStartSample === event.startSample) {
+            alreadyExists = true
+            break
+          }
         }
+
+        if (alreadyExists) continue
+
+        // Get next slot (sequentially, wraps around)
+        const slotToUse = this.findSlotForEvent(historyArray, historyWritePos, historySize)
+        const slotIndex = (slotToUse - HISTORY_DATA_OFFSET) / HISTORY_ENTRY_SIZE
+
+        // Write the event
+        const historyIdx = HISTORY_DATA_OFFSET + slotIndex * HISTORY_ENTRY_SIZE
+        historyArray[historyIdx] = event.opIndex as f32
+        historyArray[historyIdx + 1] = event.value
+        historyArray[historyIdx + 2] = event.velocity
+        historyArray[historyIdx + 3] = event.startSample as f32
+        historyArray[historyIdx + 4] = event.endSample as f32
+
+        // Advance write position (wraps around)
+        historyWritePos = (slotIndex + 1) % historySize
+        eventsWritten++
+
+        // Stop if we've written too many events
+        if (eventsWritten >= maxEventsToWrite) break
       }
+
+      // Stop outer loop if we've written too many events
+      if (eventsWritten >= maxEventsToWrite) break
     }
 
     // Update history write position
     historyArray[HISTORY_WRITE_POS_OFFSET] = historyWritePos as f32
 
     // Read events from history buffer that intersect with current window and schedule voices
+    // After defragmentation, events are sequential from 0 to writePos-1, so read all slots
     for (let n = 0; n < historySize; n++) {
-      const readPos = (historyWritePos - 1 - n + historySize) % historySize
-      const historyIdx = HISTORY_DATA_OFFSET + readPos * 5
+      const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const opIndex = i32(historyArray[historyIdx])
       const startSample = i32(historyArray[historyIdx + 3])
       const endSample = i32(historyArray[historyIdx + 4])
