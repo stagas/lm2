@@ -213,7 +213,7 @@ export class Mini extends Gen {
     return HISTORY_DATA_OFFSET + slotIndex * HISTORY_ENTRY_SIZE
   }
 
-  process(_: usize, length: i32): void {
+  generateHistory(): void {
     if (this.bytecode$ === 0 || this.history$ === 0) return
 
     const bytecodeArray = changetype<StaticArray<f32>>(this.bytecode$)
@@ -223,7 +223,6 @@ export class Mini extends Gen {
     if (opLength <= 0) return
 
     const windowStart = globalSampleCount
-    const windowEnd = windowStart + length
 
     // Check for bytecode changes by comparing version
     const currentVersion = i32(bytecodeArray[3])
@@ -238,17 +237,6 @@ export class Mini extends Gen {
     // Get history buffer info
     let historyWritePos = i32(historyArray[HISTORY_WRITE_POS_OFFSET])
 
-    // Zero outputs
-    for (let v = 0; v < SEQ_VOICES; v++) {
-      const trig$ = this.outTrig$[v]
-      const vel$ = this.outVelocity$[v]
-      const val$ = this.outValue$[v]
-      for (let i = 0; i < length; i++) {
-        store<f32>(trig$ + (i << 2), 0)
-        store<f32>(vel$ + (i << 2), 0)
-        store<f32>(val$ + (i << 2), 0)
-      }
-    }
     const opStart = bytecodeBase + MINI_HEADER_SIZE
 
     // Generate events for current window and future windows (lookahead)
@@ -367,6 +355,32 @@ export class Mini extends Gen {
 
     // Update history write position
     historyArray[HISTORY_WRITE_POS_OFFSET] = historyWritePos as f32
+  }
+
+  private processAudio(length: i32): void {
+    if (this.bytecode$ === 0 || this.history$ === 0) return
+
+    const bytecodeArray = changetype<StaticArray<f32>>(this.bytecode$)
+    const historyArray = changetype<StaticArray<f32>>(this.history$)
+    const bytecodeBase = ARRAY_HEADER_SIZE
+    const opLength = i32(bytecodeArray[bytecodeBase])
+    if (opLength <= 0) return
+
+    const windowStart = globalSampleCount
+    const windowEnd = windowStart + length
+
+    // Zero outputs
+    for (let v = 0; v < SEQ_VOICES; v++) {
+      const trig$ = this.outTrig$[v]
+      const vel$ = this.outVelocity$[v]
+      const val$ = this.outValue$[v]
+      for (let i = 0; i < length; i++) {
+        store<f32>(trig$ + (i << 2), 0)
+        store<f32>(vel$ + (i << 2), 0)
+        store<f32>(val$ + (i << 2), 0)
+      }
+    }
+    const opStart = bytecodeBase + MINI_HEADER_SIZE
 
     // Read events from history buffer that intersect with current window and schedule voices
     // After defragmentation, events are sequential from 0 to writePos-1, so read all slots
@@ -439,5 +453,10 @@ export class Mini extends Gen {
         store<f32>(this.outVoiceCount$ + (i << 2), maxActive as f32)
       }
     }
+  }
+
+  process(_: usize, length: i32): void {
+    this.generateHistory()
+    this.processAudio(length)
   }
 }

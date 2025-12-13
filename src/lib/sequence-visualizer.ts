@@ -1,18 +1,7 @@
 import { ARRAY_HEADER_SIZE, HISTORY_DATA_OFFSET } from '../../as/assembly/constants.ts'
+import type { VmArray, VmHistory } from '../index.ts'
 import type { AnimationManager } from './animation-manager.ts'
 import type { SourceLocation } from './mini-source-map.ts'
-
-type VmArray = {
-  length: number
-  raw: Float32Array
-  data: Float32Array
-}
-
-type VmHistory = {
-  writePos: number
-  size: number
-  raw: Float32Array
-}
 
 export function createSequenceVisualization(
   array: VmArray,

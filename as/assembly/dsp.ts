@@ -54,6 +54,10 @@ function copyAudio(out$: usize, in$: usize, length: i32): void {
 export class Dsp {
   program: Program = new Program()
 
+  prepare(): void {
+    this.program.prepare()
+  }
+
   // Execute a single op, returns new PC
   executeOp(op: Op, pc: i32, pos: i32, length: i32, left$: usize, right$: usize): i32 {
     const ops = this.program.data.ops
@@ -292,9 +296,6 @@ export class Dsp {
       pc++
       pc = this.executeOp(op, pc, pos, length, left$, right$)
     }
-
-    // History buffers are now updated during playback in Mini.process()
-    // No need for separate updateHistoryBuffers() call
 
     atomic.store<i32>(lockPtr, 0)
     atomic.notify(lockPtr, 1)

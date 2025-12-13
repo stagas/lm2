@@ -262,6 +262,24 @@ export class Program {
     return this.outsPool.get(index)
   }
 
+  prepare(): void {
+    const ops = this.data.ops
+    let pc = 0
+    while (pc < ops.length) {
+      const op = ops[pc] as Op
+      pc++
+      if (op === Op.Mini) {
+        const arrayIndex = ops[pc++]
+        const mini = this.gensPool.get(Op.Mini) as Mini
+        mini.bytecode$ = changetype<usize>(this.data.arrays[arrayIndex])
+        mini.history$ = changetype<usize>(this.histories[arrayIndex])
+        mini.generateHistory()
+        // Skip remaining parameters: voiceCountOut + (3 * SEQ_VOICES) + 9 callback params
+        pc += 1 + (3 * SEQ_VOICES) + 9
+      }
+    }
+  }
+
   copyFrom(source: Program): void {
     this.lock = source.lock
     // this.data.copyFrom(source.data)

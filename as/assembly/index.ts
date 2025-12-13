@@ -16,6 +16,11 @@ export function createDsp(): usize {
   return changetype<usize>(new Dsp())
 }
 
+export function prepareDsp(dsp$: usize): void {
+  const dsp = changetype<Dsp>(dsp$)
+  dsp.prepare()
+}
+
 export function createProgram(): usize {
   console.warn('createProgram')
   return changetype<usize>(new Program())

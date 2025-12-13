@@ -3,4 +3,5 @@ export enum ControlOp {
   Start,
   Stop,
   Swap,
+  Prepare,
 }

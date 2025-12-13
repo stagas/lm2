@@ -49,6 +49,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
     bpmValue: Float32Array<SharedArrayBuffer>
     globalSampleCount: Int32Array<SharedArrayBuffer>
     programSwap: Uint32Array<SharedArrayBuffer>
+    prepareDsp: Uint32Array<SharedArrayBuffer>
   }
 }
 
@@ -193,6 +194,12 @@ export class DspProcessor extends AudioWorkletProcessor {
       else if (control === ControlOp.Stop && this.state === 'running') {
         this.state = 'fade-out'
         this.shouldReset = true
+      }
+      else if (control === ControlOp.Prepare && this.state === 'stopped') {
+        const dsp$ = Atomics.load(this.options.processorOptions.prepareDsp, 0)
+        if (dsp$) this.core.wasm.prepareDsp(dsp$)
+        // Set the control back to its previous value.
+        Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
       }
 
       this.lastControl = control

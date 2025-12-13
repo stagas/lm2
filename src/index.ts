@@ -32,7 +32,7 @@ import type { DspProcessor, DspProcessorOptions } from './worklet.ts'
 type State = 'stopped' | 'running' | 'paused'
 let state: State = 'stopped'
 
-type VmArray = {
+export type VmArray = {
   length: number
   raw: Float32Array
   data: Float32Array
@@ -398,6 +398,7 @@ async function createWorklet() {
   const programSwap = new Uint32Array(
     new SharedArrayBuffer(3 * MAX_DSP_INSTANCES * Uint32Array.BYTES_PER_ELEMENT),
   ) // old, new, dsp$ per instance
+  const prepareDsp = new Uint32Array(new SharedArrayBuffer(1 * Uint32Array.BYTES_PER_ELEMENT))
   const dsp = new AudioWorkletNode(audioContext, 'dsp', {
     outputChannelCount: [2],
     processorOptions: {
@@ -407,11 +408,21 @@ async function createWorklet() {
       bpmValue,
       globalSampleCount,
       programSwap,
+      prepareDsp,
     },
   } satisfies DspProcessorOptions)
   dsp.connect(audioContext.destination)
   const worklet = rpc<DspProcessor>(dsp.port)
-  return { ringPos, control, bpmValue, globalSampleCount, programSwap, worklet, audioContext }
+  return {
+    ringPos,
+    control,
+    bpmValue,
+    globalSampleCount,
+    programSwap,
+    prepareDsp,
+    worklet,
+    audioContext,
+  }
 }
 
 const {
@@ -420,6 +431,7 @@ const {
   bpmValue,
   globalSampleCount,
   programSwap,
+  prepareDsp,
   worklet,
   audioContext,
 } = await createWorklet()
@@ -494,6 +506,9 @@ async function createProgram(sequence: string) {
 
       this._updateSequence(sequence, newData)
       this._setData(newData)
+
+      Atomics.store(prepareDsp, 0, wasmDspPtr)
+      Atomics.store(control, 0, ControlOp.Prepare)
 
       this.releaseLock()
     },
