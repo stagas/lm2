@@ -5,11 +5,12 @@ import {
   CALLBACK_SCOPE_MAX_BINDINGS,
   CALLBACK_SCOPE_MAX_DEPTH,
   CHUNK_SIZE,
+  HISTORIES_COUNT,
+  HISTORY_SIZE,
   LITERALS_COUNT,
   MINI_HEADER_SIZE,
   OPS_COUNT,
   RING_BUFFER_SIZE,
-  SEQ_HISTORY_SIZE,
   SEQ_VOICES,
 } from './constants'
 import { Ad } from './gen/ad'
@@ -19,7 +20,6 @@ import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
 import { Sin } from './gen/sin'
 import { Smoothed } from './lib/smoothed'
-import { MiniEventBuffer, MiniEvents } from './mini/events'
 import { Op } from './shared'
 
 export class GenPool<T extends Gen> {
@@ -181,10 +181,12 @@ export class ProgramData {
 export class Program {
   lock: i32 = 0
   data: ProgramData = new ProgramData()
-  outsPool: OutsPool = new OutsPool()
+  histories: StaticArray<usize> = new StaticArray<usize>(HISTORIES_COUNT)
   analyserOutsPool: AnalyserOutsPool = new AnalyserOutsPool()
+
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
+  outsPool: OutsPool = new OutsPool()
 
   // Callback scope stack for remapped buffers and bound inputs
   private callbackDepth: i32 = 0
@@ -310,313 +312,5 @@ export class Program {
     }
 
     this.gensPool.copyFrom(source.gensPool)
-  }
-
-  prepareProgram(): void {
-    // Pre-populate history buffers with future events for visualization
-    // Only clears if bytecode changed, otherwise preserves existing history
-    const ops = this.data.ops
-    const eventEmitter = new MiniEvents()
-    const eventBuffer = new MiniEventBuffer()
-
-    let pc = 0
-    while (pc < ops.length && pc >= 0) {
-      const op = ops[pc] as Op
-      pc++
-
-      if (op === Op.Mini) {
-        const arrayIndex = ops[pc++]
-        const array$ = this.data.arrays[arrayIndex]
-        if (array$ !== 0) {
-          const array = changetype<StaticArray<f32>>(array$)
-          let historySize = i32(array[2])
-          if (historySize <= 0) historySize = SEQ_HISTORY_SIZE
-
-          // Get current history state - never clear it completely
-          let historyWritePos = i32(array[1])
-          if (historyWritePos <= 0) {
-            historyWritePos = 0
-          array[1] = 0
-          }
-
-          // Generate events for time window spanning pianoroll (16 seconds)
-          const cycleLength = 1.0 as f32
-          const secondsPerBeat = 60.0 / bpm
-          const cycleSeconds = cycleLength * secondsPerBeat
-          const cycleSamples = (cycleSeconds * sampleRate) as f32
-          const currentSample = globalSampleCount
-          const pianorollWindowSeconds = 16.0 as f32
-          const pianorollWindowSamples = i32(pianorollWindowSeconds * sampleRate)
-          const lookAheadCycles = i32(Mathf.ceil(f32(pianorollWindowSamples) / cycleSamples))
-
-          // Find where to start generating events
-          // Always start from currentSample (or 0 if not playing) to ensure visualizations see events
-          let startSample = currentSample > 0 ? currentSample : 0
-
-          // Find the latest future event in history to determine where to continue
-          // Don't overwrite past events (events that have already ended)
-          let latestFutureSample = currentSample
-          for (let n = 0; n < historySize; n++) {
-            const readPos = (historyWritePos - 1 - n + historySize) % historySize
-            const historyIdx = readPos * 3
-            const eventStartSample = i32(array[3 + historyIdx + 1])
-            const eventEndSample = i32(array[3 + historyIdx + 2])
-
-            // Skip empty slots
-            if (eventStartSample === 0 && eventEndSample === 0) continue
-
-            // Only consider future events (events that haven't started yet)
-            // Skip events that have already ended (they're past events)
-            if (eventStartSample >= currentSample && eventEndSample >= currentSample && eventEndSample > latestFutureSample) {
-              latestFutureSample = eventEndSample
-            }
-          }
-
-          // Start generating from after the latest future event, or from currentSample if no future events
-          startSample = latestFutureSample > currentSample ? latestFutureSample : currentSample
-
-          // Always generate events for the full lookahead window
-          // This ensures visualizations show events immediately after edits
-          const targetEndSample = startSample + pianorollWindowSamples
-          const startCycle = i32(Mathf.ceil(f32((startSample as f32) / cycleSamples)))
-          const endCycle = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamples)))
-
-          // Always generate cycles - ensure events are generated even if startCycle == endCycle
-          // This ensures visualizations see events immediately after edits
-          if (startCycle <= endCycle) {
-            for (let cycle = startCycle; cycle <= endCycle; cycle++) {
-              const cycleStartSample = i32(cycleSamples * (cycle as f32))
-              const windowStart = cycleStartSample
-              const windowEnd = cycleStartSample + i32(cycleSamples)
-
-              eventBuffer.clear()
-              eventEmitter.emitEvents(
-                array$,
-                eventBuffer,
-                cycleStartSample,
-                cycleLength,
-                cycleSamples,
-                windowStart,
-                windowEnd,
-              )
-
-              // Write events to history buffer
-              // Only write to empty slots or slots with future events (don't overwrite past events)
-              for (let i = 0; i < eventBuffer.writePos; i++) {
-                const event = eventBuffer.events[i]
-                if (!event) continue
-                if (event.opIndex < MINI_HEADER_SIZE) continue
-                if (event.value <= 0) continue
-
-                const historyBase = 3
-
-                // Find next available slot (empty or with future event that we can overwrite)
-                // Always write events - overwrite future events if needed, but never past events
-                let attempts = 0
-                let written = false
-                while (attempts < historySize && !written) {
-                  const historyIdx = historyWritePos * 3
-                  if (historyIdx + 2 >= historySize * 3) break
-
-                  const existingStartSample = i32(array[historyBase + historyIdx + 1])
-                  const existingEndSample = i32(array[historyBase + historyIdx + 2])
-
-                  // Slot is empty or contains an event that has already ended (can overwrite)
-                  // Don't overwrite events that haven't ended yet (they might still be playing)
-                  if (existingEndSample === 0 || existingEndSample < currentSample) {
-                    array[historyBase + historyIdx] = (event.opIndex - MINI_HEADER_SIZE) as f32
-                    array[historyBase + historyIdx + 1] = event.startSample as f32
-                    array[historyBase + historyIdx + 2] = event.endSample as f32
-                    historyWritePos = (historyWritePos + 1) % historySize
-                    written = true
-                    break
-                  }
-
-                  // Slot has an event that hasn't ended yet, try next slot
-                  historyWritePos = (historyWritePos + 1) % historySize
-                  attempts++
-                }
-
-                // If we couldn't find a slot (all slots have events that haven't ended yet),
-                // we need to overwrite the oldest event that has already ended
-                // This ensures events are always written, but we never overwrite events that are still playing
-                if (!written) {
-                  // Find oldest event that has already ended to overwrite
-                  let oldestEndedPos = -1
-                  let oldestEndedSample = i32.MAX_VALUE
-                  for (let n = 0; n < historySize; n++) {
-                    const readPos = (historyWritePos - 1 - n + historySize) % historySize
-                    const historyIdx = readPos * 3
-                    const existingEndSample = i32(array[historyBase + historyIdx + 2])
-                    // Only consider events that have already ended
-                    if (existingEndSample > 0 && existingEndSample < currentSample && existingEndSample < oldestEndedSample) {
-                      oldestEndedSample = existingEndSample
-                      oldestEndedPos = readPos
-                    }
-                  }
-
-                  // If no ended events found, find the oldest event overall (last resort)
-                  if (oldestEndedPos < 0) {
-                    for (let n = 0; n < historySize; n++) {
-                      const readPos = (historyWritePos - 1 - n + historySize) % historySize
-                      const historyIdx = readPos * 3
-                      const existingEndSample = i32(array[historyBase + historyIdx + 2])
-                      if (existingEndSample > 0 && existingEndSample < oldestEndedSample) {
-                        oldestEndedSample = existingEndSample
-                        oldestEndedPos = readPos
-                      }
-                    }
-                  }
-
-                  if (oldestEndedPos >= 0) {
-                    const historyIdx = oldestEndedPos * 3
-                    array[historyBase + historyIdx] = (event.opIndex - MINI_HEADER_SIZE) as f32
-                    array[historyBase + historyIdx + 1] = event.startSample as f32
-                    array[historyBase + historyIdx + 2] = event.endSample as f32
-                  }
-                }
-              }
-            }
-          }
-
-          array[1] = historyWritePos as f32
-        }
-
-        // Skip Mini op arguments: voiceCountOut, voice outputs (SEQ_VOICES * 3), callback metadata (9)
-        pc++ // voiceCountOut
-        for (let v = 0; v < SEQ_VOICES; v++) {
-          pc += 3 // trig, velocity, value
-        }
-        pc += 9 // callback metadata
-      }
-      else if (op === Op.End) {
-        break
-      }
-      else {
-        // Unknown op encountered - break to avoid infinite loop
-        // prepareProgram only needs to handle Mini ops
-        break
-      }
-    }
-  }
-
-  updateHistoryBuffers(): void {
-    // Continuously update history buffers to maintain lookahead window
-    const ops = this.data.ops
-    const eventEmitter = new MiniEvents()
-    const eventBuffer = new MiniEventBuffer()
-
-    let pc = 0
-    while (pc < ops.length && pc >= 0) {
-      const op = ops[pc] as Op
-      pc++
-
-      if (op === Op.Mini) {
-        const arrayIndex = ops[pc++]
-        const array$ = this.data.arrays[arrayIndex]
-        if (array$ !== 0) {
-          const array = changetype<StaticArray<f32>>(array$)
-          let historySize = i32(array[2])
-          if (historySize <= 0) historySize = SEQ_HISTORY_SIZE
-
-          const cycleLength = 1.0 as f32
-          const secondsPerBeat = 60.0 / bpm
-          const cycleSeconds = cycleLength * secondsPerBeat
-          const cycleSamples = (cycleSeconds * sampleRate) as f32
-          const currentSample = globalSampleCount
-          const pianorollWindowSeconds = 16.0 as f32
-          const pianorollWindowSamples = i32(pianorollWindowSeconds * sampleRate)
-          const lookAheadCycles = i32(Mathf.ceil(f32(pianorollWindowSamples) / cycleSamples))
-
-          // Generate events ahead of current playback position
-          let historyWritePos = i32(array[1])
-          const lookAheadSamples = i32(pianorollWindowSeconds * sampleRate)
-          const targetEndSample = currentSample + lookAheadSamples
-
-          // Find the latest event in history to determine where to continue
-          let latestSample = currentSample
-          for (let n = 0; n < historySize; n++) {
-            const readPos = (historyWritePos - 1 - n + historySize) % historySize
-            const historyIdx = readPos * 3
-            const endSample = i32(array[3 + historyIdx + 2])
-            if (endSample > latestSample) {
-              latestSample = endSample
-            }
-          }
-
-          // Generate events from after latestSample to targetEndSample (don't overwrite)
-          const startSample = latestSample > currentSample ? latestSample : currentSample
-          const startCycle = i32(Mathf.ceil(f32((startSample as f32) / cycleSamples)))
-          const endCycle = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamples)))
-
-          // Only generate cycles that are ahead of existing history
-          if (startCycle < endCycle) {
-            for (let cycle = startCycle; cycle <= endCycle; cycle++) {
-              const cycleStartSample = i32(cycleSamples * (cycle as f32))
-              const windowStart = cycleStartSample
-              const windowEnd = cycleStartSample + i32(cycleSamples)
-
-              eventBuffer.clear()
-              eventEmitter.emitEvents(
-                array$,
-                eventBuffer,
-                cycleStartSample,
-                cycleLength,
-                cycleSamples,
-                windowStart,
-                windowEnd,
-              )
-
-              // Write events to history buffer (append, don't overwrite existing valid events)
-              for (let i = 0; i < eventBuffer.writePos; i++) {
-                const event = eventBuffer.events[i]
-                if (!event) continue
-                if (event.opIndex < MINI_HEADER_SIZE) continue
-                if (event.value <= 0) continue
-
-                const historyBase = 3
-
-                // Find next available slot (empty or with event that ends before this one starts)
-                let attempts = 0
-                while (attempts < historySize) {
-                  const historyIdx = historyWritePos * 3
-                  if (historyIdx + 2 >= historySize * 3) break
-
-                  const existingEndSample = i32(array[historyBase + historyIdx + 2])
-
-                  // Slot is empty or has an event that ends before this one starts
-                  if (existingEndSample === 0 || event.startSample > existingEndSample) {
-                    array[historyBase + historyIdx] = (event.opIndex - MINI_HEADER_SIZE) as f32
-                    array[historyBase + historyIdx + 1] = event.startSample as f32
-                    array[historyBase + historyIdx + 2] = event.endSample as f32
-                    historyWritePos = (historyWritePos + 1) % historySize
-                    break
-                  }
-
-                  // Slot has valid event, try next slot
-                  historyWritePos = (historyWritePos + 1) % historySize
-                  attempts++
-                }
-              }
-            }
-          }
-
-          array[1] = historyWritePos as f32
-        }
-
-        // Skip Mini op arguments
-        pc++ // voiceCountOut
-        for (let v = 0; v < SEQ_VOICES; v++) {
-          pc += 3 // trig, velocity, value
-        }
-        pc += 9 // callback metadata
-      }
-      else if (op === Op.End) {
-        break
-      }
-      else {
-        break
-      }
-    }
   }
 }

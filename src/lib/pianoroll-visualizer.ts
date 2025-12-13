@@ -1,15 +1,11 @@
-import { ARRAY_HEADER_SIZE, SEQ_HISTORY_SIZE } from '../../as/assembly/constants.ts'
+import {
+  FUTURE_SECONDS,
+  HISTORY_DATA_OFFSET,
+  PAST_SECONDS,
+  TIME_WINDOW_SECONDS,
+} from '../../as/assembly/constants.ts'
+import type { VmHistory } from '../index.ts'
 import type { AnimationManager } from './animation-manager.ts'
-import { readEventValue, readEventValues } from './mini-bytecode-reader.ts'
-
-type VmArray = {
-  length: number
-  historyWritePos: number
-  historySize: number
-  history: Float32Array
-  raw: Float32Array
-  data: Float32Array
-}
 
 function freqToMidi(freq: number): number {
   if (freq <= 0) return 0
@@ -20,14 +16,14 @@ function freqToMidi(freq: number): number {
 }
 
 export function createPianorollVisualization(
-  array: VmArray,
+  history: VmHistory,
   audioContext: AudioContext,
   bpmValue: Float32Array,
   globalSampleCount: Int32Array,
   animationManager: AnimationManager,
   width: number,
   height: number,
-): { canvas: HTMLCanvasElement; clear: () => void; destroy: () => void } {
+) {
   const canvas = document.createElement('canvas')
   const dpr = window.devicePixelRatio
   canvas.width = width * dpr
@@ -41,157 +37,60 @@ export function createPianorollVisualization(
   const MIN_MIDI = 0
   const MAX_MIDI = 127
 
-  const TIME_WINDOW_SECONDS = 16
-  const PAST_SECONDS = 4
-  const FUTURE_SECONDS = TIME_WINDOW_SECONDS - PAST_SECONDS
   const PIXELS_PER_SECOND = width / TIME_WINDOW_SECONDS
 
-  // NoteValue cache for events with invalid opIndex (bytecode changed)
-  // Key: `${opIndex}-${startSample}-${endSample}`, Value: noteValue
-  const noteValueCache = new Map<string, number>()
-
-  let lastFrameTime = performance.now()
-  let predictedSampleCount = Atomics.load(globalSampleCount, 0)
-  let isFirstFrame = true
+  let currentHistory = history
 
   const draw = () => {
     c.clearRect(0, 0, width, height)
 
     // Read bytecode from array each frame (it's a view into shared memory, so it updates automatically)
-    const bytecode = array.raw
     const sampleRate = audioContext.sampleRate
-    const now = performance.now()
-    const deltaTime = (now - lastFrameTime) / 1000
-    lastFrameTime = now
 
-    const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
-    const latencySamples = latencySeconds * sampleRate
-
+    // Use the raw sample count directly - it's already synchronized with the audio thread
+    // The history buffer events are written using the same globalSampleCount value
     const rawSampleCount = Atomics.load(globalSampleCount, 0)
-    const rawPlaybackPosition = rawSampleCount === 0 ? rawSampleCount : rawSampleCount - latencySamples
-
-    if (rawSampleCount === 0) {
-      predictedSampleCount = 0
-      isFirstFrame = true
-    }
-    else {
-      const drift = rawPlaybackPosition - predictedSampleCount
-      if (isFirstFrame || Math.abs(drift) > sampleRate) {
-        predictedSampleCount = rawPlaybackPosition
-        isFirstFrame = false
-      }
-      else {
-        const samplesAdvanced = deltaTime * sampleRate
-        predictedSampleCount += samplesAdvanced
-
-        if (Math.abs(drift) > 100) {
-          const correctionSpeed = 0.05
-          predictedSampleCount += drift * correctionSpeed
-        }
-      }
-    }
-
-    const currentSampleCount = Math.max(0, predictedSampleCount)
+    const currentSampleCount = Math.max(0, rawSampleCount)
     const currentTimeSeconds = currentSampleCount / sampleRate
 
-    // Check if playback is active (rawSampleCount is advancing)
-    const isPlaying = rawSampleCount > 0
+    const historyRaw = currentHistory.raw
 
-    const historySize = Math.floor(array.historySize) || SEQ_HISTORY_SIZE
-    const history = array.history
-
-    // Read events directly from history buffer (single source of truth)
-    const eventMap = new Map<string, {
-      opIndex: number
+    // Read events directly from history buffer
+    const events: Array<{
       startSample: number
       endSample: number
       noteValue: number
-    }>()
+      velocity: number
+    }> = []
 
-    const currentBytecodeLength = bytecode[ARRAY_HEADER_SIZE] as number
-    const historyWritePos = Math.floor(array.raw[1])
+    // Calculate visible time window first
+    const windowStartTime = currentTimeSeconds - PAST_SECONDS
+    const windowEndTime = currentTimeSeconds + FUTURE_SECONDS
 
-    // Read all events from history buffer and process them directly
-    const windowStart = currentTimeSeconds - PAST_SECONDS
-    const windowEnd = isPlaying ? currentTimeSeconds + FUTURE_SECONDS : currentTimeSeconds
-
-    for (let n = 0; n < historySize; n++) {
-      const readPos = (historyWritePos - 1 - n + historySize) % historySize
-      const idx = readPos * 3
-      const opIndex = Math.floor(history[idx])
-      const startSample = Math.floor(history[idx + 1])
-      const endSample = Math.floor(history[idx + 2])
+    // Read all events from history buffer
+    for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += 5) {
+      const noteValue = historyRaw[idx + 1]
+      const velocity = historyRaw[idx + 2]
+      const startSample = Math.floor(historyRaw[idx + 3])
+      const endSample = Math.floor(historyRaw[idx + 4])
 
       if (startSample === 0 && endSample === 0) continue
+
+      if (noteValue <= 0) continue
 
       const startTimeSeconds = startSample / sampleRate
       const endTimeSeconds = endSample / sampleRate
 
-      // Check if event is within time window
-      if (endTimeSeconds < windowStart || startTimeSeconds > windowEnd) continue
+      // Only include events within the visible time window
+      if (endTimeSeconds < windowStartTime || startTimeSeconds > windowEndTime) continue
 
-      // Try to read noteValue from bytecode
-      const values = readEventValues(bytecode, opIndex)
-      const isValidOpIndex = opIndex < currentBytecodeLength && values.length > 0
-
-      if (isValidOpIndex) {
-        // Valid opIndex - read from bytecode
-        if (values.length === 1) {
-          // Single note
-          const eventKey = `${opIndex}-${startSample}-${endSample}`
-          const noteValue = values[0]!
-          noteValueCache.set(eventKey, noteValue)
-
-          eventMap.set(eventKey, {
-            opIndex,
-            startSample,
-            endSample,
-            noteValue,
-          })
-        }
-        else {
-          // Chord - create one event per note value
-          for (let i = 0; i < values.length; i++) {
-            const noteValue = values[i]!
-            if (noteValue <= 0) continue
-
-            const eventKey = `${opIndex}-${startSample}-${endSample}-${i}`
-            noteValueCache.set(eventKey, noteValue)
-
-            eventMap.set(eventKey, {
-              opIndex,
-              startSample,
-              endSample,
-              noteValue,
-            })
-          }
-        }
-      }
-      else {
-        // Invalid opIndex (bytecode changed) - try to use cached noteValue
-        const eventKey = `${opIndex}-${startSample}-${endSample}`
-        const cachedNoteValue = noteValueCache.get(eventKey)
-
-        if (cachedNoteValue && cachedNoteValue > 0) {
-          eventMap.set(eventKey, {
-            opIndex,
-            startSample,
-            endSample,
-            noteValue: cachedNoteValue,
-          })
-        }
-      }
+      events.push({
+        startSample,
+        endSample,
+        noteValue,
+        velocity,
+      })
     }
-
-    // Clean up old cache entries (older than 60 seconds)
-    const maxHistoryAge = 60
-    const cutoffSample = currentSampleCount - maxHistoryAge * sampleRate
-    for (const [key, noteValue] of noteValueCache) {
-      // Extract endSample from key if possible, or just clear very old entries
-      // For now, we'll keep the cache simple and let it grow (it's just noteValues)
-    }
-
-    const events = Array.from(eventMap.values())
 
     const preActiveNotes = new Set<number>()
     events.forEach(event => {
@@ -247,9 +146,6 @@ export function createPianorollVisualization(
     }
 
     const barLengthSeconds = (4 * 60) / bpmValue[0]
-    const windowStartTime = currentTimeSeconds - PAST_SECONDS
-    const windowEndTime = currentTimeSeconds + FUTURE_SECONDS
-
     const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
 
     for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
@@ -268,9 +164,8 @@ export function createPianorollVisualization(
     for (const event of events) {
       const startTimeSeconds = event.startSample / sampleRate
       const endTimeSeconds = event.endSample / sampleRate
-      const durationSeconds = endTimeSeconds - startTimeSeconds
 
-      const windowStartTime = currentTimeSeconds - PAST_SECONDS
+      const durationSeconds = endTimeSeconds - startTimeSeconds
       const relativeStartTime = startTimeSeconds - windowStartTime
       const relativeEndTime = endTimeSeconds - windowStartTime
 
@@ -357,11 +252,10 @@ export function createPianorollVisualization(
   document.body.appendChild(canvas)
   return {
     canvas,
+    update: (newHistory: VmHistory) => {
+      currentHistory = newHistory
+    },
     clear: () => {
-      // Clear noteValue cache when needed
-      noteValueCache.clear()
-      isFirstFrame = true
-      predictedSampleCount = Atomics.load(globalSampleCount, 0)
     },
     destroy: () => {
       animationManager.unregister(draw)
@@ -369,4 +263,3 @@ export function createPianorollVisualization(
     },
   }
 }
-

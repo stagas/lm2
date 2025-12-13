@@ -1,6 +1,7 @@
 import { type Ring, toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
-import { ARRAYS_COUNT, CHUNK_SIZE, MAX_DSP_INSTANCES, RING_BUFFER_SIZE } from '../as/assembly/constants.ts'
+import { ARRAYS_COUNT, CHUNK_SIZE, HISTORIES_COUNT, MAX_DSP_INSTANCES,
+  RING_BUFFER_SIZE } from '../as/assembly/constants.ts'
 import type * as WasmExports from '../as/build/index.d.ts'
 import config from '../asconfig.json'
 import { DspStruct } from './assembly.ts'
@@ -113,6 +114,10 @@ export class DspProcessor extends AudioWorkletProcessor {
     return Array.from({ length: ARRAYS_COUNT }, () => this.core!.wasm.createArray())
   }
 
+  async createHistories() {
+    return Array.from({ length: HISTORIES_COUNT }, () => this.core!.wasm.createHistoryArray())
+  }
+
   async createProgramData() {
     return this.core!.wasm.createProgramData()
   }
@@ -123,55 +128,6 @@ export class DspProcessor extends AudioWorkletProcessor {
 
   async createDsp(program$?: number) {
     return this.addDsp(program$)
-  }
-
-  async prepareProgram(program$: number) {
-    this.core!.wasm.prepareProgram(program$)
-  }
-
-  async createMiniEventBuffer() {
-    return this.core!.wasm.createMiniEventBuffer()
-  }
-
-  async clearMiniEventBuffer(eventBuffer$: number) {
-    this.core!.wasm.clearMiniEventBuffer(eventBuffer$)
-  }
-
-  async emitMiniEvents(
-    bytecode$: number,
-    eventBuffer$: number,
-    cycleStartSample: number,
-    cycleLength: number,
-    cycleSamples: number,
-    windowStart: number,
-    windowEnd: number,
-  ) {
-    this.core!.wasm.emitMiniEvents(
-      bytecode$,
-      eventBuffer$,
-      cycleStartSample,
-      cycleLength,
-      cycleSamples,
-      windowStart,
-      windowEnd,
-    )
-  }
-
-  async getMiniEventBufferSize(eventBuffer$: number) {
-    return this.core!.wasm.getMiniEventBufferSize(eventBuffer$)
-  }
-
-  async getMiniEvent(eventBuffer$: number, index: number) {
-    const out$ = this.core!.wasm.createFloat32Buffer(5)
-    this.core!.wasm.getMiniEvent(eventBuffer$, index, out$)
-    const out = new Float32Array(this.core!.memory.buffer, out$, 5)
-    return {
-      opIndex: out[0],
-      startSample: out[1],
-      endSample: out[2],
-      value: out[3],
-      velocity: out[4],
-    }
   }
 
   private addDsp(program$?: number) {

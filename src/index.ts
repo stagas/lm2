@@ -1,10 +1,12 @@
 import { type Ring, toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, LITERALS_COUNT, MAX_DSP_INSTANCES, MINI_HEADER_SIZE,
-  OPS_COUNT, RING_BUFFER_SIZE, SEQ_HISTORY_SIZE } from '../as/assembly/constants.ts'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, HISTORIES_COUNT, HISTORY_DATA_OFFSET,
+  HISTORY_HEADER_SIZE, HISTORY_SIZE, HISTORY_SIZE_OFFSET, HISTORY_WRITE_POS_OFFSET, LITERALS_COUNT, MAX_DSP_INSTANCES,
+  MINI_HEADER_SIZE, OPS_COUNT, RING_BUFFER_SIZE } from '../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
 import { AnimationManager } from './lib/animation-manager.ts'
+import { readEventValues } from './lib/mini-bytecode-reader.ts'
 import { buildMiniSourceMap, type SourceLocation } from './lib/mini-source-map.ts'
 import { createPianorollVisualization } from './lib/pianoroll-visualizer.ts'
 import { createSequenceVisualization } from './lib/sequence-visualizer.ts'
@@ -19,11 +21,14 @@ let state: State = 'stopped'
 
 type VmArray = {
   length: number
-  historyWritePos: number
-  historySize: number
-  history: Float32Array
   raw: Float32Array
   data: Float32Array
+}
+
+export type VmHistory = {
+  writePos: number
+  size: number
+  raw: Float32Array
 }
 
 let wasmMemory: WebAssembly.Memory | undefined
@@ -34,9 +39,8 @@ let extraDspPtr = 0
 let program1: { program: Program; clear: () => void } | undefined
 let program2: { program: Program; clear: () => void } | undefined
 const animationManager = new AnimationManager()
-let sequenceVisualization: { canvas: HTMLCanvasElement;
-  update: (sequence: string, sourceMap: Map<number, SourceLocation>) => void; destroy: () => void } | undefined
-let pianorollVisualization: { canvas: HTMLCanvasElement; clear: () => void; destroy: () => void } | undefined
+let sequenceVisualization: ReturnType<typeof createSequenceVisualization> | undefined
+let pianorollVisualization: ReturnType<typeof createPianorollVisualization> | undefined
 
 const MINI_ARRAY_INDEX = 0
 const LIT_ATTACK = 0
@@ -48,65 +52,64 @@ const LIT_MASTER = 4
 type Program = Awaited<ReturnType<typeof createProgram>>
 type ProgramDataView = ReturnType<typeof createProgramDataView>
 
-async function readMiniEvents(
-  bytecode$: number,
+function readMiniEvents(
+  array: VmArray,
+  history: VmHistory,
   sampleRate: number,
-  bpm: number,
-  lookAheadCycles: number = 4,
-): Promise<Array<{
+  lookAheadSeconds: number = 4,
+): Array<{
   note: string
   start: number
   end: number
   startTime: number
   endTime: number
-}>> {
-  if (!bytecode$ || !wasmMemory) return []
+}> {
+  if (!wasmMemory) return []
 
-  const eventBuffer$ = await worklet.createMiniEventBuffer()
-  const cycleLength = 1.0
-  const secondsPerBeat = 60.0 / bpm
-  const cycleSeconds = cycleLength * secondsPerBeat
-  const cycleSamples = cycleSeconds * sampleRate
-  const currentSample = globalSampleCount[0]
+  const bytecode = array.raw
+  const currentSample = Atomics.load(globalSampleCount, 0)
+  const currentTimeSeconds = currentSample / sampleRate
+  const windowEnd = currentTimeSeconds + lookAheadSeconds
 
-  // Clear buffer once at start, then accumulate events across all cycles
-  await worklet.clearMiniEventBuffer(eventBuffer$)
+  const historyRaw = history.raw
+  const currentBytecodeLength = bytecode[ARRAY_HEADER_SIZE] as number
 
-  for (let cycle = 0; cycle < lookAheadCycles; cycle++) {
-    const cycleStartSample = currentSample + Math.floor(cycleSamples * cycle)
-    const windowStart = cycleStartSample
-    const windowEnd = cycleStartSample + Math.floor(cycleSamples)
-
-    await worklet.emitMiniEvents(
-      bytecode$,
-      eventBuffer$,
-      cycleStartSample,
-      cycleLength,
-      cycleSamples,
-      windowStart,
-      windowEnd,
-    )
-  }
-
-  // Read all accumulated events once at the end
   const events: Array<{ note: string; start: number; end: number; startTime: number; endTime: number }> = []
-  const eventCount = await worklet.getMiniEventBufferSize(eventBuffer$)
-  for (let i = 0; i < eventCount; i++) {
-    const event = await worklet.getMiniEvent(eventBuffer$, i)
-    if (event.value > 0 && isFinite(event.value) && !isNaN(event.value)) {
-      const note = frequencyToNoteName(event.value)
-      if (note != null && typeof note === 'string' && note.length > 0 && note !== 'undefined' && note !== 'null') {
-        const startTime = event.startSample / sampleRate
-        const endTime = event.endSample / sampleRate
 
-        events.push({
-          note: String(note),
-          start: event.startSample,
-          end: event.endSample,
-          startTime,
-          endTime,
-        })
-      }
+  // Read events directly from history buffer (scan all slots)
+  for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += 3) {
+    const opIndex = Math.floor(historyRaw[idx])
+    const startSample = Math.floor(historyRaw[idx + 1])
+    const endSample = Math.floor(historyRaw[idx + 2])
+
+    if (startSample === 0 && endSample === 0) continue
+
+    const startTimeSeconds = startSample / sampleRate
+    const endTimeSeconds = endSample / sampleRate
+
+    // Only include future events
+    if (startTimeSeconds < currentTimeSeconds || startTimeSeconds > windowEnd) continue
+
+    // Only use events with valid opIndex
+    if (opIndex < 0 || opIndex >= currentBytecodeLength) continue
+
+    // Read note value from bytecode
+    const values = readEventValues(bytecode, opIndex)
+    if (values.length === 0) continue
+
+    // Use first value as the note
+    const noteValue = values[0]!
+    if (noteValue <= 0) continue
+
+    const note = frequencyToNoteName(noteValue)
+    if (note != null && typeof note === 'string' && note.length > 0 && note !== 'undefined' && note !== 'null') {
+      events.push({
+        note: String(note),
+        start: startSample,
+        end: endSample,
+        startTime: startTimeSeconds,
+        endTime: endTimeSeconds,
+      })
     }
   }
 
@@ -114,72 +117,31 @@ async function readMiniEvents(
   return events
 }
 
-async function updateSequence(data: ProgramDataView, sequence: string) {
+async function updateSequence(program: Program, sequence: string, data: ProgramDataView) {
   const compiled = compileMiniNotation(sequence)
   const target = data.arrays[MINI_ARRAY_INDEX]
 
-  // Check if bytecode changed by comparing length and content
-  const oldBytecodeLength = target.raw[ARRAY_HEADER_SIZE] || 0
-  const newBytecodeLength = compiled.bytecode.length - ARRAY_HEADER_SIZE - MINI_HEADER_SIZE
-  const lengthChanged = oldBytecodeLength !== newBytecodeLength
-
-  // If length is the same, compare content byte-by-byte
-  let contentChanged = false
-  if (!lengthChanged && oldBytecodeLength > 0) {
-    const compareLength = Math.min(oldBytecodeLength, newBytecodeLength)
-    for (let i = 0; i < compareLength; i++) {
-      const oldVal = target.raw[ARRAY_HEADER_SIZE + MINI_HEADER_SIZE + i] || 0
-      const newVal = compiled.bytecode[ARRAY_HEADER_SIZE + MINI_HEADER_SIZE + i] || 0
-      if (oldVal !== newVal) {
-        contentChanged = true
-        break
-      }
-    }
-  }
-
-  const bytecodeChanged = lengthChanged || contentChanged
-
-  // Always preserve history buffer - never clear it completely
-  // When bytecode changes, we'll only clear future events (not yet played)
-  const oldHistoryWritePos = target.raw[1] || 0
-  const oldHistorySize = target.raw[2] || SEQ_HISTORY_SIZE
-  const historyData = new Float32Array(SEQ_HISTORY_SIZE * 3)
-  for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
-    historyData[i] = target.raw[3 + i] || 0
-  }
-
-  target.raw.fill(0)
+  // Write new bytecode without clearing first to avoid race condition
+  // Only clear the tail if new bytecode is shorter
   const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE)
+  const oldMaxSize = Math.min(target.raw.length - ARRAY_HEADER_SIZE, ARRAY_SIZE)
+
+  // Write new bytecode
   target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE)
   target.length = maxSize
 
-  // Restore history buffer
-  target.raw[1] = oldHistoryWritePos
-  target.raw[2] = oldHistorySize || SEQ_HISTORY_SIZE
-  for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
-    target.raw[3 + i] = historyData[i] || 0
-  }
+  // Increment version to signal bytecode change
+  const currentVersion = target.raw[3] || 0
+  target.raw[3] = currentVersion + 1
 
-  // If bytecode changed, clear only future events (preserve past events)
-  if (bytecodeChanged) {
-    const currentSample = Atomics.load(globalSampleCount, 0)
-    const historySize = Math.floor(target.raw[2]) || SEQ_HISTORY_SIZE
-    const historyWritePos = Math.floor(target.raw[1]) || 0
-
-    // Clear only future events (events that haven't started playing yet)
-    for (let n = 0; n < historySize; n++) {
-      const readPos = (historyWritePos - 1 - n + historySize) % historySize
-      const idx = readPos * 3
-      const startSample = Math.floor(target.raw[3 + idx + 1])
-
-      // If event hasn't started yet, clear it (future event)
-      if (startSample >= currentSample) {
-        target.raw[3 + idx] = 0
-        target.raw[3 + idx + 1] = 0
-        target.raw[3 + idx + 2] = 0
-      }
-    }
-  }
+  // Clear tail if new bytecode is shorter (to avoid stale data)
+  // if (maxSize < oldMaxSize) {
+  //   const tailStart = ARRAY_HEADER_SIZE + maxSize
+  //   const tailEnd = ARRAY_HEADER_SIZE + oldMaxSize
+  //   for (let i = tailStart; i < tailEnd; i++) {
+  //     target.raw[i] = 0
+  //   }
+  // }
 
   const sourceMap = buildMiniSourceMap(compiled.nodes, target.raw)
 
@@ -189,6 +151,7 @@ async function updateSequence(data: ProgramDataView, sequence: string) {
   else {
     sequenceVisualization = createSequenceVisualization(
       target,
+      program.histories[MINI_ARRAY_INDEX],
       sequence,
       sourceMap,
       audioContext,
@@ -200,11 +163,10 @@ async function updateSequence(data: ProgramDataView, sequence: string) {
     )
   }
 
-  // Don't clear pianoroll visualization - preserve playback history
-  // Events with invalid opIndex will be handled by the visualizer
+  // Update pianoroll visualization with fresh array reference when bytecode changes
   if (!pianorollVisualization) {
     pianorollVisualization = createPianorollVisualization(
-      target,
+      program.histories[MINI_ARRAY_INDEX],
       audioContext,
       bpmValue,
       globalSampleCount,
@@ -213,19 +175,24 @@ async function updateSequence(data: ProgramDataView, sequence: string) {
       400,
     )
   }
+  else {
+    pianorollVisualization.update(program.histories[MINI_ARRAY_INDEX])
+  }
 
-  const checkEvents = async () => {
-    const programData = ProgramDataStruct(wasmMemory!.buffer, data.ptr$)
-    const arrayBuffers = new Uint32Array(wasmMemory!.buffer, programData.arrays, ARRAYS_COUNT)
-    const bytecodePtr = arrayBuffers[MINI_ARRAY_INDEX]
+  const checkEvents = () => {
+    if (!data) {
+      eventsDiv.textContent = 'No data available'
+      return
+    }
 
-    if (!bytecodePtr) {
+    const target = data.arrays[MINI_ARRAY_INDEX]
+    if (!target) {
       eventsDiv.textContent = 'No bytecode available'
       return
     }
 
     try {
-      const events = await readMiniEvents(bytecodePtr, audioContext.sampleRate, bpmValue[0], 4)
+      const events = readMiniEvents(target, program.histories[MINI_ARRAY_INDEX], audioContext.sampleRate, 4)
       const validEvents = events.filter(e => {
         if (!e || typeof e !== 'object') return false
         const note = e.note
@@ -305,19 +272,13 @@ function createProgramDataView(data$: number, arrays$: number[]) {
   const lock = new Int32Array(wasmMemory.buffer, programData.lock, 1)
   const ops$ = programData.ops
   const ops = new Int32Array(wasmMemory.buffer, ops$, OPS_COUNT)
+
   const arrayBuffers = new Uint32Array(wasmMemory.buffer, programData.arrays, ARRAYS_COUNT)
   const arrays = new Array<VmArray>(ARRAYS_COUNT)
   for (let i = 0; i < ARRAYS_COUNT; i++) {
     arrayBuffers[i] = arrays$[i]
     const arrayBase = arrays$[i]
     const length = new Float32Array(wasmMemory.buffer, arrayBase, 1)
-    const historyWritePos = new Float32Array(wasmMemory.buffer, arrayBase + 1 * Float32Array.BYTES_PER_ELEMENT, 1)
-    const historySize = new Float32Array(wasmMemory.buffer, arrayBase + 2 * Float32Array.BYTES_PER_ELEMENT, 1)
-    const history = new Float32Array(
-      wasmMemory.buffer,
-      arrayBase + 3 * Float32Array.BYTES_PER_ELEMENT,
-      SEQ_HISTORY_SIZE * 3,
-    )
     arrays[i] = {
       get length() {
         return length[0]
@@ -325,13 +286,6 @@ function createProgramDataView(data$: number, arrays$: number[]) {
       set length(value: number) {
         length[0] = value
       },
-      get historyWritePos() {
-        return historyWritePos[0]
-      },
-      get historySize() {
-        return historySize[0]
-      },
-      history,
       raw: new Float32Array(wasmMemory.buffer, arrayBase, ARRAY_SIZE + ARRAY_HEADER_SIZE),
       data: new Float32Array(
         wasmMemory.buffer,
@@ -340,6 +294,7 @@ function createProgramDataView(data$: number, arrays$: number[]) {
       ),
     }
   }
+
   const literals = new Float32Array(wasmMemory.buffer, programData.literals, LITERALS_COUNT)
 
   return {
@@ -470,6 +425,22 @@ async function createProgram(sequence: string) {
     await createProgramData(),
   ]
 
+  const histories$ = await worklet.createHistories()
+  const historyBuffers = new Uint32Array(wasmMemory.buffer, program.histories, HISTORIES_COUNT)
+  const histories = new Array<VmHistory>(ARRAYS_COUNT)
+  for (let i = 0; i < ARRAYS_COUNT; i++) {
+    historyBuffers[i] = histories$[i]
+    histories[i] = {
+      get writePos() {
+        return historyBuffers[i + HISTORY_WRITE_POS_OFFSET]
+      },
+      get size() {
+        return historyBuffers[i + HISTORY_SIZE_OFFSET]
+      },
+      raw: new Float32Array(wasmMemory.buffer, historyBuffers[i], HISTORY_HEADER_SIZE + HISTORY_SIZE * 3),
+    }
+  }
+
   function nextProgramData() {
     const data = programDataPool[programDataPoolIndex]
     programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length
@@ -486,21 +457,35 @@ async function createProgram(sequence: string) {
     ptr$: program$,
     lock,
     analyserOuts,
-    async updateSequence(sequence: string, data: ProgramDataView | undefined = programData, prepare: boolean = true) {
+    histories,
+    get data() {
+      return programData
+    },
+    _updateSequence(sequence: string, data: ProgramDataView | undefined = programData) {
       if (!data) throw new Error('Data not set')
+      updateSequence(out, sequence, data)
+    },
+    async updateSequence(sequence: string, data: ProgramDataView | undefined = programData) {
       await this.withLock(() => {
-        updateSequence(data, sequence)
+        this._updateSequence(sequence, data)
       })
-      if (prepare) {
-        await worklet.prepareProgram(this.ptr$)
-      }
     },
     async buildFromSequence(sequence: string) {
-      let data = nextProgramData()
-      buildProgram(data)
-      await this.updateSequence(sequence, data, false)
-      await this.setData(data)
-      await worklet.prepareProgram(this.ptr$)
+      const newData = nextProgramData()
+      buildProgram(newData)
+
+      await this.acquireLock()
+
+      const oldArray = programData?.arrays[MINI_ARRAY_INDEX]
+      if (oldArray) {
+        const newArray = newData.arrays[MINI_ARRAY_INDEX]
+        newArray.raw[3] = oldArray.raw[3] // copy version so that mini change sequence triggers
+      }
+
+      this._updateSequence(sequence, newData)
+      this._setData(newData)
+
+      this.releaseLock()
     },
     async acquireLock() {
       while (true) {
@@ -518,10 +503,13 @@ async function createProgram(sequence: string) {
       fn()
       this.releaseLock()
     },
+    _setData(value: ProgramDataView) {
+      programData = value
+      program.data = programData.ptr$
+    },
     async setData(value: ProgramDataView) {
       await this.withLock(() => {
-        programData = value
-        program.data = programData.ptr$
+        this._setData(value)
       })
     },
   }

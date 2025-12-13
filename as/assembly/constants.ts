@@ -1,8 +1,16 @@
 export const RING_BUFFER_SIZE = 16384
 export const CHUNK_SIZE = 128
 export const ARRAY_SIZE = 1024
-export const SEQ_HISTORY_SIZE = 128 // ring buffer for event history (increased for rapid events)
-export const ARRAY_HEADER_SIZE = 3 + SEQ_HISTORY_SIZE * 3 // length, historyWritePos, historySize, [index,startSample,endSample]*historySize
+// Ring buffer for event history - sized for 16 seconds (4s past + 12s future) at worst case ~50 events/sec
+// 16 seconds * 50 events/sec = 800 events, using 4096 for safety margin and thousands of events
+export const HISTORY_SIZE = 4096 // ring buffer for event history
+export const HISTORY_HEADER_SIZE = 2 // writePos, size
+export const HISTORY_WRITE_POS_OFFSET = 0
+export const HISTORY_SIZE_OFFSET = 1
+export const HISTORY_DATA_OFFSET = 2
+export const HISTORIES_COUNT = 128
+export const ARRAY_HISTORY_SIZE = 128 // space for history metadata in array header
+export const ARRAY_HEADER_SIZE = 4 + ARRAY_HISTORY_SIZE * 5 // length, historyWritePos, historySize, version, [opIndex,value,velocity,startSample,endSample]*historySize
 export const ARRAYS_COUNT = 1024
 export const LITERALS_COUNT = 1024
 export const OPS_COUNT = 1024
@@ -14,6 +22,11 @@ export const CALLBACK_SCOPE_MAX_DEPTH = 8
 export const CALLBACK_SCOPE_MAX_BINDINGS = 8
 export const MINI_EVENT_SIZE: i32 = 7
 export const MINI_HEADER_SIZE: i32 = 1
+
+// Timeline constants for visualizers
+export const PAST_SECONDS = 8
+export const FUTURE_SECONDS = 8
+export const TIME_WINDOW_SECONDS = PAST_SECONDS + FUTURE_SECONDS
 
 // Operation types
 export const OP_EVENT: i32 = 0

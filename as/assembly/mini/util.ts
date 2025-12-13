@@ -1,5 +1,6 @@
 import {
   ARRAY_HEADER_SIZE,
+  MINI_HEADER_SIZE,
   OP_GROUP_END,
   OP_GROUP_START,
 } from '../constants'
@@ -158,7 +159,7 @@ export class BytecodeReader {
   }
 
   getOpIndex(offset: i32): i32 {
-    return offset - ARRAY_HEADER_SIZE
+    return offset - (ARRAY_HEADER_SIZE + MINI_HEADER_SIZE)
   }
 }
 

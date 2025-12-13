@@ -53,7 +53,6 @@ function copyAudio(out$: usize, in$: usize, length: i32): void {
 
 export class Dsp {
   program: Program = new Program()
-  private historyUpdateCounter: i32 = 0
 
   // Execute a single op, returns new PC
   executeOp(op: Op, pc: i32, pos: i32, length: i32, left$: usize, right$: usize): i32 {
@@ -206,6 +205,7 @@ export class Dsp {
         const mixOutIndex = ops[pc++]
 
         mini.bytecode$ = changetype<usize>(program.data.arrays[arrayIndex])
+        mini.history$ = changetype<usize>(program.histories[arrayIndex])
         mini.outVoiceCount$ = program.outsPool.get(voiceCountOut)
 
         mini.process(0, length)

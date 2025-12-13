@@ -27,7 +27,7 @@ export type ProgramData = typeof ProgramDataStruct.type
 export const ProgramStruct = Struct({
   lock: 'i32',
   data: 'usize',
-  outsPool: 'usize',
+  histories: 'usize',
   analyserOutsPool: 'usize',
 })
 export type Program = typeof ProgramStruct.type

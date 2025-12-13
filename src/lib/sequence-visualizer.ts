@@ -1,18 +1,22 @@
-import { ARRAY_HEADER_SIZE, SEQ_HISTORY_SIZE } from '../../as/assembly/constants.ts'
+import { ARRAY_HEADER_SIZE, HISTORY_DATA_OFFSET } from '../../as/assembly/constants.ts'
 import type { AnimationManager } from './animation-manager.ts'
 import type { SourceLocation } from './mini-source-map.ts'
 
 type VmArray = {
   length: number
-  historyWritePos: number
-  historySize: number
-  history: Float32Array
   raw: Float32Array
   data: Float32Array
 }
 
+type VmHistory = {
+  writePos: number
+  size: number
+  raw: Float32Array
+}
+
 export function createSequenceVisualization(
   array: VmArray,
+  history: VmHistory,
   sequenceString: string,
   sourceMap: Map<number, SourceLocation>,
   audioContext: AudioContext,
@@ -36,56 +40,37 @@ export function createSequenceVisualization(
 
   const FADEOUT_SECONDS = 0.3
 
-  let lastFrameTime = performance.now()
-  let predictedSampleCount = Atomics.load(globalSampleCount, 0)
-  let isFirstFrame = true
   let currentSequenceString = sequenceString
   let currentSourceMap = sourceMap
+  let lastVersion = -1
+  let currentHistory = history
 
   const draw = () => {
     c.clearRect(0, 0, width, height)
 
     const sampleRate = audioContext.sampleRate
-    const now = performance.now()
-    const deltaTime = (now - lastFrameTime) / 1000
-    lastFrameTime = now
-
-    const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
-    const latencySamples = latencySeconds * sampleRate
-
     const rawSampleCount = Atomics.load(globalSampleCount, 0)
-    const rawPlaybackPosition = rawSampleCount - latencySamples
 
-    const drift = rawPlaybackPosition - predictedSampleCount
-    if (isFirstFrame || Math.abs(drift) > sampleRate) {
-      predictedSampleCount = rawPlaybackPosition
-      isFirstFrame = false
-    }
-    else {
-      const samplesAdvanced = deltaTime * sampleRate
-      predictedSampleCount += samplesAdvanced
+    // Use the raw sample count directly - it's already synchronized with the audio thread
+    // The history buffer events are written using the same globalSampleCount value
+    const currentSampleCount = Math.max(0, rawSampleCount)
 
-      if (Math.abs(drift) > 100) {
-        const correctionSpeed = 0.05
-        predictedSampleCount += drift * correctionSpeed
-      }
-    }
-
-    const currentSampleCount = Math.max(0, predictedSampleCount)
-
-    const historySize = Math.floor(array.historySize) || SEQ_HISTORY_SIZE
-    const history = array.history
-    const historyWritePos = Math.floor(array.raw[1])
+    const historyRaw = currentHistory.raw
 
     const eventData = new Map<number, { startSample: number; endSample: number }>()
     const currentBytecodeLength = array.raw[ARRAY_HEADER_SIZE] as number
+    const currentVersion = array.raw[3] as number
 
-    for (let n = 0; n < historySize; n++) {
-      const readPos = (historyWritePos - 1 - n + historySize) % historySize
-      const idx = readPos * 3
-      const opIndex = Math.floor(history[idx])
-      const startSample = Math.floor(history[idx + 1])
-      const endSample = Math.floor(history[idx + 2])
+    // Clear eventData if bytecode changed to avoid showing stale highlighting
+    if (lastVersion !== -1 && lastVersion !== currentVersion) {
+      eventData.clear()
+    }
+    lastVersion = currentVersion
+
+    for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += 5) {
+      const opIndex = Math.floor(historyRaw[idx])
+      const startSample = Math.floor(historyRaw[idx + 3])
+      const endSample = Math.floor(historyRaw[idx + 4])
 
       if (startSample === 0 && endSample === 0) continue
 

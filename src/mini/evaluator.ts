@@ -98,11 +98,11 @@ export function evaluateMiniBytecode(
           prob: event.probability,
           source: source
             ? {
-                eventIndex: source.eventIndex,
-                start: source.start,
-                length: source.length,
-                text: source.text,
-              }
+              eventIndex: source.eventIndex,
+              start: source.start,
+              length: source.length,
+              text: source.text,
+            }
             : undefined,
         })
       }
@@ -111,4 +111,3 @@ export function evaluateMiniBytecode(
 
   return events.sort((a, b) => a.start - b.start)
 }
-

@@ -1,6 +1,5 @@
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, OPS_COUNT } from './constants'
+import { ARRAY_HEADER_SIZE, ARRAY_SIZE, HISTORY_HEADER_SIZE, HISTORY_SIZE, OPS_COUNT } from './constants'
 import { Dsp } from './dsp'
-import { MiniEventBuffer, MiniEvents } from './mini/events'
 import { Program, ProgramData } from './program'
 
 export * from './globals'
@@ -36,9 +35,12 @@ export function createOps(): usize {
 }
 
 export function createArray(): usize {
-  const array = new StaticArray<f32>(ARRAY_SIZE + ARRAY_HEADER_SIZE)
-  array[1] = 0 // history write position
-  array[2] = 0 // history size (only set for sequence bytecode)
+  const array = new StaticArray<f32>(ARRAY_HEADER_SIZE + ARRAY_SIZE)
+  return changetype<usize>(array)
+}
+
+export function createHistoryArray(): usize {
+  const array = new StaticArray<f32>(HISTORY_HEADER_SIZE + HISTORY_SIZE * 5)
   return changetype<usize>(array)
 }
 
@@ -70,55 +72,4 @@ export function resetDsp(dsp$: usize): void {
 
   // Reset all sequence generators
   dsp.program.gensPool.resetAllSeqs()
-}
-
-export function prepareProgram(program$: usize): void {
-  if (program$ === 0) return
-  const program = changetype<Program>(program$)
-  program.prepareProgram()
-}
-
-export function createMiniEventBuffer(): usize {
-  return changetype<usize>(new MiniEventBuffer())
-}
-
-export function emitMiniEvents(
-  bytecode$: usize,
-  eventBuffer$: usize,
-  cycleStartSample: i32,
-  cycleLength: f32,
-  cycleSamples: f32,
-  windowStart: i32,
-  windowEnd: i32,
-): void {
-  if (bytecode$ === 0 || eventBuffer$ === 0) return
-  const eventBuffer = changetype<MiniEventBuffer>(eventBuffer$)
-  const emitter = new MiniEvents()
-  emitter.emitEvents(bytecode$, eventBuffer, cycleStartSample, cycleLength, cycleSamples, windowStart, windowEnd)
-}
-
-export function clearMiniEventBuffer(eventBuffer$: usize): void {
-  if (eventBuffer$ === 0) return
-  const eventBuffer = changetype<MiniEventBuffer>(eventBuffer$)
-  eventBuffer.clear()
-}
-
-export function getMiniEventBufferSize(eventBuffer$: usize): i32 {
-  if (eventBuffer$ === 0) return 0
-  const eventBuffer = changetype<MiniEventBuffer>(eventBuffer$)
-  return eventBuffer.writePos
-}
-
-export function getMiniEvent(eventBuffer$: usize, index: i32, out$: usize): void {
-  if (eventBuffer$ === 0 || out$ === 0) return
-  const eventBuffer = changetype<MiniEventBuffer>(eventBuffer$)
-  if (index < 0 || index >= eventBuffer.writePos) return
-  const event = eventBuffer.events[index]
-  if (event === null) return
-  const out = changetype<StaticArray<f32>>(out$)
-  out[0] = event.opIndex as f32
-  out[1] = event.startSample as f32
-  out[2] = event.endSample as f32
-  out[3] = event.value
-  out[4] = event.velocity
 }
