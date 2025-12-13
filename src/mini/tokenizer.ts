@@ -5,10 +5,9 @@ type NodeType = 'event' | 'rest' | 'group'
 export interface Modifiers {
   velocity: number
   hold: number
-  repeat: number
   replicate: number
   elongate: number
-  stretch: number
+  density: number
   offset: number
   jitter: number
   prob: number
@@ -40,10 +39,9 @@ export interface Node {
 const DEFAULT_MODS: Modifiers = {
   velocity: 1,
   hold: 0,
-  repeat: 1,
   replicate: 1,
   elongate: 1,
-  stretch: 1,
+  density: 1,
   offset: 0,
   jitter: 0,
   prob: 0,
@@ -72,7 +70,7 @@ function parseModifiers(text: string): Modifiers {
       case '*': {
         const m = rest.match(/^([\d.]+)/)
         if (m) {
-          mods.repeat = parseFloat(m[1]!)
+          mods.density = parseFloat(m[1]!)
           i += m[0]!.length + 1
         }
         else {
@@ -105,7 +103,7 @@ function parseModifiers(text: string): Modifiers {
       case '/': {
         const m = rest.match(/^([\d.]+)/)
         if (m) {
-          mods.stretch = parseFloat(m[1]!)
+          mods.density = 1 / parseFloat(m[1]!)
           i += m[0]!.length + 1
         }
         else {

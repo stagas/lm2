@@ -1,0 +1,94 @@
+import { MAX_EVENT_VALUES, OP_EVENT, OP_EVENT_BASE_SIZE, OP_GROUP_END, OP_GROUP_END_SIZE, OP_GROUP_START,
+  OP_GROUP_START_SIZE, OP_REST, OP_REST_SIZE } from '../constants'
+
+@unmanaged
+export class EventOp {
+  opcode!: f32
+  valueCount!: f32
+  velocity!: f32
+  hold!: f32
+  glide!: f32
+  prob!: f32
+  density!: f32
+  // values[MAX_EVENT_VALUES] stored at offset + 7 through + 22
+
+  static size(): i32 {
+    return OP_EVENT_BASE_SIZE
+  }
+
+  static at(array$: usize, offset: i32): EventOp {
+    return changetype<EventOp>(array$ + (offset << 2))
+  }
+
+  getValue(index: i32): f32 {
+    if (index >= 0 && index < MAX_EVENT_VALUES) {
+      const valuesPtr = changetype<usize>(this) + ((7 + index) << 2)
+      return load<f32>(valuesPtr)
+    }
+    return 0.0
+  }
+}
+
+@unmanaged
+export class GroupStartOp {
+  opcode!: f32
+  childCount!: f32
+  angle!: f32
+  velocity!: f32
+  hold!: f32
+  replicate!: f32
+  elongate!: f32
+  density!: f32
+  offset!: f32
+  jitter!: f32
+  prob!: f32
+  glide!: f32
+  strum!: f32
+
+  static size(): i32 {
+    return OP_GROUP_START_SIZE
+  }
+
+  static at(array$: usize, offset: i32): GroupStartOp {
+    return changetype<GroupStartOp>(array$ + (offset << 2))
+  }
+}
+
+@unmanaged
+export class RestOp {
+  opcode!: f32
+
+  static size(): i32 {
+    return OP_REST_SIZE
+  }
+
+  static at(array$: usize, offset: i32): RestOp {
+    return changetype<RestOp>(array$ + (offset << 2))
+  }
+}
+
+@unmanaged
+export class GroupEndOp {
+  opcode!: f32
+
+  static size(): i32 {
+    return OP_GROUP_END_SIZE
+  }
+
+  static at(array$: usize, offset: i32): GroupEndOp {
+    return changetype<GroupEndOp>(array$ + (offset << 2))
+  }
+}
+
+export function getOpcode(array$: usize, offset: i32): i32 {
+  return i32(load<f32>(array$ + (offset << 2)))
+}
+
+export function skipOp(array$: usize, offset: i32): i32 {
+  const opcode = getOpcode(array$, offset)
+  if (opcode === OP_EVENT) return offset + OP_EVENT_BASE_SIZE
+  if (opcode === OP_REST) return offset + OP_REST_SIZE
+  if (opcode === OP_GROUP_START) return offset + OP_GROUP_START_SIZE
+  if (opcode === OP_GROUP_END) return offset + OP_GROUP_END_SIZE
+  return offset
+}

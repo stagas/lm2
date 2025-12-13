@@ -8,6 +8,7 @@ import {
   LITERALS_COUNT,
   OPS_COUNT,
   RING_BUFFER_SIZE,
+  SEQ_HISTORY_SIZE,
   SEQ_VOICES,
 } from './constants'
 import { Ad } from './gen/ad'
@@ -307,5 +308,47 @@ export class Program {
     }
 
     this.gensPool.copyFrom(source.gensPool)
+  }
+
+  prepareProgram(): void {
+    // Clear history buffers for all Mini arrays
+    // History will be written by Mini.evaluateGroup during audio processing
+    const ops = this.data.ops
+
+    let pc = 0
+    while (pc < ops.length && pc >= 0) {
+      const op = ops[pc] as Op
+      pc++
+
+      if (op === Op.Mini) {
+        const arrayIndex = ops[pc++]
+        const array$ = this.data.arrays[arrayIndex]
+        if (array$ !== 0) {
+          const array = changetype<StaticArray<f32>>(array$)
+          let historySize = i32(array[2])
+          if (historySize <= 0) historySize = SEQ_HISTORY_SIZE
+
+          array[1] = 0
+          for (let i = 0; i < historySize * 3; i++) {
+            array[3 + i] = 0
+          }
+        }
+
+        // Skip Mini op arguments: voiceCountOut, voice outputs (SEQ_VOICES * 3), callback metadata (9)
+        pc++ // voiceCountOut
+        for (let v = 0; v < SEQ_VOICES; v++) {
+          pc += 3 // trig, velocity, value
+        }
+        pc += 9 // callback metadata
+      }
+      else if (op === Op.End) {
+        break
+      }
+      else {
+        // Unknown op encountered - break to avoid infinite loop
+        // prepareProgram only needs to handle Mini ops
+        break
+      }
+    }
   }
 }

@@ -40,16 +40,125 @@ const LIT_MASTER = 4
 type Program = Awaited<ReturnType<typeof createProgram>>
 type ProgramDataView = ReturnType<typeof createProgramDataView>
 
-function updateSequence(data: ProgramDataView, sequence: string) {
+async function readMiniEvents(
+  bytecode$: number,
+  sampleRate: number,
+  bpm: number,
+  lookAheadCycles: number = 4,
+): Promise<Array<{
+  note: string
+  start: number
+  end: number
+  startTime: number
+  endTime: number
+}>> {
+  if (!bytecode$ || !wasmMemory) return []
+
+  const eventBuffer$ = await worklet.createMiniEventBuffer()
+  const cycleLength = 1.0
+  const secondsPerBeat = 60.0 / bpm
+  const cycleSeconds = cycleLength * secondsPerBeat
+  const cycleSamples = cycleSeconds * sampleRate
+  const currentSample = globalSampleCount[0]
+
+  // Clear buffer once at start, then accumulate events across all cycles
+  await worklet.clearMiniEventBuffer(eventBuffer$)
+
+  for (let cycle = 0; cycle < lookAheadCycles; cycle++) {
+    const cycleStartSample = currentSample + Math.floor(cycleSamples * cycle)
+    const windowStart = cycleStartSample
+    const windowEnd = cycleStartSample + Math.floor(cycleSamples)
+
+    await worklet.emitMiniEvents(
+      bytecode$,
+      eventBuffer$,
+      cycleStartSample,
+      cycleLength,
+      cycleSamples,
+      windowStart,
+      windowEnd,
+    )
+  }
+
+  // Read all accumulated events once at the end
+  const events: Array<{ note: string; start: number; end: number; startTime: number; endTime: number }> = []
+  const eventCount = await worklet.getMiniEventBufferSize(eventBuffer$)
+  for (let i = 0; i < eventCount; i++) {
+    const event = await worklet.getMiniEvent(eventBuffer$, i)
+    if (event.value > 0 && isFinite(event.value) && !isNaN(event.value)) {
+      const note = frequencyToNoteName(event.value)
+      if (note != null && typeof note === 'string' && note.length > 0 && note !== 'undefined' && note !== 'null') {
+        const startTime = event.startSample / sampleRate
+        const endTime = event.endSample / sampleRate
+
+        events.push({
+          note: String(note),
+          start: event.startSample,
+          end: event.endSample,
+          startTime,
+          endTime,
+        })
+      }
+    }
+  }
+
+  events.sort((a, b) => a.start - b.start)
+  return events
+}
+
+async function updateSequence(data: ProgramDataView, sequence: string) {
   const compiled = compileMiniNotation(sequence)
-  eventsDiv.textContent = compiled.events.map(event =>
-    `${frequencyToNoteName(event.value)} ${event.start.toFixed(2)} ${event.end.toFixed(2)}`
-  ).join('\n')
   const target = data.arrays[MINI_ARRAY_INDEX]
   target.raw.fill(0)
-  target.raw[2] = SEQ_HISTORY_SIZE
-  target.raw.set(compiled.bytecode, ARRAY_HEADER_SIZE)
-  target.length = compiled.bytecode.length
+  const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE)
+  target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE)
+  target.length = maxSize
+
+  const checkEvents = async () => {
+    const programData = ProgramDataStruct(wasmMemory!.buffer, data.ptr$)
+    const arrayBuffers = new Uint32Array(wasmMemory!.buffer, programData.arrays, ARRAYS_COUNT)
+    const bytecodePtr = arrayBuffers[MINI_ARRAY_INDEX]
+
+    if (!bytecodePtr) {
+      eventsDiv.textContent = 'No bytecode available'
+      return
+    }
+
+    try {
+      const events = await readMiniEvents(bytecodePtr, audioContext.sampleRate, bpmValue[0], 4)
+      const validEvents = events.filter(e => {
+        if (!e || typeof e !== 'object') return false
+        const note = e.note
+        if (note === undefined || note === null) return false
+        if (typeof note !== 'string') return false
+        if (note.length === 0) return false
+        if (note === 'undefined' || note === 'null') return false
+        return true
+      })
+      if (validEvents.length > 0) {
+        eventsDiv.textContent = validEvents.map(e => {
+          const note = (e.note && typeof e.note === 'string') ? e.note : '?'
+          return `${note} ${e.startTime.toFixed(2)}-${e.endTime.toFixed(2)} ${(e.start / 1000).toFixed(1)}-${
+            (e.end / 1000).toFixed(1)
+          }`
+        }).join('\n')
+      }
+      else if (events.length > 0) {
+        console.warn('All events filtered out. Sample events:', events.slice(0, 3))
+        eventsDiv.textContent = `Found ${events.length} events but none had valid notes. Check console for details.`
+      }
+      else {
+        eventsDiv.textContent = 'No events found in sequence'
+      }
+    }
+    catch (error) {
+      console.error('Error reading events:', error)
+      eventsDiv.textContent = `Error reading events: ${error}`
+    }
+  }
+
+  // Use event emitter to get events
+  setTimeout(checkEvents, 50)
 }
 
 function buildProgram(data: ProgramDataView) {
@@ -267,17 +376,21 @@ async function createProgram(sequence: string) {
     ptr$: program$,
     lock,
     analyserOuts,
-    async updateSequence(sequence: string, data: ProgramDataView | undefined = programData) {
+    async updateSequence(sequence: string, data: ProgramDataView | undefined = programData, prepare: boolean = true) {
       if (!data) throw new Error('Data not set')
       await this.withLock(() => {
         updateSequence(data, sequence)
       })
+      if (prepare) {
+        await worklet.prepareProgram(this.ptr$)
+      }
     },
     async buildFromSequence(sequence: string) {
       let data = nextProgramData()
       buildProgram(data)
-      await this.updateSequence(sequence, data)
+      await this.updateSequence(sequence, data, false)
       await this.setData(data)
+      await worklet.prepareProgram(this.ptr$)
     },
     async acquireLock() {
       while (true) {
@@ -385,7 +498,13 @@ document.body.appendChild(playBothButton)
 
 const eventsDiv = Object.assign(
   document.createElement('div'),
-  { className: 'text-white p-2 rounded-md border border-gray-600 w-full max-w-md whitespace-pre-wrap font-mono' },
+  {
+    className: 'text-white p-2 rounded-md border border-gray-600 w-full max-w-md whitespace-pre-wrap font-mono',
+    onpointerdown: () => {
+      // copy contents to clipboard
+      navigator.clipboard.writeText(eventsDiv.textContent ?? '')
+    },
+  },
 )
 document.body.appendChild(eventsDiv)
 
