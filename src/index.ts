@@ -89,10 +89,10 @@ function readMiniEvents(
   const events: Array<{ note: string; start: number; end: number; startTime: number; endTime: number }> = []
 
   // Read events directly from history buffer (scan all slots)
-  for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += 3) {
+  for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
     const opIndex = Math.floor(historyRaw[idx])
-    const startSample = Math.floor(historyRaw[idx + 1])
-    const endSample = Math.floor(historyRaw[idx + 2])
+    const startSample = Math.floor(historyRaw[idx + 3])
+    const endSample = Math.floor(historyRaw[idx + 4])
 
     if (startSample === 0 && endSample === 0) continue
 

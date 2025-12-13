@@ -301,6 +301,7 @@ export class DspProcessor extends AudioWorkletProcessor {
         this.core.wasm.resetGlobalSampleCount()
         for (const dsp of this.dsps) {
           this.core.wasm.resetDsp(dsp.dsp$)
+          this.core.wasm.prepareDsp(dsp.dsp$)
         }
         this.shouldReset = false
       }
