@@ -139,16 +139,13 @@ async function updateSequence(data: ProgramDataView, sequence: string) {
 
   const bytecodeChanged = lengthChanged || contentChanged
 
-  // Preserve history buffer only if bytecode didn't change
-  let oldHistoryWritePos = 0
-  let oldHistorySize = 0
+  // Always preserve history buffer - never clear it completely
+  // When bytecode changes, we'll only clear future events (not yet played)
+  const oldHistoryWritePos = target.raw[1] || 0
+  const oldHistorySize = target.raw[2] || SEQ_HISTORY_SIZE
   const historyData = new Float32Array(SEQ_HISTORY_SIZE * 3)
-  if (!bytecodeChanged) {
-    oldHistoryWritePos = target.raw[1] || 0
-    oldHistorySize = target.raw[2] || SEQ_HISTORY_SIZE
-    for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
-      historyData[i] = target.raw[3 + i] || 0
-    }
+  for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
+    historyData[i] = target.raw[3 + i] || 0
   }
 
   target.raw.fill(0)
@@ -156,22 +153,31 @@ async function updateSequence(data: ProgramDataView, sequence: string) {
   target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE)
   target.length = maxSize
 
-  // Restore history buffer only if bytecode didn't change
-  // When bytecode changes, clear history so new events can be generated
-  if (!bytecodeChanged) {
-    target.raw[1] = oldHistoryWritePos
-    target.raw[2] = oldHistorySize || SEQ_HISTORY_SIZE
-    for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
-      target.raw[3 + i] = historyData[i] || 0
-    }
+  // Restore history buffer
+  target.raw[1] = oldHistoryWritePos
+  target.raw[2] = oldHistorySize || SEQ_HISTORY_SIZE
+  for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
+    target.raw[3 + i] = historyData[i] || 0
   }
-  else {
-    // Clear history buffer when bytecode changes - old opIndex values are invalid
-    // prepareProgram() will generate new events for the new bytecode
-    target.raw[1] = 0
-    target.raw[2] = SEQ_HISTORY_SIZE
-    for (let i = 0; i < SEQ_HISTORY_SIZE * 3; i++) {
-      target.raw[3 + i] = 0
+
+  // If bytecode changed, clear only future events (preserve past events)
+  if (bytecodeChanged) {
+    const currentSample = Atomics.load(globalSampleCount, 0)
+    const historySize = Math.floor(target.raw[2]) || SEQ_HISTORY_SIZE
+    const historyWritePos = Math.floor(target.raw[1]) || 0
+
+    // Clear only future events (events that haven't started playing yet)
+    for (let n = 0; n < historySize; n++) {
+      const readPos = (historyWritePos - 1 - n + historySize) % historySize
+      const idx = readPos * 3
+      const startSample = Math.floor(target.raw[3 + idx + 1])
+
+      // If event hasn't started yet, clear it (future event)
+      if (startSample >= currentSample) {
+        target.raw[3 + idx] = 0
+        target.raw[3 + idx + 1] = 0
+        target.raw[3 + idx + 2] = 0
+      }
     }
   }
 
@@ -519,6 +525,9 @@ async function createProgram(sequence: string) {
       })
     },
   }
+  setTimeout(() => {
+    document.body.appendChild(eventsDiv)
+  }, 500)
   return out
 }
 
@@ -610,7 +619,6 @@ const eventsDiv = Object.assign(
     },
   },
 )
-document.body.appendChild(eventsDiv)
 
 const DEFAULT_SEQUENCES = ['c4 e4 [g4 a4]*2', 'a3 c4 [d4 f4 a4]*2']
 

@@ -293,12 +293,8 @@ export class Dsp {
       pc = this.executeOp(op, pc, pos, length, left$, right$)
     }
 
-    // Update history buffers periodically (every 10 chunks ~= 1.3ms at 48kHz)
-    this.historyUpdateCounter++
-    if (this.historyUpdateCounter >= 10) {
-      this.historyUpdateCounter = 0
-      this.program.updateHistoryBuffers()
-    }
+    // History buffers are now updated during playback in Mini.process()
+    // No need for separate updateHistoryBuffers() call
 
     atomic.store<i32>(lockPtr, 0)
     atomic.notify(lockPtr, 1)

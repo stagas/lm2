@@ -1,4 +1,5 @@
 import { ARRAY_HEADER_SIZE, ARRAY_SIZE, MINI_HEADER_SIZE, OP_EVENT, SEQ_HISTORY_SIZE, SEQ_VOICES } from '../constants'
+import { MiniEventBuffer, MiniEvents } from '../mini/events'
 import { Gen } from './gen'
 
 class MiniVoice {
@@ -42,6 +43,8 @@ export class Mini extends Gen {
   private voiceCursor: i32 = 0
   private rng: MiniRng = new MiniRng()
   private lastBytecode$: usize = 0
+  private eventEmitter: MiniEvents = new MiniEvents()
+  private eventBuffer: MiniEventBuffer = new MiniEventBuffer()
 
   constructor() {
     super()
@@ -158,15 +161,92 @@ export class Mini extends Gen {
       }
     }
 
-    // Read events from history buffer and schedule voices
+    // Get history buffer info
     let historyWritePos = i32(bytecodeArray[1])
     let historySize = i32(bytecodeArray[2])
     if (historySize <= 0) historySize = SEQ_HISTORY_SIZE
-
     const historyBase = 3
     const opStart = bytecodeBase + MINI_HEADER_SIZE
 
-    // Read all events from history buffer that intersect with current window
+    // Generate events for current window and future windows (lookahead)
+    // This makes the history buffer the single source of truth
+    // Note: Mini.process() is only called during active playback (worklet returns early when stopped)
+    const cycleLength = 1.0 as f32
+    const secondsPerBeat = 60.0 / bpm
+    const cycleSeconds = cycleLength * secondsPerBeat
+    const cycleSamples = (cycleSeconds * sampleRate) as f32
+    const lookAheadSeconds = 16.0 as f32
+    const lookAheadSamples = i32(lookAheadSeconds * sampleRate)
+    const targetEndSample = windowEnd + lookAheadSamples
+
+    // Find latest event in history to determine where to continue generating
+    let latestSample = windowStart
+    for (let n = 0; n < historySize; n++) {
+      const readPos = (historyWritePos - 1 - n + historySize) % historySize
+      const historyIdx = readPos * 3
+      const endSample = i32(bytecodeArray[historyBase + historyIdx + 2])
+      if (endSample > latestSample) {
+        latestSample = endSample
+      }
+    }
+
+    // Generate events from after latestSample to targetEndSample
+    const startCycle = i32(Mathf.ceil(f32((latestSample as f32) / cycleSamples)))
+    const endCycle = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamples)))
+
+    // Generate and write events to history buffer
+    for (let cycle = startCycle; cycle <= endCycle; cycle++) {
+      const cycleStartSample = i32(cycleSamples * (cycle as f32))
+      const cycleWindowStart = cycleStartSample
+      const cycleWindowEnd = cycleStartSample + i32(cycleSamples)
+
+      this.eventBuffer.clear()
+      this.eventEmitter.emitEvents(
+        this.bytecode$,
+        this.eventBuffer,
+        cycleStartSample,
+        cycleLength,
+        cycleSamples,
+        cycleWindowStart,
+        cycleWindowEnd,
+      )
+
+      // Write events to history buffer (ring buffer)
+      // Only write to empty slots or slots with future events (don't overwrite past events)
+      for (let i = 0; i < this.eventBuffer.writePos; i++) {
+        const event = this.eventBuffer.events[i]
+        if (!event) continue
+        if (event.opIndex < MINI_HEADER_SIZE) continue
+        if (event.value <= 0) continue
+
+        // Find next available slot (empty or with future event that we can overwrite)
+        let attempts = 0
+        while (attempts < historySize) {
+          const historyIdx = historyWritePos * 3
+          const existingStartSample = i32(bytecodeArray[historyBase + historyIdx + 1])
+          const existingEndSample = i32(bytecodeArray[historyBase + historyIdx + 2])
+
+          // Slot is empty or contains an event that has already ended (can overwrite)
+          // Don't overwrite events that haven't ended yet (they might still be playing)
+          if (existingEndSample === 0 || existingEndSample < windowStart) {
+            bytecodeArray[historyBase + historyIdx] = (event.opIndex - MINI_HEADER_SIZE) as f32
+            bytecodeArray[historyBase + historyIdx + 1] = event.startSample as f32
+            bytecodeArray[historyBase + historyIdx + 2] = event.endSample as f32
+            historyWritePos = (historyWritePos + 1) % historySize
+            break
+          }
+
+          // Slot has an event that hasn't ended yet, try next slot
+          historyWritePos = (historyWritePos + 1) % historySize
+          attempts++
+        }
+      }
+    }
+
+    // Update history write position
+    bytecodeArray[1] = historyWritePos as f32
+
+    // Read events from history buffer that intersect with current window and schedule voices
     for (let n = 0; n < historySize; n++) {
       const readPos = (historyWritePos - 1 - n + historySize) % historySize
       const historyIdx = readPos * 3

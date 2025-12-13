@@ -46,7 +46,6 @@ export function createPianorollVisualization(
   const FUTURE_SECONDS = TIME_WINDOW_SECONDS - PAST_SECONDS
   const PIXELS_PER_SECOND = width / TIME_WINDOW_SECONDS
 
-  const bytecode = array.raw
   // NoteValue cache for events with invalid opIndex (bytecode changed)
   // Key: `${opIndex}-${startSample}-${endSample}`, Value: noteValue
   const noteValueCache = new Map<string, number>()
@@ -58,6 +57,8 @@ export function createPianorollVisualization(
   const draw = () => {
     c.clearRect(0, 0, width, height)
 
+    // Read bytecode from array each frame (it's a view into shared memory, so it updates automatically)
+    const bytecode = array.raw
     const sampleRate = audioContext.sampleRate
     const now = performance.now()
     const deltaTime = (now - lastFrameTime) / 1000
@@ -110,8 +111,10 @@ export function createPianorollVisualization(
     const currentBytecodeLength = bytecode[ARRAY_HEADER_SIZE] as number
     const historyWritePos = Math.floor(array.raw[1])
 
-    // Read all events from history buffer
-    const allEntries: Array<{ opIndex: number; startSample: number; endSample: number }> = []
+    // Read all events from history buffer and process them directly
+    const windowStart = currentTimeSeconds - PAST_SECONDS
+    const windowEnd = isPlaying ? currentTimeSeconds + FUTURE_SECONDS : currentTimeSeconds
+
     for (let n = 0; n < historySize; n++) {
       const readPos = (historyWritePos - 1 - n + historySize) % historySize
       const idx = readPos * 3
@@ -120,23 +123,14 @@ export function createPianorollVisualization(
       const endSample = Math.floor(history[idx + 2])
 
       if (startSample === 0 && endSample === 0) continue
-      allEntries.push({ opIndex, startSample, endSample })
-    }
 
-    // Group entries by opIndex to handle chords
-    const entriesByOpIndex = new Map<number, Array<{ startSample: number; endSample: number }>>()
-    for (const entry of allEntries) {
-      if (!entriesByOpIndex.has(entry.opIndex)) {
-        entriesByOpIndex.set(entry.opIndex, [])
-      }
-      entriesByOpIndex.get(entry.opIndex)!.push({ startSample: entry.startSample, endSample: entry.endSample })
-    }
+      const startTimeSeconds = startSample / sampleRate
+      const endTimeSeconds = endSample / sampleRate
 
-    // Process each opIndex and read noteValue from bytecode
-    for (const [opIndex, entries] of entriesByOpIndex) {
-      entries.sort((a, b) => a.startSample - b.startSample)
+      // Check if event is within time window
+      if (endTimeSeconds < windowStart || startTimeSeconds > windowEnd) continue
 
-      // Try to read noteValue from current bytecode
+      // Try to read noteValue from bytecode
       const values = readEventValues(bytecode, opIndex)
       const isValidOpIndex = opIndex < currentBytecodeLength && values.length > 0
 
@@ -144,105 +138,47 @@ export function createPianorollVisualization(
         // Valid opIndex - read from bytecode
         if (values.length === 1) {
           // Single note
-          for (const entry of entries) {
-            const eventKey = `${opIndex}-${entry.startSample}-${entry.endSample}`
-            const noteValue = values[0]!
+          const eventKey = `${opIndex}-${startSample}-${endSample}`
+          const noteValue = values[0]!
+          noteValueCache.set(eventKey, noteValue)
 
-            // Cache noteValue for potential future use if bytecode changes
-            noteValueCache.set(eventKey, noteValue)
-
-            const startTimeSeconds = entry.startSample / sampleRate
-            const endTimeSeconds = entry.endSample / sampleRate
-            const windowStart = currentTimeSeconds - PAST_SECONDS
-            // Only show future events if playback is active
-            const windowEnd = isPlaying ? currentTimeSeconds + FUTURE_SECONDS : currentTimeSeconds
-
-            if (endTimeSeconds >= windowStart && startTimeSeconds <= windowEnd) {
-              eventMap.set(eventKey, {
-                opIndex,
-                startSample: entry.startSample,
-                endSample: entry.endSample,
-                noteValue,
-              })
-            }
-          }
+          eventMap.set(eventKey, {
+            opIndex,
+            startSample,
+            endSample,
+            noteValue,
+          })
         }
         else {
-          // Chord
-          for (let i = 0; i < Math.min(entries.length, values.length); i++) {
-            const entry = entries[i]!
+          // Chord - create one event per note value
+          for (let i = 0; i < values.length; i++) {
             const noteValue = values[i]!
             if (noteValue <= 0) continue
 
-            const eventKey = `${opIndex}-${entry.startSample}-${entry.endSample}-${i}`
+            const eventKey = `${opIndex}-${startSample}-${endSample}-${i}`
             noteValueCache.set(eventKey, noteValue)
 
-            const startTimeSeconds = entry.startSample / sampleRate
-            const endTimeSeconds = entry.endSample / sampleRate
-            const windowStart = currentTimeSeconds - PAST_SECONDS
-            // Only show future events if playback is active
-            const windowEnd = isPlaying ? currentTimeSeconds + FUTURE_SECONDS : currentTimeSeconds
-
-            if (endTimeSeconds >= windowStart && startTimeSeconds <= windowEnd) {
-              eventMap.set(eventKey, {
-                opIndex,
-                startSample: entry.startSample,
-                endSample: entry.endSample,
-                noteValue,
-              })
-            }
-          }
-
-          // Handle case where one entry maps to multiple values (chord)
-          if (entries.length === 1 && values.length > 1) {
-            const entry = entries[0]!
-            for (let i = 0; i < values.length; i++) {
-              const noteValue = values[i]!
-              if (noteValue <= 0) continue
-
-              const eventKey = `${opIndex}-${entry.startSample}-${entry.endSample}-${i}`
-              noteValueCache.set(eventKey, noteValue)
-
-              const startTimeSeconds = entry.startSample / sampleRate
-              const endTimeSeconds = entry.endSample / sampleRate
-              const windowStart = currentTimeSeconds - PAST_SECONDS
-              // Only show future events if playback is active
-              const windowEnd = isPlaying ? currentTimeSeconds + FUTURE_SECONDS : currentTimeSeconds
-
-              if (endTimeSeconds >= windowStart && startTimeSeconds <= windowEnd) {
-                eventMap.set(eventKey, {
-                  opIndex,
-                  startSample: entry.startSample,
-                  endSample: entry.endSample,
-                  noteValue,
-                })
-              }
-            }
+            eventMap.set(eventKey, {
+              opIndex,
+              startSample,
+              endSample,
+              noteValue,
+            })
           }
         }
       }
       else {
         // Invalid opIndex (bytecode changed) - try to use cached noteValue
-        for (const entry of entries) {
-          const eventKey = `${opIndex}-${entry.startSample}-${entry.endSample}`
-          const cachedNoteValue = noteValueCache.get(eventKey)
+        const eventKey = `${opIndex}-${startSample}-${endSample}`
+        const cachedNoteValue = noteValueCache.get(eventKey)
 
-          if (cachedNoteValue && cachedNoteValue > 0) {
-            const startTimeSeconds = entry.startSample / sampleRate
-            const endTimeSeconds = entry.endSample / sampleRate
-            const windowStart = currentTimeSeconds - PAST_SECONDS
-            // Only show future events if playback is active
-            const windowEnd = isPlaying ? currentTimeSeconds + FUTURE_SECONDS : currentTimeSeconds
-
-            if (endTimeSeconds >= windowStart && startTimeSeconds <= windowEnd) {
-              eventMap.set(eventKey, {
-                opIndex,
-                startSample: entry.startSample,
-                endSample: entry.endSample,
-                noteValue: cachedNoteValue,
-              })
-            }
-          }
+        if (cachedNoteValue && cachedNoteValue > 0) {
+          eventMap.set(eventKey, {
+            opIndex,
+            startSample,
+            endSample,
+            noteValue: cachedNoteValue,
+          })
         }
       }
     }

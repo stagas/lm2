@@ -1,7 +1,6 @@
-import { SEQ_HISTORY_SIZE } from '../../as/assembly/constants.ts'
+import { ARRAY_HEADER_SIZE, SEQ_HISTORY_SIZE } from '../../as/assembly/constants.ts'
 import type { AnimationManager } from './animation-manager.ts'
 import type { SourceLocation } from './mini-source-map.ts'
-import { readEventValue } from './mini-bytecode-reader.ts'
 
 type VmArray = {
   length: number
@@ -22,7 +21,9 @@ export function createSequenceVisualization(
   animationManager: AnimationManager,
   width: number,
   height: number,
-): { canvas: HTMLCanvasElement; update: (sequence: string, sourceMap: Map<number, SourceLocation>) => void; destroy: () => void } {
+): { canvas: HTMLCanvasElement; update: (sequence: string, sourceMap: Map<number, SourceLocation>) => void;
+  destroy: () => void }
+{
   const canvas = document.createElement('canvas')
   const dpr = window.devicePixelRatio
   canvas.width = width * dpr
@@ -77,6 +78,7 @@ export function createSequenceVisualization(
     const historyWritePos = Math.floor(array.raw[1])
 
     const eventData = new Map<number, { startSample: number; endSample: number }>()
+    const currentBytecodeLength = array.raw[ARRAY_HEADER_SIZE] as number
 
     for (let n = 0; n < historySize; n++) {
       const readPos = (historyWritePos - 1 - n + historySize) % historySize
@@ -90,9 +92,13 @@ export function createSequenceVisualization(
       const toleranceSamples = sampleRate * 0.001
       if (startSample > currentSampleCount + toleranceSamples) continue
 
-      const existing = eventData.get(opIndex)
-      if (!existing || startSample > existing.startSample) {
-        eventData.set(opIndex, { startSample, endSample })
+      // Only use events with valid opIndex (within current bytecode length)
+      // Past events with invalid opIndex (from old bytecode) are ignored
+      if (opIndex >= 0 && opIndex < currentBytecodeLength) {
+        const existing = eventData.get(opIndex)
+        if (!existing || startSample > existing.startSample) {
+          eventData.set(opIndex, { startSample, endSample })
+        }
       }
     }
 
@@ -145,9 +151,7 @@ export function createSequenceVisualization(
     let x = 10
     for (let charIdx = 0; charIdx < currentSequenceString.length; charIdx++) {
       const char = currentSequenceString[charIdx]
-      const location = Array.from(currentSourceMap.values()).find(loc =>
-        charIdx >= loc.start && charIdx < loc.end
-      )
+      const location = Array.from(currentSourceMap.values()).find(loc => charIdx >= loc.start && charIdx < loc.end)
 
       let textColor = 'white'
       if (location) {
@@ -181,4 +185,3 @@ export function createSequenceVisualization(
     },
   }
 }
-
