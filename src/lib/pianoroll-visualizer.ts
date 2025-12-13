@@ -2,6 +2,7 @@ import {
   FUTURE_SECONDS,
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
+  HISTORY_SIZE,
   PAST_SECONDS,
   TIME_WINDOW_SECONDS,
 } from '../../as/assembly/constants.ts'
@@ -72,7 +73,7 @@ export function createPianorollVisualization(
     // After defragmentation, preserved events are at slots 0 to writePos-1
     // New events are written from writePos onwards
     // Read all slots to catch both preserved and newly written events
-    const historySize = currentHistory.size || Math.floor((historyRaw.length - HISTORY_DATA_OFFSET) / 5)
+    const historySize = HISTORY_SIZE
     const writePos = currentHistory.writePos || 0
     // Read all slots up to historySize (preserved events + new events)
     for (let slot = 0; slot < historySize; slot++) {

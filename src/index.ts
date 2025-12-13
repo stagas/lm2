@@ -1,13 +1,26 @@
-import { type Ring, toRing } from 'utils/ring'
+import { toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, ARRAYS_COUNT, CHUNK_SIZE, HISTORIES_COUNT, HISTORY_DATA_OFFSET,
-  HISTORY_ENTRY_SIZE, HISTORY_HEADER_SIZE, HISTORY_SIZE, HISTORY_SIZE_OFFSET, HISTORY_WRITE_POS_OFFSET, LITERALS_COUNT,
-  MAX_DSP_INSTANCES, MINI_HEADER_SIZE, OPS_COUNT, RING_BUFFER_SIZE } from '../as/assembly/constants.ts'
+import {
+  ARRAY_HEADER_SIZE,
+  ARRAY_SIZE,
+  ARRAYS_COUNT,
+  CHUNK_SIZE,
+  HISTORIES_COUNT,
+  HISTORY_DATA_OFFSET,
+  HISTORY_ENTRY_SIZE,
+  HISTORY_HEADER_SIZE,
+  HISTORY_SIZE,
+  HISTORY_WRITE_POS_OFFSET,
+  LITERALS_COUNT,
+  MAX_DSP_INSTANCES,
+  OPS_COUNT,
+  RING_BUFFER_SIZE,
+} from '../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
 import { AnimationManager } from './lib/animation-manager.ts'
 import { readEventValues } from './lib/mini-bytecode-reader.ts'
-import { buildMiniSourceMap, type SourceLocation } from './lib/mini-source-map.ts'
+import { buildMiniSourceMap } from './lib/mini-source-map.ts'
 import { createPianorollVisualization } from './lib/pianoroll-visualizer.ts'
 import { createSequenceVisualization } from './lib/sequence-visualizer.ts'
 import { compileMiniNotation } from './mini/compiler.ts'
@@ -27,7 +40,6 @@ type VmArray = {
 
 export type VmHistory = {
   writePos: number
-  size: number
   raw: Float32Array
 }
 
@@ -431,14 +443,9 @@ async function createProgram(sequence: string) {
     const byteOffset = historyBuffers[i] = histories$[i]
     const writePos = new Float32Array(wasmMemory.buffer,
       byteOffset + HISTORY_WRITE_POS_OFFSET * Float32Array.BYTES_PER_ELEMENT, 1)
-    const size = new Float32Array(wasmMemory.buffer, byteOffset + HISTORY_SIZE_OFFSET * Float32Array.BYTES_PER_ELEMENT,
-      1)
     histories[i] = {
       get writePos() {
         return writePos[0] || 0
-      },
-      get size() {
-        return size[0] || HISTORY_SIZE
       },
       raw: new Float32Array(wasmMemory.buffer, byteOffset, HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE),
     }

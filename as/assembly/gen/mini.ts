@@ -1,8 +1,18 @@
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, FUTURE_SECONDS, HISTORY_DATA_OFFSET, HISTORY_ENTRY_SIZE, HISTORY_HEADER_SIZE,
-  HISTORY_SIZE, HISTORY_SIZE_OFFSET, HISTORY_WRITE_POS_OFFSET, MINI_HEADER_SIZE, OP_EVENT, PAST_SECONDS,
-  SEQ_VOICES } from '../constants'
+import {
+  ARRAY_HEADER_SIZE,
+  ARRAY_SIZE,
+  FUTURE_SECONDS,
+  HISTORY_DATA_OFFSET,
+  HISTORY_ENTRY_SIZE,
+  HISTORY_HEADER_SIZE,
+  HISTORY_SIZE,
+  HISTORY_WRITE_POS_OFFSET,
+  MINI_HEADER_SIZE,
+  OP_EVENT,
+  PAST_SECONDS,
+  SEQ_VOICES,
+} from '../constants'
 import { MiniEventBuffer, MiniEvents } from '../mini/events'
-import { MiniEvent } from '../mini/util'
 import { Gen } from './gen'
 
 class MiniVoice {
@@ -109,36 +119,17 @@ export class Mini extends Gen {
     }
   }
 
-  private defragmentHistory(historyArray: StaticArray<f32>, windowStart: i32, windowEnd: i32): void {
-    let historySize = i32(historyArray[HISTORY_SIZE_OFFSET])
-    if (historySize <= 0) historySize = HISTORY_SIZE
+  private defragmentHistory(historyArray: StaticArray<f32>, windowStart: i32): void {
+    const scratchHistory = this.scratchHistory
+    memory.fill(changetype<usize>(scratchHistory), 0, (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4)
 
-    // Calculate past window boundary (only keep events within PAST_SECONDS)
-    const pastWindowStart = windowStart - i32(<f32> PAST_SECONDS * sampleRate)
+    // Calculate visualizer window (what the visualizer actually shows)
+    const visualizerStart = windowStart - i32(<f32> PAST_SECONDS * sampleRate)
 
-    // First, clear ALL slots in the buffer to ensure no future events remain
-    for (let n = 0; n < historySize; n++) {
-      const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
-      const startSample = i32(historyArray[historyIdx + 3])
-      const endSample = i32(historyArray[historyIdx + 4])
+    // Clear the buffer and move preserved events to the beginning
+    let newWritePos = 0
 
-      // Clear all future events (startSample >= windowStart)
-      if (startSample >= windowStart) {
-        historyArray[historyIdx] = 0
-        historyArray[historyIdx + 1] = 0
-        historyArray[historyIdx + 2] = 0
-        historyArray[historyIdx + 3] = 0
-        historyArray[historyIdx + 4] = 0
-        continue
-      }
-    }
-
-    // Collect all valid past events within the time window (use separate arrays for sorting)
-    const startSamples: StaticArray<i32> = new StaticArray<i32>(historySize)
-    const eventData: StaticArray<f32> = new StaticArray<f32>(historySize * 4) // [opIndex, value, velocity, endSample] per event
-    let eventCount = 0
-
-    for (let n = 0; n < historySize; n++) {
+    for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const endSample = i32(historyArray[historyIdx + 4])
 
@@ -147,86 +138,36 @@ export class Mini extends Gen {
 
       const startSample = i32(historyArray[historyIdx + 3])
 
-      // We already cleared future events above, so all remaining events have startSample < windowStart
-      // Keep active events (started before windowStart, may still be playing)
-      // For past events (ended before windowStart), only keep those within PAST_SECONDS
-      const isPastEvent = endSample < windowStart
-      if (isPastEvent && startSample < pastWindowStart) {
-        // Past event outside the time window - skip it
+      // Clear present and future events (they will be regenerated)
+      if (startSample >= windowStart) {
         continue
       }
-      // Keep: active events (startSample < windowStart && endSample >= windowStart)
-      // Keep: past events within PAST_SECONDS (startSample >= pastWindowStart && endSample < windowStart)
 
-      startSamples[eventCount] = startSample
-      const base = eventCount * 4
-      eventData[base] = historyArray[historyIdx] // opIndex
-      eventData[base + 1] = historyArray[historyIdx + 1] // value
-      eventData[base + 2] = historyArray[historyIdx + 2] // velocity
-      eventData[base + 3] = historyArray[historyIdx + 4] // endSample
-      eventCount++
-    }
-
-    // Sort events by startSample (simple insertion sort)
-    for (let i = 1; i < eventCount; i++) {
-      const startSample = startSamples[i]
-      const base = i * 4
-      let j = i - 1
-      while (j >= 0 && startSamples[j] > startSample) {
-        // Swap startSamples
-        const tempStart = startSamples[j]
-        startSamples[j] = startSamples[j + 1]
-        startSamples[j + 1] = tempStart
-        // Swap eventData
-        for (let k = 0; k < 4; k++) {
-          const temp = eventData[j * 4 + k]
-          eventData[j * 4 + k] = eventData[(j + 1) * 4 + k]
-          eventData[(j + 1) * 4 + k] = temp
-        }
-        j--
+      // Keep all past events (they won't be regenerated and might still be visible)
+      // Only clear events that are completely in the ancient past
+      const tooOld = endSample < visualizerStart
+      if (tooOld) {
+        continue
       }
-    }
 
-    // Clear scratch buffer
-    for (let i = 0; i < HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE; i++) {
-      this.scratchHistory[i] = 0
-    }
-
-    // Copy sorted events to scratch buffer sequentially
-    let newWritePos = 0
-    for (let i = 0; i < eventCount; i++) {
-      const scratchIdx = HISTORY_DATA_OFFSET + newWritePos * HISTORY_ENTRY_SIZE
-      const base = i * 4
-
-      this.scratchHistory[scratchIdx] = eventData[base] // opIndex
-      this.scratchHistory[scratchIdx + 1] = eventData[base + 1] // value
-      this.scratchHistory[scratchIdx + 2] = eventData[base + 2] // velocity
-      this.scratchHistory[scratchIdx + 3] = startSamples[i] as f32 // startSample
-      this.scratchHistory[scratchIdx + 4] = eventData[base + 3] // endSample
-
-      newWritePos++
-      if (newWritePos >= historySize) break
-    }
-
-    // Clear all slots beyond newWritePos to ensure no future events remain
-    for (let n = newWritePos; n < historySize; n++) {
-      const scratchIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
-      this.scratchHistory[scratchIdx] = 0
-      this.scratchHistory[scratchIdx + 1] = 0
-      this.scratchHistory[scratchIdx + 2] = 0
-      this.scratchHistory[scratchIdx + 3] = 0
-      this.scratchHistory[scratchIdx + 4] = 0
-    }
-
-    // Copy scratch buffer back to history buffer
-    for (let i = 0; i < HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE; i++) {
-      historyArray[i] = this.scratchHistory[i]
+      // Move this event to the new position at newWritePos
+      const newIdx = HISTORY_DATA_OFFSET + newWritePos * HISTORY_ENTRY_SIZE
+      scratchHistory[newIdx] = historyArray[historyIdx] // opIndex
+      scratchHistory[newIdx + 1] = historyArray[historyIdx + 1] // value
+      scratchHistory[newIdx + 2] = historyArray[historyIdx + 2] // velocity
+      scratchHistory[newIdx + 3] = historyArray[historyIdx + 3] // startSample
+      scratchHistory[newIdx + 4] = historyArray[historyIdx + 4] // endSample
+      newWritePos = (newWritePos + 1) % HISTORY_SIZE
     }
 
     // Update write position to point after the last valid event (clean position for writing ahead)
-    // This ensures writePos is reset to only point to preserved events
-    historyArray[HISTORY_WRITE_POS_OFFSET] = newWritePos as f32
-    historyArray[HISTORY_SIZE_OFFSET] = historySize as f32
+    scratchHistory[HISTORY_WRITE_POS_OFFSET] = newWritePos as f32
+    console.log(`defragmented writePos: ${newWritePos}`)
+    memory.copy(
+      changetype<usize>(historyArray),
+      changetype<usize>(scratchHistory),
+      (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4,
+    )
   }
 
   private allocateVoice(): i32 {
@@ -264,13 +205,11 @@ export class Mini extends Gen {
   }
 
   private findSlotForEvent(
-    historyArray: StaticArray<f32>,
     historyWritePos: i32,
-    historySize: i32,
   ): i32 {
     // After defragmentation, simply write sequentially from writePos
     // If we reach the end, wrap around to 0
-    const slotIndex = historyWritePos % historySize
+    const slotIndex = historyWritePos % HISTORY_SIZE
     return HISTORY_DATA_OFFSET + slotIndex * HISTORY_ENTRY_SIZE
   }
 
@@ -286,11 +225,6 @@ export class Mini extends Gen {
     const windowStart = globalSampleCount
     const windowEnd = windowStart + length
 
-    // Get history buffer info
-    let historyWritePos = i32(historyArray[HISTORY_WRITE_POS_OFFSET])
-    let historySize = i32(historyArray[HISTORY_SIZE_OFFSET])
-    if (historySize <= 0) historySize = HISTORY_SIZE
-
     // Check for bytecode changes by comparing version
     const currentVersion = i32(bytecodeArray[3])
     if (currentVersion !== this.lastVersion) {
@@ -298,8 +232,11 @@ export class Mini extends Gen {
       this.resetVoiceMaps()
 
       // Defragment history buffer: place old events first, then set writePos for clean writing ahead
-      this.defragmentHistory(historyArray, windowStart, windowEnd)
+      this.defragmentHistory(historyArray, windowStart)
     }
+
+    // Get history buffer info
+    let historyWritePos = i32(historyArray[HISTORY_WRITE_POS_OFFSET])
 
     // Zero outputs
     for (let v = 0; v < SEQ_VOICES; v++) {
@@ -328,7 +265,7 @@ export class Mini extends Gen {
     // Find latest event end sample to continue generating from there
     // After defragmentation, events are sequential, so read all slots
     let latestEndSample = windowStart
-    for (let n = 0; n < historySize; n++) {
+    for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const startSample = i32(historyArray[historyIdx + 3])
       const endSample = i32(historyArray[historyIdx + 4])
@@ -348,7 +285,7 @@ export class Mini extends Gen {
 
     // Generate and write events to history buffer
     // Stop if we've written too many events (leave some space)
-    const maxEventsToWrite = historySize - 32 // Leave some buffer space
+    const maxEventsToWrite = HISTORY_SIZE
     let eventsWritten = 0
 
     for (let cycle = startCycle; cycle <= endCycle; cycle++) {
@@ -384,8 +321,8 @@ export class Mini extends Gen {
         // Search backwards from writePos, but limit search to recent events to avoid duplicates
         let alreadyExists = false
         const searchLimit = 64 // Only check recent 64 events to avoid performance issues
-        for (let n = 0; n < searchLimit && n < historySize; n++) {
-          const checkPos = (historyWritePos - 1 - n + historySize) % historySize
+        for (let n = 0; n < searchLimit && n < HISTORY_SIZE; n++) {
+          const checkPos = (historyWritePos - 1 - n + HISTORY_SIZE) % HISTORY_SIZE
           const checkIdx = HISTORY_DATA_OFFSET + checkPos * HISTORY_ENTRY_SIZE
           const existingOpIndex = i32(historyArray[checkIdx])
           const existingStartSample = i32(historyArray[checkIdx + 3])
@@ -404,7 +341,7 @@ export class Mini extends Gen {
         if (alreadyExists) continue
 
         // Get next slot (sequentially, wraps around)
-        const slotToUse = this.findSlotForEvent(historyArray, historyWritePos, historySize)
+        const slotToUse = this.findSlotForEvent(historyWritePos)
         const slotIndex = (slotToUse - HISTORY_DATA_OFFSET) / HISTORY_ENTRY_SIZE
 
         // Write the event
@@ -416,7 +353,8 @@ export class Mini extends Gen {
         historyArray[historyIdx + 4] = event.endSample as f32
 
         // Advance write position (wraps around)
-        historyWritePos = (slotIndex + 1) % historySize
+        historyWritePos = (slotIndex + 1) % HISTORY_SIZE
+        console.log(`${historyWritePos}`)
         eventsWritten++
 
         // Stop if we've written too many events
@@ -432,7 +370,7 @@ export class Mini extends Gen {
 
     // Read events from history buffer that intersect with current window and schedule voices
     // After defragmentation, events are sequential from 0 to writePos-1, so read all slots
-    for (let n = 0; n < historySize; n++) {
+    for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const opIndex = i32(historyArray[historyIdx])
       const startSample = i32(historyArray[historyIdx + 3])
