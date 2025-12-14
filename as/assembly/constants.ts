@@ -1,7 +1,7 @@
 export const RING_BUFFER_SIZE = 16384
 export const CHUNK_SIZE = 128
 export const ARRAY_SIZE = 1024
-export const HISTORY_SIZE = 4096 // ring buffer for event history
+export const HISTORY_SIZE = 8192 // ring buffer for event history
 export const HISTORY_HEADER_SIZE = 1 // writePos
 export const HISTORY_ENTRY_SIZE = 5 // opIndex, value, velocity, startSample, endSample
 export const HISTORY_WRITE_POS_OFFSET = 0
@@ -23,8 +23,8 @@ export const MINI_EVENT_SIZE: i32 = 7
 export const MINI_HEADER_SIZE: i32 = 1
 
 // Timeline constants for visualizers
-export const PAST_SECONDS = 8
-export const FUTURE_SECONDS = 8
+export const PAST_SECONDS = 4
+export const FUTURE_SECONDS = 12
 export const TIME_WINDOW_SECONDS = PAST_SECONDS + FUTURE_SECONDS
 
 // Operation types

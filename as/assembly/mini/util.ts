@@ -163,14 +163,18 @@ export class BytecodeReader {
   }
 }
 
-export class EvaluationContext {
+export class EventEmitter {
+  buffer: MiniEventBuffer | null
+  reader: BytecodeReader
   cycleStartSample: i32
   cycleLength: f32
   cycleSamples: f32
   windowStart: i32
   windowEnd: i32
 
-  constructor() {
+  constructor(reader: BytecodeReader) {
+    this.buffer = null
+    this.reader = reader
     this.cycleStartSample = 0
     this.cycleLength = 0.0
     this.cycleSamples = 0.0
@@ -179,12 +183,14 @@ export class EvaluationContext {
   }
 
   update(
+    buffer: MiniEventBuffer,
     cycleStartSample: i32,
     cycleLength: f32,
     cycleSamples: f32,
     windowStart: i32,
     windowEnd: i32,
   ): void {
+    this.buffer = buffer
     this.cycleStartSample = cycleStartSample
     this.cycleLength = cycleLength
     this.cycleSamples = cycleSamples
@@ -192,43 +198,19 @@ export class EvaluationContext {
     this.windowEnd = windowEnd
   }
 
-  timeToSample(time: f32): i32 {
-    return timeToSample(time, this.cycleStartSample, this.cycleLength, this.cycleSamples)
-  }
-
-  isInWindow(startSample: i32, endSample: i32): bool {
-    return endSample > this.windowStart && startSample < this.windowEnd
-  }
-}
-
-export class EventEmitter {
-  ctx: EvaluationContext
-  buffer: MiniEventBuffer | null
-  reader: BytecodeReader
-
-  constructor(ctx: EvaluationContext, reader: BytecodeReader) {
-    this.ctx = ctx
-    this.buffer = null
-    this.reader = reader
-  }
-
-  update(buffer: MiniEventBuffer): void {
-    this.buffer = buffer
-  }
-
   emit(
     opOffset: i32,
     group: GroupStartOp,
-    currentTime: f32,
+    time: f32,
     slotDuration: f32,
   ): void {
     if (!this.buffer) return
 
     const event = this.reader.getEvent(opOffset)
-    const startSample = this.ctx.timeToSample(currentTime)
-    const endSample = this.ctx.timeToSample(currentTime + slotDuration)
+    const startSample = timeToSample(time, this.cycleStartSample, this.cycleLength, this.cycleSamples)
+    const endSample = timeToSample(time + slotDuration, this.cycleStartSample, this.cycleLength, this.cycleSamples)
 
-    if (this.ctx.isInWindow(startSample, endSample)) {
+    if (endSample > this.windowStart && startSample < this.windowEnd) {
       this.buffer!.write(
         this.reader.getOpIndex(opOffset),
         startSample,
@@ -238,4 +220,8 @@ export class EventEmitter {
       )
     }
   }
+}
+
+export function fract(value: f32): f32 {
+  return value - Mathf.floor(value)
 }

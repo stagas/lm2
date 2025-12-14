@@ -217,9 +217,7 @@ async function updateSequence(program: Program, sequence: string, data: ProgramD
       if (validEvents.length > 0) {
         eventsDiv.textContent = validEvents.map(e => {
           const note = (e.note && typeof e.note === 'string') ? e.note : '?'
-          return `${note} ${e.startTime.toFixed(2)}-${e.endTime.toFixed(2)} ${(e.start / 1000).toFixed(1)}-${
-            (e.end / 1000).toFixed(1)
-          }`
+          return `${note} ${e.startTime.toFixed(2)} ${e.endTime.toFixed(2)}`
         }).join('\n')
       }
       else if (events.length > 0) {
@@ -676,5 +674,7 @@ async function ensureExtraDsp() {
 await updateWasmBinary()
 
 if (import.meta.hot) {
-  import.meta.hot.on('vite:beforeUpdate', updateWasmBinary)
+  import.meta.hot.on('vite:beforeUpdate', () => {
+    location.reload()
+  })
 }

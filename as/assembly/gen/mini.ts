@@ -162,7 +162,7 @@ export class Mini extends Gen {
 
     // Update write position to point after the last valid event (clean position for writing ahead)
     scratchHistory[HISTORY_WRITE_POS_OFFSET] = newWritePos as f32
-    console.log(`defragmented writePos: ${newWritePos}`)
+
     memory.copy(
       changetype<usize>(historyArray),
       changetype<usize>(scratchHistory),
@@ -308,8 +308,7 @@ export class Mini extends Gen {
         // Check if this event already exists (same opIndex and startSample)
         // Search backwards from writePos, but limit search to recent events to avoid duplicates
         let alreadyExists = false
-        const searchLimit = 64 // Only check recent 64 events to avoid performance issues
-        for (let n = 0; n < searchLimit && n < HISTORY_SIZE; n++) {
+        for (let n = 0; n < HISTORY_SIZE; n++) {
           const checkPos = (historyWritePos - 1 - n + HISTORY_SIZE) % HISTORY_SIZE
           const checkIdx = HISTORY_DATA_OFFSET + checkPos * HISTORY_ENTRY_SIZE
           const existingOpIndex = i32(historyArray[checkIdx])
@@ -342,7 +341,6 @@ export class Mini extends Gen {
 
         // Advance write position (wraps around)
         historyWritePos = (slotIndex + 1) % HISTORY_SIZE
-        console.log(`${historyWritePos}`)
         eventsWritten++
 
         // Stop if we've written too many events

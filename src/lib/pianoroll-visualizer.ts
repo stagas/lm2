@@ -169,8 +169,23 @@ export function createPianorollVisualization(
       const barX = barRelativeStart * PIXELS_PER_SECOND
       const barWidth = (barRelativeEnd - barRelativeStart) * PIXELS_PER_SECOND
 
-      c.fillStyle = isEvenBar ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.08)'
+      c.fillStyle = isEvenBar ? 'rgba(255, 255, 255, 0.09)' : 'rgba(255, 255, 255, 0.12)'
       c.fillRect(barX, 0, barWidth, height)
+    }
+
+    const cycleLengthSeconds = 60 / bpmValue[0]
+    const firstCycleStart = Math.floor(windowStartTime / cycleLengthSeconds) * cycleLengthSeconds
+
+    for (let cycleStart = firstCycleStart; cycleStart < windowEndTime; cycleStart += cycleLengthSeconds) {
+      const cycleRelativeStart = cycleStart - windowStartTime
+      const cycleX = cycleRelativeStart * PIXELS_PER_SECOND
+
+      c.strokeStyle = 'rgba(0, 0, 0, 1.0)'
+      c.lineWidth = 0.5
+      c.beginPath()
+      c.moveTo(cycleX, 0)
+      c.lineTo(cycleX, height)
+      c.stroke()
     }
 
     for (const event of events) {
