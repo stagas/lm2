@@ -254,7 +254,7 @@ export function tokenize(input: string): Token[] {
   return tokens
 }
 
-function splitValueAndModifiers(text: string): { value: string; mods: string } {
+export function splitValueAndModifiers(text: string): { value: string; mods: string } {
   let i = 0
   while (i < text.length) {
     const ch = text[i]!

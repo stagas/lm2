@@ -60,7 +60,18 @@ export class MiniEvents {
     this.emitter.update(eventBuffer, cycleStartSample, cycleLength, cycleSamples, windowStart, windowEnd)
 
     const cycle = cycleSamples > 0.0 ? i32(Mathf.floor((cycleStartSample as f32) / cycleSamples)) : 0
-    this.evaluateGroup(this.reader, opStart, 0.0, 1.0, cycle, cycleStartSample, cycleSamples, 1.0, this.emitter)
+    this.evaluateGroup(
+      this.reader,
+      opStart,
+      0.0,
+      1.0,
+      cycle,
+      cycleStartSample,
+      cycleSamples,
+      1.0,
+      0.0,
+      this.emitter,
+    )
   }
 
   private evaluateGroup(
@@ -72,6 +83,7 @@ export class MiniEvents {
     cycleStartSample: i32,
     cycleSamples: f64,
     parentVelocity: f64,
+    parentJitter: f64,
     emitter: EventEmitter,
   ): i32 {
     if (opOffset >= reader.opEnd || reader.getOpcode(opOffset) !== OP_GROUP_START) {
@@ -79,6 +91,12 @@ export class MiniEvents {
     }
 
     const group = reader.getGroup(opOffset)
+    const groupOffset: f64 = group.offset as f64
+    const groupJitter: f64 = parentJitter + (group.jitter as f64)
+    let groupStart: f64 = groupStartTime
+    if (groupOffset !== 0.0) {
+      groupStart += groupOffset * parentSlotDuration
+    }
     const groupVelocity: f64 = parentVelocity * (group.velocity as f64)
 
     const groupProb: f64 = group.prob as f64
@@ -157,13 +175,14 @@ export class MiniEvents {
         this.processChild(
           reader,
           childOpOffset,
-          groupStartTime,
+          groupStart,
           opcode === OP_EVENT ? startTime + offset : i * slotDuration + offset,
           slotDuration / group.density,
           cycle,
           cycleStartSample,
           cycleSamples,
           groupVelocity,
+          groupJitter,
           emitter,
         )
       }
@@ -185,6 +204,7 @@ export class MiniEvents {
     cycleStartSample: i32,
     cycleSamples: f64,
     groupVelocity: f64,
+    groupJitter: f64,
     emitter: EventEmitter,
   ): void {
     const opcode = reader.getOpcode(opOffset)
@@ -199,6 +219,8 @@ export class MiniEvents {
         if (valueCount <= 0) break
 
         const strum: f64 = event.strum as f64
+        const eventOffset: f64 = event.offset as f64
+        const eventJitter: f64 = groupJitter + (event.jitter as f64)
 
         const eventProb: f64 = event.prob as f64
         if (eventProb > 0.0) {
@@ -230,10 +252,20 @@ export class MiniEvents {
               strumOffset = position * strumSpan
             }
 
+            // Apply jitter as a symmetric random offset within the slot duration.
+            // Jitter amount is interpreted as a fraction of the slot duration; group jitter
+            // accumulates with event jitter.
+            let jitterOffset: f64 = 0.0
+            if (eventJitter !== 0.0) {
+              const eventIndex: i32 = reader.getOpIndex(opOffset)
+              const r: f64 = seededRandom01(this.randomSeed, cycle, eventIndex, vi) // 0..1
+              jitterOffset = (r - 0.5) * 2.0 * eventJitter * slotDuration
+            }
+
             emitter.emit(
               opOffset,
               groupVelocity,
-              groupStartTime + relativeTime + startTime + strumOffset,
+              groupStartTime + relativeTime + startTime + strumOffset + eventOffset * slotDuration + jitterOffset,
               durationDividedByDensity,
               vi,
             )
@@ -254,6 +286,7 @@ export class MiniEvents {
           cycleStartSample,
           cycleSamples,
           groupVelocity,
+          groupJitter,
           emitter,
         )
         break

@@ -2,6 +2,7 @@ import { ARRAY_HEADER_SIZE, HISTORY_DATA_OFFSET } from '../../as/assembly/consta
 import type { VmArray, VmHistory } from '../index.ts'
 import type { AnimationManager } from './animation-manager.ts'
 import type { SourceLocation } from './mini-source-map.ts'
+import { splitValueAndModifiers } from '../mini/tokenizer.ts'
 
 export function createSequenceVisualization(
   array: VmArray,
@@ -113,10 +114,13 @@ export function createSequenceVisualization(
       const location = Array.from(currentSourceMap.values()).find(loc => loc.start === start)
       if (!location) continue
 
+      const { value } = splitValueAndModifiers(location.text)
+      if (!value) continue
+
       const velocityClamped = Math.max(0, Math.min(1, velocity || 0))
       const alpha = (1 - age / FADEOUT_SECONDS) * velocityClamped
       const x = 10 + c.measureText(currentSequenceString.slice(0, location.start)).width
-      const metrics = c.measureText(location.text)
+      const metrics = c.measureText(value)
 
       c.fillStyle = `rgba(0, 255, 0, ${0.3 * alpha})`
       c.fillRect(x - 2, y - 14, metrics.width + 4, 28)
@@ -128,20 +132,40 @@ export function createSequenceVisualization(
     let x = 10
     for (let charIdx = 0; charIdx < currentSequenceString.length; charIdx++) {
       const char = currentSequenceString[charIdx]
-      const location = Array.from(currentSourceMap.values()).find(loc => charIdx >= loc.start && charIdx < loc.end)
+      const location = Array.from(currentSourceMap.values()).find(
+        loc => charIdx >= loc.start && charIdx < loc.end,
+      )
 
       let textColor = 'white'
+      let isModifier = false
+
       if (location) {
-        const info = activeLocations.get(location.start)
-        if (info && info.age < FADEOUT_SECONDS) {
-          const velocityClamped = Math.max(0, Math.min(1, info.velocity || 0))
-          const brightnessBase = 1 - info.age / FADEOUT_SECONDS
-          const brightness = brightnessBase * velocityClamped
-          textColor = `rgb(${Math.floor(255 * (1 - brightness))}, 255, ${Math.floor(255 * (1 - brightness))})`
+        const { value } = splitValueAndModifiers(location.text)
+        const modsStart = location.start + value.length
+        if (charIdx >= modsStart) {
+          isModifier = true
+        }
+
+        if (!isModifier) {
+          const info = activeLocations.get(location.start)
+          if (info && info.age < FADEOUT_SECONDS) {
+            const velocityClamped = Math.max(0, Math.min(1, info.velocity || 0))
+            const brightnessBase = 1 - info.age / FADEOUT_SECONDS
+            const brightness = brightnessBase * velocityClamped
+            textColor = `rgb(${Math.floor(255 * (1 - brightness))}, 255, ${Math.floor(
+              255 * (1 - brightness),
+            )})`
+          }
         }
       }
 
-      c.fillStyle = location ? textColor : 'rgba(255, 255, 255, 0.5)'
+      if (isModifier) {
+        c.fillStyle = 'rgba(160, 160, 160, 0.8)'
+      }
+      else {
+        c.fillStyle = location ? textColor : 'rgba(255, 255, 255, 0.5)'
+      }
+
       c.fillText(char, x, y)
       x += c.measureText(char).width
     }

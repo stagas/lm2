@@ -281,8 +281,6 @@ export class Mini extends Gen {
       if (eventsWritten >= maxEventsToWrite) break
 
       const cycleStartSample = i32(cycleSamples * (cycle as f32))
-      const cycleWindowStart = cycle === currentCycle ? generationStartSample : cycleStartSample
-      const cycleWindowEnd = cycleStartSample + i32(cycleSamples)
 
       this.eventBuffer.clear()
       this.eventEmitter.emitEvents(
@@ -291,8 +289,8 @@ export class Mini extends Gen {
         cycleStartSample,
         cycleLength,
         cycleSamples,
-        cycleWindowStart,
-        cycleWindowEnd,
+        windowStart,
+        targetEndSample,
       )
 
       // Write events to history buffer
