@@ -203,19 +203,44 @@ export class EventEmitter {
     group: GroupStartOp,
     time: f64,
     slotDuration: f64,
+    valueIndex: i32 = 0,
   ): void {
     if (!this.buffer) return
 
     const event = this.reader.getEvent(opOffset)
     const startSample = timeToSample(time, this.cycleStartSample, this.cycleLength, this.cycleSamples)
-    const endSample = timeToSample(time + slotDuration, this.cycleStartSample, this.cycleLength, this.cycleSamples)
+
+    // interpret hold as a factor of the slot duration:
+    // hold = 1 => full slot, hold = 0.5 => half slot, hold = 0 => single-sample trigger
+    const baseEndSample = timeToSample(
+      time + slotDuration,
+      this.cycleStartSample,
+      this.cycleLength,
+      this.cycleSamples,
+    )
+
+    let endSample = baseEndSample
+    const hold: f64 = event.hold as f64
+
+    if (hold <= 0.0) {
+      endSample = startSample + 1
+    }
+    else if (hold < 1.0) {
+      const slotSamples = baseEndSample - startSample
+      let holdSamples = i32(Math.floor((slotSamples as f64) * hold))
+      if (holdSamples < 1) holdSamples = 1
+      endSample = startSample + holdSamples
+    }
+
+    const value = event.getValue(valueIndex)
+    if (value <= 0.0) return
 
     if (endSample > this.windowStart && startSample < this.windowEnd) {
       this.buffer!.write(
         this.reader.getOpIndex(opOffset),
         startSample,
         endSample,
-        event.getValue(0),
+        value,
         event.velocity * group.velocity,
       )
     }

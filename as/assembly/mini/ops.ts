@@ -7,10 +7,15 @@ export class EventOp {
   valueCount!: f32
   velocity!: f32
   hold!: f32
-  glide!: f32
-  prob!: f32
+  replicate!: f32
+  elongate!: f32
   density!: f32
-  // values[MAX_EVENT_VALUES] stored at offset + 7 through + 22
+  offset!: f32
+  jitter!: f32
+  prob!: f32
+  glide!: f32
+  strum!: f32
+  // values[MAX_EVENT_VALUES] stored at offset + 12
 
   static size(): i32 {
     return OP_EVENT_BASE_SIZE
@@ -22,7 +27,7 @@ export class EventOp {
 
   getValue(index: i32): f32 {
     if (index >= 0 && index < MAX_EVENT_VALUES) {
-      const valuesPtr = changetype<usize>(this) + ((7 + index) << 2)
+      const valuesPtr = changetype<usize>(this) + ((12 + index) << 2)
       return load<f32>(valuesPtr)
     }
     return 0.0

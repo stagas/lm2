@@ -243,7 +243,7 @@ function buildProgram(data: ProgramDataView) {
   data.writeLiteral(LIT_ATTACK, 0.02)
   data.writeLiteral(LIT_DECAY, 0.02)
   data.writeLiteral(LIT_SUSTAIN, 0.7)
-  data.writeLiteral(LIT_RELEASE, 0.3)
+  data.writeLiteral(LIT_RELEASE, 0.2)
   data.writeLiteral(LIT_MASTER, 0.25)
 
   bytecode.Mini(MINI_ARRAY_INDEX)
@@ -259,8 +259,8 @@ function buildProgram(data: ProgramDataView) {
     bytecode.Literal(LIT_RELEASE)
     bytecode.SeqVoiceTrig()
     bytecode.Adsr()
-
     bytecode.Mul()
+
     bytecode.SeqVoiceVelocity()
     bytecode.Mul()
   })

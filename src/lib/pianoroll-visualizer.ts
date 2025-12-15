@@ -212,17 +212,18 @@ export function createPianorollVisualization(
       const keyIndex = midi - displayMinMidi
       const y = keyIndex * keyHeight
 
-      const duration = event.endSample - event.startSample
       const isActive = currentSampleCount >= event.startSample
         && (currentSampleCount <= Math.max(event.startSample + 5000, event.endSample))
+
+      const velocity = Math.max(0, Math.min(1, event.velocity))
 
       if (isActive) {
         c.fillStyle = 'rgba(255, 200, 0, 0.9)'
         c.strokeStyle = 'rgba(255, 255, 100, 1)'
       }
       else {
-        c.fillStyle = 'rgba(0, 200, 255, 0.5)'
-        c.strokeStyle = 'rgba(0, 255, 255, 0.7)'
+        c.fillStyle = `rgba(0, 200, 255, ${0.5 * velocity})`
+        c.strokeStyle = `rgba(0, 255, 255, ${0.7 * velocity})`
       }
       c.fillRect(x, y, Math.max(2, eventWidth), keyHeight - 1)
 

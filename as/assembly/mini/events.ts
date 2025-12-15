@@ -10,13 +10,10 @@ import {
   ChildOpsBuffer,
   EventEmitter,
   findGroupEnd,
-  floorToDecimals,
   floorToFactor,
   fract,
   MiniEventBuffer,
   parseGroupChildren,
-  roundToDecimals,
-  roundToFactor,
 } from './util'
 
 export { MiniEventBuffer }
@@ -172,6 +169,11 @@ export class MiniEvents {
 
         if (event.density === 0.0 || event.density > 16) break
 
+        const valueCount: i32 = i32(event.valueCount)
+        if (valueCount <= 0) break
+
+        const strum: f64 = event.strum as f64
+
         const shouldPlay: bool = (cycle + event.density) % (1.0 / event.density) < 1
         if (!shouldPlay) break
 
@@ -182,12 +184,27 @@ export class MiniEvents {
         startTime = fract(startTime)
 
         while (startTime < validSlotDuration) {
-          emitter.emit(
-            opOffset,
-            group,
-            groupStartTime + relativeTime + startTime,
-            durationDividedByDensity,
-          )
+          // emit one voice per value to support chords
+          for (let vi: i32 = 0; vi < valueCount; vi++) {
+            const rawValue = event.getValue(vi)
+            if (rawValue <= 0.0) continue
+
+            // apply group.strum as time spread across chord voices within the slot
+            let strumOffset: f64 = 0.0
+            if (strum > 0.0 && valueCount > 1) {
+              const position: f64 = f64(vi) / f64(valueCount - 1) // 0..1 across chord
+              const strumSpan: f64 = slotDuration * (strum > 1.0 ? 1.0 : strum)
+              strumOffset = position * strumSpan
+            }
+
+            emitter.emit(
+              opOffset,
+              group,
+              groupStartTime + relativeTime + startTime + strumOffset,
+              durationDividedByDensity,
+              vi,
+            )
+          }
           startTime += durationDividedByDensity
         }
 

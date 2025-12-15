@@ -126,7 +126,14 @@ function parseModifiers(text: string): Modifiers {
       case '.': {
         const m = rest.match(/^([\d.]+)/)
         if (m) {
-          mods.velocity *= parseFloat(m[1]!)
+          const raw = m[1]!
+          // Interpret ".x" as a fractional velocity (0.x) to make "g4.1" mean 0.1, "g4.25" mean 0.25, etc.
+          // If the user includes an explicit decimal (e.g. ".0.5"), respect it as-is.
+          let factor = parseFloat(raw)
+          if (raw.indexOf('.') === -1) {
+            factor = parseFloat('0.' + raw)
+          }
+          mods.velocity *= factor
           i += m[0]!.length + 1
         }
         else {

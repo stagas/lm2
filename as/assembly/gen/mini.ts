@@ -305,21 +305,26 @@ export class Mini extends Gen {
         // Only write events that start at or after the current playback position
         if (event.startSample < windowStart) continue
 
-        // Check if this event already exists (same opIndex and startSample)
+        // Check if this event already exists (same opIndex, startSample and value)
         // Search backwards from writePos, but limit search to recent events to avoid duplicates
         let alreadyExists = false
         for (let n = 0; n < HISTORY_SIZE; n++) {
           const checkPos = (historyWritePos - 1 - n + HISTORY_SIZE) % HISTORY_SIZE
           const checkIdx = HISTORY_DATA_OFFSET + checkPos * HISTORY_ENTRY_SIZE
           const existingOpIndex = i32(historyArray[checkIdx])
+          const existingValue = historyArray[checkIdx + 1]
           const existingStartSample = i32(historyArray[checkIdx + 3])
           const existingEndSample = i32(historyArray[checkIdx + 4])
 
           // Skip invalid entries
           if (existingEndSample === 0) continue
 
-          // If we find the same event (same opIndex and startSample), skip writing
-          if (existingOpIndex === event.opIndex && existingStartSample === event.startSample) {
+          // If we find the same event (same opIndex, startSample and value), skip writing
+          if (
+            existingOpIndex === event.opIndex &&
+            existingStartSample === event.startSample &&
+            existingValue === event.value
+          ) {
             alreadyExists = true
             break
           }
@@ -394,18 +399,17 @@ export class Mini extends Gen {
       // Check if event intersects with current window
       if (endSample <= windowStart || startSample >= windowEnd) continue
 
-      // Read event value from bytecode
+      // Read event from bytecode
       const eventOffset = opStart + opIndex
       const opcode = i32(bytecodeArray[eventOffset])
       if (opcode !== OP_EVENT) continue
 
-      const valueCount = i32(bytecodeArray[eventOffset + 1])
-      if (valueCount <= 0) continue
-
-      const value = bytecodeArray[eventOffset + 7]
+      // Use value captured in history, which already reflects chord splitting
+      const value = historyArray[historyIdx + 1]
       if (value <= 0) continue
 
-      const velocity = bytecodeArray[eventOffset + 2]
+      // Use velocity captured in history, which already includes group scaling
+      const velocity = historyArray[historyIdx + 2]
 
       // Schedule voice
       const eventIndex = ((opIndex + MINI_HEADER_SIZE) << 8) | (n & 0xFF)

@@ -39,9 +39,14 @@ export function writeEventOp(
   emit(values.length)
   emit(modifiers.velocity)
   emit(modifiers.hold)
-  emit(modifiers.glide)
-  emit(modifiers.prob)
+  emit(modifiers.replicate)
+  emit(modifiers.elongate)
   emit(modifiers.density)
+  emit(modifiers.offset)
+  emit(modifiers.jitter)
+  emit(modifiers.prob)
+  emit(modifiers.glide)
+  emit(modifiers.strum)
   for (let i = 0; i < MAX_EVENT_VALUES; i++) {
     emit(values[i] ?? 0)
   }
