@@ -83,32 +83,53 @@ export class MiniEvents {
 
     const slotDuration = parentSlotDuration / childrenLength
 
-    if (group.density === 0.0 || group.density > 128) {
+    if (group.density === 0.0 || group.density > 128.0) {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
-    const factor: f64 = 1.0 / group.density
-    const childrenFactor: f64 = childrenLength / factor
+    // interpret density like a slot selector over children across cycles:
+    // density < 1 spreads children across multiple cycles, density >= 1
+    // allows multiple children per cycle.
+    const invDensity: f64 = 1.0 / group.density
+    let slots: f64 = invDensity
+    if (slots < 1.0) slots = 1.0
+    const slotsRounded: f64 = Math.max(1.0, Math.round(slots))
+
     for (let i: f64 = 0; i < childrenLength; i++) {
-      // const cycleDividedByDensity = f32(currentCycle) / factor
-      // if (Mathf.round(cycleDividedByDensity / group.density % f32(factor)) === Mathf.floor(i / childrenFactor)) {
       const childOpOffset = this.childOpsBuffer.get(i32(i))
-      //   const childRelativeTime = cycleDividedByDensity % parentSlotDuration
-      //   // console.log(`childRelativeTime: ${childRelativeTime}, parentSlotDuration: ${parentSlotDuration}`)
+      const opcode = reader.getOpcode(childOpOffset)
+
+      // Evenly distribute children in density space using discrete slots
+      const normalizedPosition = i / childrenLength // position in [0, 1)
+      const slotIndex = normalizedPosition * slotsRounded
+
+      // advance active slot over cycles
+      const activeSlot = cycle % slotsRounded
+
+      const shouldPlay: bool = opcode === OP_EVENT
+        ? Math.floor(slotIndex) === Math.floor(activeSlot)
+        : true
+
+      if (!shouldPlay) continue
+
+      // phase child start within parent slot over cycles to distribute across time
+      let startTime: f64 = normalizedPosition / group.density
+      startTime = fract(startTime)
+      startTime *= parentSlotDuration
+      if (startTime > parentSlotDuration * 0.95) startTime = 0
 
       this.processChild(
         reader,
         childOpOffset,
         group,
         groupStartTime,
-        i * slotDuration,
-        slotDuration,
+        opcode === OP_EVENT ? startTime : i * slotDuration,
+        slotDuration / group.density,
         cycle,
         cycleStartSample,
         cycleSamples,
         emitter,
       )
-      // }
     }
 
     return findGroupEnd(reader.array$, opOffset, reader.opEnd)
@@ -134,20 +155,22 @@ export class MiniEvents {
 
         if (event.density === 0.0 || event.density > 128) break
 
-        const durationDividedByDensity: f64 = slotDuration / event.density
-
         const shouldPlay: bool = (cycle + event.density) % (1.0 / event.density) < 1
         if (!shouldPlay) break
 
+        const durationDividedByDensity: f64 = slotDuration / event.density
         const validSlotDuration = slotDuration - (slotDuration / 8.0)
-        let startTime: f64 = (cycle + (cycle % 2 === 0 ? 0.000001 : 0)) % durationDividedByDensity
-        startTime = floorToFactor(startTime % validSlotDuration, 8)
+        let startTime: f64 = floorToFactor(fract(cycle + (cycle % 2 === 0 ? 0.000001 : 0)) % durationDividedByDensity,
+          8)
+        startTime = fract(startTime)
+        // console.log(`startTime: ${startTime}`)
+        // startTime = floorToFactor(startTime % validSlotDuration, 8)
 
         while (startTime < validSlotDuration) {
           emitter.emit(
             opOffset,
             group,
-            relativeTime + startTime,
+            groupStartTime + relativeTime + startTime,
             durationDividedByDensity,
           )
           startTime += durationDividedByDensity

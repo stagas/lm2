@@ -31,13 +31,16 @@ export function midiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
 }
 
+export function frequencyToMidi(frequency: number): number {
+  return Math.round(12 * Math.log2(frequency / 440) + 69)
+}
+
 export function frequencyToNoteName(frequency: number): string | null {
   if (!isFinite(frequency) || frequency <= 0) return null
   try {
-    const midi = 12 * Math.log2(frequency / 440) + 69
+    const midi = frequencyToMidi(frequency)
     if (!isFinite(midi)) return null
-    const roundedMidi = Math.round(midi)
-    return midiToNoteName(roundedMidi)
+    return midiToNoteName(midi)
   }
   catch {
     return null

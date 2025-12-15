@@ -7,15 +7,8 @@ import {
   TIME_WINDOW_SECONDS,
 } from '../../as/assembly/constants.ts'
 import type { VmHistory } from '../index.ts'
+import { frequencyToMidi } from '../mini/note-utils.ts'
 import type { AnimationManager } from './animation-manager.ts'
-
-function freqToMidi(freq: number): number {
-  if (freq <= 0) return 0
-  const A4 = 440
-  const A4_MIDI = 69
-  const semitones = 12 * Math.log2(freq / A4)
-  return Math.round(A4_MIDI + semitones)
-}
 
 export function createPianorollVisualization(
   history: VmHistory,
@@ -107,7 +100,7 @@ export function createPianorollVisualization(
     const preActiveNotes = new Set<number>()
     events.forEach(event => {
       if (event.noteValue && event.noteValue > 0) {
-        const midiNote = Math.round(freqToMidi(event.noteValue))
+        const midiNote = frequencyToMidi(event.noteValue)
         preActiveNotes.add(midiNote)
       }
     })
@@ -120,11 +113,12 @@ export function createPianorollVisualization(
       const minActive = Math.min(...activeMidis)
       const maxActive = Math.max(...activeMidis)
 
+      // Ensure display bounds are always integral MIDI values
       displayMinMidi = Math.max(MIN_MIDI, minActive - 2)
       displayMaxMidi = Math.min(MAX_MIDI, maxActive + 2)
 
       if (displayMaxMidi - displayMinMidi < 11) {
-        const center = (displayMinMidi + displayMaxMidi) / 2
+        const center = Math.round((displayMinMidi + displayMaxMidi) / 2)
         displayMinMidi = Math.max(MIN_MIDI, center - 6)
         displayMaxMidi = Math.min(MAX_MIDI, center + 6)
       }
@@ -199,7 +193,7 @@ export function createPianorollVisualization(
       const x = relativeStartTime * PIXELS_PER_SECOND
       const eventWidth = durationSeconds * PIXELS_PER_SECOND
 
-      const midi = freqToMidi(event.noteValue)
+      const midi = frequencyToMidi(event.noteValue)
       if (midi < displayMinMidi || midi > displayMaxMidi) continue
 
       const keyIndex = midi - displayMinMidi

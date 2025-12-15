@@ -222,8 +222,8 @@ export class EventEmitter {
   }
 }
 
-export function fract(value: f32): f32 {
-  return value - Mathf.floor(value)
+export function fract(value: f64): f64 {
+  return value - Math.floor(value)
 }
 
 export function roundToDecimals(value: f64, decimals: f64): f64 {
