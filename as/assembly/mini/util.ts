@@ -116,8 +116,8 @@ export function parseGroupChildren(
   }
 }
 
-export function timeToSample(time: f32, cycleStartSample: i32, cycleLength: f32, cycleSamples: f32): i32 {
-  return cycleStartSample + i32(Mathf.floor(((time * cycleSamples) / cycleLength) as f32))
+export function timeToSample(time: f64, cycleStartSample: i32, cycleLength: f64, cycleSamples: f64): i32 {
+  return cycleStartSample + i32(Math.floor((time * cycleSamples) / cycleLength))
 }
 
 export function findGroupEnd(array$: usize, startOffset: i32, opEnd: i32): i32 {
@@ -201,8 +201,8 @@ export class EventEmitter {
   emit(
     opOffset: i32,
     group: GroupStartOp,
-    time: f32,
-    slotDuration: f32,
+    time: f64,
+    slotDuration: f64,
   ): void {
     if (!this.buffer) return
 
@@ -224,4 +224,22 @@ export class EventEmitter {
 
 export function fract(value: f32): f32 {
   return value - Mathf.floor(value)
+}
+
+export function roundToDecimals(value: f64, decimals: f64): f64 {
+  const factor: f64 = Math.pow(10, decimals)
+  return Math.round(value * factor) / factor
+}
+
+export function floorToDecimals(value: f64, decimals: f64): f64 {
+  const factor: f64 = Math.pow(10, decimals)
+  return Math.floor(value * factor) / factor
+}
+
+export function roundToFactor(value: f64, factor: f64): f64 {
+  return Math.round(value * factor) / factor
+}
+
+export function floorToFactor(value: f64, factor: f64): f64 {
+  return Math.floor(value * factor) / factor
 }

@@ -5,7 +5,19 @@ import {
   OP_GROUP_START,
 } from '../constants'
 import { GroupStartOp } from './ops'
-import { BytecodeReader, ChildOpsBuffer, EventEmitter, findGroupEnd, MiniEventBuffer, parseGroupChildren } from './util'
+import {
+  BytecodeReader,
+  ChildOpsBuffer,
+  EventEmitter,
+  findGroupEnd,
+  floorToDecimals,
+  floorToFactor,
+  fract,
+  MiniEventBuffer,
+  parseGroupChildren,
+  roundToDecimals,
+  roundToFactor,
+} from './util'
 
 export { MiniEventBuffer }
 
@@ -35,18 +47,18 @@ export class MiniEvents {
     this.reader.update(bytecode$, opEnd)
     this.emitter.update(eventBuffer, cycleStartSample, cycleLength, cycleSamples, windowStart, windowEnd)
 
-    const currentCycle = cycleSamples > 0.0 ? i32(Mathf.floor((cycleStartSample as f32) / cycleSamples)) : 0
-    this.evaluateGroup(this.reader, opStart, 0.0, 1.0, currentCycle, cycleStartSample, cycleSamples, this.emitter)
+    const cycle = cycleSamples > 0.0 ? i32(Mathf.floor((cycleStartSample as f32) / cycleSamples)) : 0
+    this.evaluateGroup(this.reader, opStart, 0.0, 1.0, cycle, cycleStartSample, cycleSamples, this.emitter)
   }
 
   private evaluateGroup(
     reader: BytecodeReader,
     opOffset: i32,
-    groupStartTime: f32,
-    parentSlotDuration: f32,
-    currentCycle: i32,
+    groupStartTime: f64,
+    parentSlotDuration: f64,
+    cycle: f64,
     cycleStartSample: i32,
-    cycleSamples: f32,
+    cycleSamples: f64,
     emitter: EventEmitter,
   ): i32 {
     if (opOffset >= reader.opEnd || reader.getOpcode(opOffset) !== OP_GROUP_START) {
@@ -63,25 +75,40 @@ export class MiniEvents {
       this.childOpsBuffer,
     )
 
-    if (this.childOpsBuffer.length === 0) {
+    const childrenLength = f64(this.childOpsBuffer.length)
+
+    if (childrenLength === 0.0) {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
-    const slotDuration = parentSlotDuration / (this.childOpsBuffer.length as f32)
-    for (let i = 0; i < this.childOpsBuffer.length; i++) {
-      const childOpOffset = this.childOpsBuffer.get(i)
+    const slotDuration = parentSlotDuration / childrenLength
+
+    if (group.density === 0.0 || group.density > 128) {
+      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+    }
+
+    const factor: f64 = 1.0 / group.density
+    const childrenFactor: f64 = childrenLength / factor
+    for (let i: f64 = 0; i < childrenLength; i++) {
+      // const cycleDividedByDensity = f32(currentCycle) / factor
+      // if (Mathf.round(cycleDividedByDensity / group.density % f32(factor)) === Mathf.floor(i / childrenFactor)) {
+      const childOpOffset = this.childOpsBuffer.get(i32(i))
+      //   const childRelativeTime = cycleDividedByDensity % parentSlotDuration
+      //   // console.log(`childRelativeTime: ${childRelativeTime}, parentSlotDuration: ${parentSlotDuration}`)
+
       this.processChild(
         reader,
         childOpOffset,
         group,
         groupStartTime,
-        f32(i) * slotDuration,
+        i * slotDuration,
         slotDuration,
-        currentCycle,
+        cycle,
         cycleStartSample,
         cycleSamples,
         emitter,
       )
+      // }
     }
 
     return findGroupEnd(reader.array$, opOffset, reader.opEnd)
@@ -91,12 +118,12 @@ export class MiniEvents {
     reader: BytecodeReader,
     opOffset: i32,
     group: GroupStartOp,
-    groupStartTime: f32,
-    relativeTime: f32,
-    slotDuration: f32,
-    currentCycle: i32,
+    groupStartTime: f64,
+    relativeTime: f64,
+    slotDuration: f64,
+    cycle: f64,
     cycleStartSample: i32,
-    cycleSamples: f32,
+    cycleSamples: f64,
     emitter: EventEmitter,
   ): void {
     const opcode = reader.getOpcode(opOffset)
@@ -105,67 +132,27 @@ export class MiniEvents {
       case OP_EVENT: {
         const event = reader.getEvent(opOffset)
 
-        // Density controls event occurrence frequency:
-        // density = 1: plays every cycle
-        // density = 2: plays twice per cycle
-        // density = 1/3: plays once every 3 cycles
+        if (event.density === 0.0 || event.density > 128) break
 
-        if (event.density >= 1.0) {
-          // Fast: multiple events per slot
-          const eventsPerSlot = event.density
-          const singleEventDuration = slotDuration / eventsPerSlot
-          const numEvents = i32(Mathf.ceil(eventsPerSlot))
+        const durationDividedByDensity: f64 = slotDuration / event.density
 
-          for (let rep = 0; rep < numEvents; rep++) {
-            const eventStart = groupStartTime + relativeTime + (f32(rep) * singleEventDuration)
-            const slotEnd = groupStartTime + relativeTime + slotDuration
+        const shouldPlay: bool = (cycle + event.density) % (1.0 / event.density) < 1
+        if (!shouldPlay) break
 
-            if (eventStart < slotEnd) {
-              const remainingSpace = slotEnd - eventStart
-              const eventDuration = Mathf.min(singleEventDuration, remainingSpace)
+        const validSlotDuration = slotDuration - (slotDuration / 8.0)
+        let startTime: f64 = (cycle + (cycle % 2 === 0 ? 0.000001 : 0)) % durationDividedByDensity
+        startTime = floorToFactor(startTime % validSlotDuration, 8)
 
-              emitter.emit(
-                opOffset,
-                group,
-                eventStart,
-                eventDuration,
-              )
-            }
-          }
+        while (startTime < validSlotDuration) {
+          emitter.emit(
+            opOffset,
+            group,
+            relativeTime + startTime,
+            durationDividedByDensity,
+          )
+          startTime += durationDividedByDensity
         }
-        else {
-          // Slow: event plays once every (1/density) cycles
-          // For density = 1/1.5, event fires every 1.5 cycles at: 0.5, 2.0, 3.5, 5.0...
-          // For density = 1/3, event fires every 3 cycles at: 0.5, 3.5, 6.5, 9.5...
 
-          const interval: f32 = 1.0 / event.density
-
-          // Use the slot's position in the first cycle as reference (relativeTime is the slot position)
-          const firstOccurrence = relativeTime
-
-          // Find which occurrences fall in the current cycle [currentCycle, currentCycle+1)
-          const cycleStart = f32(currentCycle)
-          const cycleEnd = cycleStart + 1.0
-
-          // Calculate the occurrence index range
-          // firstOccurrence + n * interval should be in [cycleStart, cycleEnd)
-          const minN = Mathf.ceil((cycleStart - firstOccurrence) / interval)
-          const maxN = Mathf.floor((cycleEnd - firstOccurrence - 0.0001) / interval)
-
-          // Emit all occurrences in this cycle
-          for (let n = minN; n <= maxN; n++) {
-            const eventTime = firstOccurrence + f32(n) * interval
-
-            if (eventTime >= cycleStart && eventTime < cycleEnd) {
-              emitter.emit(
-                opOffset,
-                group,
-                groupStartTime + (eventTime - cycleStart),
-                slotDuration,
-              )
-            }
-          }
-        }
         break
       }
 
@@ -175,7 +162,7 @@ export class MiniEvents {
           opOffset,
           groupStartTime + relativeTime,
           slotDuration,
-          currentCycle,
+          cycle,
           cycleStartSample,
           cycleSamples,
           emitter,
