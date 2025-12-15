@@ -93,10 +93,6 @@ export class MiniEvents {
     const group = reader.getGroup(opOffset)
     const groupOffset: f64 = group.offset as f64
     const groupJitter: f64 = parentJitter + (group.jitter as f64)
-    let groupStart: f64 = groupStartTime
-    if (groupOffset !== 0.0) {
-      groupStart += groupOffset * parentSlotDuration
-    }
     const groupVelocity: f64 = parentVelocity * (group.velocity as f64)
 
     const groupProb: f64 = group.prob as f64
@@ -172,11 +168,14 @@ export class MiniEvents {
         startTime *= parentSlotDuration
         if (startTime > parentSlotDuration * 0.95) startTime = 0
 
+        const childBaseRelative: f64 = opcode === OP_EVENT ? startTime + offset : i * slotDuration + offset
+        const childRelativeTime: f64 = childBaseRelative + groupOffset * parentSlotDuration
+
         this.processChild(
           reader,
           childOpOffset,
-          groupStart,
-          opcode === OP_EVENT ? startTime + offset : i * slotDuration + offset,
+          groupStartTime,
+          childRelativeTime,
           slotDuration / group.density,
           cycle,
           cycleStartSample,
