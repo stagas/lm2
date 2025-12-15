@@ -77,13 +77,13 @@ export class MiniEvents {
 
     const childrenLength = f64(this.childOpsBuffer.length)
 
-    if (childrenLength === 0.0) {
+    if (childrenLength === 0) {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
     const slotDuration = parentSlotDuration / childrenLength
 
-    if (group.density === 0.0 || group.density > 128.0) {
+    if (group.density === 0 || group.density > 16) {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
@@ -95,41 +95,58 @@ export class MiniEvents {
     if (slots < 1.0) slots = 1.0
     const slotsRounded: f64 = Math.max(1.0, Math.round(slots))
 
-    for (let i: f64 = 0; i < childrenLength; i++) {
-      const childOpOffset = this.childOpsBuffer.get(i32(i))
-      const opcode = reader.getOpcode(childOpOffset)
+    let didAllPlay: bool = true
+    const repeatStep: f64 = group.density > 1.0 ? parentSlotDuration * invDensity : 0.0
 
-      // Evenly distribute children in density space using discrete slots
-      const normalizedPosition = i / childrenLength // position in [0, 1)
-      const slotIndex = normalizedPosition * slotsRounded
+    let pass: i32 = 0
+    while (true) {
+      const offset: f64 = pass === 0 ? 0.0 : f64(pass) * repeatStep
 
-      // advance active slot over cycles
-      const activeSlot = cycle % slotsRounded
+      if (pass > 0) {
+        if (!didAllPlay || repeatStep <= 0.0 || offset >= parentSlotDuration) break
+      }
 
-      const shouldPlay: bool = opcode === OP_EVENT
-        ? Math.floor(slotIndex) === Math.floor(activeSlot)
-        : true
+      for (let i: f64 = 0; i < childrenLength; i++) {
+        const childOpOffset = this.childOpsBuffer.get(i32(i))
+        const opcode = reader.getOpcode(childOpOffset)
 
-      if (!shouldPlay) continue
+        // Evenly distribute children in density space using discrete slots
+        const normalizedPosition = i / childrenLength // position in [0, 1)
+        const slotIndex = normalizedPosition * slotsRounded
 
-      // phase child start within parent slot over cycles to distribute across time
-      let startTime: f64 = normalizedPosition / group.density
-      startTime = fract(startTime)
-      startTime *= parentSlotDuration
-      if (startTime > parentSlotDuration * 0.95) startTime = 0
+        // advance active slot over cycles
+        const activeSlot = cycle % slotsRounded
 
-      this.processChild(
-        reader,
-        childOpOffset,
-        group,
-        groupStartTime,
-        opcode === OP_EVENT ? startTime : i * slotDuration,
-        slotDuration / group.density,
-        cycle,
-        cycleStartSample,
-        cycleSamples,
-        emitter,
-      )
+        if (pass === 0 && opcode === OP_EVENT) {
+          const shouldPlay: bool = Math.floor(slotIndex) === Math.floor(activeSlot)
+          if (!shouldPlay) {
+            didAllPlay = false
+            continue
+          }
+        }
+
+        // phase child start within parent slot over cycles to distribute across time
+        let startTime: f64 = normalizedPosition / group.density
+        startTime = fract(startTime)
+        startTime *= parentSlotDuration
+        if (startTime > parentSlotDuration * 0.95) startTime = 0
+
+        this.processChild(
+          reader,
+          childOpOffset,
+          group,
+          groupStartTime,
+          opcode === OP_EVENT ? startTime + offset : i * slotDuration + offset,
+          slotDuration / group.density,
+          cycle,
+          cycleStartSample,
+          cycleSamples,
+          emitter,
+        )
+      }
+
+      if (repeatStep <= 0.0) break
+      pass++
     }
 
     return findGroupEnd(reader.array$, opOffset, reader.opEnd)
@@ -153,7 +170,7 @@ export class MiniEvents {
       case OP_EVENT: {
         const event = reader.getEvent(opOffset)
 
-        if (event.density === 0.0 || event.density > 128) break
+        if (event.density === 0.0 || event.density > 16) break
 
         const shouldPlay: bool = (cycle + event.density) % (1.0 / event.density) < 1
         if (!shouldPlay) break
@@ -163,8 +180,6 @@ export class MiniEvents {
         let startTime: f64 = floorToFactor(fract(cycle + (cycle % 2 === 0 ? 0.000001 : 0)) % durationDividedByDensity,
           8)
         startTime = fract(startTime)
-        // console.log(`startTime: ${startTime}`)
-        // startTime = floorToFactor(startTime % validSlotDuration, 8)
 
         while (startTime < validSlotDuration) {
           emitter.emit(

@@ -32,9 +32,12 @@ export function createPianorollVisualization(
   const MIN_MIDI = 0
   const MAX_MIDI = 127
 
+  const SCROLL_SMOOTHING = 0.2
+
   const PIXELS_PER_SECOND = width / TIME_WINDOW_SECONDS
 
   let currentHistory = history
+  let smoothedTimeSeconds: number | null = null
 
   const draw = () => {
     c.clearRect(0, 0, width, height)
@@ -48,6 +51,16 @@ export function createPianorollVisualization(
     const currentSampleCount = Math.max(0, rawSampleCount)
     const currentTimeSeconds = currentSampleCount / sampleRate
 
+    const targetTimeSeconds = currentTimeSeconds
+    if (smoothedTimeSeconds === null) {
+      smoothedTimeSeconds = targetTimeSeconds
+    }
+    else {
+      smoothedTimeSeconds += (targetTimeSeconds - smoothedTimeSeconds) * SCROLL_SMOOTHING
+    }
+
+    const displayTimeSeconds = smoothedTimeSeconds
+
     const historyRaw = currentHistory.raw
 
     // Read events directly from history buffer
@@ -58,9 +71,9 @@ export function createPianorollVisualization(
       velocity: number
     }> = []
 
-    // Calculate visible time window first
-    const windowStartTime = currentTimeSeconds - PAST_SECONDS
-    const windowEndTime = currentTimeSeconds + FUTURE_SECONDS
+    // Calculate visible time window first, based on smoothed time
+    const windowStartTime = displayTimeSeconds - PAST_SECONDS
+    const windowEndTime = displayTimeSeconds + FUTURE_SECONDS
 
     // Read events from history buffer
     // After defragmentation, preserved events are at slots 0 to writePos-1
