@@ -14,6 +14,7 @@ import {
   fract,
   MiniEventBuffer,
   parseGroupChildren,
+  seededRandom01,
 } from './util'
 
 export { MiniEventBuffer }
@@ -22,6 +23,7 @@ export class MiniEvents {
   private childOpsBuffer: ChildOpsBuffer = new ChildOpsBuffer()
   private reader: BytecodeReader = new BytecodeReader()
   private emitter: EventEmitter = new EventEmitter(this.reader)
+  private randomSeed: u32 = 0
 
   emitEvents(
     bytecode$: usize,
@@ -41,11 +43,24 @@ export class MiniEvents {
     const opStart = ARRAY_HEADER_SIZE + MINI_HEADER_SIZE
     const opEnd = opStart + opLength
 
+    // Derive a stable base seed from the bytecode contents so that probability
+    // decisions depend only on the actual sequence data. If identical bytecode
+    // is passed again (even at a different pointer), the hash – and therefore
+    // all probability decisions – stay the same.
+    let hash: u32 = 2166136261 // FNV-1a offset basis
+    for (let i = 0; i < opLength; i++) {
+      const v = array[opStart + i]
+      const bits = reinterpret<u32>(v)
+      hash ^= bits
+      hash *= 16777619 // FNV-1a prime
+    }
+    this.randomSeed = hash
+
     this.reader.update(bytecode$, opEnd)
     this.emitter.update(eventBuffer, cycleStartSample, cycleLength, cycleSamples, windowStart, windowEnd)
 
     const cycle = cycleSamples > 0.0 ? i32(Mathf.floor((cycleStartSample as f32) / cycleSamples)) : 0
-    this.evaluateGroup(this.reader, opStart, 0.0, 1.0, cycle, cycleStartSample, cycleSamples, this.emitter)
+    this.evaluateGroup(this.reader, opStart, 0.0, 1.0, cycle, cycleStartSample, cycleSamples, 1.0, this.emitter)
   }
 
   private evaluateGroup(
@@ -56,6 +71,7 @@ export class MiniEvents {
     cycle: f64,
     cycleStartSample: i32,
     cycleSamples: f64,
+    parentVelocity: f64,
     emitter: EventEmitter,
   ): i32 {
     if (opOffset >= reader.opEnd || reader.getOpcode(opOffset) !== OP_GROUP_START) {
@@ -63,6 +79,16 @@ export class MiniEvents {
     }
 
     const group = reader.getGroup(opOffset)
+    const groupVelocity: f64 = parentVelocity * (group.velocity as f64)
+
+    const groupProb: f64 = group.prob as f64
+    if (groupProb > 0.0) {
+      const groupIndex: i32 = reader.getOpIndex(opOffset)
+      const randGroup: f64 = seededRandom01(this.randomSeed, cycle, groupIndex)
+      if (randGroup < groupProb) {
+        return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+      }
+    }
 
     parseGroupChildren(
       reader.array$,
@@ -131,13 +157,13 @@ export class MiniEvents {
         this.processChild(
           reader,
           childOpOffset,
-          group,
           groupStartTime,
           opcode === OP_EVENT ? startTime + offset : i * slotDuration + offset,
           slotDuration / group.density,
           cycle,
           cycleStartSample,
           cycleSamples,
+          groupVelocity,
           emitter,
         )
       }
@@ -152,13 +178,13 @@ export class MiniEvents {
   private processChild(
     reader: BytecodeReader,
     opOffset: i32,
-    group: GroupStartOp,
     groupStartTime: f64,
     relativeTime: f64,
     slotDuration: f64,
     cycle: f64,
     cycleStartSample: i32,
     cycleSamples: f64,
+    groupVelocity: f64,
     emitter: EventEmitter,
   ): void {
     const opcode = reader.getOpcode(opOffset)
@@ -173,6 +199,13 @@ export class MiniEvents {
         if (valueCount <= 0) break
 
         const strum: f64 = event.strum as f64
+
+        const eventProb: f64 = event.prob as f64
+        if (eventProb > 0.0) {
+          const eventIndex: i32 = reader.getOpIndex(opOffset)
+          const randEvent: f64 = seededRandom01(this.randomSeed, cycle, eventIndex)
+          if (randEvent < eventProb) break
+        }
 
         const shouldPlay: bool = (cycle + event.density) % (1.0 / event.density) < 1
         if (!shouldPlay) break
@@ -199,7 +232,7 @@ export class MiniEvents {
 
             emitter.emit(
               opOffset,
-              group,
+              groupVelocity,
               groupStartTime + relativeTime + startTime + strumOffset,
               durationDividedByDensity,
               vi,
@@ -220,6 +253,7 @@ export class MiniEvents {
           cycle,
           cycleStartSample,
           cycleSamples,
+          groupVelocity,
           emitter,
         )
         break

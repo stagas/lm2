@@ -132,6 +132,18 @@ export function findGroupEnd(array$: usize, startOffset: i32, opEnd: i32): i32 {
   return offset
 }
 
+export function seededRandom01(baseSeed: u32, cycle: f64, opIndex: i32, valueIndex: i32 = 0): f64 {
+  let state: i32 = i32(baseSeed)
+  state ^= i32(cycle) * 374761393
+  state ^= opIndex * 668265263
+  state ^= valueIndex * 224682251
+
+  state = (state * 9301 + 49297) % 233280
+  if (state < 0) state += 233280
+
+  return f64(state) / 233280.0
+}
+
 export class BytecodeReader {
   array$: usize
   opEnd: i32
@@ -200,7 +212,7 @@ export class EventEmitter {
 
   emit(
     opOffset: i32,
-    group: GroupStartOp,
+    groupVelocity: f64,
     time: f64,
     slotDuration: f64,
     valueIndex: i32 = 0,
@@ -241,7 +253,7 @@ export class EventEmitter {
         startSample,
         endSample,
         value,
-        event.velocity * group.velocity,
+        event.velocity * (groupVelocity as f32),
       )
     }
   }

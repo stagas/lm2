@@ -46,7 +46,7 @@ export function createSequenceVisualization(
 
     const historyRaw = currentHistory.raw
 
-    const eventData = new Map<number, { startSample: number; endSample: number }>()
+    const eventData = new Map<number, { startSample: number; endSample: number; velocity: number }>()
     const currentBytecodeLength = array.raw[ARRAY_HEADER_SIZE] as number
     const currentVersion = array.raw[3] as number
 
@@ -58,6 +58,7 @@ export function createSequenceVisualization(
 
     for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += 5) {
       const opIndex = Math.floor(historyRaw[idx])
+      const velocity = historyRaw[idx + 2]
       const startSample = Math.floor(historyRaw[idx + 3])
       const endSample = Math.floor(historyRaw[idx + 4])
 
@@ -71,20 +72,20 @@ export function createSequenceVisualization(
       if (opIndex >= 0 && opIndex < currentBytecodeLength) {
         const existing = eventData.get(opIndex)
         if (!existing || startSample > existing.startSample) {
-          eventData.set(opIndex, { startSample, endSample })
+          eventData.set(opIndex, { startSample, endSample, velocity })
         }
       }
     }
 
-    const eventAges = new Map<number, number>()
-    for (const [opIndex, { startSample, endSample }] of eventData.entries()) {
+    const eventAges = new Map<number, { age: number; velocity: number }>()
+    for (const [opIndex, { startSample, endSample, velocity }] of eventData.entries()) {
       if (currentSampleCount <= endSample) {
-        eventAges.set(opIndex, 0)
+        eventAges.set(opIndex, { age: 0, velocity })
       }
       else {
         const fadeAge = (currentSampleCount - endSample) / sampleRate
         if (fadeAge <= FADEOUT_SECONDS) {
-          eventAges.set(opIndex, fadeAge)
+          eventAges.set(opIndex, { age: fadeAge, velocity })
         }
       }
     }
@@ -94,24 +95,26 @@ export function createSequenceVisualization(
     c.font = '18px monospace'
     c.textBaseline = 'middle'
 
-    const activeLocations = new Map<number, number>()
-    for (const [opIndex, age] of eventAges.entries()) {
+    const activeLocations = new Map<number, { age: number; velocity: number }>()
+    for (const [opIndex, info] of eventAges.entries()) {
       const location = currentSourceMap.get(opIndex)
       if (location) {
         const existing = activeLocations.get(location.start)
-        if (existing === undefined || age < existing) {
-          activeLocations.set(location.start, age)
+        if (!existing || info.age < existing.age) {
+          activeLocations.set(location.start, info)
         }
       }
     }
 
-    for (const [start, age] of activeLocations.entries()) {
+    for (const [start, info] of activeLocations.entries()) {
+      const { age, velocity } = info
       if (age > FADEOUT_SECONDS) continue
 
       const location = Array.from(currentSourceMap.values()).find(loc => loc.start === start)
       if (!location) continue
 
-      const alpha = 1 - age / FADEOUT_SECONDS
+      const velocityClamped = Math.max(0, Math.min(1, velocity || 0))
+      const alpha = (1 - age / FADEOUT_SECONDS) * velocityClamped
       const x = 10 + c.measureText(currentSequenceString.slice(0, location.start)).width
       const metrics = c.measureText(location.text)
 
@@ -129,12 +132,12 @@ export function createSequenceVisualization(
 
       let textColor = 'white'
       if (location) {
-        const age = activeLocations.get(location.start)
-        if (age !== undefined && age < FADEOUT_SECONDS) {
-          const brightness = 1 - age / FADEOUT_SECONDS
-          textColor = `rgb(${Math.floor(255 * (1 - brightness) + 0 * brightness)}, 255, ${
-            Math.floor(255 * (1 - brightness) + 0 * brightness)
-          })`
+        const info = activeLocations.get(location.start)
+        if (info && info.age < FADEOUT_SECONDS) {
+          const velocityClamped = Math.max(0, Math.min(1, info.velocity || 0))
+          const brightnessBase = 1 - info.age / FADEOUT_SECONDS
+          const brightness = brightnessBase * velocityClamped
+          textColor = `rgb(${Math.floor(255 * (1 - brightness))}, 255, ${Math.floor(255 * (1 - brightness))})`
         }
       }
 

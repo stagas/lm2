@@ -159,6 +159,7 @@ function parseModifiers(text: string): Modifiers {
           i += m[0]!.length + 1
         }
         else {
+          mods.prob = 0.5
           i++
         }
         break

@@ -7,6 +7,9 @@ declare global {
   export let globalSampleCount: i32
 }
 
+// Seeded RNG for mini probability
+declare function seed(): f64
+
 // Host function for unified event generation
 declare function generateSequenceEvents(
   bytecodePtr: usize,
