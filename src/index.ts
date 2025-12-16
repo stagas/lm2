@@ -164,7 +164,6 @@ async function updateSequence(program: Program, sequence: string, data: ProgramD
       sequence,
       sourceMap,
       audioContext,
-      bpmValue,
       globalSampleCount,
       animationManager,
       600,

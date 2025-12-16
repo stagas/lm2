@@ -29,7 +29,6 @@ export function createSequenceVisualization(
   sequenceString: string,
   sourceMap: Map<number, SourceLocation>,
   audioContext: AudioContext,
-  bpmValue: Float32Array,
   globalSampleCount: Int32Array,
   animationManager: AnimationManager,
   width: number,
