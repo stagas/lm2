@@ -1,0 +1,548 @@
+import type {
+  Arg,
+  AssignExpr,
+  BinaryExpr,
+  BlockStmt,
+  CallExpr,
+  Expr,
+  ForStmt,
+  FuncExpr,
+  IfExpr,
+  MemberExpr,
+  Program,
+  Stmt,
+  SwitchStmt,
+  TryStmt,
+} from './ast.ts'
+import { type LangError, lineText } from './errors.ts'
+
+export type ConstVal = number | string | boolean | null | undefined
+
+export type Instr =
+  | { op: 'PUSH_CONST'; k: number }
+  | { op: 'POP' }
+  | { op: 'DUP' }
+  | { op: 'DUP2' }
+  | { op: 'LOAD'; name: number }
+  | { op: 'STORE'; name: number }
+  | { op: 'ARRAY'; n: number }
+  | { op: 'OBJECT'; n: number }
+  | { op: 'GET_PROP'; key: number }
+  | { op: 'SET_PROP'; key: number }
+  | { op: 'GET_INDEX' }
+  | { op: 'SET_INDEX' }
+  | { op: 'UNARY'; opName: string }
+  | { op: 'BINARY'; opName: string }
+  | { op: 'CALL'; pos: number; named: number }
+  | { op: 'JUMP'; to: number }
+  | { op: 'JUMP_IF_FALSE'; to: number }
+  | { op: 'LABEL'; id: number }
+  | { op: 'FUNC'; id: number }
+  | { op: 'TRY_BEGIN' }
+  | { op: 'CATCH_BEGIN'; name?: number }
+  | { op: 'FINALLY_BEGIN' }
+  | { op: 'TRY_END' }
+  | { op: 'THROW' }
+  | { op: 'RETURN' }
+  | { op: 'BREAK'; label?: number }
+  | { op: 'CONTINUE'; label?: number }
+
+export type Chunk = {
+  consts: ConstVal[]
+  funcs: FuncChunk[]
+  code: Instr[]
+}
+
+export type FuncChunk = {
+  params: { name: string; isRest: boolean }[]
+  chunk: Chunk
+}
+
+export type BytecodeProgram = {
+  chunk: Chunk
+  errors: LangError[]
+}
+
+export function compile(src: string, program: Program): BytecodeProgram {
+  const c = new Compiler(src)
+  c.compileProgram(program)
+  return { chunk: c.chunk, errors: c.errors }
+}
+
+export function disassemble(chunk: Chunk): string {
+  const lines: string[] = []
+  const pad = (n: number) => String(n).padStart(4, '0')
+
+  for (let i = 0; i < chunk.code.length; i++) {
+    const ins = chunk.code[i]!
+    const head = `${pad(i)}  ${ins.op}`
+    if (ins.op === 'PUSH_CONST') lines.push(`${head} ${ins.k} (${String(chunk.consts[ins.k])})`)
+    else if (ins.op === 'LOAD') lines.push(`${head} ${ins.name} (${String(chunk.consts[ins.name])})`)
+    else if (ins.op === 'STORE') lines.push(`${head} ${ins.name} (${String(chunk.consts[ins.name])})`)
+    else if (ins.op === 'GET_PROP') lines.push(`${head} ${ins.key} (${String(chunk.consts[ins.key])})`)
+    else if (ins.op === 'SET_PROP') lines.push(`${head} ${ins.key} (${String(chunk.consts[ins.key])})`)
+    else if (ins.op === 'UNARY') lines.push(`${head} ${ins.opName}`)
+    else if (ins.op === 'BINARY') lines.push(`${head} ${ins.opName}`)
+    else if (ins.op === 'CALL') lines.push(`${head} pos=${ins.pos} named=${ins.named}`)
+    else if (ins.op === 'ARRAY') lines.push(`${head} n=${ins.n}`)
+    else if (ins.op === 'OBJECT') lines.push(`${head} n=${ins.n}`)
+    else if (ins.op === 'JUMP') lines.push(`${head} -> ${ins.to}`)
+    else if (ins.op === 'JUMP_IF_FALSE') lines.push(`${head} -> ${ins.to}`)
+    else if (ins.op === 'LABEL') lines.push(`${head} #${ins.id}`)
+    else if (ins.op === 'FUNC') lines.push(`${head} #${ins.id}`)
+    else if (ins.op === 'BREAK') {
+      lines.push(`${head} ${ins.label !== undefined ? String(chunk.consts[ins.label]) : ''}`.trimEnd())
+    }
+    else if (ins.op === 'CONTINUE') {
+      lines.push(`${head} ${ins.label !== undefined ? String(chunk.consts[ins.label]) : ''}`.trimEnd())
+    }
+    else if (ins.op === 'CATCH_BEGIN') {
+      lines.push(`${head} ${ins.name !== undefined ? String(chunk.consts[ins.name]) : ''}`.trimEnd())
+    }
+    else lines.push(head)
+  }
+
+  if (chunk.funcs.length) {
+    lines.push('')
+    for (let i = 0; i < chunk.funcs.length; i++) {
+      const f = chunk.funcs[i]!
+      lines.push(`FUNC #${i} (${f.params.map((p) => (p.isRest ? `...${p.name}` : p.name)).join(', ')})`)
+      lines.push(disassemble(f.chunk).split('\n').map((l) => `  ${l}`).join('\n'))
+      lines.push('')
+    }
+  }
+
+  return lines.join('\n')
+}
+
+class Compiler {
+  readonly chunk: Chunk = { consts: [], funcs: [], code: [] }
+  readonly errors: LangError[] = []
+  private pipe: string[] = []
+  private labelId = 0
+
+  constructor(private readonly src: string) {}
+
+  private k(v: ConstVal): number {
+    const i = this.chunk.consts.indexOf(v)
+    if (i !== -1) return i
+    this.chunk.consts.push(v)
+    return this.chunk.consts.length - 1
+  }
+
+  private nameConst(name: string): number {
+    return this.k(name)
+  }
+
+  private emit(ins: Instr): number {
+    this.chunk.code.push(ins)
+    return this.chunk.code.length - 1
+  }
+
+  private patch(at: number, to: number): void {
+    const ins = this.chunk.code[at]
+    if (!ins) return
+    if (ins.op === 'JUMP' || ins.op === 'JUMP_IF_FALSE') ins.to = to
+  }
+
+  private err(loc: { line: number; column: number; length: number }, message: string): void {
+    this.errors.push({
+      message,
+      line: loc.line,
+      column: loc.column,
+      length: Math.max(1, loc.length),
+      code: lineText(this.src, loc.line),
+    })
+  }
+
+  compileProgram(program: Program): void {
+    for (let i = 0; i < program.body.length; i++) {
+      this.compileStmt(program.body[i]!, i === program.body.length - 1)
+    }
+  }
+
+  private compileStmt(stmt: Stmt, isLast: boolean): void {
+    if (stmt.kind === 'block') {
+      this.compileBlockStmt(stmt, isLast)
+      return
+    }
+
+    if (stmt.kind === 'expr_stmt') {
+      this.compileExpr(stmt.expr)
+      if (!isLast) this.emit({ op: 'POP' })
+      return
+    }
+
+    if (stmt.kind === 'destructure') {
+      this.compileExpr(stmt.value)
+      this.emit({ op: 'POP' })
+      return
+    }
+
+    if (stmt.kind === 'label') {
+      this.compileStmt(stmt.stmt, isLast)
+      return
+    }
+
+    if (stmt.kind === 'return') {
+      if (stmt.value) this.compileExpr(stmt.value)
+      else this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+      this.emit({ op: 'RETURN' })
+      return
+    }
+
+    if (stmt.kind === 'throw') {
+      this.compileExpr(stmt.value)
+      this.emit({ op: 'THROW' })
+      return
+    }
+
+    if (stmt.kind === 'break') {
+      const label = stmt.label ? this.nameConst(stmt.label) : undefined
+      this.emit({ op: 'BREAK', label })
+      return
+    }
+
+    if (stmt.kind === 'continue') {
+      const label = stmt.label ? this.nameConst(stmt.label) : undefined
+      this.emit({ op: 'CONTINUE', label })
+      return
+    }
+
+    if (stmt.kind === 'while') {
+      const start = this.emit({ op: 'LABEL', id: this.labelId++ })
+      void start
+      this.compileExpr(stmt.test)
+      const j = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
+      this.compileStmt(stmt.body, false)
+      this.emit({ op: 'JUMP', to: start })
+      this.patch(j, this.chunk.code.length)
+      return
+    }
+
+    if (stmt.kind === 'do_while') {
+      const start = this.emit({ op: 'LABEL', id: this.labelId++ })
+      this.compileStmt(stmt.body, false)
+      this.compileExpr(stmt.test)
+      const j = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
+      this.emit({ op: 'JUMP', to: start })
+      this.patch(j, this.chunk.code.length)
+      return
+    }
+
+    if (stmt.kind === 'for') {
+      this.compileForStmt(stmt)
+      return
+    }
+
+    if (stmt.kind === 'switch') {
+      this.compileSwitchStmt(stmt)
+      return
+    }
+
+    if (stmt.kind === 'try') {
+      this.compileTryStmt(stmt)
+      return
+    }
+  }
+
+  private compileBlockStmt(block: BlockStmt, isLast: boolean): void {
+    for (let i = 0; i < block.body.length; i++) {
+      this.compileStmt(block.body[i]!, isLast && i === block.body.length - 1)
+    }
+  }
+
+  private compileForStmt(stmt: ForStmt): void {
+    if (stmt.head.kind === 'c_style') {
+      if (stmt.head.init) {
+        this.compileExpr(stmt.head.init)
+        this.emit({ op: 'POP' })
+      }
+      const start = this.emit({ op: 'LABEL', id: this.labelId++ })
+      if (stmt.head.test) {
+        this.compileExpr(stmt.head.test)
+        const j = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
+        this.compileStmt(stmt.body, false)
+        if (stmt.head.update) {
+          this.compileExpr(stmt.head.update)
+          this.emit({ op: 'POP' })
+        }
+        this.emit({ op: 'JUMP', to: start })
+        this.patch(j, this.chunk.code.length)
+      }
+      else {
+        this.compileStmt(stmt.body, false)
+        if (stmt.head.update) {
+          this.compileExpr(stmt.head.update)
+          this.emit({ op: 'POP' })
+        }
+        this.emit({ op: 'JUMP', to: start })
+      }
+      return
+    }
+
+    this.compileExpr(stmt.head.iterable)
+    this.emit({ op: 'POP' })
+    this.compileStmt(stmt.body, false)
+  }
+
+  private compileSwitchStmt(stmt: SwitchStmt): void {
+    this.compileExpr(stmt.test)
+    this.emit({ op: 'POP' })
+    for (const c of stmt.cases) {
+      if (c.test) {
+        this.compileExpr(c.test)
+        this.emit({ op: 'POP' })
+      }
+      for (let i = 0; i < c.body.length; i++) {
+        this.compileStmt(c.body[i]!, false)
+      }
+    }
+  }
+
+  private compileTryStmt(stmt: TryStmt): void {
+    this.emit({ op: 'TRY_BEGIN' })
+    this.compileBlockStmt(stmt.body, false)
+    if (stmt.catchBody) {
+      const name = stmt.catchName ? this.nameConst(stmt.catchName) : undefined
+      this.emit({ op: 'CATCH_BEGIN', name })
+      this.compileBlockStmt(stmt.catchBody, false)
+    }
+    if (stmt.finallyBody) {
+      this.emit({ op: 'FINALLY_BEGIN' })
+      this.compileBlockStmt(stmt.finallyBody, false)
+    }
+    this.emit({ op: 'TRY_END' })
+  }
+
+  private compileExpr(expr: Expr): void {
+    switch (expr.kind) {
+      case 'number':
+        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value) })
+        return
+      case 'string':
+        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value) })
+        return
+      case 'bool':
+        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value) })
+        return
+      case 'null':
+        this.emit({ op: 'PUSH_CONST', k: this.k(null) })
+        return
+      case 'undefined':
+        this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+        return
+      case 'ident':
+        this.emit({ op: 'LOAD', name: this.nameConst(expr.name) })
+        return
+      case 'pipe_value': {
+        const name = this.pipe[this.pipe.length - 1]
+        if (!name) {
+          this.err(expr.loc, 'Pipe value \'%\' is only valid on the right side of a pipe')
+          this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+          return
+        }
+        this.emit({ op: 'LOAD', name: this.nameConst(name) })
+        return
+      }
+      case 'array':
+        for (const it of expr.items) this.compileExpr(it)
+        this.emit({ op: 'ARRAY', n: expr.items.length })
+        return
+      case 'object':
+        for (const p of expr.props) {
+          this.emit({ op: 'PUSH_CONST', k: this.k(p.key) })
+          this.compileExpr(p.value)
+        }
+        this.emit({ op: 'OBJECT', n: expr.props.length })
+        return
+      case 'member':
+        this.compileMember(expr)
+        return
+      case 'call':
+        this.compileCall(expr)
+        return
+      case 'unary':
+        this.compileExpr(expr.expr)
+        this.emit({ op: 'UNARY', opName: expr.op })
+        return
+      case 'postfix':
+        this.compileExpr(expr.expr)
+        this.emit({ op: 'UNARY', opName: `${expr.op}_post` })
+        return
+      case 'binary':
+        this.compileBinary(expr)
+        return
+      case 'assign':
+        this.compileAssign(expr)
+        return
+      case 'if':
+        this.compileIf(expr)
+        return
+      case 'func':
+        this.compileFunc(expr)
+        return
+    }
+  }
+
+  private compileMember(expr: MemberExpr): void {
+    this.compileExpr(expr.object)
+    if (expr.computed === true) {
+      this.compileExpr(expr.index)
+      this.emit({ op: 'GET_INDEX' })
+    }
+    else {
+      this.emit({ op: 'GET_PROP', key: this.k(expr.prop) })
+    }
+  }
+
+  private compileCall(expr: CallExpr): void {
+    this.compileExpr(expr.callee)
+    let pos = 0
+    let named = 0
+    for (const a of expr.args) {
+      this.compileArg(a)
+      if (a.kind === 'pos') pos++
+      else named++
+    }
+    this.emit({ op: 'CALL', pos, named })
+  }
+
+  private compileArg(arg: Arg): void {
+    if (arg.kind === 'pos') {
+      this.compileExpr(arg.value)
+      return
+    }
+    if (arg.kind === 'named') {
+      this.emit({ op: 'PUSH_CONST', k: this.k(arg.name) })
+      this.compileExpr(arg.value)
+      return
+    }
+    this.emit({ op: 'PUSH_CONST', k: this.k(arg.name) })
+    this.emit({ op: 'LOAD', name: this.nameConst(arg.name) })
+  }
+
+  private compileBinary(expr: BinaryExpr): void {
+    if (expr.op === '|>') {
+      const temp = `%pipe${this.pipe.length}`
+      this.compileExpr(expr.left)
+      this.emit({ op: 'STORE', name: this.nameConst(temp) })
+      this.emit({ op: 'POP' })
+      this.pipe.push(temp)
+      this.compileExpr(expr.right)
+      this.pipe.pop()
+      return
+    }
+    this.compileExpr(expr.left)
+    this.compileExpr(expr.right)
+    this.emit({ op: 'BINARY', opName: expr.op })
+  }
+
+  private compileAssign(expr: AssignExpr): void {
+    if (expr.op !== '=') {
+      const opName = expr.op.slice(0, -1)
+
+      if (expr.target.kind === 'ident') {
+        this.emit({ op: 'LOAD', name: this.nameConst(expr.target.name) })
+        this.compileExpr(expr.value)
+        this.emit({ op: 'BINARY', opName })
+        this.emit({ op: 'STORE', name: this.nameConst(expr.target.name) })
+        return
+      }
+
+      if (expr.target.kind === 'member') {
+        this.compileExpr(expr.target.object)
+        if (expr.target.computed === true) {
+          this.compileExpr(expr.target.index)
+          this.emit({ op: 'DUP2' })
+          this.emit({ op: 'GET_INDEX' })
+          this.compileExpr(expr.value)
+          this.emit({ op: 'BINARY', opName })
+          this.emit({ op: 'SET_INDEX' })
+        }
+        else {
+          this.emit({ op: 'DUP' })
+          this.emit({ op: 'GET_PROP', key: this.k(expr.target.prop) })
+          this.compileExpr(expr.value)
+          this.emit({ op: 'BINARY', opName })
+          this.emit({ op: 'SET_PROP', key: this.k(expr.target.prop) })
+        }
+        return
+      }
+
+      this.err(expr.loc, 'Invalid assignment target')
+      this.compileExpr(expr.value)
+      return
+    }
+
+    if (expr.target.kind === 'ident') {
+      this.compileExpr(expr.value)
+      this.emit({ op: 'STORE', name: this.nameConst(expr.target.name) })
+      return
+    }
+
+    if (expr.target.kind === 'member') {
+      this.compileExpr(expr.target.object)
+      if (expr.target.computed === true) this.compileExpr(expr.target.index)
+      this.compileExpr(expr.value)
+      if (expr.target.computed === true) this.emit({ op: 'SET_INDEX' })
+      else this.emit({ op: 'SET_PROP', key: this.k(expr.target.prop) })
+      return
+    }
+
+    this.err(expr.loc, 'Invalid assignment target')
+    this.compileExpr(expr.value)
+  }
+
+  private compileIf(expr: IfExpr): void {
+    this.compileExpr(expr.test)
+    const jFalse = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
+    this.compileIfBranch(expr.then)
+    const jEnd = this.emit({ op: 'JUMP', to: -1 })
+    this.patch(jFalse, this.chunk.code.length)
+    this.compileIfBranch(expr.else)
+    this.patch(jEnd, this.chunk.code.length)
+  }
+
+  private compileIfBranch(branch: Expr | BlockStmt): void {
+    if ('kind' in branch && branch.kind === 'block') {
+      this.compileBlockAsExpr(branch)
+      return
+    }
+    this.compileExpr(branch as Expr)
+  }
+
+  private compileBlockAsExpr(block: BlockStmt): void {
+    if (!block.body.length) {
+      this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+      return
+    }
+    for (let i = 0; i < block.body.length; i++) {
+      const s = block.body[i]!
+      const isLast = i === block.body.length - 1
+      if (isLast && s.kind === 'expr_stmt') {
+        this.compileExpr(s.expr)
+        continue
+      }
+      this.compileStmt(s, false)
+      if (s.kind === 'expr_stmt') this.emit({ op: 'POP' })
+    }
+    const last = block.body[block.body.length - 1]!
+    if (last.kind !== 'expr_stmt') this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+  }
+
+  private compileFunc(expr: FuncExpr): void {
+    const id = this.chunk.funcs.length
+    const fn = new Compiler(this.src)
+    fn.pipe = [...this.pipe]
+    const body = expr.body
+    if ('kind' in body && body.kind === 'block') fn.compileBlockAsExpr(body)
+    else fn.compileExpr(body as Expr)
+    fn.emit({ op: 'RETURN' })
+    this.chunk.funcs.push({
+      params: expr.params.map((p) => ({ name: p.name, isRest: p.isRest })),
+      chunk: fn.chunk,
+    })
+    this.emit({ op: 'FUNC', id })
+  }
+}

@@ -18,7 +18,7 @@
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "useDefineForClassFields": true,
-    "exactOptionalPropertyTypes": true,
+    "exactOptionalPropertyTypes": false,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
