@@ -145,16 +145,15 @@ export class MiniEvents {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
-    // interpret density like a slot selector over children across cycles:
-    // density < 1 spreads children across multiple cycles, density >= 1
-    // allows multiple children per cycle.
-    const invDensity: f64 = 1.0 / group.density
-    let slots: f64 = invDensity
-    if (slots < 1.0) slots = 1.0
-    const slotsRounded: f64 = Math.max(1.0, Math.round(slots))
+    // density < 1 stretches the phrase across multiple cycles.
+    // We advance through the phrase by `density` each cycle, so the phrase
+    // restarts only when that phase wraps (e.g. density=2/3 repeats every 1.5 cycles).
+    const density: f64 = group.density as f64
+    const invDensity: f64 = 1.0 / density
+    const phaseStart: f64 = density < 1.0 ? fract(cycle * density) : 0.0
 
     let didAllPlay: bool = true
-    const repeatStep: f64 = group.density > 1.0 ? parentSlotDuration * invDensity : 0.0
+    const repeatStep: f64 = density > 1.0 ? parentSlotDuration * invDensity : 0.0
 
     let pass: i32 = 0
     while (true) {
@@ -168,46 +167,42 @@ export class MiniEvents {
         const childOpOffset = childOpsBuffer.get(i32(i))
         const opcode = reader.getOpcode(childOpOffset)
 
-        // Evenly distribute children in density space using discrete slots
         const normalizedPosition = i / childrenLength // position in [0, 1)
-        const slotIndex = normalizedPosition * slotsRounded
+        let childPhase: f64 = normalizedPosition
 
-        // advance active slot over cycles
-        const activeSlot = cycle % slotsRounded
-
-        if (pass === 0 && opcode === OP_EVENT) {
-          const shouldPlay: bool = Math.floor(slotIndex) === Math.floor(activeSlot)
-          if (!shouldPlay) {
+        if (density < 1.0) {
+          let delta: f64 = childPhase - phaseStart
+          if (delta < 0.0) delta += 1.0
+          if (pass === 0 && delta >= density) {
             didAllPlay = false
             continue
           }
+          childPhase = delta / density
+        }
+        else {
+          childPhase = fract(childPhase / density)
         }
 
         // phase child start within parent slot over cycles to distribute across time
-        let startTime: f64 = normalizedPosition / group.density
-        startTime = fract(startTime)
-        startTime *= parentSlotDuration
-        if (startTime > parentSlotDuration * 0.95) startTime = 0
-
-        const childBaseRelative: f64 = opcode === OP_EVENT
-          ? startTime + offset
-          : i * slotDuration / group.density + offset
-        const childRelativeTime: f64 = childBaseRelative + groupOffset * parentSlotDuration
-
-        this.processChild(
-          reader,
-          childOpOffset,
-          groupStartTime,
-          childRelativeTime,
-          slotDuration / group.density,
-          cycle,
-          cycleStartSample,
-          cycleSamples,
-          groupVelocity,
-          groupJitter,
-          emitter,
-          depth,
-        )
+        const startTime: f64 = childPhase * parentSlotDuration
+        const childRelativeTime: f64 = startTime + offset + groupOffset * parentSlotDuration
+        const validSlotDuration = parentSlotDuration - (parentSlotDuration / 8.0)
+        if (childRelativeTime < validSlotDuration) {
+          this.processChild(
+            reader,
+            childOpOffset,
+            groupStartTime,
+            childRelativeTime,
+            slotDuration / density,
+            cycle,
+            cycleStartSample,
+            cycleSamples,
+            groupVelocity,
+            groupJitter,
+            emitter,
+            depth,
+          )
+        }
       }
 
       if (repeatStep <= 0.0) break
