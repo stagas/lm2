@@ -309,11 +309,13 @@ export function createSequenceVisualization(
         }
 
         if (controlKind) {
-          if (activeSpan && charIdx >= activeSpan.start && charIdx < activeSpan.end) {
-            c.fillStyle = activeSpan.kind === 'octave' ? 'rgba(0, 200, 255, 1)' : 'rgba(255, 200, 0, 1)'
-          }
-          else if (deltaSpan && charIdx >= deltaSpan.start && charIdx < deltaSpan.end) {
-            c.fillStyle = 'rgba(255, 255, 255, 0.95)'
+          if (deltaSpan && charIdx >= deltaSpan.start && charIdx < deltaSpan.end) {
+            if (activeSpan) {
+              c.fillStyle = activeSpan.kind === 'octave' ? 'rgba(0, 200, 255, 1)' : 'rgba(255, 200, 0, 1)'
+            }
+            else {
+              c.fillStyle = 'rgba(255, 255, 255, 0.95)'
+            }
           }
           else {
             c.fillStyle = 'rgba(255, 255, 255, 0.35)'
