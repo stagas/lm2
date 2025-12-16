@@ -7,6 +7,7 @@ import {
   HISTORY_HEADER_SIZE,
   HISTORY_SIZE,
   HISTORY_WRITE_POS_OFFSET,
+  MAX_EVENT_VALUES,
   MINI_HEADER_SIZE,
   OP_EVENT,
   PAST_SECONDS,
@@ -61,7 +62,9 @@ export class Mini extends Gen {
   outValue$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
 
   private voices: StaticArray<MiniVoice> = new StaticArray<MiniVoice>(SEQ_VOICES)
-  private eventVoices: StaticArray<i32> = new StaticArray<i32>(ARRAY_SIZE)
+  // Map (opIndex, chordVoiceIndex) -> voiceIndex. This must cover all op offsets in the mini bytecode
+  // plus chord voice slots (MAX_EVENT_VALUES).
+  private eventVoices: StaticArray<i32> = new StaticArray<i32>(ARRAY_SIZE * MAX_EVENT_VALUES)
   private voiceEventIndex: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
   private voiceCursor: i32 = 0
   private rng: MiniRng = new MiniRng()
@@ -124,7 +127,8 @@ export class Mini extends Gen {
   }
 
   private resetVoiceMaps(): void {
-    for (let i = 0; i < ARRAY_SIZE; i++) {
+    const size = ARRAY_SIZE * MAX_EVENT_VALUES
+    for (let i = 0; i < size; i++) {
       this.eventVoices[i] = -1
     }
     for (let v = 0; v < SEQ_VOICES; v++) {
@@ -184,35 +188,49 @@ export class Mini extends Gen {
     )
   }
 
-  private allocateVoice(): i32 {
+  private allocateVoice(windowStart: i32): i32 {
     const start = this.voiceCursor
+    let endedCandidate: i32 = -1
     for (let i = 0; i < SEQ_VOICES; i++) {
       const v = (start + i) % SEQ_VOICES
-      if (!this.voices[v].active) {
+      const voice = this.voices[v]
+      if (!voice.active) {
         this.voiceCursor = (v + 1) % SEQ_VOICES
         return v
       }
+
+      // Prefer reusing voices whose hold already ended, so held notes don't get stolen mid-hold.
+      if (endedCandidate < 0 && windowStart >= voice.holdEndSample) {
+        endedCandidate = v
+      }
     }
+
+    if (endedCandidate >= 0) {
+      this.voiceCursor = (endedCandidate + 1) % SEQ_VOICES
+      return endedCandidate
+    }
+
     const v = this.voiceCursor
     this.voiceCursor = (this.voiceCursor + 1) % SEQ_VOICES
     return v
   }
 
-  private claimVoice(eventIndex: i32): i32 {
-    if (eventIndex >= 0 && eventIndex < ARRAY_SIZE) {
+  private claimVoice(eventIndex: i32, windowStart: i32): i32 {
+    const size = ARRAY_SIZE * MAX_EVENT_VALUES
+    if (eventIndex >= 0 && eventIndex < size) {
       const existing = this.eventVoices[eventIndex]
       if (existing >= 0) {
         return existing
       }
     }
 
-    const voiceIndex = this.allocateVoice()
+    const voiceIndex = this.allocateVoice(windowStart)
     const prevEvent = this.voiceEventIndex[voiceIndex]
-    if (prevEvent >= 0 && prevEvent < ARRAY_SIZE) {
+    if (prevEvent >= 0 && prevEvent < size) {
       this.eventVoices[prevEvent] = -1
     }
     this.voiceEventIndex[voiceIndex] = eventIndex
-    if (eventIndex >= 0 && eventIndex < ARRAY_SIZE) {
+    if (eventIndex >= 0 && eventIndex < size) {
       this.eventVoices[eventIndex] = voiceIndex
     }
     return voiceIndex
@@ -429,8 +447,9 @@ export class Mini extends Gen {
 
       // Schedule voice. Use (opIndex, voiceIndexHist) as the stable identifier so that
       // chord voices can be tracked consistently across events.
-      const eventIndex = ((opIndex + MINI_HEADER_SIZE) << 8) | (voiceIndexHist & 0xFF)
-      const voiceIndex = this.claimVoice(eventIndex)
+      if (voiceIndexHist < 0 || voiceIndexHist >= MAX_EVENT_VALUES) continue
+      const eventIndex = opIndex * MAX_EVENT_VALUES + voiceIndexHist
+      const voiceIndex = this.claimVoice(eventIndex, windowStart)
       const voice = this.voices[voiceIndex]
       voice.active = true
       voice.triggerSample = startSample

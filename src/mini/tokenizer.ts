@@ -1,6 +1,6 @@
 import { midiToFrequency, noteNameToMidi } from './note-utils.ts'
 
-type NodeType = 'event' | 'rest' | 'group'
+type NodeType = 'event' | 'rest' | 'group' | 'octave'
 
 export interface Modifiers {
   velocity: number
@@ -29,7 +29,7 @@ export interface NodeSource {
 
 export interface Node {
   type: NodeType
-  values: number[] // empty for rest/group
+  values: number[] // empty for rest/group, [delta] for octave
   children: Node[]
   modifiers: Modifiers
   angle: boolean
@@ -322,23 +322,6 @@ function degreeToFrequency(rootMidi: number, intervals: number[], degree: number
   return midiToFrequency(rootMidi + semitone)
 }
 
-function combineModifiers(a: Modifiers, b: Modifiers): Modifiers {
-  // We treat b as an additional layer applied on top of a. This matches how nested groups/events
-  // accumulate in the runtime: velocity multiplies, offsets/jitter add, most others multiply.
-  return {
-    velocity: a.velocity * b.velocity,
-    hold: b.hold !== 0 ? b.hold : a.hold,
-    replicate: a.replicate * b.replicate,
-    elongate: a.elongate * b.elongate,
-    density: a.density * b.density,
-    offset: a.offset + b.offset,
-    jitter: a.jitter + b.jitter,
-    prob: a.prob + b.prob,
-    glide: b.glide !== 0 ? b.glide : a.glide,
-    strum: a.strum + b.strum,
-  }
-}
-
 function makeSource(input: string, start: number, end: number): NodeSource {
   return { start, length: end - start, text: input.slice(start, end) }
 }
@@ -354,10 +337,17 @@ function parseGroupedTokenText(
   return { inner, modText }
 }
 
+function parseOctaveDelta(tokens: Token[]): number {
+  const raw = tokens[1]?.text
+  if (!raw) return 0
+  const v = parseFloat(raw)
+  return Number.isFinite(v) ? v : 0
+}
+
 function scaleTokensToNodes(
   tokens: Token[],
   input: string,
-  scale: { rootMidi: number; intervals: number[]; extraMods: Modifiers },
+  scale: { rootMidi: number; intervals: number[] },
 ): Node[] {
   const nodes: Node[] = []
 
@@ -383,7 +373,26 @@ function scaleTokensToNodes(
       if (first === '(') {
         const innerHead = adjustedInnerTokens[0]?.text
         if (innerHead === 'scale') {
-          nodes.push(...parseScaleCall(adjustedInnerTokens, input, scale.extraMods))
+          const children = parseScaleCall(adjustedInnerTokens, input)
+          nodes.push({
+            type: 'group',
+            angle: false,
+            values: [],
+            children,
+            modifiers: parseModifiers(modText),
+            source: makeSource(input, token.start, token.end),
+          })
+          continue
+        }
+        if (innerHead === 'octave') {
+          nodes.push({
+            type: 'octave',
+            angle: false,
+            values: [parseOctaveDelta(adjustedInnerTokens)],
+            children: [],
+            modifiers: getDefaultMods(),
+            source: makeSource(input, token.start, token.end),
+          })
           continue
         }
       }
@@ -403,7 +412,7 @@ function scaleTokensToNodes(
 
     const { value, mods } = splitValueAndModifiers(raw)
     if (value === '~') {
-      const modifiers = combineModifiers(parseModifiers(mods), scale.extraMods)
+      const modifiers = parseModifiers(mods)
       nodes.push({
         type: 'rest',
         angle: false,
@@ -423,7 +432,7 @@ function scaleTokensToNodes(
         degreeToFrequency(scale.rootMidi, scale.intervals, base + 2),
         degreeToFrequency(scale.rootMidi, scale.intervals, base + 4),
       ]
-      const modifiers = combineModifiers(parseModifiers(mods), scale.extraMods)
+      const modifiers = parseModifiers(mods)
       nodes.push({
         type: 'event',
         angle: false,
@@ -439,7 +448,7 @@ function scaleTokensToNodes(
     if (degreeMatch) {
       const degree = parseInt(value, 10)
       const values = [degreeToFrequency(scale.rootMidi, scale.intervals, degree)]
-      const modifiers = combineModifiers(parseModifiers(mods), scale.extraMods)
+      const modifiers = parseModifiers(mods)
       nodes.push({
         type: 'event',
         angle: false,
@@ -452,7 +461,7 @@ function scaleTokensToNodes(
     }
 
     const values = parseValues(value || (mods ? 'c4' : ''))
-    const modifiers = combineModifiers(parseModifiers(mods), scale.extraMods)
+    const modifiers = parseModifiers(mods)
     nodes.push({
       type: 'event',
       angle: false,
@@ -466,11 +475,10 @@ function scaleTokensToNodes(
   return nodes
 }
 
-function parseScaleCall(tokens: Token[], input: string, extraMods: Modifiers): Node[] {
+function parseScaleCall(tokens: Token[], input: string): Node[] {
   const t0 = tokens[0]?.text
   if (t0 !== 'scale') {
-    return scaleTokensToNodes(tokens, input, { rootMidi: noteNameToMidi('c4'), intervals: SCALE_INTERVALS.major!,
-      extraMods })
+    return scaleTokensToNodes(tokens, input, { rootMidi: noteNameToMidi('c4'), intervals: SCALE_INTERVALS.major! })
   }
 
   let i = 1
@@ -485,7 +493,7 @@ function parseScaleCall(tokens: Token[], input: string, extraMods: Modifiers): N
 
   const intervals = (scaleName && SCALE_INTERVALS[scaleName]) ? SCALE_INTERVALS[scaleName]! : SCALE_INTERVALS.major!
   const items = tokens.slice(i + 1)
-  return scaleTokensToNodes(items, input, { rootMidi, intervals, extraMods })
+  return scaleTokensToNodes(items, input, { rootMidi, intervals })
 }
 
 export function tokensToNodes(tokens: Token[], input: string): Node[] {
@@ -533,8 +541,26 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
 
       const head = adjustedInnerTokens[0]?.text
       if (head === 'scale') {
-        const callMods = parseModifiers(modText)
-        nodes.push(...parseScaleCall(adjustedInnerTokens, input, callMods))
+        const children = parseScaleCall(adjustedInnerTokens, input)
+        nodes.push({
+          type: 'group',
+          angle: false,
+          values: [],
+          children,
+          modifiers: parseModifiers(modText),
+          source: makeSource(input, token.start, token.end),
+        })
+        continue
+      }
+      if (head === 'octave') {
+        nodes.push({
+          type: 'octave',
+          angle: false,
+          values: [parseOctaveDelta(adjustedInnerTokens)],
+          children: [],
+          modifiers: getDefaultMods(),
+          source: makeSource(input, token.start, token.end),
+        })
         continue
       }
 

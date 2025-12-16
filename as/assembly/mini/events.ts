@@ -3,6 +3,7 @@ import {
   MINI_HEADER_SIZE,
   OP_EVENT,
   OP_GROUP_START,
+  OP_OCTAVE,
 } from '../constants'
 import { GroupStartOp } from './ops'
 import {
@@ -80,9 +81,23 @@ export class MiniEvents {
       cycleSamples,
       1.0,
       0.0,
+      1.0,
       this.emitter,
       0,
     )
+  }
+
+  private pow2(delta: f64): f64 {
+    return Math.pow(2.0, delta)
+  }
+
+  private countTimedChildren(reader: BytecodeReader, buffer: ChildOpsBuffer): i32 {
+    let count: i32 = 0
+    for (let i: i32 = 0; i < buffer.length; i++) {
+      const off = buffer.get(i)
+      if (reader.getOpcode(off) !== OP_OCTAVE) count++
+    }
+    return count
   }
 
   private evaluateGroup(
@@ -95,33 +110,35 @@ export class MiniEvents {
     cycleSamples: f64,
     parentVelocity: f64,
     parentJitter: f64,
+    parentPitch: f64,
     emitter: EventEmitter,
     depth: i32,
-  ): i32 {
+  ): f64 {
     if (opOffset >= reader.opEnd || reader.getOpcode(opOffset) !== OP_GROUP_START) {
-      return opOffset
+      return parentPitch
     }
 
     if (depth < 0 || depth >= MAX_GROUP_DEPTH) {
-      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+      return parentPitch
     }
 
     const childOpsBuffer = this.childOpsBuffers[depth]
     if (childOpsBuffer === null) {
-      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+      return parentPitch
     }
 
     const group = reader.getGroup(opOffset)
     const groupOffset: f64 = group.offset as f64
     const groupJitter: f64 = parentJitter + (group.jitter as f64)
     const groupVelocity: f64 = parentVelocity * (group.velocity as f64)
+    let pitch: f64 = parentPitch
 
     const groupProb: f64 = group.prob as f64
     if (groupProb > 0.0) {
       const groupIndex: i32 = reader.getOpIndex(opOffset)
       const randGroup: f64 = seededRandom01(this.randomSeed, cycle, groupIndex)
       if (randGroup < groupProb) {
-        return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+        return pitch
       }
     }
 
@@ -136,15 +153,17 @@ export class MiniEvents {
     const childrenLength = f64(childOpsBuffer.length)
 
     if (childrenLength === 0) {
-      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+      return pitch
     }
 
     if (group.density === 0 || group.density > 8) {
-      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+      return pitch
     }
 
     const isAngleGroup: bool = group.angle !== 0.0
-    const slotDuration: f64 = isAngleGroup ? parentSlotDuration : parentSlotDuration / childrenLength
+    const timedCount: i32 = isAngleGroup ? childOpsBuffer.length : this.countTimedChildren(reader, childOpsBuffer)
+    const timedLength: f64 = f64(timedCount > 0 ? timedCount : 1)
+    const slotDuration: f64 = isAngleGroup ? parentSlotDuration : parentSlotDuration / timedLength
 
     // density controls the playback speed of the phrase across cycles.
     // For density < 1, the phrase spans multiple cycles; for density > 1, the phrase repeats
@@ -180,7 +199,7 @@ export class MiniEvents {
           if (childIndex < 0) childIndex += childOpsBuffer.length
           const childOpOffset = childOpsBuffer.get(childIndex)
 
-          this.processChild(
+          pitch = this.processChild(
             reader,
             childOpOffset,
             groupStartTime,
@@ -191,6 +210,7 @@ export class MiniEvents {
             cycleSamples,
             groupVelocity,
             groupJitter,
+            pitch,
             emitter,
             depth,
           )
@@ -199,50 +219,62 @@ export class MiniEvents {
         pass++
       }
 
-      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+      return pitch
     }
 
-    for (let i: f64 = 0; i < childrenLength; i++) {
-      const childOpOffset = childOpsBuffer.get(i32(i))
-      const normalizedPosition: f64 = i / childrenLength // position in [0, 1)
+    let pass: i32 = 0
+    while (true) {
+      const passF: f64 = pass as f64
+      let scheduled: bool = false
+      let timedIndex: i32 = 0
 
-      let delta: f64 = normalizedPosition - phaseStart
-      if (delta < 0.0) delta += 1.0
+      for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+        const childOpOffset = childOpsBuffer.get(i)
+        const opcode = reader.getOpcode(childOpOffset)
 
-      let pass: i32 = 0
-      while (true) {
-        const passF: f64 = pass as f64
-        if (delta + passF >= density) break
+        let slotIndex: i32 = timedIndex
+        if (slotIndex >= (timedCount > 0 ? timedCount : 1)) slotIndex = timedCount > 1 ? timedCount - 1 : 0
+        const normalizedPosition: f64 = f64(slotIndex) / timedLength // position in [0, 1)
 
-        const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
-        const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
+        let delta: f64 = normalizedPosition - phaseStart
+        if (delta < 0.0) delta += 1.0
 
-        if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
-          // Propagate a "virtual cycle" that advances with the group's density and per-pass
-          // repetition, so nested groups with density < 1 can advance inside parent groups
-          // with density > 1 (e.g. `[a b]/2` inside `[*2]`).
-          const childCycle: f64 = Math.floor(cycle * density + passF)
-          this.processChild(
-            reader,
-            childOpOffset,
-            groupStartTime,
-            childRelativeTime,
-            slotDurationScaled,
-            childCycle,
-            cycleStartSample,
-            cycleSamples,
-            groupVelocity,
-            groupJitter,
-            emitter,
-            depth,
-          )
+        if (delta + passF < density) {
+          scheduled = true
+          const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
+          const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
+
+          if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
+            // Propagate a "virtual cycle" that advances with the group's density and per-pass
+            // repetition, so nested groups with density < 1 can advance inside parent groups
+            // with density > 1 (e.g. `[a b]/2` inside `[*2]`).
+            const childCycle: f64 = Math.floor(cycle * density + passF)
+            pitch = this.processChild(
+              reader,
+              childOpOffset,
+              groupStartTime,
+              childRelativeTime,
+              slotDurationScaled,
+              childCycle,
+              cycleStartSample,
+              cycleSamples,
+              groupVelocity,
+              groupJitter,
+              pitch,
+              emitter,
+              depth,
+            )
+          }
         }
 
-        pass++
+        if (opcode !== OP_OCTAVE) timedIndex++
       }
+
+      if (!scheduled) break
+      pass++
     }
 
-    return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+    return pitch
   }
 
   private processChild(
@@ -256,9 +288,10 @@ export class MiniEvents {
     cycleSamples: f64,
     groupVelocity: f64,
     groupJitter: f64,
+    pitch: f64,
     emitter: EventEmitter,
     depth: i32,
-  ): void {
+  ): f64 {
     const opcode = reader.getOpcode(opOffset)
 
     switch (opcode) {
@@ -333,6 +366,7 @@ export class MiniEvents {
                 groupStartTime + relativeTime + eventRelativeTime + strumOffset + jitterOffset,
                 slotDurationScaled,
                 vi,
+                pitch,
               )
             }
           }
@@ -342,8 +376,14 @@ export class MiniEvents {
         break
       }
 
+      case OP_OCTAVE: {
+        const op = reader.getOctave(opOffset)
+        pitch *= this.pow2(op.delta as f64)
+        break
+      }
+
       case OP_GROUP_START: {
-        this.evaluateGroup(
+        pitch = this.evaluateGroup(
           reader,
           opOffset,
           groupStartTime + relativeTime,
@@ -353,11 +393,14 @@ export class MiniEvents {
           cycleSamples,
           groupVelocity,
           groupJitter,
+          pitch,
           emitter,
           depth + 1,
         )
         break
       }
     }
+
+    return pitch
   }
 }

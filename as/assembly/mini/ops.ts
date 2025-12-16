@@ -1,5 +1,5 @@
 import { MAX_EVENT_VALUES, OP_EVENT, OP_EVENT_BASE_SIZE, OP_GROUP_END, OP_GROUP_END_SIZE, OP_GROUP_START,
-  OP_GROUP_START_SIZE, OP_REST, OP_REST_SIZE } from '../constants'
+  OP_GROUP_START_SIZE, OP_OCTAVE, OP_OCTAVE_SIZE, OP_REST, OP_REST_SIZE } from '../constants'
 
 @unmanaged
 export class EventOp {
@@ -73,6 +73,20 @@ export class RestOp {
 }
 
 @unmanaged
+export class OctaveOp {
+  opcode!: f32
+  delta!: f32
+
+  static size(): i32 {
+    return OP_OCTAVE_SIZE
+  }
+
+  static at(array$: usize, offset: i32): OctaveOp {
+    return changetype<OctaveOp>(array$ + (offset << 2))
+  }
+}
+
+@unmanaged
 export class GroupEndOp {
   opcode!: f32
 
@@ -95,5 +109,6 @@ export function skipOp(array$: usize, offset: i32): i32 {
   if (opcode === OP_REST) return offset + OP_REST_SIZE
   if (opcode === OP_GROUP_START) return offset + OP_GROUP_START_SIZE
   if (opcode === OP_GROUP_END) return offset + OP_GROUP_END_SIZE
+  if (opcode === OP_OCTAVE) return offset + OP_OCTAVE_SIZE
   return offset
 }

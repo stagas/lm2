@@ -1,6 +1,6 @@
 import { MINI_HEADER_SIZE } from '../../as/assembly/constants.ts'
 import type { MiniSourceMapEntry } from './bytecode.ts'
-import { allocateBytecode, writeEventOp, writeGroupEndOp, writeGroupStartOp, writeRestOp } from './bytecode.ts'
+import { allocateBytecode, writeEventOp, writeGroupEndOp, writeGroupStartOp, writeOctaveOp, writeRestOp } from './bytecode.ts'
 import type { Node } from './tokenizer.ts'
 import { getDefaultMods, tokenize, tokensToNodes } from './tokenizer.ts'
 
@@ -22,6 +22,9 @@ function compileNode(
   }
   else if (node.type === 'rest') {
     return writeRestOp(bytecode, offset)
+  }
+  else if (node.type === 'octave') {
+    return writeOctaveOp(bytecode, offset, node.values[0] ?? 0)
   }
   return 0
 }

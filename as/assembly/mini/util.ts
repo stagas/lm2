@@ -4,7 +4,7 @@ import {
   OP_GROUP_END,
   OP_GROUP_START,
 } from '../constants'
-import { EventOp, getOpcode, GroupEndOp, GroupStartOp, skipOp } from './ops'
+import { EventOp, getOpcode, GroupEndOp, GroupStartOp, OctaveOp, skipOp } from './ops'
 
 export class MiniEvent {
   opIndex: i32 = 0
@@ -173,6 +173,10 @@ export class BytecodeReader {
     return EventOp.at(this.array$, offset)
   }
 
+  getOctave(offset: i32): OctaveOp {
+    return OctaveOp.at(this.array$, offset)
+  }
+
   getOpIndex(offset: i32): i32 {
     return offset - (ARRAY_HEADER_SIZE + MINI_HEADER_SIZE)
   }
@@ -219,6 +223,7 @@ export class EventEmitter {
     time: f64,
     slotDuration: f64,
     valueIndex: i32 = 0,
+    pitch: f64 = 1.0,
   ): void {
     if (!this.buffer) return
 
@@ -247,7 +252,7 @@ export class EventEmitter {
       endSample = startSample + holdSamples
     }
 
-    const value = event.getValue(valueIndex)
+    const value = (event.getValue(valueIndex) as f64) * pitch
     if (value <= 0.0) return
 
     if (endSample > this.windowStart && startSample < this.windowEnd) {
@@ -256,7 +261,7 @@ export class EventEmitter {
         valueIndex,
         startSample,
         endSample,
-        value,
+        value as f32,
         event.velocity * (groupVelocity as f32),
       )
     }
