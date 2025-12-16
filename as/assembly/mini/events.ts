@@ -138,6 +138,48 @@ export class MiniEvents {
     return replicate
   }
 
+  private groupHasValueEvents(reader: BytecodeReader, groupOpOffset: i32, scratchDepth: i32): bool {
+    if (scratchDepth < 0 || scratchDepth >= MAX_GROUP_DEPTH) {
+      return false
+    }
+    if (groupOpOffset >= reader.opEnd || reader.getOpcode(groupOpOffset) !== OP_GROUP_START) {
+      return false
+    }
+
+    const childOpsBuffer = this.childOpsBuffers[scratchDepth]
+    if (childOpsBuffer === null) {
+      return false
+    }
+
+    const group = reader.getGroup(groupOpOffset)
+    const childCount: i32 = i32(group.childCount)
+    if (childCount <= 0) {
+      return false
+    }
+
+    parseGroupChildren(
+      reader.array$,
+      groupOpOffset + GroupStartOp.size(),
+      reader.opEnd,
+      childCount,
+      childOpsBuffer,
+    )
+
+    for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+      const off = childOpsBuffer.get(i)
+      const opcode = reader.getOpcode(off)
+      if (opcode === OP_EVENT) {
+        const event = reader.getEvent(off)
+        if (i32(event.valueCount) > 0) return true
+      }
+      else if (opcode === OP_GROUP_START) {
+        if (this.groupHasValueEvents(reader, off, scratchDepth + 1)) return true
+      }
+    }
+
+    return false
+  }
+
   private evaluateGroup(
     reader: BytecodeReader,
     opOffset: i32,
@@ -170,6 +212,7 @@ export class MiniEvents {
 
     const group = reader.getGroup(opOffset)
     const groupOffset: f64 = group.offset as f64
+    const groupOffsetTime: f64 = groupOffset * parentSlotDuration
     const groupJitter: f64 = parentJitter + (group.jitter as f64)
     const groupVelocity: f64 = parentVelocity * (group.velocity as f64)
     const groupHoldMul: f64 = this.combineOptionalMul(parentHoldMul, group.hold as f64)
@@ -217,29 +260,38 @@ export class MiniEvents {
           timedLength += this.getReplicateWeight(op.replicate as f64)
         }
         else if (opcode === OP_GROUP_START) {
-          const op = reader.getGroup(off)
-          timedLength += this.getReplicateWeight(op.replicate as f64)
+          if (this.groupHasValueEvents(reader, off, depth + 1)) {
+            const op = reader.getGroup(off)
+            timedLength += this.getReplicateWeight(op.replicate as f64)
+          }
         }
       }
-      if (timedLength <= 0.0) return pitch
-    }
-    else {
-      // For angle groups, also calculate timedLength to determine if they should occupy time
-      for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
-        const off = childOpsBuffer.get(i)
-        const opcode = reader.getOpcode(off)
-        if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE) continue
-        if (opcode === OP_EVENT) {
-          const op = reader.getEvent(off)
-          timedLength += this.getReplicateWeight(op.replicate as f64)
+      if (timedLength <= 0.0) {
+        if (roundToDecimals(groupOffsetTime, 3) >= parentSlotDuration) return pitch
+        for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+          const childOpOffset = childOpsBuffer.get(i)
+          pitch = this.processChild(
+            reader,
+            childOpOffset,
+            groupStartTime,
+            groupOffsetTime,
+            parentSlotDuration,
+            cycle,
+            cycleStartSample,
+            cycleSamples,
+            groupVelocity,
+            groupHoldMul,
+            groupStrumMul,
+            groupJitter,
+            pitch,
+            emitter,
+            depth,
+          )
         }
-        else if (opcode === OP_GROUP_START) {
-          const op = reader.getGroup(off)
-          timedLength += this.getReplicateWeight(op.replicate as f64)
-        }
+        return pitch
       }
     }
-    const slotDuration: f64 = timedLength > 0.0 ? parentSlotDuration / timedLength : 0.0
+    const slotDuration: f64 = isAngleGroup ? parentSlotDuration : parentSlotDuration / timedLength
 
     // density controls the playback speed of the phrase across cycles.
     // For density < 1, the phrase spans multiple cycles; for density > 1, the phrase repeats
@@ -249,41 +301,11 @@ export class MiniEvents {
     const cycleDensity: f64 = roundToDecimals(cycle * density, 6)
     const phaseStart: f64 = fract(cycleDensity)
     const slotDurationScaled: f64 = slotDuration * invDensity
-    const groupOffsetTime: f64 = groupOffset * parentSlotDuration
 
     if (isAngleGroup) {
       // Angle groups (<...>) pick exactly one child per virtual cycle and play it in the group's slot.
       // The chosen child advances with the same virtual cycle we propagate for density, so alternation
       // stays consistent for density > 1 and density < 1.
-
-      // Special case: if slotDuration is 0 (only octave/transpose children), execute instantly
-      if (slotDuration === 0.0) {
-        const childCycle: f64 = roundToDecimals(cycleDensity, 6)
-        const stepIndex: i32 = i32(Math.floor(childCycle))
-        let childIndex: i32 = stepIndex % childOpsBuffer.length
-        if (childIndex < 0) childIndex += childOpsBuffer.length
-        const childOpOffset = childOpsBuffer.get(childIndex)
-
-        pitch = this.processChild(
-          reader,
-          childOpOffset,
-          groupStartTime,
-          0.0, // instant execution
-          parentSlotDuration, // use parent duration for scaling
-          f64(stepIndex),
-          cycleStartSample,
-          cycleSamples,
-          groupVelocity,
-          groupHoldMul,
-          groupStrumMul,
-          groupJitter,
-          pitch,
-          emitter,
-          depth,
-        )
-        return pitch
-      }
-
       const normalizedPosition: f64 = 0.0
       let delta: f64 = normalizedPosition - phaseStart
       if (delta < 0.0) delta += 1.0
@@ -293,7 +315,7 @@ export class MiniEvents {
         const passF: f64 = pass as f64
         if (delta + passF >= density) break
 
-        const startTime: f64 = (delta + passF) * invDensity * slotDuration
+        const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
         if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
@@ -340,13 +362,18 @@ export class MiniEvents {
 
         let weight: f64 = 0.0
         let posIndex: f64 = timeIndex
+        let isTimed: bool = false
         if (opcode === OP_EVENT) {
           const op = reader.getEvent(childOpOffset)
           weight = this.getReplicateWeight(op.replicate as f64)
+          isTimed = true
         }
         else if (opcode === OP_GROUP_START) {
-          const op = reader.getGroup(childOpOffset)
-          weight = this.getReplicateWeight(op.replicate as f64)
+          if (this.groupHasValueEvents(reader, childOpOffset, depth + 1)) {
+            const op = reader.getGroup(childOpOffset)
+            weight = this.getReplicateWeight(op.replicate as f64)
+            isTimed = true
+          }
         }
         else if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE) {
           if (posIndex >= timedLength) posIndex = timedLength - 0.000001
@@ -355,7 +382,11 @@ export class MiniEvents {
           continue
         }
 
-        if (opcode !== OP_OCTAVE && opcode !== OP_TRANSPOSE && weight <= 0.0) {
+        if (!isTimed && opcode === OP_GROUP_START) {
+          if (posIndex >= timedLength) posIndex = timedLength - 0.000001
+        }
+
+        if (isTimed && weight <= 0.0) {
           continue
         }
 
@@ -374,9 +405,9 @@ export class MiniEvents {
             // repetition, so nested groups with density < 1 can advance inside parent groups
             // with density > 1 (e.g. `[a b]/2` inside `[*2]`).
             const childCycle: f64 = Math.floor(cycle * density + passF)
-            const childSlotDurationScaled: f64 = opcode === OP_OCTAVE || opcode === OP_TRANSPOSE
-              ? slotDurationScaled
-              : roundToDecimals(slotDurationScaled * weight, 4)
+            const childSlotDurationScaled: f64 = isTimed
+              ? roundToDecimals(slotDurationScaled * weight, 4)
+              : slotDurationScaled
             pitch = this.processChild(
               reader,
               childOpOffset,
@@ -397,7 +428,7 @@ export class MiniEvents {
           }
         }
 
-        if (opcode !== OP_OCTAVE && opcode !== OP_TRANSPOSE) {
+        if (isTimed) {
           timeIndex += weight
         }
       }

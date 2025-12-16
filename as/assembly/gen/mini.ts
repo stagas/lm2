@@ -136,7 +136,7 @@ export class Mini extends Gen {
     }
   }
 
-  private defragmentHistory(historyArray: StaticArray<f32>, windowStart: i32): void {
+  private defragmentHistory(historyArray: StaticArray<f32>, windowStart: i32, clearOverlapping: bool): void {
     const scratchHistory = this.scratchHistory
     memory.fill(changetype<usize>(scratchHistory), 0, (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4)
 
@@ -155,9 +155,14 @@ export class Mini extends Gen {
 
       const startSample = i32(historyArray[historyIdx + 4])
 
-      // Clear present and future events (they will be regenerated)
-      if (startSample >= windowStart) {
-        continue
+      // We keep fully past events for the visualizer, even if their opIndex no longer matches the
+      // current bytecode. But we must clear anything that could still affect playback.
+      if (clearOverlapping) {
+        if (endSample > windowStart) continue
+      }
+      else {
+        // Default behavior: clear present and future events (they will be regenerated).
+        if (startSample >= windowStart) continue
       }
 
       // Keep all past events (they won't be regenerated and might still be visible)
@@ -256,14 +261,35 @@ export class Mini extends Gen {
 
     const windowStart = globalSampleCount
 
+    // Generate events for current window and future windows (lookahead)
+    const cycleLength = 1.0 as f32
+    const secondsPerBeat = 60.0 / bpm
+    const cycleSeconds = cycleLength * secondsPerBeat
+    const cycleSamples = (cycleSeconds * sampleRate) as f32
+    if (cycleSamples <= 0.0) return
+    const lookAheadSamples = i32(<f32> FUTURE_SECONDS * sampleRate)
+
+    // Limit generation to visible window: from windowStart to windowStart + FUTURE_SECONDS
+    // Don't generate beyond what the visualizer needs
+    const targetEndSample = windowStart + lookAheadSamples
+
+    const currentCycle = i32(Mathf.floor(f32((windowStart as f32) / cycleSamples)))
+
     // Check for bytecode changes by comparing version
     const currentVersion = i32(bytecodeArray[3])
+    let startCycle = currentCycle
     if (currentVersion !== this.lastVersion) {
       this.lastVersion = currentVersion
       this.resetVoiceMaps()
 
-      // Defragment history buffer: place old events first, then set writePos for clean writing ahead
-      this.defragmentHistory(historyArray, windowStart)
+      // When the bytecode changes, regenerate from one full cycle in the past so strums/holds that
+      // began earlier can be re-materialized. Keep already-played notes for the visualizer.
+      startCycle = currentCycle - 1
+      if (startCycle < 0) startCycle = 0
+
+      // Defragment history buffer: keep fully past events, clear anything overlapping "now",
+      // then set writePos for clean writing ahead.
+      this.defragmentHistory(historyArray, windowStart, true)
     }
 
     // Get history buffer info
@@ -271,36 +297,7 @@ export class Mini extends Gen {
 
     const opStart = bytecodeBase + MINI_HEADER_SIZE
 
-    // Generate events for current window and future windows (lookahead)
-    const cycleLength = 1.0 as f32
-    const secondsPerBeat = 60.0 / bpm
-    const cycleSeconds = cycleLength * secondsPerBeat
-    const cycleSamples = (cycleSeconds * sampleRate) as f32
-    const lookAheadSamples = i32(<f32> FUTURE_SECONDS * sampleRate)
-
-    // Limit generation to visible window: from windowStart to windowStart + FUTURE_SECONDS
-    // Don't generate beyond what the visualizer needs
-    const targetEndSample = windowStart + lookAheadSamples
-
-    // Find latest event end sample to continue generating from there
-    // After defragmentation, events are sequential, so read all slots
-    let latestEndSample = windowStart
-    for (let n = 0; n < HISTORY_SIZE; n++) {
-      const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
-      const startSample = i32(historyArray[historyIdx + 4])
-      const endSample = i32(historyArray[historyIdx + 5])
-      // Only consider valid events that start after windowStart
-      if (startSample > windowStart && endSample > 0 && endSample > latestEndSample) {
-        latestEndSample = endSample
-      }
-    }
-
-    // Start generating from the latest event end, but not before windowStart
-    const generationStartSample = latestEndSample > windowStart ? latestEndSample : windowStart
-
     // Generate events for the visible window only (windowStart to windowStart + FUTURE_SECONDS)
-    const currentCycle = i32(Mathf.floor(f32((windowStart as f32) / cycleSamples)))
-    const startCycle = currentCycle
     const endCycle = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamples)))
 
     // Generate and write events to history buffer
@@ -331,9 +328,6 @@ export class Mini extends Gen {
         if (!event) continue
         if (event.opIndex < 0) continue
         if (event.value <= 0) continue
-
-        // Only write events that start at or after the current playback position
-        if (event.startSample < windowStart) continue
 
         // Check if this event already exists (same opIndex, voiceIndex, startSample and value)
         // Search backwards from writePos, but limit search to recent events to avoid duplicates
