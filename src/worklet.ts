@@ -148,15 +148,17 @@ export class DspProcessor extends AudioWorkletProcessor {
     this.core.wasm.processAudio(instance.dsp$, left$, right$, begin, length)
   }
 
-  private performProgramSwap(instance: DspInstance, sampleBefore: number, oldProgram$: number, newProgram$: number) {
+  private performProgramSwap(instance: DspInstance, sampleBefore: number, oldProgram$: number, newProgram$: number,
+    begin: number, length: number)
+  {
     if (!this.core || !this.fadeLeft || !this.fadeRight || !this.scratchLeft || !this.scratchRight) return
 
     this.core.wasm.globalSampleCount.value = sampleBefore
-    this.renderProgram(instance, oldProgram$, this.scratchLeft$, this.scratchRight$, 0, CHUNK_SIZE)
+    this.renderProgram(instance, oldProgram$, this.scratchLeft$, this.scratchRight$, begin, length)
 
     this.core.wasm.globalSampleCount.value = sampleBefore
     this.core.wasm.copyProgram(newProgram$, oldProgram$)
-    this.renderProgram(instance, newProgram$, this.fadeLeft$, this.fadeRight$, 0, CHUNK_SIZE)
+    this.renderProgram(instance, newProgram$, this.fadeLeft$, this.fadeRight$, begin, length)
 
     for (let i = 0; i < CHUNK_SIZE; i++) {
       const t = i / CHUNK_SIZE
@@ -220,6 +222,8 @@ export class DspProcessor extends AudioWorkletProcessor {
     }
 
     const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
+    const begin = ringPos * CHUNK_SIZE
+    const length = CHUNK_SIZE
 
     const L = this.outLeft
     const R = this.outRight
@@ -253,14 +257,14 @@ export class DspProcessor extends AudioWorkletProcessor {
       if (control === ControlOp.Swap && swaps) {
         const swapTarget = swaps.get(dsp.dsp$)
         if (swapTarget) {
-          this.performProgramSwap(dsp, sampleBefore, swapTarget.old$, swapTarget.new$)
+          this.performProgramSwap(dsp, sampleBefore, swapTarget.old$, swapTarget.new$, begin, length)
         }
         else {
-          this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, 0, CHUNK_SIZE)
+          this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, begin, length)
         }
       }
       else {
-        this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, 0, CHUNK_SIZE)
+        this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, begin, length)
       }
 
       for (let i = 0; i < CHUNK_SIZE; i++) {
@@ -269,7 +273,7 @@ export class DspProcessor extends AudioWorkletProcessor {
       }
     }
 
-    this.core.wasm.globalSampleCount.value = sampleBefore + CHUNK_SIZE
+    this.core.wasm.globalSampleCount.value = sampleBefore + length
 
     if (playingCount > 1) {
       this.limiter.process(L, R)

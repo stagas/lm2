@@ -285,8 +285,7 @@ export class Dsp {
     this.program.gensPool.resetIndices()
 
     const pos = begin * 4
-    left$ += pos
-    right$ += pos
+
     clearAudio(left$, length)
     clearAudio(right$, length)
 

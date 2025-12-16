@@ -1,4 +1,4 @@
-import { toRing } from 'utils/ring'
+import { type Ring, toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
 import {
   ARRAY_HEADER_SIZE,
@@ -16,12 +16,14 @@ import {
   OPS_COUNT,
   RING_BUFFER_SIZE,
 } from '../as/assembly/constants.ts'
+import WaveFFT from '../vendor/WaveFFT/WaveFFT.js'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
 import { AnimationManager } from './lib/animation-manager.ts'
 import { buildMiniSourceMap } from './lib/mini-source-map.ts'
 import { createPianorollVisualization } from './lib/pianoroll-visualizer.ts'
 import { createSequenceVisualization } from './lib/sequence-visualizer.ts'
+import { WaveformBuffer } from './lib/waveform-buffer.ts'
 import { compileMiniNotation } from './mini/compiler.ts'
 import { frequencyToNoteName } from './mini/note-utils.ts'
 import { ControlOp } from './worklet-shared.ts'
@@ -52,6 +54,7 @@ let program2: { program: Program; clear: () => void } | undefined
 const animationManager = new AnimationManager()
 let sequenceVisualization: ReturnType<typeof createSequenceVisualization> | undefined
 let pianorollVisualization: ReturnType<typeof createPianorollVisualization> | undefined
+let analysers: { canvas: HTMLCanvasElement; fftCanvas: HTMLCanvasElement; draw: () => void }[] = []
 
 const MINI_ARRAY_INDEX = 0
 const LIT_ATTACK = 0
@@ -272,6 +275,116 @@ function buildProgram(data: ProgramDataView) {
   data.ops.set(bytecode.ops.subarray(0, bytecode.pc))
 }
 
+function clearAnalysers() {
+  analysers.forEach(analyser => {
+    animationManager.unregister(analyser.draw)
+    analyser.canvas.remove()
+    analyser.fftCanvas.remove()
+  })
+  analysers = []
+}
+
+async function createAnalysers(ring: Ring, width: number, height: number) {
+  const canvas = document.createElement('canvas')
+  const dpr = window.devicePixelRatio
+  canvas.width = width * dpr
+  canvas.height = height * dpr
+  canvas.style.width = `${width}px`
+  canvas.style.height = `${height}px`
+
+  const c = canvas.getContext('2d')!
+  c.scale(dpr, dpr)
+
+  const waveformBuffer = new WaveformBuffer()
+  let floats: Float32Array | null
+
+  const drawWaveform = () => {
+    c.clearRect(0, 0, width, height)
+
+    const currentChunkPos = Atomics.load(ringPos, 0)
+    floats = waveformBuffer.update(ring, currentChunkPos)
+
+    if (!floats || floats.length === 0) return
+
+    const scale = floats.length / width
+    const h = height / 2
+
+    c.beginPath()
+    c.moveTo(0, floats[0]! / 2 * h + h)
+    for (let i = 1; i < width; i++) {
+      const idx = (i * scale) | 0
+      c.lineTo(i, -floats[idx]! / 2 * h + h)
+    }
+    c.strokeStyle = 'white'
+    c.lineWidth = 1.35
+    c.lineCap = 'round'
+    c.lineJoin = 'round'
+    c.stroke()
+  }
+
+  const fftSize = 8192
+  const fft = new WaveFFT(fftSize)
+  await fft.init()
+  const hannWindow = WaveFFT.blackman(fftSize)
+  const windowedData = new Float32Array(fftSize)
+  const minDecibels = -40
+  const maxDecibels = 65
+  const fftCanvas = document.createElement('canvas')
+  const fftHeight = height
+  fftCanvas.width = width * dpr
+  fftCanvas.height = fftHeight * dpr
+  fftCanvas.style.width = `${width}px`
+  fftCanvas.style.height = `${fftHeight}px`
+  document.body.appendChild(canvas)
+  document.body.appendChild(fftCanvas)
+
+  const fftC = fftCanvas.getContext('2d')!
+  fftC.scale(dpr, dpr)
+
+  const drawFft = () => {
+    if (!floats || floats.length < fftSize) {
+      fftC.clearRect(0, 0, width, fftHeight)
+      return
+    }
+
+    for (let i = 0; i < fftSize; i++) {
+      windowedData[i] = floats[i] * hannWindow[i]
+    }
+
+    const result = fft.fft(windowedData)
+    const magnitudes = fft.getMagnitudeSpectrum(result)
+    const frequencyBinCount = magnitudes.length
+
+    fftC.clearRect(0, 0, width, fftHeight)
+
+    const barCount = width
+    const barWidth = width / barCount
+
+    for (let i = 0; i < barCount; i++) {
+      const t = i / (barCount - 1 || 1)
+      const idx = Math.floor(
+        (frequencyBinCount - 1) * Math.pow(frequencyBinCount - 1 || 1, t) / (frequencyBinCount - 1 || 1),
+      )
+      const magnitude = magnitudes[idx]
+      const value = 20 * Math.log10(magnitude + 1e-10)
+      const norm = (value - minDecibels) / (maxDecibels - minDecibels)
+      const clamped = norm < 0 ? 0 : norm > 1 ? 1 : norm
+      const barHeight = clamped * fftHeight
+      const x = i * barWidth
+      fftC.fillStyle = 'lime'
+      fftC.fillRect(x, fftHeight - barHeight, barWidth, barHeight)
+    }
+  }
+
+  const draw = () => {
+    drawWaveform()
+    drawFft()
+  }
+
+  animationManager.register(draw)
+  analysers.push({ canvas, fftCanvas, draw })
+}
+
 function createProgramDataView(data$: number, arrays$: number[]) {
   if (!wasmMemory) throw new Error('Wasm memory not initialized')
   const programData = ProgramDataStruct(wasmMemory.buffer, data$)
@@ -359,6 +472,7 @@ async function updateWasmBinary() {
 
   program1?.clear()
   program2?.clear()
+  clearAnalysers()
 
   if (sequenceVisualization) {
     sequenceVisualization.destroy()
@@ -468,6 +582,13 @@ async function createProgram(sequence: string) {
   const analyserOuts = [...analyserOuts$].map(out$ =>
     toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
   )
+  // Create analyser for main output (index 0)
+  try {
+    void createAnalysers(analyserOuts[0], 100, 30)
+  }
+  catch (e) {
+    console.warn('Failed to create analyser:', e)
+  }
   let programData: ProgramDataView | undefined
   const out = {
     ptr$: program$,
