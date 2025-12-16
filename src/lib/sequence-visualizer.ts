@@ -171,17 +171,12 @@ export function createSequenceVisualization(
     // Use the raw sample count directly - it's already synchronized with the audio thread
     // The history buffer events are written using the same globalSampleCount value
     const currentSampleCount = Math.max(0, rawSampleCount)
-    const nowMs = performance.now()
 
     let didSeek = false
     if (lastSampleCount == null) {
       lastSampleCount = currentSampleCount
-      lastSampleChangeAtMs = nowMs
     }
     else {
-      if (currentSampleCount !== lastSampleCount) {
-        lastSampleChangeAtMs = nowMs
-      }
       if (currentSampleCount < lastSampleCount) {
         didSeek = true
       }
