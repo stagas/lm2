@@ -13,6 +13,7 @@ import {
   SEQ_VOICES,
 } from '../constants'
 import { MiniEventBuffer, MiniEvents } from '../mini/events'
+import { EventOp } from '../mini/ops'
 import { Gen } from './gen'
 
 class MiniVoice {
@@ -21,6 +22,10 @@ class MiniVoice {
   holdEndSample: i32 = 0
   value: f32 = 0
   velocity: f32 = 0
+  glidePower: f32 = 0.0
+  glideTarget: f32 = 0.0
+  glideEndSample: i32 = 0
+  baseValue: f32 = 0.0
 
   copyFrom(other: MiniVoice): void {
     this.active = other.active
@@ -28,6 +33,10 @@ class MiniVoice {
     this.holdEndSample = other.holdEndSample
     this.value = other.value
     this.velocity = other.velocity
+    this.glidePower = other.glidePower
+    this.glideTarget = other.glideTarget
+    this.glideEndSample = other.glideEndSample
+    this.baseValue = other.baseValue
   }
 }
 
@@ -84,6 +93,10 @@ export class Mini extends Gen {
       voice.holdEndSample = 0
       voice.value = 0
       voice.velocity = 0
+      voice.glidePower = 0.0
+      voice.glideTarget = 0.0
+      voice.glideEndSample = 0
+      voice.baseValue = 0.0
     }
   }
 
@@ -131,12 +144,12 @@ export class Mini extends Gen {
 
     for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
-      const endSample = i32(historyArray[historyIdx + 4])
+      const endSample = i32(historyArray[historyIdx + 5])
 
       // Skip invalid entries
       if (endSample === 0) continue
 
-      const startSample = i32(historyArray[historyIdx + 3])
+      const startSample = i32(historyArray[historyIdx + 4])
 
       // Clear present and future events (they will be regenerated)
       if (startSample >= windowStart) {
@@ -153,10 +166,11 @@ export class Mini extends Gen {
       // Move this event to the new position at newWritePos
       const newIdx = HISTORY_DATA_OFFSET + newWritePos * HISTORY_ENTRY_SIZE
       scratchHistory[newIdx] = historyArray[historyIdx] // opIndex
-      scratchHistory[newIdx + 1] = historyArray[historyIdx + 1] // value
-      scratchHistory[newIdx + 2] = historyArray[historyIdx + 2] // velocity
-      scratchHistory[newIdx + 3] = historyArray[historyIdx + 3] // startSample
-      scratchHistory[newIdx + 4] = historyArray[historyIdx + 4] // endSample
+      scratchHistory[newIdx + 1] = historyArray[historyIdx + 1] // voiceIndex
+      scratchHistory[newIdx + 2] = historyArray[historyIdx + 2] // value
+      scratchHistory[newIdx + 3] = historyArray[historyIdx + 3] // velocity
+      scratchHistory[newIdx + 4] = historyArray[historyIdx + 4] // startSample
+      scratchHistory[newIdx + 5] = historyArray[historyIdx + 5] // endSample
       newWritePos = (newWritePos + 1) % HISTORY_SIZE
     }
 
@@ -255,8 +269,8 @@ export class Mini extends Gen {
     let latestEndSample = windowStart
     for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
-      const startSample = i32(historyArray[historyIdx + 3])
-      const endSample = i32(historyArray[historyIdx + 4])
+      const startSample = i32(historyArray[historyIdx + 4])
+      const endSample = i32(historyArray[historyIdx + 5])
       // Only consider valid events that start after windowStart
       if (startSample > windowStart && endSample > 0 && endSample > latestEndSample) {
         latestEndSample = endSample
@@ -303,25 +317,27 @@ export class Mini extends Gen {
         // Only write events that start at or after the current playback position
         if (event.startSample < windowStart) continue
 
-        // Check if this event already exists (same opIndex, startSample and value)
+        // Check if this event already exists (same opIndex, voiceIndex, startSample and value)
         // Search backwards from writePos, but limit search to recent events to avoid duplicates
         let alreadyExists = false
         for (let n = 0; n < HISTORY_SIZE; n++) {
           const checkPos = (historyWritePos - 1 - n + HISTORY_SIZE) % HISTORY_SIZE
           const checkIdx = HISTORY_DATA_OFFSET + checkPos * HISTORY_ENTRY_SIZE
           const existingOpIndex = i32(historyArray[checkIdx])
-          const existingValue = historyArray[checkIdx + 1]
-          const existingStartSample = i32(historyArray[checkIdx + 3])
-          const existingEndSample = i32(historyArray[checkIdx + 4])
+          const existingVoiceIndex = i32(historyArray[checkIdx + 1])
+          const existingValue = historyArray[checkIdx + 2]
+          const existingStartSample = i32(historyArray[checkIdx + 4])
+          const existingEndSample = i32(historyArray[checkIdx + 5])
 
           // Skip invalid entries
           if (existingEndSample === 0) continue
 
-          // If we find the same event (same opIndex, startSample and value), skip writing
+          // If we find the same event (same opIndex, voiceIndex, startSample and value), skip writing
           if (
-            existingOpIndex === event.opIndex &&
-            existingStartSample === event.startSample &&
-            existingValue === event.value
+            existingOpIndex === event.opIndex
+            && existingVoiceIndex === event.voiceIndex
+            && existingStartSample === event.startSample
+            && existingValue === event.value
           ) {
             alreadyExists = true
             break
@@ -337,10 +353,11 @@ export class Mini extends Gen {
         // Write the event
         const historyIdx = HISTORY_DATA_OFFSET + slotIndex * HISTORY_ENTRY_SIZE
         historyArray[historyIdx] = event.opIndex as f32
-        historyArray[historyIdx + 1] = event.value
-        historyArray[historyIdx + 2] = event.velocity
-        historyArray[historyIdx + 3] = event.startSample as f32
-        historyArray[historyIdx + 4] = event.endSample as f32
+        historyArray[historyIdx + 1] = event.voiceIndex as f32
+        historyArray[historyIdx + 2] = event.value
+        historyArray[historyIdx + 3] = event.velocity
+        historyArray[historyIdx + 4] = event.startSample as f32
+        historyArray[historyIdx + 5] = event.endSample as f32
 
         // Advance write position (wraps around)
         historyWritePos = (slotIndex + 1) % HISTORY_SIZE
@@ -388,8 +405,9 @@ export class Mini extends Gen {
     for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const opIndex = i32(historyArray[historyIdx])
-      const startSample = i32(historyArray[historyIdx + 3])
-      const endSample = i32(historyArray[historyIdx + 4])
+      const voiceIndexHist = i32(historyArray[historyIdx + 1])
+      const startSample = i32(historyArray[historyIdx + 4])
+      const endSample = i32(historyArray[historyIdx + 5])
 
       // Skip invalid entries
       if (startSample === 0 && endSample === 0) continue
@@ -403,14 +421,15 @@ export class Mini extends Gen {
       if (opcode !== OP_EVENT) continue
 
       // Use value captured in history, which already reflects chord splitting
-      const value = historyArray[historyIdx + 1]
+      const value = historyArray[historyIdx + 2]
       if (value <= 0) continue
 
       // Use velocity captured in history, which already includes group scaling
-      const velocity = historyArray[historyIdx + 2]
+      const velocity = historyArray[historyIdx + 3]
 
-      // Schedule voice
-      const eventIndex = ((opIndex + MINI_HEADER_SIZE) << 8) | (n & 0xFF)
+      // Schedule voice. Use (opIndex, voiceIndexHist) as the stable identifier so that
+      // chord voices can be tracked consistently across events.
+      const eventIndex = ((opIndex + MINI_HEADER_SIZE) << 8) | (voiceIndexHist & 0xFF)
       const voiceIndex = this.claimVoice(eventIndex)
       const voice = this.voices[voiceIndex]
       voice.active = true
@@ -418,6 +437,62 @@ export class Mini extends Gen {
       voice.holdEndSample = endSample <= startSample ? startSample + 1 : endSample
       voice.velocity = velocity
       voice.value = value
+      voice.baseValue = value
+
+      // Read glide power from the event opcode
+      const eventOp = EventOp.at(changetype<usize>(bytecodeArray), eventOffset)
+      const glidePower = eventOp.glide
+
+      voice.glidePower = glidePower
+      voice.glideTarget = value
+      voice.glideEndSample = voice.holdEndSample
+
+      if (glidePower > 0.0) {
+        // Find the next scheduled event for the same voiceIndex (any opIndex) with a later startSample.
+        // This makes each chord voice glide to its equivalent in the next chord regardless of which
+        // mini op generated it.
+        let nextStart: i32 = i32.MAX_VALUE
+
+        // First pass: find the earliest later startSample for this voiceIndex
+        for (let m = 0; m < HISTORY_SIZE; m++) {
+          if (m === n) continue
+          const otherIdx = HISTORY_DATA_OFFSET + m * HISTORY_ENTRY_SIZE
+          const otherVoiceIndex = i32(historyArray[otherIdx + 1])
+          const otherStart = i32(historyArray[otherIdx + 4])
+          const otherEnd = i32(historyArray[otherIdx + 5])
+
+          if (otherStart === 0 && otherEnd === 0) continue
+          if (otherVoiceIndex !== voiceIndexHist) continue
+          if (otherStart <= startSample) continue
+
+          if (otherStart < nextStart) {
+            nextStart = otherStart
+          }
+        }
+
+        // Second pass: among events at nextStart for this voiceIndex, pick its value
+        if (nextStart < i32.MAX_VALUE) {
+          // Second pass: fetch the value at (any opIndex, voiceIndexHist, nextStart)
+          for (let m = 0; m < HISTORY_SIZE; m++) {
+            const otherIdx = HISTORY_DATA_OFFSET + m * HISTORY_ENTRY_SIZE
+            const otherVoiceIndex = i32(historyArray[otherIdx + 1])
+            const otherStart = i32(historyArray[otherIdx + 4])
+            const otherEnd = i32(historyArray[otherIdx + 5])
+
+            if (otherStart === 0 && otherEnd === 0) continue
+            if (otherVoiceIndex !== voiceIndexHist) continue
+            if (otherStart !== nextStart) continue
+
+            const otherValue = historyArray[otherIdx + 2]
+            if (otherValue <= 0.0) continue
+
+            voice.glideTarget = otherValue
+            // Glide until the next event starts (or current hold end, whichever is earlier)
+            voice.glideEndSample = nextStart < voice.holdEndSample ? nextStart : voice.holdEndSample
+            break
+          }
+        }
+      }
     }
 
     let maxActive = 0
@@ -440,7 +515,18 @@ export class Mini extends Gen {
           const inHold = absSample >= voice.triggerSample && absSample < voice.holdEndSample
           store<f32>(trig$ + (i << 2), inHold ? 1 : 0)
           store<f32>(vel$ + (i << 2), voice.velocity)
-          store<f32>(val$ + (i << 2), voice.value)
+
+          let currentValue = voice.baseValue
+          if (voice.glidePower > 0.0 && absSample >= voice.triggerSample && absSample < voice.glideEndSample) {
+            const span = voice.glideEndSample - voice.triggerSample
+            if (span > 0) {
+              const t = f32(absSample - voice.triggerSample) / f32(span)
+              const powered = Mathf.pow(t, voice.glidePower)
+              currentValue = voice.baseValue + (voice.glideTarget - voice.baseValue) * powered
+            }
+          }
+
+          store<f32>(val$ + (i << 2), currentValue)
         }
       }
 

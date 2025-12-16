@@ -84,12 +84,13 @@ export function createPianorollVisualization(
     // Read all slots up to historySize (preserved events + new events)
     for (let slot = 0; slot < historySize; slot++) {
       const idx = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
-      if (idx + 4 >= historyRaw.length) break
+      if (idx + 5 >= historyRaw.length) break
 
-      const noteValue = historyRaw[idx + 1]
-      const velocity = historyRaw[idx + 2]
-      const startSample = Math.floor(historyRaw[idx + 3])
-      const endSample = Math.floor(historyRaw[idx + 4])
+      // Layout: opIndex, voiceIndex, value, velocity, startSample, endSample
+      const noteValue = historyRaw[idx + 2]
+      const velocity = historyRaw[idx + 3]
+      const startSample = Math.floor(historyRaw[idx + 4])
+      const endSample = Math.floor(historyRaw[idx + 5])
 
       // Skip invalid entries
       if (startSample === 0 && endSample === 0) continue
@@ -145,7 +146,7 @@ export function createPianorollVisualization(
     const keyHeight = height / displayRange
 
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
-      const keyIndex = midi - displayMinMidi
+      const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight
       const noteInOctave = midi % 12
       const isBlackKey = noteInOctave === 1 || noteInOctave === 3 || noteInOctave === 6 || noteInOctave === 8
@@ -195,6 +196,8 @@ export function createPianorollVisualization(
       c.stroke()
     }
 
+    const activeMidis = new Set<number>()
+
     for (const event of events) {
       const startTimeSeconds = event.startSample / sampleRate
       const endTimeSeconds = event.endSample / sampleRate
@@ -209,11 +212,15 @@ export function createPianorollVisualization(
       const midi = frequencyToMidi(event.noteValue)
       if (midi < displayMinMidi || midi > displayMaxMidi) continue
 
-      const keyIndex = midi - displayMinMidi
+      const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight
 
       const isActive = currentSampleCount >= event.startSample
         && (currentSampleCount <= Math.max(event.startSample + 5000, event.endSample))
+
+      if (isActive) {
+        activeMidis.add(midi)
+      }
 
       const velocity = Math.max(0, Math.min(1, event.velocity))
 
@@ -240,13 +247,18 @@ export function createPianorollVisualization(
     c.stroke()
 
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
-      const keyIndex = midi - displayMinMidi
+      const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight
       const noteInOctave = midi % 12
       const isBlackKey = noteInOctave === 1 || noteInOctave === 3 || noteInOctave === 6 || noteInOctave === 8
         || noteInOctave === 10
       const isOctaveKey = noteInOctave === 0
-      if (isOctaveKey) {
+      const isActiveKey = activeMidis.has(midi)
+
+      if (isActiveKey) {
+        c.fillStyle = 'rgba(255, 220, 0, 1.0)'
+      }
+      else if (isOctaveKey) {
         c.fillStyle = 'rgba(255, 255, 255, 1.0)'
       }
       else if (isBlackKey) {
@@ -264,7 +276,7 @@ export function createPianorollVisualization(
     c.textAlign = 'center'
     c.textBaseline = 'middle'
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi += 1) {
-      const keyIndex = midi - displayMinMidi
+      const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight + keyHeight / 2
       const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
       const octave = Math.floor(midi / 12) - 1

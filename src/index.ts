@@ -91,8 +91,8 @@ function readMiniEvents(
   // Read events directly from history buffer (scan all slots)
   for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
     const opIndex = Math.floor(historyRaw[idx])
-    const startSample = Math.floor(historyRaw[idx + 3])
-    const endSample = Math.floor(historyRaw[idx + 4])
+    const startSample = Math.floor(historyRaw[idx + 4])
+    const endSample = Math.floor(historyRaw[idx + 5])
 
     if (startSample === 0 && endSample === 0) continue
 
@@ -183,8 +183,8 @@ async function updateSequence(program: Program, sequence: string, data: ProgramD
       bpmValue,
       globalSampleCount,
       animationManager,
-      800,
-      400,
+      500,
+      200,
     )
   }
   else {

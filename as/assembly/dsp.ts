@@ -247,14 +247,14 @@ export class Dsp {
           }
 
           // Normalize summed voices to avoid hard clipping on chords
-          if (numVoices > 0) {
-            let mix$ = mixOut$
-            for (let i = 0; i < length; i++) {
-              const s = load<f32>(mix$)
-              store<f32>(mix$, s)
-              mix$ += 4
-            }
-          }
+          // if (numVoices > 0) {
+          //   let mix$ = mixOut$
+          //   for (let i = 0; i < length; i++) {
+          //     const s = load<f32>(mix$)
+          //     store<f32>(mix$, s / f32(numVoices))
+          //     mix$ += 4
+          //   }
+          // }
         }
         break
       }

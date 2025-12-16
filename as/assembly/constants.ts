@@ -3,13 +3,13 @@ export const CHUNK_SIZE = 128
 export const ARRAY_SIZE = 1024
 export const HISTORY_SIZE = 8192 // ring buffer for event history
 export const HISTORY_HEADER_SIZE = 1 // writePos
-export const HISTORY_ENTRY_SIZE = 5 // opIndex, value, velocity, startSample, endSample
+export const HISTORY_ENTRY_SIZE = 6 // opIndex, voiceIndex, value, velocity, startSample, endSample
 export const HISTORY_WRITE_POS_OFFSET = 0
 export const HISTORY_DATA_OFFSET = 1
 export const HISTORIES_COUNT = 128
 export const ARRAY_HISTORY_SIZE = 128 // space for history metadata in array header
-export const ARRAY_HISTORY_ENTRY_SIZE = 5 // opIndex, value, velocity, startSample, endSample
-export const ARRAY_HEADER_SIZE = 4 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE // length, historyWritePos, historySize, version, [opIndex,value,velocity,startSample,endSample]*historySize
+export const ARRAY_HISTORY_ENTRY_SIZE = 6 // opIndex, voiceIndex, value, velocity, startSample, endSample
+export const ARRAY_HEADER_SIZE = 4 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE // length, historyWritePos, historySize, version, [opIndex,voiceIndex,value,velocity,startSample,endSample]*historySize
 export const ARRAYS_COUNT = 1024
 export const LITERALS_COUNT = 1024
 export const OPS_COUNT = 1024
@@ -24,7 +24,7 @@ export const MINI_HEADER_SIZE: i32 = 1
 
 // Timeline constants for visualizers
 export const PAST_SECONDS = 4
-export const FUTURE_SECONDS = 12
+export const FUTURE_SECONDS = 4
 export const TIME_WINDOW_SECONDS = PAST_SECONDS + FUTURE_SECONDS
 
 // Operation types

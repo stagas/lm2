@@ -8,6 +8,7 @@ import { EventOp, getOpcode, GroupEndOp, GroupStartOp, skipOp } from './ops'
 
 export class MiniEvent {
   opIndex: i32 = 0
+  voiceIndex: i32 = 0
   startSample: i32 = 0
   endSample: i32 = 0
   value: f32 = 0
@@ -31,6 +32,7 @@ export class MiniEventBuffer {
       const event = this.events[i]
       if (event) {
         event.opIndex = 0
+        event.voiceIndex = 0
         event.startSample = 0
         event.endSample = 0
         event.value = 0
@@ -39,11 +41,12 @@ export class MiniEventBuffer {
     }
   }
 
-  write(opIndex: i32, startSample: i32, endSample: i32, value: f32, velocity: f32): void {
+  write(opIndex: i32, voiceIndex: i32, startSample: i32, endSample: i32, value: f32, velocity: f32): void {
     if (this.writePos >= this.size) return
     const event = this.events[this.writePos]
     if (event) {
       event.opIndex = opIndex
+      event.voiceIndex = voiceIndex
       event.startSample = startSample
       event.endSample = endSample
       event.value = value
@@ -250,6 +253,7 @@ export class EventEmitter {
     if (endSample > this.windowStart && startSample < this.windowEnd) {
       this.buffer!.write(
         this.reader.getOpIndex(opOffset),
+        valueIndex,
         startSample,
         endSample,
         value,

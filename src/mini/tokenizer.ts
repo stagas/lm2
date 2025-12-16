@@ -350,7 +350,12 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
       continue
     }
 
-    const values = parseValues(value)
+    let valueText = value
+    if (!valueText && mods) {
+      valueText = 'c4'
+    }
+
+    const values = parseValues(valueText)
     const modifiers = parseModifiers(mods)
 
     nodes.push({

@@ -19,11 +19,21 @@ import {
 
 export { MiniEventBuffer }
 
+const MAX_GROUP_DEPTH: i32 = 16
+
 export class MiniEvents {
-  private childOpsBuffer: ChildOpsBuffer = new ChildOpsBuffer()
+  private childOpsBuffers: StaticArray<ChildOpsBuffer | null> = new StaticArray<ChildOpsBuffer | null>(MAX_GROUP_DEPTH)
   private reader: BytecodeReader = new BytecodeReader()
   private emitter: EventEmitter = new EventEmitter(this.reader)
   private randomSeed: u32 = 0
+
+  constructor() {
+    // We keep per-depth buffers so nested groups don't overwrite the parent's
+    // child list while iterating.
+    for (let i: i32 = 0; i < MAX_GROUP_DEPTH; i++) {
+      this.childOpsBuffers[i] = new ChildOpsBuffer()
+    }
+  }
 
   emitEvents(
     bytecode$: usize,
@@ -71,6 +81,7 @@ export class MiniEvents {
       1.0,
       0.0,
       this.emitter,
+      0,
     )
   }
 
@@ -85,9 +96,19 @@ export class MiniEvents {
     parentVelocity: f64,
     parentJitter: f64,
     emitter: EventEmitter,
+    depth: i32,
   ): i32 {
     if (opOffset >= reader.opEnd || reader.getOpcode(opOffset) !== OP_GROUP_START) {
       return opOffset
+    }
+
+    if (depth < 0 || depth >= MAX_GROUP_DEPTH) {
+      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+    }
+
+    const childOpsBuffer = this.childOpsBuffers[depth]
+    if (childOpsBuffer === null) {
+      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
     const group = reader.getGroup(opOffset)
@@ -109,10 +130,10 @@ export class MiniEvents {
       opOffset + GroupStartOp.size(),
       reader.opEnd,
       i32(group.childCount),
-      this.childOpsBuffer,
+      childOpsBuffer,
     )
 
-    const childrenLength = f64(this.childOpsBuffer.length)
+    const childrenLength = f64(childOpsBuffer.length)
 
     if (childrenLength === 0) {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
@@ -120,7 +141,7 @@ export class MiniEvents {
 
     const slotDuration = parentSlotDuration / childrenLength
 
-    if (group.density === 0 || group.density > 16) {
+    if (group.density === 0 || group.density > 8) {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
@@ -144,7 +165,7 @@ export class MiniEvents {
       }
 
       for (let i: f64 = 0; i < childrenLength; i++) {
-        const childOpOffset = this.childOpsBuffer.get(i32(i))
+        const childOpOffset = childOpsBuffer.get(i32(i))
         const opcode = reader.getOpcode(childOpOffset)
 
         // Evenly distribute children in density space using discrete slots
@@ -168,7 +189,9 @@ export class MiniEvents {
         startTime *= parentSlotDuration
         if (startTime > parentSlotDuration * 0.95) startTime = 0
 
-        const childBaseRelative: f64 = opcode === OP_EVENT ? startTime + offset : i * slotDuration + offset
+        const childBaseRelative: f64 = opcode === OP_EVENT
+          ? startTime + offset
+          : i * slotDuration / group.density + offset
         const childRelativeTime: f64 = childBaseRelative + groupOffset * parentSlotDuration
 
         this.processChild(
@@ -183,6 +206,7 @@ export class MiniEvents {
           groupVelocity,
           groupJitter,
           emitter,
+          depth,
         )
       }
 
@@ -205,6 +229,7 @@ export class MiniEvents {
     groupVelocity: f64,
     groupJitter: f64,
     emitter: EventEmitter,
+    depth: i32,
   ): void {
     const opcode = reader.getOpcode(opOffset)
 
@@ -212,7 +237,7 @@ export class MiniEvents {
       case OP_EVENT: {
         const event = reader.getEvent(opOffset)
 
-        if (event.density === 0.0 || event.density > 16) break
+        if (event.density === 0.0 || event.density > 8) break
 
         const valueCount: i32 = i32(event.valueCount)
         if (valueCount <= 0) break
@@ -287,6 +312,7 @@ export class MiniEvents {
           groupVelocity,
           groupJitter,
           emitter,
+          depth + 1,
         )
         break
       }
