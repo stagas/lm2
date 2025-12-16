@@ -138,6 +138,19 @@ export class MiniEvents {
     return replicate
   }
 
+  private getElongateWeight(elongate: f64): f64 {
+    if (elongate <= 0.0) return 0.0
+    return elongate
+  }
+
+  private getTimedWeight(replicate: f64, elongate: f64): f64 {
+    const rep = this.getReplicateWeight(replicate)
+    if (rep <= 0.0) return 0.0
+    const el = this.getElongateWeight(elongate)
+    if (el <= 0.0) return 0.0
+    return rep * el
+  }
+
   private groupHasValueEvents(reader: BytecodeReader, groupOpOffset: i32, scratchDepth: i32): bool {
     if (scratchDepth < 0 || scratchDepth >= MAX_GROUP_DEPTH) {
       return false
@@ -257,12 +270,12 @@ export class MiniEvents {
         if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE) continue
         if (opcode === OP_EVENT) {
           const op = reader.getEvent(off)
-          timedLength += this.getReplicateWeight(op.replicate as f64)
+          timedLength += this.getTimedWeight(op.replicate as f64, op.elongate as f64)
         }
         else if (opcode === OP_GROUP_START) {
           if (this.groupHasValueEvents(reader, off, depth + 1)) {
             const op = reader.getGroup(off)
-            timedLength += this.getReplicateWeight(op.replicate as f64)
+            timedLength += this.getTimedWeight(op.replicate as f64, op.elongate as f64)
           }
         }
       }
@@ -387,13 +400,13 @@ export class MiniEvents {
         let isTimed: bool = false
         if (opcode === OP_EVENT) {
           const op = reader.getEvent(childOpOffset)
-          weight = this.getReplicateWeight(op.replicate as f64)
+          weight = this.getTimedWeight(op.replicate as f64, op.elongate as f64)
           isTimed = true
         }
         else if (opcode === OP_GROUP_START) {
           if (this.groupHasValueEvents(reader, childOpOffset, depth + 1)) {
             const op = reader.getGroup(childOpOffset)
-            weight = this.getReplicateWeight(op.replicate as f64)
+            weight = this.getTimedWeight(op.replicate as f64, op.elongate as f64)
             isTimed = true
           }
         }
