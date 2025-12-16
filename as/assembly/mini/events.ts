@@ -168,9 +168,9 @@ export class MiniEvents {
         if (delta + passF >= density) break
 
         const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
-        const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 3)
+        const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
-        if (childRelativeTime < parentSlotDuration) {
+        if (roundToDecimals(childRelativeTime, 2) < parentSlotDuration) {
           // Propagate a "virtual cycle" that advances with the group's density and per-pass
           // repetition, so nested groups with density < 1 can advance inside parent groups
           // with density > 1 (e.g. `[a b]/2` inside `[*2]`).
@@ -223,21 +223,16 @@ export class MiniEvents {
         const valueCount: i32 = i32(event.valueCount)
         if (valueCount <= 0) break
 
+        const eventIndex: i32 = reader.getOpIndex(opOffset)
         const strum: f64 = event.strum as f64
         const eventOffset: f64 = event.offset as f64
         const eventJitter: f64 = groupJitter + (event.jitter as f64)
-
         const eventProb: f64 = event.prob as f64
-        if (eventProb > 0.0) {
-          const eventIndex: i32 = reader.getOpIndex(opOffset)
-          const randEvent: f64 = seededRandom01(this.randomSeed, cycle, eventIndex)
-          if (randEvent < eventProb) break
-        }
 
         // Same phase-drifting density scheduling used in evaluateGroup().
         const density: f64 = event.density as f64
         const invDensity: f64 = 1.0 / density
-        const phaseStart: f64 = fract(roundToDecimals(cycle * density, 6))
+        const phaseStart: f64 = fract(roundToDecimals(cycle * density, 3))
         const slotDurationScaled: f64 = slotDuration * invDensity
         const eventOffsetTime: f64 = eventOffset * slotDuration
 
@@ -251,9 +246,18 @@ export class MiniEvents {
           if (delta + passF >= density) break
 
           const startTime: f64 = (delta + passF) * invDensity * slotDuration
-          const eventRelativeTime: f64 = roundToDecimals(startTime + eventOffsetTime, 3)
+          const eventRelativeTime: f64 = roundToDecimals(startTime + eventOffsetTime, 6)
 
-          if (eventRelativeTime < slotDuration) {
+          if (roundToDecimals(eventRelativeTime, 2) < slotDuration) {
+            const eventCycle: f64 = cycle * density + passF
+            if (eventProb > 0.0) {
+              const randEvent: f64 = seededRandom01(this.randomSeed, eventCycle, eventIndex)
+              if (randEvent < eventProb) {
+                pass++
+                continue
+              }
+            }
+
             // emit one voice per value to support chords
             for (let vi: i32 = 0; vi < valueCount; vi++) {
               const rawValue = event.getValue(vi)
@@ -272,8 +276,7 @@ export class MiniEvents {
               // accumulates with event jitter.
               let jitterOffset: f64 = 0.0
               if (eventJitter !== 0.0) {
-                const eventIndex: i32 = reader.getOpIndex(opOffset)
-                const r: f64 = seededRandom01(this.randomSeed, cycle, eventIndex, vi) // 0..1
+                const r: f64 = seededRandom01(this.randomSeed, eventCycle, eventIndex, vi) // 0..1
                 jitterOffset = (r - 0.5) * 2.0 * eventJitter * slotDuration
               }
 

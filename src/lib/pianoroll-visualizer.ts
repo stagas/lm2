@@ -39,6 +39,11 @@ export function createPianorollVisualization(
   let currentHistory = history
   let smoothedTimeSeconds: number | null = null
 
+  // Track display range state
+  let isInitialState = true
+  let lastDisplayMinMidi = 48 // C3
+  let lastDisplayMaxMidi = 72 // C5 (2 octaves centered on C4)
+
   const draw = () => {
     c.clearRect(0, 0, width, height)
 
@@ -136,10 +141,22 @@ export function createPianorollVisualization(
         displayMinMidi = Math.max(MIN_MIDI, center - 6)
         displayMaxMidi = Math.min(MAX_MIDI, center + 6)
       }
+
+      // Update last range and mark as not initial
+      lastDisplayMinMidi = displayMinMidi
+      lastDisplayMaxMidi = displayMaxMidi
+      isInitialState = false
     }
     else {
-      displayMinMidi = MIN_MIDI
-      displayMaxMidi = MAX_MIDI
+      // Use last range if we've seen events before, otherwise use initial 2-octave range
+      if (isInitialState) {
+        displayMinMidi = 48 // C3
+        displayMaxMidi = 72 // C5
+      }
+      else {
+        displayMinMidi = lastDisplayMinMidi
+        displayMaxMidi = lastDisplayMaxMidi
+      }
     }
 
     const displayRange = displayMaxMidi - displayMinMidi + 1
