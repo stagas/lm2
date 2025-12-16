@@ -271,14 +271,19 @@ export class EventEmitter {
   ): void {
     if (!this.buffer) return
 
-    const startSample: i32 = timeToSample(time, this.cycleStartSample, this.cycleLength as f64,
-      this.cycleSamples as f64)
+    const startSample: i32 = timeToSample(
+      time,
+      this.cycleStartSample,
+      this.cycleLength as f64,
+      this.cycleSamples as f64,
+    )
     if (startSample < this.windowStart || startSample >= this.windowEnd) return
 
     const endSample: i32 = startSample + 1
+    const opcode: i32 = this.reader.getOpcode(opOffset)
     this.buffer!.write(
       this.reader.getOpIndex(opOffset),
-      -1,
+      -opcode,
       startSample,
       endSample,
       1.0,

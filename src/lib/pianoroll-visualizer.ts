@@ -108,6 +108,7 @@ export function createPianorollVisualization(
       if (idx + 5 >= historyRaw.length) break
 
       // Layout: opIndex, voiceIndex, value, velocity, startSample, endSample
+      const voiceIndex = Math.floor(historyRaw[idx + 1])
       const noteValue = historyRaw[idx + 2]
       const velocity = historyRaw[idx + 3]
       const startSample = Math.floor(historyRaw[idx + 4])
@@ -115,6 +116,9 @@ export function createPianorollVisualization(
 
       // Skip invalid entries
       if (startSample === 0 && endSample === 0) continue
+
+      // Ignore non-note entries (e.g. octave/transpose controls encoded as negative voiceIndex)
+      if (voiceIndex < 0) continue
 
       if (noteValue <= 0) continue
 
