@@ -172,13 +172,17 @@ export class MiniEvents {
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 3)
 
         if (density <= 1.0 || childRelativeTime < parentSlotDuration) {
+          // Propagate a "virtual cycle" that advances with the group's density and per-pass
+          // repetition, so nested groups with density < 1 can advance inside parent groups
+          // with density > 1 (e.g. `[a b]/2` inside `[*2]`).
+          const childCycle: f64 = Math.floor(cycle * density + passF)
           this.processChild(
             reader,
             childOpOffset,
             groupStartTime,
             childRelativeTime,
             slotDurationScaled,
-            Math.floor(cycle * group.density),
+            childCycle,
             cycleStartSample,
             cycleSamples,
             groupVelocity,
