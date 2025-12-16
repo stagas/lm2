@@ -700,5 +700,28 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
 }
 
 export function tokensToNodes(tokens: Token[], input: string): Node[] {
-  return tokensToNodesInternal(tokens, input)
+  const nodes = tokensToNodesInternal(tokens, input)
+
+  // Check if any scale nodes exist
+  const hasScaleNode = nodes.some(node => node.type === 'scale')
+    || nodes.some(node => node.type === 'group' && node.children.some(child => child.type === 'scale'))
+
+  // If no scale nodes found, prepend a default major scale (C4 major)
+  if (!hasScaleNode) {
+    const defaultScaleNode: Node = {
+      type: 'scale',
+      angle: false,
+      values: [noteNameToMidi('c4'), SCALE_KEY_TO_INDEX.major ?? 0],
+      children: [],
+      modifiers: getDefaultMods(),
+      source: {
+        start: 0,
+        length: 0,
+        text: '',
+      },
+    }
+    nodes.unshift(defaultScaleNode)
+  }
+
+  return nodes
 }

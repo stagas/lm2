@@ -183,4 +183,24 @@ describe('Mini-Notation compiler/evaluator', () => {
     expect(events[0]!.source?.text).toBe('c4')
     expect(events[1]!.source?.text).toBe('e4')
   })
+
+  it('resolves roman numerals with default major scale', () => {
+    const events = runMiniNotation('i ii iii')
+    // In C major: i = C, ii = D, iii = E
+    expectTimeline(events, [
+      { value: toValue('c4'), start: 0, end: 1 / 3 },
+      { value: toValue('d4'), start: 1 / 3, end: 2 / 3 },
+      { value: toValue('e4'), start: 2 / 3, end: 1 },
+    ])
+  })
+
+  it('resolves numeric degrees with default major scale', () => {
+    const events = runMiniNotation('1 2 3')
+    // In C major: 1 = C, 2 = D, 3 = E
+    expectTimeline(events, [
+      { value: toValue('c4'), start: 0, end: 1 / 3 },
+      { value: toValue('d4'), start: 1 / 3, end: 2 / 3 },
+      { value: toValue('e4'), start: 2 / 3, end: 1 },
+    ])
+  })
 })

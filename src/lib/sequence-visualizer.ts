@@ -315,7 +315,13 @@ export function createSequenceVisualization(
     const locationByStart = new Map<number, SourceLocation>()
     const locations = Array.from(currentSourceMap.values())
     for (const loc of locations) {
-      if (!locationByStart.has(loc.start)) locationByStart.set(loc.start, loc)
+      const existing = locationByStart.get(loc.start)
+      const locSpan = loc.end - loc.start
+      const existingSpan = existing ? existing.end - existing.start : -1
+      // Prefer the longest span for a given start so the default empty scale doesn't block actual notes.
+      if (!existing || locSpan > existingSpan) {
+        locationByStart.set(loc.start, loc)
+      }
     }
 
     const activeLocations = new Map<number, { age: number; velocity: number }>()
