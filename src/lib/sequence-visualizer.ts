@@ -1,4 +1,21 @@
-import { ARRAY_HEADER_SIZE, HISTORY_DATA_OFFSET, HISTORY_ENTRY_SIZE } from '../../as/assembly/constants.ts'
+import {
+  ARRAY_HEADER_SIZE,
+  HISTORY_DATA_OFFSET,
+  HISTORY_ENTRY_SIZE,
+  MINI_HEADER_SIZE,
+  OP_EVENT,
+  OP_EVENT_BASE_SIZE,
+  OP_GROUP_END,
+  OP_GROUP_END_SIZE,
+  OP_GROUP_START,
+  OP_GROUP_START_SIZE,
+  OP_OCTAVE,
+  OP_OCTAVE_SIZE,
+  OP_REST,
+  OP_REST_SIZE,
+  OP_TRANSPOSE,
+  OP_TRANSPOSE_SIZE,
+} from '../../as/assembly/constants.ts'
 import type { VmArray, VmHistory } from '../index.ts'
 import type { AnimationManager } from './animation-manager.ts'
 import type { SourceLocation } from './mini-source-map.ts'
@@ -34,6 +51,51 @@ export function createSequenceVisualization(
   let currentSourceMap = sourceMap
   let lastVersion = -1
   let currentHistory = history
+  let cachedOpsVersion = -1
+  let cachedOpsLength = -1
+  let cachedOps: Array<{ opIndex: number; op: number; size: number }> = []
+  let cachedOpPos = new Map<number, number>()
+  let activeOctaveOpIndex: number | null = null
+  let activeTransposeOpIndex: number | null = null
+
+  function getOpSize(op: number): number {
+    if (op === OP_EVENT) return OP_EVENT_BASE_SIZE
+    if (op === OP_GROUP_START) return OP_GROUP_START_SIZE
+    if (op === OP_GROUP_END) return OP_GROUP_END_SIZE
+    if (op === OP_REST) return OP_REST_SIZE
+    if (op === OP_OCTAVE) return OP_OCTAVE_SIZE
+    if (op === OP_TRANSPOSE) return OP_TRANSPOSE_SIZE
+    return 0
+  }
+
+  function getControlKind(text: string): 'octave' | 'transpose' | null {
+    if (/\boctave\b/.test(text)) return 'octave'
+    if (/\btranspose\b/.test(text)) return 'transpose'
+    return null
+  }
+
+  function getControlDeltaSpan(location: SourceLocation): { start: number; end: number } | null {
+    const text = location.text
+    const match = text.match(/\b(octave|transpose)\b/)
+    const index = match?.index
+    if (index == null) return null
+
+    let i = index + match[0].length
+    while (i < text.length && /\s/.test(text[i]!)) i++
+    if (i >= text.length) return null
+
+    const start = i
+    let j = i
+    if (text[j] === '+' || text[j] === '-') {
+      j++
+      while (j < text.length && /\s/.test(text[j]!)) j++
+    }
+    const digitsStart = j
+    while (j < text.length && /[0-9]/.test(text[j]!)) j++
+    if (j === digitsStart) return null
+
+    return { start: location.start + start, end: location.start + j }
+  }
 
   const draw = () => {
     c.clearRect(0, 0, width, height)
@@ -71,10 +133,46 @@ export function createSequenceVisualization(
       // Only use events with valid opIndex (within current bytecode length)
       // Past events with invalid opIndex (from old bytecode) are ignored
       if (opIndex >= 0 && opIndex < currentBytecodeLength) {
-        const existing = eventData.get(opIndex)
-        if (!existing || startSample > existing.startSample) {
-          eventData.set(opIndex, { startSample, endSample, velocity })
+        const pc = ARRAY_HEADER_SIZE + MINI_HEADER_SIZE + opIndex
+        const op = array.raw[pc] as number
+
+        if (op === OP_EVENT) {
+          const existing = eventData.get(opIndex)
+          if (!existing || startSample > existing.startSample) {
+            eventData.set(opIndex, { startSample, endSample, velocity })
+          }
         }
+        else if (op === OP_OCTAVE) {
+          if (startSample <= currentSampleCount && startSample > (eventData.get(-4)?.startSample ?? -1)) {
+            // stash latest control samples using sentinel keys
+            eventData.set(-4, { startSample, endSample, velocity })
+            activeOctaveOpIndex = opIndex
+          }
+        }
+        else if (op === OP_TRANSPOSE) {
+          if (startSample <= currentSampleCount && startSample > (eventData.get(-5)?.startSample ?? -1)) {
+            eventData.set(-5, { startSample, endSample, velocity })
+            activeTransposeOpIndex = opIndex
+          }
+        }
+      }
+    }
+
+    if (cachedOpsVersion !== currentVersion || cachedOpsLength !== currentBytecodeLength) {
+      cachedOpsVersion = currentVersion
+      cachedOpsLength = currentBytecodeLength
+      cachedOps = []
+      cachedOpPos = new Map<number, number>()
+
+      let opIndex = 0
+      while (opIndex < currentBytecodeLength) {
+        const pc = ARRAY_HEADER_SIZE + MINI_HEADER_SIZE + opIndex
+        const op = array.raw[pc] as number
+        const size = getOpSize(op)
+        if (size <= 0) break
+        cachedOpPos.set(opIndex, cachedOps.length)
+        cachedOps.push({ opIndex, op, size })
+        opIndex += size
       }
     }
 
@@ -96,8 +194,15 @@ export function createSequenceVisualization(
     c.font = '18px monospace'
     c.textBaseline = 'middle'
 
+    const locationByStart = new Map<number, SourceLocation>()
+    const locations = Array.from(currentSourceMap.values())
+    for (const loc of locations) {
+      if (!locationByStart.has(loc.start)) locationByStart.set(loc.start, loc)
+    }
+
     const activeLocations = new Map<number, { age: number; velocity: number }>()
     for (const [opIndex, info] of eventAges.entries()) {
+      if (opIndex < 0) continue
       const location = currentSourceMap.get(opIndex)
       if (location) {
         const existing = activeLocations.get(location.start)
@@ -107,11 +212,37 @@ export function createSequenceVisualization(
       }
     }
 
+    const activeControls = new Map<number, { kind: 'octave' | 'transpose' }>()
+    if (activeOctaveOpIndex != null) {
+      const loc = currentSourceMap.get(activeOctaveOpIndex)
+      if (loc) activeControls.set(loc.start, { kind: 'octave' })
+    }
+    if (activeTransposeOpIndex != null) {
+      const loc = currentSourceMap.get(activeTransposeOpIndex)
+      if (loc) activeControls.set(loc.start, { kind: 'transpose' })
+    }
+
+    const controlDeltaSpans = new Map<number, { start: number; end: number }>()
+    for (const loc of locations) {
+      const kind = getControlKind(loc.text)
+      if (!kind) continue
+      const delta = getControlDeltaSpan(loc)
+      if (delta) controlDeltaSpans.set(loc.start, { start: delta.start, end: delta.end })
+    }
+
+    const activeControlSpans = new Map<number, { kind: 'octave' | 'transpose'; start: number; end: number }>()
+    for (const [start, { kind }] of activeControls.entries()) {
+      const loc = locationByStart.get(start)
+      if (!loc) continue
+      const delta = controlDeltaSpans.get(start)
+      if (delta) activeControlSpans.set(start, { kind, start: delta.start, end: delta.end })
+    }
+
     for (const [start, info] of activeLocations.entries()) {
       const { age, velocity } = info
       if (age > FADEOUT_SECONDS) continue
 
-      const location = Array.from(currentSourceMap.values()).find(loc => loc.start === start)
+      const location = locationByStart.get(start)
       if (!location) continue
 
       const { value, mods } = splitValueAndModifiers(location.text)
@@ -130,17 +261,33 @@ export function createSequenceVisualization(
       c.strokeRect(x - 2, y - 14, metrics.width + 4, 28)
     }
 
+    for (const [locStart, span] of activeControlSpans.entries()) {
+      const before = currentSequenceString.slice(0, span.start)
+      const deltaText = currentSequenceString.slice(span.start, span.end)
+      if (!deltaText) continue
+
+      const x0 = 10 + c.measureText(before).width
+      const w = c.measureText(deltaText).width
+      const [r, g, b] = span.kind === 'octave' ? [0, 200, 255] : [255, 200, 0]
+      c.fillStyle = `rgba(${r}, ${g}, ${b}, 0.28)`
+      c.fillRect(x0 - 2, y - 14, w + 4, 28)
+      c.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.9)`
+      c.lineWidth = 2
+      c.strokeRect(x0 - 2, y - 14, w + 4, 28)
+    }
+
     let x = 10
     for (let charIdx = 0; charIdx < currentSequenceString.length; charIdx++) {
       const char = currentSequenceString[charIdx]
-      const location = Array.from(currentSourceMap.values()).find(
-        loc => charIdx >= loc.start && charIdx < loc.end,
-      )
+      const location = locations.find(loc => charIdx >= loc.start && charIdx < loc.end)
 
       let textColor = 'white'
       let isModifier = false
 
       if (location) {
+        const controlKind = getControlKind(location.text)
+        const activeSpan = activeControlSpans.get(location.start)
+        const deltaSpan = controlDeltaSpans.get(location.start)
         const { value } = splitValueAndModifiers(location.text)
         const hasNote = !!value
         const modsStart = location.start + value.length
@@ -161,7 +308,18 @@ export function createSequenceVisualization(
           )})`
         }
 
-        if (hasNote && isModifier) {
+        if (controlKind) {
+          if (activeSpan && charIdx >= activeSpan.start && charIdx < activeSpan.end) {
+            c.fillStyle = activeSpan.kind === 'octave' ? 'rgba(0, 200, 255, 1)' : 'rgba(255, 200, 0, 1)'
+          }
+          else if (deltaSpan && charIdx >= deltaSpan.start && charIdx < deltaSpan.end) {
+            c.fillStyle = 'rgba(255, 255, 255, 0.95)'
+          }
+          else {
+            c.fillStyle = 'rgba(255, 255, 255, 0.35)'
+          }
+        }
+        else if (hasNote && isModifier) {
           c.fillStyle = 'rgba(160, 160, 160, 0.8)'
         }
         else {

@@ -581,12 +581,14 @@ export class MiniEvents {
 
       case OP_OCTAVE: {
         const op = reader.getOctave(opOffset)
+        emitter.emitControl(opOffset, groupVelocity, groupStartTime + relativeTime)
         pitch *= this.pow2(op.delta as f64)
         break
       }
 
       case OP_TRANSPOSE: {
         const op = reader.getTranspose(opOffset)
+        emitter.emitControl(opOffset, groupVelocity, groupStartTime + relativeTime)
         pitch *= this.pow2((op.delta as f64) / 12.0)
         break
       }

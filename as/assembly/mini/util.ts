@@ -263,6 +263,28 @@ export class EventEmitter {
       )
     }
   }
+
+  emitControl(
+    opOffset: i32,
+    groupVelocity: f64,
+    time: f64,
+  ): void {
+    if (!this.buffer) return
+
+    const startSample: i32 = timeToSample(time, this.cycleStartSample, this.cycleLength as f64,
+      this.cycleSamples as f64)
+    if (startSample < this.windowStart || startSample >= this.windowEnd) return
+
+    const endSample: i32 = startSample + 1
+    this.buffer!.write(
+      this.reader.getOpIndex(opOffset),
+      -1,
+      startSample,
+      endSample,
+      1.0,
+      groupVelocity as f32,
+    )
+  }
 }
 
 export function fract(value: f64): f64 {
