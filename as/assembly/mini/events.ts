@@ -16,6 +16,7 @@ import {
   MiniEventBuffer,
   parseGroupChildren,
   roundToDecimals,
+  roundToFactor,
   seededRandom01,
 } from './util'
 
@@ -87,6 +88,7 @@ export class MiniEvents {
       1.0,
       this.emitter,
       0,
+      1.0,
     )
   }
 
@@ -131,14 +133,9 @@ export class MiniEvents {
     return (kind as f64) + amount
   }
 
-  private countTimedChildren(reader: BytecodeReader, buffer: ChildOpsBuffer): i32 {
-    let count: i32 = 0
-    for (let i: i32 = 0; i < buffer.length; i++) {
-      const off = buffer.get(i)
-      const opcode = reader.getOpcode(off)
-      if (opcode !== OP_OCTAVE && opcode !== OP_TRANSPOSE) count++
-    }
-    return count
+  private getReplicateWeight(replicate: f64): f64 {
+    if (replicate <= 0.0) return 0.0
+    return replicate
   }
 
   private evaluateGroup(
@@ -156,6 +153,7 @@ export class MiniEvents {
     parentPitch: f64,
     emitter: EventEmitter,
     depth: i32,
+    densityMul: f64,
   ): f64 {
     if (opOffset >= reader.opEnd || reader.getOpcode(opOffset) !== OP_GROUP_START) {
       return parentPitch
@@ -201,20 +199,36 @@ export class MiniEvents {
       return pitch
     }
 
-    if (group.density === 0 || group.density > 8) {
+    const density0: f64 = group.density as f64
+    let density: f64 = density0 * densityMul
+    if (density <= 0.0 || density > 8.0) {
       return pitch
     }
 
     const isAngleGroup: bool = group.angle !== 0.0
-    const timedCount: i32 = isAngleGroup ? childOpsBuffer.length : this.countTimedChildren(reader, childOpsBuffer)
-    const timedLength: f64 = f64(timedCount > 0 ? timedCount : 1)
+    let timedLength: f64 = 0.0
+    if (!isAngleGroup) {
+      for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+        const off = childOpsBuffer.get(i)
+        const opcode = reader.getOpcode(off)
+        if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE) continue
+        if (opcode === OP_EVENT) {
+          const op = reader.getEvent(off)
+          timedLength += this.getReplicateWeight(op.replicate as f64)
+        }
+        else if (opcode === OP_GROUP_START) {
+          const op = reader.getGroup(off)
+          timedLength += this.getReplicateWeight(op.replicate as f64)
+        }
+      }
+      if (timedLength <= 0.0) return pitch
+    }
     const slotDuration: f64 = isAngleGroup ? parentSlotDuration : parentSlotDuration / timedLength
 
     // density controls the playback speed of the phrase across cycles.
     // For density < 1, the phrase spans multiple cycles; for density > 1, the phrase repeats
     // within a cycle. In both cases, a fractional density must advance the start phase each
     // cycle so the pattern drifts instead of restarting.
-    const density: f64 = group.density as f64
     const invDensity: f64 = 1.0 / density
     const cycleDensity: f64 = roundToDecimals(cycle * density, 6)
     const phaseStart: f64 = fract(cycleDensity)
@@ -273,15 +287,34 @@ export class MiniEvents {
     while (true) {
       const passF: f64 = pass as f64
       let scheduled: bool = false
-      let timedIndex: i32 = 0
+      let timeIndex: f64 = 0.0
 
       for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
         const childOpOffset = childOpsBuffer.get(i)
         const opcode = reader.getOpcode(childOpOffset)
 
-        let slotIndex: i32 = timedIndex
-        if (slotIndex >= (timedCount > 0 ? timedCount : 1)) slotIndex = timedCount > 1 ? timedCount - 1 : 0
-        const normalizedPosition: f64 = f64(slotIndex) / timedLength // position in [0, 1)
+        let weight: f64 = 0.0
+        let posIndex: f64 = timeIndex
+        if (opcode === OP_EVENT) {
+          const op = reader.getEvent(childOpOffset)
+          weight = this.getReplicateWeight(op.replicate as f64)
+        }
+        else if (opcode === OP_GROUP_START) {
+          const op = reader.getGroup(childOpOffset)
+          weight = this.getReplicateWeight(op.replicate as f64)
+        }
+        else if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE) {
+          if (posIndex >= timedLength) posIndex = timedLength - 0.000001
+        }
+        else {
+          continue
+        }
+
+        if (opcode !== OP_OCTAVE && opcode !== OP_TRANSPOSE && weight <= 0.0) {
+          continue
+        }
+
+        const normalizedPosition: f64 = posIndex / timedLength // position in [0, 1)
 
         let delta: f64 = normalizedPosition - phaseStart
         if (delta < 0.0) delta += 1.0
@@ -296,12 +329,15 @@ export class MiniEvents {
             // repetition, so nested groups with density < 1 can advance inside parent groups
             // with density > 1 (e.g. `[a b]/2` inside `[*2]`).
             const childCycle: f64 = Math.floor(cycle * density + passF)
+            const childSlotDurationScaled: f64 = opcode === OP_OCTAVE || opcode === OP_TRANSPOSE
+              ? slotDurationScaled
+              : roundToDecimals(slotDurationScaled * weight, 4)
             pitch = this.processChild(
               reader,
               childOpOffset,
               groupStartTime,
               childRelativeTime,
-              slotDurationScaled,
+              childSlotDurationScaled,
               childCycle,
               cycleStartSample,
               cycleSamples,
@@ -316,7 +352,9 @@ export class MiniEvents {
           }
         }
 
-        if (opcode !== OP_OCTAVE && opcode !== OP_TRANSPOSE) timedIndex++
+        if (opcode !== OP_OCTAVE && opcode !== OP_TRANSPOSE) {
+          timeIndex += weight
+        }
       }
 
       if (!scheduled) break
@@ -349,7 +387,9 @@ export class MiniEvents {
       case OP_EVENT: {
         const event = reader.getEvent(opOffset)
 
-        if (event.density === 0.0 || event.density > 8) break
+        const replicate: f64 = event.replicate as f64
+        let density: f64 = (event.density as f64) * replicate
+        if (density <= 0.0 || density > 8.0) break
 
         const valueCount: i32 = i32(event.valueCount)
         if (valueCount <= 0) break
@@ -368,8 +408,6 @@ export class MiniEvents {
         const eventJitter: f64 = groupJitter + (event.jitter as f64)
         const eventProb: f64 = event.prob as f64
 
-        // Same phase-drifting density scheduling used in evaluateGroup().
-        const density: f64 = event.density as f64
         const invDensity: f64 = 1.0 / density
         const phaseStart: f64 = fract(roundToDecimals(cycle * density, 3))
         const slotDurationScaled: f64 = slotDuration * invDensity
@@ -478,6 +516,7 @@ export class MiniEvents {
       }
 
       case OP_GROUP_START: {
+        const group = reader.getGroup(opOffset)
         pitch = this.evaluateGroup(
           reader,
           opOffset,
@@ -493,6 +532,7 @@ export class MiniEvents {
           pitch,
           emitter,
           depth + 1,
+          group.replicate as f64,
         )
         break
       }

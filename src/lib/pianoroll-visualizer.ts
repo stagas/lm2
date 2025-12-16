@@ -34,10 +34,21 @@ export function createPianorollVisualization(
 
   const SCROLL_SMOOTHING = 0.17
 
-  const PIXELS_PER_SECOND = width / TIME_WINDOW_SECONDS
+  const KEY_WIDTH = 20
+  const NOTE_WIDTH = width - KEY_WIDTH
+
+  const PIXELS_PER_SECOND = NOTE_WIDTH / TIME_WINDOW_SECONDS
 
   let currentHistory = history
   let smoothedTimeSeconds: number | null = null
+
+  // Track fading note labels
+  const fadingNotes: Array<{
+    midi: number
+    noteText: string
+    fade: number
+    y: number
+  }> = []
 
   // Track display range state
   let isInitialState = true
@@ -46,6 +57,11 @@ export function createPianorollVisualization(
 
   const draw = () => {
     c.clearRect(0, 0, width, height)
+
+    c.save()
+    c.beginPath()
+    c.rect(0, 0, NOTE_WIDTH, height)
+    c.clip()
 
     // Read bytecode from array each frame (it's a view into shared memory, so it updates automatically)
     const sampleRate = audioContext.sampleRate
@@ -174,11 +190,11 @@ export function createPianorollVisualization(
       else {
         c.fillStyle = 'rgba(75, 75, 75, 0.3)'
       }
-      c.fillRect(0, y, width, keyHeight)
+      c.fillRect(0, y, NOTE_WIDTH, keyHeight)
 
       c.strokeStyle = 'rgba(100, 100, 100, 0.4)'
       c.lineWidth = noteInOctave === 0 ? 1.5 : 0.5
-      c.strokeRect(0, y, width, keyHeight)
+      c.strokeRect(0, y, NOTE_WIDTH, keyHeight)
     }
 
     const barLengthSeconds = (4 * 60) / bpmValue[0]
@@ -213,6 +229,7 @@ export function createPianorollVisualization(
     }
 
     const activeMidis = new Set<number>()
+    const previousActiveMidis = new Set(fadingNotes.filter(n => n.fade > 0.1).map(n => n.midi))
 
     for (const event of events) {
       const startTimeSeconds = event.startSample / sampleRate
@@ -254,6 +271,47 @@ export function createPianorollVisualization(
       c.strokeRect(x, y, Math.max(1, eventWidth), keyHeight - 1)
     }
 
+    // Update fading notes - add new active notes or refresh existing ones
+    for (const midi of activeMidis) {
+      if (midi >= displayMinMidi && midi <= displayMaxMidi) {
+        const existingNote = fadingNotes.find(n => n.midi === midi)
+        if (existingNote) {
+          // Refresh existing note's fade
+          existingNote.fade = 1.0
+        }
+        else {
+          // Add new note
+          const keyIndex = displayMaxMidi - midi
+          const y = keyIndex * keyHeight + keyHeight / 2
+          const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+          const octave = Math.floor(midi / 12) - 1
+          const noteName = noteNames[midi % 12]
+          fadingNotes.push({
+            midi,
+            noteText: `${noteName}${octave}`,
+            fade: 1.0,
+            y,
+          })
+        }
+      }
+    }
+
+    // Update fade levels and positions
+    for (const note of fadingNotes) {
+      note.fade *= 0.95 // Fade out slowly
+      if (note.midi >= displayMinMidi && note.midi <= displayMaxMidi) {
+        const keyIndex = displayMaxMidi - note.midi
+        note.y = keyIndex * keyHeight + keyHeight / 2
+      }
+    }
+
+    // Remove completely faded notes
+    for (let i = fadingNotes.length - 1; i >= 0; i--) {
+      if (fadingNotes[i].fade < 0.01) {
+        fadingNotes.splice(i, 1)
+      }
+    }
+
     const currentTimeX = PAST_SECONDS * PIXELS_PER_SECOND
     c.strokeStyle = 'rgba(255, 255, 0, 0.8)'
     c.lineWidth = 2
@@ -261,6 +319,17 @@ export function createPianorollVisualization(
     c.moveTo(currentTimeX, 0)
     c.lineTo(currentTimeX, height)
     c.stroke()
+
+    // Draw fading note labels next to the needle
+    c.font = '7px monospace'
+    c.textAlign = 'right'
+    c.textBaseline = 'middle'
+    for (const note of fadingNotes) {
+      c.fillStyle = `rgba(255, 255, 0, ${note.fade})`
+      c.fillText(note.noteText, currentTimeX - 5, note.y + 0.5)
+    }
+
+    c.restore()
 
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
       const keyIndex = displayMaxMidi - midi
@@ -283,9 +352,9 @@ export function createPianorollVisualization(
       else {
         c.fillStyle = 'rgba(150, 150, 150, 1.0)'
       }
-      c.fillRect(width - 20, y, 20, keyHeight)
+      c.fillRect(NOTE_WIDTH, y, KEY_WIDTH, keyHeight)
       c.fillStyle = 'rgba(0, 0, 0, 0.2)'
-      c.fillRect(width - 20, y + keyHeight - 1, 20, 1)
+      c.fillRect(NOTE_WIDTH, y + keyHeight - 1, KEY_WIDTH, 1)
     }
 
     c.font = '7px monospace'
@@ -306,7 +375,7 @@ export function createPianorollVisualization(
       else {
         c.fillStyle = 'rgba(255, 255, 255, 1.0)'
       }
-      c.fillText(`${noteName}${octave}`, width - 10, y + 0.5)
+      c.fillText(`${noteName}${octave}`, NOTE_WIDTH + KEY_WIDTH / 2, y + 0.5)
     }
   }
 
