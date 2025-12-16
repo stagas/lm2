@@ -196,13 +196,22 @@ function parseModifiers(text: string): Modifiers {
         break
       }
       case '$': {
-        const m = rest.match(/^([\d.]+)/)
+        // `$x` => up strum, `$$x` => down strum, `$$$x` => up+down strum, `$$$$x` => down+up strum.
+        // Encoded as: up in [0,1), down in [1,2), up+down in [2,3), down+up in [3,4).
+        let j = i
+        while (j < text.length && text[j] === '$') j++
+        const dollarCount = j - i
+        const after = text.slice(j)
+        const m = after.match(/^([\d.]+)/)
         if (m) {
-          mods.strum = parseFloat(m[1]!)
-          i += m[0]!.length + 1
+          const raw = parseFloat(m[1]!)
+          const amount = Math.min(Math.max(raw, 0), 0.999999)
+          const kind = dollarCount >= 4 ? 3 : dollarCount === 3 ? 2 : dollarCount === 2 ? 1 : 0
+          mods.strum = kind + amount
+          i = j + m[0]!.length
         }
         else {
-          i++
+          i = j
         }
         break
       }

@@ -222,6 +222,7 @@ export class EventEmitter {
     groupVelocity: f64,
     time: f64,
     slotDuration: f64,
+    hold: f64,
     valueIndex: i32 = 0,
     pitch: f64 = 1.0,
   ): void {
@@ -232,24 +233,16 @@ export class EventEmitter {
 
     // interpret hold as a factor of the slot duration:
     // hold = 1 => full slot, hold = 0.5 => half slot, hold = 0 => single-sample trigger
-    const baseEndSample = timeToSample(
-      time + slotDuration,
-      this.cycleStartSample,
-      this.cycleLength,
-      this.cycleSamples,
-    )
-
-    let endSample = baseEndSample
-    const hold: f64 = event.hold as f64
-
-    if (hold <= 0.0) {
-      endSample = startSample + 1
-    }
-    else if (hold < 1.0) {
-      const slotSamples = baseEndSample - startSample
-      let holdSamples = i32(Math.floor((slotSamples as f64) * hold))
-      if (holdSamples < 1) holdSamples = 1
-      endSample = startSample + holdSamples
+    // hold > 1 extends beyond the slot.
+    let endSample: i32 = startSample + 1
+    if (hold > 0.0) {
+      endSample = timeToSample(
+        time + slotDuration * hold,
+        this.cycleStartSample,
+        this.cycleLength,
+        this.cycleSamples,
+      )
+      if (endSample <= startSample) endSample = startSample + 1
     }
 
     const value = (event.getValue(valueIndex) as f64) * pitch

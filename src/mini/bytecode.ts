@@ -36,7 +36,8 @@ export function writeEventOp(
     pc++
   }
   emit(OP_EVENT)
-  emit(values.length)
+  const valueCount = Math.min(values.length, MAX_EVENT_VALUES)
+  emit(valueCount)
   emit(modifiers.velocity)
   emit(modifiers.hold)
   emit(modifiers.replicate)

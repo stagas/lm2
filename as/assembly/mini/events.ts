@@ -81,6 +81,8 @@ export class MiniEvents {
       cycleSamples,
       1.0,
       0.0,
+      0.0,
+      0.0,
       1.0,
       this.emitter,
       0,
@@ -89,6 +91,43 @@ export class MiniEvents {
 
   private pow2(delta: f64): f64 {
     return Math.pow(2.0, delta)
+  }
+
+  private combineOptionalMul(a: f64, b: f64): f64 {
+    if (a === 0.0) return b
+    if (b === 0.0) return a
+    return a * b
+  }
+
+  private getStrumKind(strum: f64): i32 {
+    let kind: i32 = i32(Math.floor(strum))
+    if (kind < 0) kind = 0
+    if (kind > 3) kind = 3
+    return kind
+  }
+
+  private getStrumAmount(strum: f64): f64 {
+    const kind: i32 = this.getStrumKind(strum)
+    const amount: f64 = strum - (kind as f64)
+    if (amount <= 0.0) return 0.0
+    if (amount >= 1.0) return 0.999999
+    return amount
+  }
+
+  private combineStrum(a: f64, b: f64): f64 {
+    if (a === 0.0) return b
+    if (b === 0.0) return a
+
+    const kindA: i32 = this.getStrumKind(a)
+    const kindB: i32 = this.getStrumKind(b)
+    const amountA: f64 = this.getStrumAmount(a)
+    const amountB: f64 = this.getStrumAmount(b)
+
+    const kind: i32 = kindB !== 0 ? kindB : kindA
+    let amount: f64 = amountA * amountB
+    if (amount >= 1.0) amount = 0.999999
+    if (amount <= 0.0) return 0.0
+    return (kind as f64) + amount
   }
 
   private countTimedChildren(reader: BytecodeReader, buffer: ChildOpsBuffer): i32 {
@@ -109,6 +148,8 @@ export class MiniEvents {
     cycleStartSample: i32,
     cycleSamples: f64,
     parentVelocity: f64,
+    parentHoldMul: f64,
+    parentStrumMul: f64,
     parentJitter: f64,
     parentPitch: f64,
     emitter: EventEmitter,
@@ -131,6 +172,8 @@ export class MiniEvents {
     const groupOffset: f64 = group.offset as f64
     const groupJitter: f64 = parentJitter + (group.jitter as f64)
     const groupVelocity: f64 = parentVelocity * (group.velocity as f64)
+    const groupHoldMul: f64 = this.combineOptionalMul(parentHoldMul, group.hold as f64)
+    const groupStrumMul: f64 = this.combineStrum(parentStrumMul, group.strum as f64)
     let pitch: f64 = parentPitch
 
     const groupProb: f64 = group.prob as f64
@@ -209,6 +252,8 @@ export class MiniEvents {
             cycleStartSample,
             cycleSamples,
             groupVelocity,
+            groupHoldMul,
+            groupStrumMul,
             groupJitter,
             pitch,
             emitter,
@@ -259,6 +304,8 @@ export class MiniEvents {
               cycleStartSample,
               cycleSamples,
               groupVelocity,
+              groupHoldMul,
+              groupStrumMul,
               groupJitter,
               pitch,
               emitter,
@@ -287,6 +334,8 @@ export class MiniEvents {
     cycleStartSample: i32,
     cycleSamples: f64,
     groupVelocity: f64,
+    holdMul: f64,
+    strumMul: f64,
     groupJitter: f64,
     pitch: f64,
     emitter: EventEmitter,
@@ -304,7 +353,15 @@ export class MiniEvents {
         if (valueCount <= 0) break
 
         const eventIndex: i32 = reader.getOpIndex(opOffset)
-        const strum: f64 = event.strum as f64
+        const strum: f64 = this.combineStrum(strumMul, event.strum as f64)
+        const eventHold: f64 = event.hold as f64
+        let hold: f64 = eventHold
+        if (hold === 0.0) {
+          hold = holdMul
+        }
+        else if (holdMul !== 0.0) {
+          hold *= holdMul
+        }
         const eventOffset: f64 = event.offset as f64
         const eventJitter: f64 = groupJitter + (event.jitter as f64)
         const eventProb: f64 = event.prob as f64
@@ -339,35 +396,65 @@ export class MiniEvents {
             }
 
             // emit one voice per value to support chords
+            const strumKind: i32 = this.getStrumKind(strum)
+            const strumAmount: f64 = this.getStrumAmount(strum)
             for (let vi: i32 = 0; vi < valueCount; vi++) {
               const rawValue = event.getValue(vi)
               if (rawValue <= 0.0) continue
 
               // apply strum as time spread across chord voices within the slot
-              let strumOffset: f64 = 0.0
-              if (strum > 0.0 && valueCount > 1) {
+              let strumOffset0: f64 = 0.0
+              let strumOffset1: f64 = 0.0
+              let strumEmitCount: i32 = 1
+              if (strumAmount > 0.0 && valueCount > 1) {
                 const position: f64 = f64(vi) / f64(valueCount - 1) // 0..1 across chord
-                const strumSpan: f64 = slotDuration * (strum > 1.0 ? 1.0 : strum)
-                strumOffset = position * strumSpan
+                const strumSpan: f64 = slotDuration * strumAmount
+                if (strumKind === 1) {
+                  strumOffset0 = (1.0 - position) * strumSpan
+                }
+                else if (strumKind === 2) {
+                  const half: f64 = strumSpan * 0.5
+                  strumOffset0 = position * half
+                  strumOffset1 = half + (1.0 - position) * half
+                  strumEmitCount = 2
+                }
+                else if (strumKind === 3) {
+                  const half: f64 = strumSpan * 0.5
+                  strumOffset0 = (1.0 - position) * half
+                  strumOffset1 = half + position * half
+                  strumEmitCount = 2
+                }
+                else {
+                  strumOffset0 = position * strumSpan
+                }
               }
 
               // Apply jitter as a symmetric random offset within the slot duration.
               // Jitter amount is interpreted as a fraction of the slot duration; group jitter
               // accumulates with event jitter.
-              let jitterOffset: f64 = 0.0
-              if (eventJitter !== 0.0) {
-                const r: f64 = seededRandom01(this.randomSeed, eventCycle, eventIndex, vi) // 0..1
-                jitterOffset = (r - 0.5) * 2.0 * eventJitter * slotDuration
-              }
+              for (let si: i32 = 0; si < strumEmitCount; si++) {
+                let jitterOffset: f64 = 0.0
+                if (eventJitter !== 0.0) {
+                  const r: f64 = seededRandom01(
+                    this.randomSeed,
+                    eventCycle,
+                    eventIndex,
+                    vi + si * valueCount,
+                  ) // 0..1
+                  jitterOffset = (r - 0.5) * 2.0 * eventJitter * slotDuration
+                }
 
-              emitter.emit(
-                opOffset,
-                groupVelocity,
-                groupStartTime + relativeTime + eventRelativeTime + strumOffset + jitterOffset,
-                slotDurationScaled,
-                vi,
-                pitch,
-              )
+                const strumOffset: f64 = si === 0 ? strumOffset0 : strumOffset1
+                emitter.emit(
+                  opOffset,
+                  groupVelocity,
+                  groupStartTime + relativeTime + eventRelativeTime + strumOffset + jitterOffset,
+                  slotDurationScaled,
+                  hold,
+                  vi,
+                  pitch,
+                )
+              }
             }
           }
           pass++
@@ -392,6 +479,8 @@ export class MiniEvents {
           cycleStartSample,
           cycleSamples,
           groupVelocity,
+          holdMul,
+          strumMul,
           groupJitter,
           pitch,
           emitter,
