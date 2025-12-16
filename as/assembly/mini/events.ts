@@ -173,7 +173,7 @@ export class MiniEvents {
         const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
-        if (roundToDecimals(childRelativeTime, 2) < parentSlotDuration) {
+        if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
           const childCycle: f64 = roundToDecimals(cycleDensity + delta + passF, 6)
           const stepIndex: i32 = i32(Math.floor(childCycle))
           let childIndex: i32 = stepIndex % childOpsBuffer.length
@@ -217,7 +217,7 @@ export class MiniEvents {
         const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
-        if (roundToDecimals(childRelativeTime, 2) < parentSlotDuration) {
+        if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
           // Propagate a "virtual cycle" that advances with the group's density and per-pass
           // repetition, so nested groups with density < 1 can advance inside parent groups
           // with density > 1 (e.g. `[a b]/2` inside `[*2]`).
@@ -295,7 +295,7 @@ export class MiniEvents {
           const startTime: f64 = (delta + passF) * invDensity * slotDuration
           const eventRelativeTime: f64 = roundToDecimals(startTime + eventOffsetTime, 6)
 
-          if (roundToDecimals(eventRelativeTime, 2) < slotDuration) {
+          if (roundToDecimals(eventRelativeTime, 3) < slotDuration) {
             const eventCycle: f64 = cycle * density + passF
             if (eventProb > 0.0) {
               const randEvent: f64 = seededRandom01(this.randomSeed, eventCycle, eventIndex)

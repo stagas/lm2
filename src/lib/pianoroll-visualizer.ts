@@ -32,7 +32,7 @@ export function createPianorollVisualization(
   const MIN_MIDI = 0
   const MAX_MIDI = 127
 
-  const SCROLL_SMOOTHING = 0.18
+  const SCROLL_SMOOTHING = 0.17
 
   const PIXELS_PER_SECOND = width / TIME_WINDOW_SECONDS
 
@@ -136,11 +136,10 @@ export function createPianorollVisualization(
       displayMinMidi = Math.max(MIN_MIDI, minActive)
       displayMaxMidi = Math.min(MAX_MIDI, maxActive)
 
-      if (displayMaxMidi - displayMinMidi < 11) {
-        const center = Math.round((displayMinMidi + displayMaxMidi) / 2)
-        displayMinMidi = Math.max(MIN_MIDI, center - 6)
-        displayMaxMidi = Math.min(MAX_MIDI, center + 6)
-      }
+      // if (displayMaxMidi - displayMinMidi < 4) {
+      //   displayMinMidi = Math.max(MIN_MIDI, minActive - 2)
+      //   displayMaxMidi = Math.min(MAX_MIDI, maxActive + 2)
+      // }
 
       // Update last range and mark as not initial
       lastDisplayMinMidi = displayMinMidi
