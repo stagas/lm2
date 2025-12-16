@@ -306,6 +306,28 @@ export class MiniEvents {
       // Angle groups (<...>) pick exactly one child per virtual cycle and play it in the group's slot.
       // The chosen child advances with the same virtual cycle we propagate for density, so alternation
       // stays consistent for density > 1 and density < 1.
+      //
+      // When density < 1, an angle-group choice can span multiple real cycles. Control ops like
+      // octave/transpose must therefore "hold" across those cycles even when the control's own
+      // instant falls outside the current cycle window. We apply the active control for the
+      // current virtual cycle at the start of this evaluation, and still allow scheduled controls
+      // (when phaseStart === 0) to run normally.
+      if (phaseStart !== 0.0) {
+        const stepIndex0: i32 = i32(Math.floor(cycleDensity))
+        let childIndex0: i32 = stepIndex0 % childOpsBuffer.length
+        if (childIndex0 < 0) childIndex0 += childOpsBuffer.length
+        const childOpOffset0 = childOpsBuffer.get(childIndex0)
+        const opcode0 = reader.getOpcode(childOpOffset0)
+        if (opcode0 === OP_OCTAVE) {
+          const op0 = reader.getOctave(childOpOffset0)
+          pitch *= this.pow2(op0.delta as f64)
+        }
+        else if (opcode0 === OP_TRANSPOSE) {
+          const op0 = reader.getTranspose(childOpOffset0)
+          pitch *= this.pow2((op0.delta as f64) / 12.0)
+        }
+      }
+
       const normalizedPosition: f64 = 0.0
       let delta: f64 = normalizedPosition - phaseStart
       if (delta < 0.0) delta += 1.0
