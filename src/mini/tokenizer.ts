@@ -50,6 +50,7 @@ const DEFAULT_MODS: Modifiers = {
 }
 
 const MODIFIER_START = new Set(['*', '!', '@', '/', '\\', '.', ';', '?', '+', '-', '$'])
+const GROUP_OPEN = new Set(['[', '<', '('])
 
 function cloneMods(mods: Modifiers): Modifiers {
   return { ...mods }
@@ -225,8 +226,8 @@ export function tokenize(input: string): Token[] {
     const start = i
     const ch = input[i]!
 
-    if (ch === '[' || ch === '<') {
-      const close = ch === '[' ? ']' : '>'
+    if (GROUP_OPEN.has(ch)) {
+      const close = ch === '[' ? ']' : ch === '<' ? '>' : ')'
       i++
       let depth = 1
       while (i < input.length && depth > 0) {
@@ -236,7 +237,7 @@ export function tokenize(input: string): Token[] {
       }
       while (i < input.length) {
         const c = input[i]!
-        if (/\s/.test(c) || c === '[' || c === '<' || c === ']' || c === '>') break
+        if (/\s/.test(c) || GROUP_OPEN.has(c) || c === ']' || c === '>' || c === ')') break
         i++
       }
       tokens.push({ text: input.slice(start, i), start, end: i })
@@ -246,7 +247,7 @@ export function tokenize(input: string): Token[] {
     i++
     while (i < input.length) {
       const c = input[i]!
-      if (/\s/.test(c) || c === '[' || c === '<' || c === ']' || c === '>') break
+      if (/\s/.test(c) || GROUP_OPEN.has(c) || c === ']' || c === '>' || c === ')') break
       i++
     }
     tokens.push({ text: input.slice(start, i), start, end: i })
@@ -290,6 +291,203 @@ function parseValues(valueText: string): number[] {
   return values
 }
 
+const SCALE_INTERVALS: Record<string, number[]> = {
+  major: [0, 2, 4, 5, 7, 9, 11],
+  minor: [0, 2, 3, 5, 7, 8, 10],
+  pentatonic: [0, 3, 5, 7, 10],
+}
+
+function isNoteNameText(text: string): boolean {
+  return /^([a-gA-G][#b]?)(-?\d+)$/.test(text)
+}
+
+function romanToDegree(text: string): number | null {
+  const t = text.toLowerCase()
+  if (t === 'i') return 1
+  if (t === 'ii') return 2
+  if (t === 'iii') return 3
+  if (t === 'iv') return 4
+  if (t === 'v') return 5
+  if (t === 'vi') return 6
+  if (t === 'vii') return 7
+  return null
+}
+
+function degreeToFrequency(rootMidi: number, intervals: number[], degree: number): number {
+  const len = intervals.length
+  const step = degree - 1
+  const octave = Math.floor(step / len)
+  const index = ((step % len) + len) % len
+  const semitone = intervals[index]! + octave * 12
+  return midiToFrequency(rootMidi + semitone)
+}
+
+function combineModifiers(a: Modifiers, b: Modifiers): Modifiers {
+  // We treat b as an additional layer applied on top of a. This matches how nested groups/events
+  // accumulate in the runtime: velocity multiplies, offsets/jitter add, most others multiply.
+  return {
+    velocity: a.velocity * b.velocity,
+    hold: b.hold !== 0 ? b.hold : a.hold,
+    replicate: a.replicate * b.replicate,
+    elongate: a.elongate * b.elongate,
+    density: a.density * b.density,
+    offset: a.offset + b.offset,
+    jitter: a.jitter + b.jitter,
+    prob: a.prob + b.prob,
+    glide: b.glide !== 0 ? b.glide : a.glide,
+    strum: a.strum + b.strum,
+  }
+}
+
+function makeSource(input: string, start: number, end: number): NodeSource {
+  return { start, length: end - start, text: input.slice(start, end) }
+}
+
+function parseGroupedTokenText(
+  raw: string,
+  open: '[' | '<' | '(',
+): { inner: string; modText: string } {
+  const close = open === '[' ? ']' : open === '<' ? '>' : ')'
+  const closingIndex = raw.lastIndexOf(close)
+  const inner = raw.slice(1, closingIndex)
+  const { mods: modText } = splitValueAndModifiers(raw.slice(closingIndex + 1))
+  return { inner, modText }
+}
+
+function scaleTokensToNodes(
+  tokens: Token[],
+  input: string,
+  scale: { rootMidi: number; intervals: number[]; extraMods: Modifiers },
+): Node[] {
+  const nodes: Node[] = []
+
+  for (const token of tokens) {
+    const raw = token.text
+    const first = raw[0]!
+
+    if (first === '_') {
+      const last = nodes.at(-1)
+      if (last) last.modifiers.elongate += 1
+      continue
+    }
+
+    if (first === '[' || first === '<' || first === '(') {
+      const { inner, modText } = parseGroupedTokenText(raw, first)
+      const innerTokens = tokenize(inner)
+      const adjustedInnerTokens = innerTokens.map(t => ({
+        ...t,
+        start: t.start + token.start + 1,
+        end: t.end + token.start + 1,
+      }))
+
+      if (first === '(') {
+        const innerHead = adjustedInnerTokens[0]?.text
+        if (innerHead === 'scale') {
+          nodes.push(...parseScaleCall(adjustedInnerTokens, input, scale.extraMods))
+          continue
+        }
+      }
+
+      const modifiers = parseModifiers(modText)
+      const children = scaleTokensToNodes(adjustedInnerTokens, input, scale)
+      nodes.push({
+        type: 'group',
+        angle: first === '<',
+        values: [],
+        children,
+        modifiers,
+        source: makeSource(input, token.start, token.end),
+      })
+      continue
+    }
+
+    const { value, mods } = splitValueAndModifiers(raw)
+    if (value === '~') {
+      const modifiers = combineModifiers(parseModifiers(mods), scale.extraMods)
+      nodes.push({
+        type: 'rest',
+        angle: false,
+        values: [],
+        children: [],
+        modifiers,
+        source: makeSource(input, token.start, token.end),
+      })
+      continue
+    }
+
+    const romanDegree = romanToDegree(value)
+    if (romanDegree !== null) {
+      const base = romanDegree
+      const values = [
+        degreeToFrequency(scale.rootMidi, scale.intervals, base),
+        degreeToFrequency(scale.rootMidi, scale.intervals, base + 2),
+        degreeToFrequency(scale.rootMidi, scale.intervals, base + 4),
+      ]
+      const modifiers = combineModifiers(parseModifiers(mods), scale.extraMods)
+      nodes.push({
+        type: 'event',
+        angle: false,
+        values,
+        children: [],
+        modifiers,
+        source: makeSource(input, token.start, token.end),
+      })
+      continue
+    }
+
+    const degreeMatch = value.match(/^\d+$/)
+    if (degreeMatch) {
+      const degree = parseInt(value, 10)
+      const values = [degreeToFrequency(scale.rootMidi, scale.intervals, degree)]
+      const modifiers = combineModifiers(parseModifiers(mods), scale.extraMods)
+      nodes.push({
+        type: 'event',
+        angle: false,
+        values,
+        children: [],
+        modifiers,
+        source: makeSource(input, token.start, token.end),
+      })
+      continue
+    }
+
+    const values = parseValues(value || (mods ? 'c4' : ''))
+    const modifiers = combineModifiers(parseModifiers(mods), scale.extraMods)
+    nodes.push({
+      type: 'event',
+      angle: false,
+      values,
+      children: [],
+      modifiers,
+      source: makeSource(input, token.start, token.end),
+    })
+  }
+
+  return nodes
+}
+
+function parseScaleCall(tokens: Token[], input: string, extraMods: Modifiers): Node[] {
+  const t0 = tokens[0]?.text
+  if (t0 !== 'scale') {
+    return scaleTokensToNodes(tokens, input, { rootMidi: noteNameToMidi('c4'), intervals: SCALE_INTERVALS.major!,
+      extraMods })
+  }
+
+  let i = 1
+  let rootMidi = noteNameToMidi('c4')
+  let scaleName = tokens[i]?.text?.toLowerCase()
+
+  if (scaleName && isNoteNameText(scaleName)) {
+    rootMidi = noteNameToMidi(scaleName)
+    i++
+    scaleName = tokens[i]?.text?.toLowerCase()
+  }
+
+  const intervals = (scaleName && SCALE_INTERVALS[scaleName]) ? SCALE_INTERVALS[scaleName]! : SCALE_INTERVALS.major!
+  const items = tokens.slice(i + 1)
+  return scaleTokensToNodes(items, input, { rootMidi, intervals, extraMods })
+}
+
 export function tokensToNodes(tokens: Token[], input: string): Node[] {
   const nodes: Node[] = []
   for (const token of tokens) {
@@ -303,10 +501,7 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
     }
 
     if (first === '[' || first === '<') {
-      const close = first === '[' ? ']' : '>'
-      const closingIndex = raw.lastIndexOf(close)
-      const inner = raw.slice(1, closingIndex)
-      const { mods: modText } = splitValueAndModifiers(raw.slice(closingIndex + 1))
+      const { inner, modText } = parseGroupedTokenText(raw, first)
       const modifiers = parseModifiers(modText)
       const innerTokens = tokenize(inner)
       // Adjust inner token positions to be relative to original input
@@ -322,11 +517,36 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
         values: [],
         children,
         modifiers,
-        source: {
-          start: token.start,
-          length: token.end - token.start,
-          text: input.slice(token.start, token.end),
-        },
+        source: makeSource(input, token.start, token.end),
+      })
+      continue
+    }
+
+    if (first === '(') {
+      const { inner, modText } = parseGroupedTokenText(raw, '(')
+      const innerTokens = tokenize(inner)
+      const adjustedInnerTokens = innerTokens.map(t => ({
+        ...t,
+        start: t.start + token.start + 1,
+        end: t.end + token.start + 1,
+      }))
+
+      const head = adjustedInnerTokens[0]?.text
+      if (head === 'scale') {
+        const callMods = parseModifiers(modText)
+        nodes.push(...parseScaleCall(adjustedInnerTokens, input, callMods))
+        continue
+      }
+
+      const modifiers = parseModifiers(modText)
+      const children = tokensToNodes(adjustedInnerTokens, input)
+      nodes.push({
+        type: 'group',
+        angle: false,
+        values: [],
+        children,
+        modifiers,
+        source: makeSource(input, token.start, token.end),
       })
       continue
     }
@@ -341,11 +561,7 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
         values: [],
         children: [],
         modifiers,
-        source: {
-          start: token.start,
-          length: token.end - token.start,
-          text: input.slice(token.start, token.end),
-        },
+        source: makeSource(input, token.start, token.end),
       })
       continue
     }
@@ -364,11 +580,7 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
       values,
       children: [],
       modifiers,
-      source: {
-        start: token.start,
-        length: token.end - token.start,
-        text: input.slice(token.start, token.end),
-      },
+      source: makeSource(input, token.start, token.end),
     })
   }
   return nodes
