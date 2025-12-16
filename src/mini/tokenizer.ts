@@ -1,6 +1,6 @@
 import { midiToFrequency, noteNameToMidi } from './note-utils.ts'
 
-type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale'
+type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale' | 'cycle'
 
 export interface Modifiers {
   velocity: number
@@ -495,6 +495,33 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
         source: makeSource(input, token.start, last?.end ?? token.end),
       })
       ti = nextIndex - 1
+      continue
+    }
+
+    if (raw === 'cycle') {
+      const next = tokens[ti + 1]
+      const parsed = parseInt(next?.text ?? '', 10)
+      const period = Number.isFinite(parsed) ? parsed : 0
+      const bodyStart = ti + 2
+      let bodyEnd = tokens.length
+      for (let j = bodyStart; j < tokens.length; j++) {
+        if (tokens[j]?.text === 'cycle') {
+          bodyEnd = j
+          break
+        }
+      }
+      const bodyTokens = tokens.slice(bodyStart, bodyEnd)
+      const children = tokensToNodesInternal(bodyTokens, input)
+      const last = tokens[bodyEnd - 1] ?? next ?? token
+      nodes.push({
+        type: 'cycle',
+        angle: false,
+        values: [period],
+        children,
+        modifiers: getDefaultMods(),
+        source: makeSource(input, token.start, last?.end ?? token.end),
+      })
+      ti = bodyEnd - 1
       continue
     }
 

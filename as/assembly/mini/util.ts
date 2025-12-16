@@ -1,10 +1,12 @@
 import {
   ARRAY_HEADER_SIZE,
   MINI_HEADER_SIZE,
+  OP_CYCLE_END,
+  OP_CYCLE_START,
   OP_GROUP_END,
   OP_GROUP_START,
 } from '../constants'
-import { EventOp, getOpcode, GroupEndOp, GroupStartOp, OctaveOp, ScaleOp, skipOp, TransposeOp } from './ops'
+import { CycleEndOp, CycleStartOp, EventOp, getOpcode, GroupEndOp, GroupStartOp, OctaveOp, ScaleOp, skipOp, TransposeOp } from './ops'
 
 export class MiniEvent {
   opIndex: i32 = 0
@@ -81,11 +83,12 @@ export class ChildOpsBuffer {
 
 export function skipNestedGroup(array$: usize, offset: i32, opEnd: i32): i32 {
   let depth = 1
-  let current = offset + GroupStartOp.size()
+  const startOpcode = getOpcode(array$, offset)
+  let current = offset + (startOpcode === OP_CYCLE_START ? CycleStartOp.size() : GroupStartOp.size())
   while (current < opEnd && depth > 0) {
     const opcode = getOpcode(array$, current)
-    if (opcode === OP_GROUP_START) depth++
-    else if (opcode === OP_GROUP_END) depth--
+    if (opcode === OP_GROUP_START || opcode === OP_CYCLE_START) depth++
+    else if (opcode === OP_GROUP_END || opcode === OP_CYCLE_END) depth--
     current = skipOp(array$, current)
   }
   return current
@@ -103,14 +106,14 @@ export function parseGroupChildren(
 
   while (current < opEnd && buffer.length < childCount) {
     const opcode = getOpcode(array$, current)
-    if (opcode === OP_GROUP_END) {
-      current += GroupEndOp.size()
+    if (opcode === OP_GROUP_END || opcode === OP_CYCLE_END) {
+      current += opcode === OP_CYCLE_END ? CycleEndOp.size() : GroupEndOp.size()
       break
     }
 
     buffer.push(current)
 
-    if (opcode === OP_GROUP_START) {
+    if (opcode === OP_GROUP_START || opcode === OP_CYCLE_START) {
       current = skipNestedGroup(array$, current, opEnd)
     }
     else {
@@ -128,8 +131,8 @@ export function findGroupEnd(array$: usize, startOffset: i32, opEnd: i32): i32 {
   let depth = 1
   while (offset < opEnd && depth > 0) {
     const opcode = getOpcode(array$, offset)
-    if (opcode === OP_GROUP_START) depth++
-    else if (opcode === OP_GROUP_END) depth--
+    if (opcode === OP_GROUP_START || opcode === OP_CYCLE_START) depth++
+    else if (opcode === OP_GROUP_END || opcode === OP_CYCLE_END) depth--
     offset = skipOp(array$, offset)
   }
   return offset
@@ -167,6 +170,10 @@ export class BytecodeReader {
 
   getGroup(offset: i32): GroupStartOp {
     return GroupStartOp.at(this.array$, offset)
+  }
+
+  getCycle(offset: i32): CycleStartOp {
+    return CycleStartOp.at(this.array$, offset)
   }
 
   getEvent(offset: i32): EventOp {

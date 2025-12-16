@@ -1,13 +1,14 @@
 import {
   ARRAY_HEADER_SIZE,
   MINI_HEADER_SIZE,
+  OP_CYCLE_START,
   OP_EVENT,
   OP_GROUP_START,
   OP_OCTAVE,
   OP_SCALE,
   OP_TRANSPOSE,
 } from '../constants'
-import { GroupStartOp } from './ops'
+import { CycleStartOp, GroupStartOp } from './ops'
 import { degreeToFrequency } from './scales'
 import {
   BytecodeReader,
@@ -196,6 +197,54 @@ export class MiniEvents {
       else if (opcode === OP_GROUP_START) {
         if (this.groupHasValueEvents(reader, off, scratchDepth + 1)) return true
       }
+      else if (opcode === OP_CYCLE_START) {
+        if (this.cycleHasValueEvents(reader, off, scratchDepth + 1)) return true
+      }
+    }
+
+    return false
+  }
+
+  private cycleHasValueEvents(reader: BytecodeReader, cycleOpOffset: i32, scratchDepth: i32): bool {
+    if (scratchDepth < 0 || scratchDepth >= MAX_GROUP_DEPTH) {
+      return false
+    }
+    if (cycleOpOffset >= reader.opEnd || reader.getOpcode(cycleOpOffset) !== OP_CYCLE_START) {
+      return false
+    }
+
+    const childOpsBuffer = this.childOpsBuffers[scratchDepth]
+    if (childOpsBuffer === null) {
+      return false
+    }
+
+    const cycleOp = reader.getCycle(cycleOpOffset)
+    const childCount: i32 = i32(cycleOp.childCount)
+    if (childCount <= 0) {
+      return false
+    }
+
+    parseGroupChildren(
+      reader.array$,
+      cycleOpOffset + CycleStartOp.size(),
+      reader.opEnd,
+      childCount,
+      childOpsBuffer,
+    )
+
+    for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+      const off = childOpsBuffer.get(i)
+      const opcode = reader.getOpcode(off)
+      if (opcode === OP_EVENT) {
+        const event = reader.getEvent(off)
+        if (i32(event.valueCount) > 0) return true
+      }
+      else if (opcode === OP_GROUP_START) {
+        if (this.groupHasValueEvents(reader, off, scratchDepth + 1)) return true
+      }
+      else if (opcode === OP_CYCLE_START) {
+        if (this.cycleHasValueEvents(reader, off, scratchDepth + 1)) return true
+      }
     }
 
     return false
@@ -256,6 +305,45 @@ export class MiniEvents {
       i32(group.childCount),
       childOpsBuffer,
     )
+
+    // Cycle replacement: if the group has `cycle N ...` blocks, then on cycles where
+    // (cycleIndex+1) % N === 0 we replace the entire phrase with that block's children.
+    // If multiple blocks match the same cycle, the later one wins.
+    let baseEnd: i32 = childOpsBuffer.length
+    for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+      const off = childOpsBuffer.get(i)
+      if (reader.getOpcode(off) === OP_CYCLE_START) {
+        baseEnd = i
+        break
+      }
+    }
+    if (baseEnd < childOpsBuffer.length) {
+      const cycleIndex1: i32 = i32(cycle) + 1
+      let selected: i32 = -1
+      for (let i: i32 = baseEnd; i < childOpsBuffer.length; i++) {
+        const off = childOpsBuffer.get(i)
+        if (reader.getOpcode(off) !== OP_CYCLE_START) continue
+        const op = reader.getCycle(off)
+        const period: i32 = i32(op.period)
+        if (period > 0 && (cycleIndex1 % period) === 0) {
+          selected = off
+        }
+      }
+
+      if (selected >= 0) {
+        const op = reader.getCycle(selected)
+        parseGroupChildren(
+          reader.array$,
+          selected + CycleStartOp.size(),
+          reader.opEnd,
+          i32(op.childCount),
+          childOpsBuffer,
+        )
+      }
+      else {
+        childOpsBuffer.length = baseEnd
+      }
+    }
 
     const childrenLength = f64(childOpsBuffer.length)
 
