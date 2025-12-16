@@ -223,7 +223,23 @@ export class MiniEvents {
       }
       if (timedLength <= 0.0) return pitch
     }
-    const slotDuration: f64 = isAngleGroup ? parentSlotDuration : parentSlotDuration / timedLength
+    else {
+      // For angle groups, also calculate timedLength to determine if they should occupy time
+      for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+        const off = childOpsBuffer.get(i)
+        const opcode = reader.getOpcode(off)
+        if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE) continue
+        if (opcode === OP_EVENT) {
+          const op = reader.getEvent(off)
+          timedLength += this.getReplicateWeight(op.replicate as f64)
+        }
+        else if (opcode === OP_GROUP_START) {
+          const op = reader.getGroup(off)
+          timedLength += this.getReplicateWeight(op.replicate as f64)
+        }
+      }
+    }
+    const slotDuration: f64 = timedLength > 0.0 ? parentSlotDuration / timedLength : 0.0
 
     // density controls the playback speed of the phrase across cycles.
     // For density < 1, the phrase spans multiple cycles; for density > 1, the phrase repeats
@@ -239,6 +255,35 @@ export class MiniEvents {
       // Angle groups (<...>) pick exactly one child per virtual cycle and play it in the group's slot.
       // The chosen child advances with the same virtual cycle we propagate for density, so alternation
       // stays consistent for density > 1 and density < 1.
+
+      // Special case: if slotDuration is 0 (only octave/transpose children), execute instantly
+      if (slotDuration === 0.0) {
+        const childCycle: f64 = roundToDecimals(cycleDensity, 6)
+        const stepIndex: i32 = i32(Math.floor(childCycle))
+        let childIndex: i32 = stepIndex % childOpsBuffer.length
+        if (childIndex < 0) childIndex += childOpsBuffer.length
+        const childOpOffset = childOpsBuffer.get(childIndex)
+
+        pitch = this.processChild(
+          reader,
+          childOpOffset,
+          groupStartTime,
+          0.0, // instant execution
+          parentSlotDuration, // use parent duration for scaling
+          f64(stepIndex),
+          cycleStartSample,
+          cycleSamples,
+          groupVelocity,
+          groupHoldMul,
+          groupStrumMul,
+          groupJitter,
+          pitch,
+          emitter,
+          depth,
+        )
+        return pitch
+      }
+
       const normalizedPosition: f64 = 0.0
       let delta: f64 = normalizedPosition - phaseStart
       if (delta < 0.0) delta += 1.0
@@ -248,7 +293,7 @@ export class MiniEvents {
         const passF: f64 = pass as f64
         if (delta + passF >= density) break
 
-        const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
+        const startTime: f64 = (delta + passF) * invDensity * slotDuration
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
         if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
