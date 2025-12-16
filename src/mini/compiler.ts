@@ -1,6 +1,6 @@
 import { MINI_HEADER_SIZE } from '../../as/assembly/constants.ts'
 import type { MiniSourceMapEntry } from './bytecode.ts'
-import { allocateBytecode, writeEventOp, writeGroupEndOp, writeGroupStartOp, writeOctaveOp, writeRestOp, writeTransposeOp } from './bytecode.ts'
+import { allocateBytecode, writeEventOp, writeGroupEndOp, writeGroupStartOp, writeOctaveOp, writeRestOp, writeScaleOp, writeTransposeOp } from './bytecode.ts'
 import type { Node } from './tokenizer.ts'
 import { getDefaultMods, tokenize, tokensToNodes } from './tokenizer.ts'
 
@@ -28,6 +28,9 @@ function compileNode(
   }
   else if (node.type === 'transpose') {
     return writeTransposeOp(bytecode, offset, node.values[0] ?? 0)
+  }
+  else if (node.type === 'scale') {
+    return writeScaleOp(bytecode, offset, node.values[0] ?? 0, node.values[1] ?? 0)
   }
   return 0
 }

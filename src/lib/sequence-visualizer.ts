@@ -13,13 +13,15 @@ import {
   OP_OCTAVE_SIZE,
   OP_REST,
   OP_REST_SIZE,
+  OP_SCALE,
+  OP_SCALE_SIZE,
   OP_TRANSPOSE,
   OP_TRANSPOSE_SIZE,
 } from '../../as/assembly/constants.ts'
 import type { VmArray, VmHistory } from '../index.ts'
+import { splitValueAndModifiers } from '../mini/tokenizer.ts'
 import type { AnimationManager } from './animation-manager.ts'
 import type { SourceLocation } from './mini-source-map.ts'
-import { splitValueAndModifiers } from '../mini/tokenizer.ts'
 
 export function createSequenceVisualization(
   array: VmArray,
@@ -37,13 +39,16 @@ export function createSequenceVisualization(
 {
   const canvas = document.createElement('canvas')
   const dpr = window.devicePixelRatio
-  canvas.width = width * dpr
-  canvas.height = height * dpr
-  canvas.style.width = `${width}px`
-  canvas.style.height = `${height}px`
+  const minWidth = width
+  let currentWidth = width
+  let currentHeight = height
+  canvas.width = currentWidth * dpr
+  canvas.height = currentHeight * dpr
+  canvas.style.width = `${currentWidth}px`
+  canvas.style.height = `${currentHeight}px`
 
   const c = canvas.getContext('2d')!
-  c.scale(dpr, dpr)
+  c.setTransform(dpr, 0, 0, dpr, 0, 0)
 
   const FADEOUT_SECONDS = 0.3
 
@@ -57,10 +62,13 @@ export function createSequenceVisualization(
   let cachedOpPos = new Map<number, number>()
   let activeOctaveOpIndex: number | null = null
   let activeTransposeOpIndex: number | null = null
+  let activeScaleOpIndex: number | null = null
   let fadingOctaveOpIndex: number | null = null
   let fadingOctaveFromSample: number | null = null
   let fadingTransposeOpIndex: number | null = null
   let fadingTransposeFromSample: number | null = null
+  let fadingScaleOpIndex: number | null = null
+  let fadingScaleFromSample: number | null = null
 
   function getOpSize(op: number): number {
     if (op === OP_EVENT) return OP_EVENT_BASE_SIZE
@@ -69,20 +77,22 @@ export function createSequenceVisualization(
     if (op === OP_REST) return OP_REST_SIZE
     if (op === OP_OCTAVE) return OP_OCTAVE_SIZE
     if (op === OP_TRANSPOSE) return OP_TRANSPOSE_SIZE
+    if (op === OP_SCALE) return OP_SCALE_SIZE
     return 0
   }
 
-  function getControlKind(text: string): 'octave' | 'transpose' | null {
+  function getControlKind(text: string): 'octave' | 'transpose' | 'scale' | null {
     if (/\boctave\b/.test(text)) return 'octave'
     if (/\btranspose\b/.test(text)) return 'transpose'
+    if (/\bscale\b/.test(text)) return 'scale'
     return null
   }
 
   function getControlDeltaSpan(location: SourceLocation): { start: number; end: number } | null {
     const text = location.text
-    const match = text.match(/\b(octave|transpose)\b/)
+    const match = text.match(/\b(octave|transpose|scale)\b/)
     const index = match?.index
-    if (index == null) return null
+    if (index == null || match == null) return null
 
     let i = index + match[0].length
     while (i < text.length && /\s/.test(text[i]!)) i++
@@ -90,19 +100,58 @@ export function createSequenceVisualization(
 
     const start = i
     let j = i
-    if (text[j] === '+' || text[j] === '-') {
-      j++
-      while (j < text.length && /\s/.test(text[j]!)) j++
+    const kind = match[1]
+    if (kind === 'octave' || kind === 'transpose') {
+      if (text[j] === '+' || text[j] === '-') {
+        j++
+        while (j < text.length && /\s/.test(text[j]!)) j++
+      }
+      const digitsStart = j
+      while (j < text.length && /[0-9]/.test(text[j]!)) j++
+      if (j === digitsStart) return null
     }
-    const digitsStart = j
-    while (j < text.length && /[0-9]/.test(text[j]!)) j++
-    if (j === digitsStart) return null
+    else if (kind === 'scale') {
+      const noteMatch = text.slice(j).match(/^[a-gA-G](?:#|b)?[0-9]+/)
+      if (noteMatch) {
+        j += noteMatch[0].length
+        while (j < text.length && /\s/.test(text[j]!)) j++
+      }
+      const nameMatch = text.slice(j).match(/^[a-zA-Z]+/)
+      if (nameMatch) {
+        j += nameMatch[0].length
+      }
+      if (j === start) return null
+    }
+    else {
+      return null
+    }
 
     return { start: location.start + start, end: location.start + j }
   }
 
+  function getControlColor(kind: 'octave' | 'transpose' | 'scale'): [number, number, number] {
+    if (kind === 'octave') return [0, 200, 255]
+    if (kind === 'transpose') return [255, 200, 0]
+    return [200, 120, 255]
+  }
+
+  function ensureCanvasWidth(): void {
+    const pad = 24
+    const measured = Math.ceil(pad + c.measureText(currentSequenceString).width)
+    const next = Math.max(minWidth, measured)
+    if (next === currentWidth) return
+
+    currentWidth = next
+    canvas.width = currentWidth * dpr
+    canvas.style.width = `${currentWidth}px`
+    c.setTransform(dpr, 0, 0, dpr, 0, 0)
+  }
+
   const draw = () => {
-    c.clearRect(0, 0, width, height)
+    c.font = '18px monospace'
+    c.textBaseline = 'middle'
+    ensureCanvasWidth()
+    c.clearRect(0, 0, currentWidth, currentHeight)
 
     const sampleRate = audioContext.sampleRate
     const rawSampleCount = Atomics.load(globalSampleCount, 0)
@@ -118,6 +167,8 @@ export function createSequenceVisualization(
     let nextOctaveStartSample = -1
     let nextTransposeOpIndex: number | null = null
     let nextTransposeStartSample = -1
+    let nextScaleOpIndex: number | null = null
+    let nextScaleStartSample = -1
     const currentBytecodeLength = array.raw[ARRAY_HEADER_SIZE] as number
     const currentVersion = array.raw[3] as number
 
@@ -162,13 +213,21 @@ export function createSequenceVisualization(
             nextTransposeStartSample = startSample
           }
         }
+        else if (op === OP_SCALE) {
+          if (startSample <= currentSampleCount && startSample > nextScaleStartSample) {
+            nextScaleOpIndex = opIndex
+            nextScaleStartSample = startSample
+          }
+        }
       }
     }
 
     const prevOctaveOpIndex = activeOctaveOpIndex
     const prevTransposeOpIndex = activeTransposeOpIndex
+    const prevScaleOpIndex = activeScaleOpIndex
     activeOctaveOpIndex = nextOctaveOpIndex
     activeTransposeOpIndex = nextTransposeOpIndex
+    activeScaleOpIndex = nextScaleOpIndex
 
     if (prevOctaveOpIndex !== activeOctaveOpIndex && prevOctaveOpIndex != null) {
       fadingOctaveOpIndex = prevOctaveOpIndex
@@ -177,6 +236,10 @@ export function createSequenceVisualization(
     if (prevTransposeOpIndex !== activeTransposeOpIndex && prevTransposeOpIndex != null) {
       fadingTransposeOpIndex = prevTransposeOpIndex
       fadingTransposeFromSample = nextTransposeStartSample >= 0 ? nextTransposeStartSample : currentSampleCount
+    }
+    if (prevScaleOpIndex !== activeScaleOpIndex && prevScaleOpIndex != null) {
+      fadingScaleOpIndex = prevScaleOpIndex
+      fadingScaleFromSample = nextScaleStartSample >= 0 ? nextScaleStartSample : currentSampleCount
     }
 
     if (cachedOpsVersion !== currentVersion || cachedOpsLength !== currentBytecodeLength) {
@@ -210,10 +273,7 @@ export function createSequenceVisualization(
       }
     }
 
-    const y = height / 2
-
-    c.font = '18px monospace'
-    c.textBaseline = 'middle'
+    const y = currentHeight / 2
 
     const locationByStart = new Map<number, SourceLocation>()
     const locations = Array.from(currentSourceMap.values())
@@ -233,7 +293,7 @@ export function createSequenceVisualization(
       }
     }
 
-    const activeControls = new Map<number, { kind: 'octave' | 'transpose' }>()
+    const activeControls = new Map<number, { kind: 'octave' | 'transpose' | 'scale' }>()
     if (activeOctaveOpIndex != null) {
       const loc = currentSourceMap.get(activeOctaveOpIndex)
       if (loc) activeControls.set(loc.start, { kind: 'octave' })
@@ -241,6 +301,10 @@ export function createSequenceVisualization(
     if (activeTransposeOpIndex != null) {
       const loc = currentSourceMap.get(activeTransposeOpIndex)
       if (loc) activeControls.set(loc.start, { kind: 'transpose' })
+    }
+    if (activeScaleOpIndex != null) {
+      const loc = currentSourceMap.get(activeScaleOpIndex)
+      if (loc) activeControls.set(loc.start, { kind: 'scale' })
     }
 
     const controlDeltaSpans = new Map<number, { start: number; end: number }>()
@@ -273,8 +337,20 @@ export function createSequenceVisualization(
         fadingTransposeFromSample = null
       }
     }
+    let fadingScaleAlpha = 0
+    if (fadingScaleOpIndex != null && fadingScaleFromSample != null) {
+      const age = (currentSampleCount - fadingScaleFromSample) / sampleRate
+      if (age >= 0 && age <= FADEOUT_SECONDS) {
+        fadingScaleAlpha = 1 - age / FADEOUT_SECONDS
+      }
+      else {
+        fadingScaleOpIndex = null
+        fadingScaleFromSample = null
+      }
+    }
 
-    const controlRenderSpans = new Map<number, { kind: 'octave' | 'transpose'; start: number; end: number; alpha: number }>()
+    const controlRenderSpans = new Map<number,
+      { kind: 'octave' | 'transpose' | 'scale'; start: number; end: number; alpha: number }>()
     for (const [start, { kind }] of activeControls.entries()) {
       const loc = locationByStart.get(start)
       if (!loc) continue
@@ -309,14 +385,30 @@ export function createSequenceVisualization(
       const loc = currentSourceMap.get(fadingOctaveOpIndex)
       if (loc && !controlRenderSpans.has(loc.start)) {
         const delta = controlDeltaSpans.get(loc.start)
-        if (delta) controlRenderSpans.set(loc.start, { kind: 'octave', start: delta.start, end: delta.end, alpha: fadingOctaveAlpha })
+        if (delta) {
+          controlRenderSpans.set(loc.start, { kind: 'octave', start: delta.start, end: delta.end,
+            alpha: fadingOctaveAlpha })
+        }
       }
     }
     if (fadingTransposeOpIndex != null && fadingTransposeAlpha > 0) {
       const loc = currentSourceMap.get(fadingTransposeOpIndex)
       if (loc && !controlRenderSpans.has(loc.start)) {
         const delta = controlDeltaSpans.get(loc.start)
-        if (delta) controlRenderSpans.set(loc.start, { kind: 'transpose', start: delta.start, end: delta.end, alpha: fadingTransposeAlpha })
+        if (delta) {
+          controlRenderSpans.set(loc.start, { kind: 'transpose', start: delta.start, end: delta.end,
+            alpha: fadingTransposeAlpha })
+        }
+      }
+    }
+    if (fadingScaleOpIndex != null && fadingScaleAlpha > 0) {
+      const loc = currentSourceMap.get(fadingScaleOpIndex)
+      if (loc && !controlRenderSpans.has(loc.start)) {
+        const delta = controlDeltaSpans.get(loc.start)
+        if (delta) {
+          controlRenderSpans.set(loc.start, { kind: 'scale', start: delta.start, end: delta.end,
+            alpha: fadingScaleAlpha })
+        }
       }
     }
 
@@ -327,7 +419,7 @@ export function createSequenceVisualization(
 
       const x0 = 10 + c.measureText(before).width
       const w = c.measureText(deltaText).width
-      const [r, g, b] = span.kind === 'octave' ? [0, 200, 255] : [255, 200, 0]
+      const [r, g, b] = getControlColor(span.kind)
       c.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.28 * span.alpha})`
       c.fillRect(x0 - 2, y - 14, w + 4, 28)
       c.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.9 * span.alpha})`
@@ -362,15 +454,17 @@ export function createSequenceVisualization(
           const velocityClamped = Math.max(0, Math.min(1, info.velocity || 0))
           const brightnessBase = 1 - info.age / FADEOUT_SECONDS
           const brightness = brightnessBase * velocityClamped
-          textColor = `rgb(${Math.floor(255 * (1 - brightness))}, 255, ${Math.floor(
-            255 * (1 - brightness),
-          )})`
+          textColor = `rgb(${Math.floor(255 * (1 - brightness))}, 255, ${
+            Math.floor(
+              255 * (1 - brightness),
+            )
+          })`
         }
 
         if (controlKind) {
           if (deltaSpan && charIdx >= deltaSpan.start && charIdx < deltaSpan.end) {
             if (renderSpan) {
-              const [highlightR, highlightG, highlightB] = renderSpan.kind === 'octave' ? [0, 200, 255] : [255, 200, 0]
+              const [highlightR, highlightG, highlightB] = getControlColor(renderSpan.kind)
               const [brightR, brightG, brightB] = [255, 255, 255]
               const alpha = renderSpan.alpha
               const r = Math.floor(highlightR * alpha + brightR * (1 - alpha))

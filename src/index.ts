@@ -19,7 +19,6 @@ import {
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import { Bytecode } from './bytecode.ts'
 import { AnimationManager } from './lib/animation-manager.ts'
-import { readEventValues } from './lib/mini-bytecode-reader.ts'
 import { buildMiniSourceMap } from './lib/mini-source-map.ts'
 import { createPianorollVisualization } from './lib/pianoroll-visualizer.ts'
 import { createSequenceVisualization } from './lib/sequence-visualizer.ts'
@@ -91,10 +90,13 @@ function readMiniEvents(
   // Read events directly from history buffer (scan all slots)
   for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
     const opIndex = Math.floor(historyRaw[idx])
+    const voiceIndex = Math.floor(historyRaw[idx + 1])
+    const value = historyRaw[idx + 2]
     const startSample = Math.floor(historyRaw[idx + 4])
     const endSample = Math.floor(historyRaw[idx + 5])
 
     if (startSample === 0 && endSample === 0) continue
+    if (voiceIndex < 0) continue
 
     const startTimeSeconds = startSample / sampleRate
     const endTimeSeconds = endSample / sampleRate
@@ -105,13 +107,8 @@ function readMiniEvents(
     // Only use events with valid opIndex
     if (opIndex < 0 || opIndex >= currentBytecodeLength) continue
 
-    // Read note value from bytecode
-    const values = readEventValues(bytecode, opIndex)
-    if (values.length === 0) continue
-
-    // Use first value as the note
-    const noteValue = values[0]!
-    if (noteValue <= 0) continue
+    const noteValue = value
+    if (noteValue == null || noteValue <= 0) continue
 
     const note = frequencyToNoteName(noteValue)
     if (note != null && typeof note === 'string' && note.length > 0 && note !== 'undefined' && note !== 'null') {
@@ -240,10 +237,10 @@ async function updateSequence(program: Program, sequence: string, data: ProgramD
 function buildProgram(data: ProgramDataView) {
   const bytecode = new Bytecode()
 
-  data.writeLiteral(LIT_ATTACK, 0.02)
-  data.writeLiteral(LIT_DECAY, 0.02)
-  data.writeLiteral(LIT_SUSTAIN, 0.7)
-  data.writeLiteral(LIT_RELEASE, 0.2)
+  data.writeLiteral(LIT_ATTACK, 0.01)
+  data.writeLiteral(LIT_DECAY, 0.3)
+  data.writeLiteral(LIT_SUSTAIN, 0.2)
+  data.writeLiteral(LIT_RELEASE, 0.4)
   data.writeLiteral(LIT_MASTER, 0.25)
 
   bytecode.Mini(MINI_ARRAY_INDEX)

@@ -1,6 +1,6 @@
 import { midiToFrequency, noteNameToMidi } from './note-utils.ts'
 
-type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose'
+type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale'
 
 export interface Modifiers {
   velocity: number
@@ -300,14 +300,6 @@ function parseValues(valueText: string): number[] {
   return values
 }
 
-function findScaleIntervals(scaleName: string): number[] | undefined {
-  if (!scaleName) return undefined
-  for (const [name, intervals] of Object.entries(SCALE_INTERVALS)) {
-    if (name.startsWith(scaleName)) return intervals
-  }
-  return undefined
-}
-
 const SCALE_INTERVALS: Record<string, number[]> = {
   major: [0, 2, 4, 5, 7, 9, 11],
   minor: [0, 2, 3, 5, 7, 8, 10],
@@ -390,6 +382,29 @@ const SCALE_INTERVALS: Record<string, number[]> = {
   iraq: [0, 1, 4, 5, 7, 8, 10],
 }
 
+const SCALE_KEY_TO_INDEX: Record<string, number> = {}
+{
+  const sigToIndex = new Map<string, number>()
+  let next = 0
+  for (const [name, intervals] of Object.entries(SCALE_INTERVALS)) {
+    const sig = intervals.join(',')
+    let idx = sigToIndex.get(sig)
+    if (idx === undefined) {
+      idx = next++
+      sigToIndex.set(sig, idx)
+    }
+    SCALE_KEY_TO_INDEX[name] = idx
+  }
+}
+
+function findScaleIndex(scaleName: string): number | undefined {
+  if (!scaleName) return undefined
+  for (const name of Object.keys(SCALE_INTERVALS)) {
+    if (name.startsWith(scaleName)) return SCALE_KEY_TO_INDEX[name]
+  }
+  return undefined
+}
+
 function isNoteNameText(text: string): boolean {
   return /^([a-gA-G][#b]?)(-?\d+)$/.test(text)
 }
@@ -404,15 +419,6 @@ function romanToDegree(text: string): number | null {
   if (t === 'vi') return 6
   if (t === 'vii') return 7
   return null
-}
-
-function degreeToFrequency(rootMidi: number, intervals: number[], degree: number): number {
-  const len = intervals.length
-  const step = degree - 1
-  const octave = Math.floor(step / len)
-  const index = ((step % len) + len) % len
-  const semitone = intervals[index]! + octave * 12
-  return midiToFrequency(rootMidi + semitone)
 }
 
 function makeSource(input: string, start: number, end: number): NodeSource {
@@ -441,11 +447,29 @@ function parseOctaveDelta(tokens: Token[]): number {
   return parseDeltaToken(tokens[1])
 }
 
-function scaleTokensToNodes(
-  tokens: Token[],
-  input: string,
-  scale: { rootMidi: number; intervals: number[] },
-): Node[] {
+function parseScaleDirective(tokens: Token[],
+  startIndex: number): { rootMidi: number; scaleIndex: number; nextIndex: number }
+{
+  let i = startIndex
+  let rootMidi = noteNameToMidi('c4')
+  let scaleIndex = SCALE_KEY_TO_INDEX.major ?? 0
+
+  const t0 = tokens[i]?.text?.toLowerCase()
+  if (t0 && isNoteNameText(t0)) {
+    rootMidi = noteNameToMidi(t0)
+    i++
+  }
+
+  const t1 = tokens[i]?.text?.toLowerCase()
+  if (t1 && /^[a-z]+$/.test(t1)) {
+    scaleIndex = findScaleIndex(t1) ?? scaleIndex
+    i++
+  }
+
+  return { rootMidi, scaleIndex, nextIndex: i }
+}
+
+function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
   const nodes: Node[] = []
 
   for (let ti = 0; ti < tokens.length; ti++) {
@@ -459,178 +483,18 @@ function scaleTokensToNodes(
       continue
     }
 
-    if (raw === 'octave' || raw === 'transpose') {
-      const next = tokens[ti + 1]
-      const delta = parseDeltaToken(next)
-      const end = next?.end ?? token.end
+    if (raw === 'scale') {
+      const { rootMidi, scaleIndex, nextIndex } = parseScaleDirective(tokens, ti + 1)
+      const last = nextIndex > ti + 1 ? tokens[nextIndex - 1] : token
       nodes.push({
-        type: raw === 'octave' ? 'octave' : 'transpose',
+        type: 'scale',
         angle: false,
-        values: [delta],
+        values: [rootMidi, scaleIndex],
         children: [],
         modifiers: getDefaultMods(),
-        source: makeSource(input, token.start, end),
+        source: makeSource(input, token.start, last?.end ?? token.end),
       })
-      if (next) ti++
-      continue
-    }
-
-    if (first === '[' || first === '<' || first === '(') {
-      const { inner, modText } = parseGroupedTokenText(raw, first)
-      const innerTokens = tokenize(inner)
-      const adjustedInnerTokens = innerTokens.map(t => ({
-        ...t,
-        start: t.start + token.start + 1,
-        end: t.end + token.start + 1,
-      }))
-
-      if (first === '(') {
-        const innerHead = adjustedInnerTokens[0]?.text
-        if (innerHead === 'scale') {
-          const children = parseScaleCall(adjustedInnerTokens, input)
-          nodes.push({
-            type: 'group',
-            angle: false,
-            values: [],
-            children,
-            modifiers: parseModifiers(modText),
-            source: makeSource(input, token.start, token.end),
-          })
-          continue
-        }
-        if (innerHead === 'octave') {
-          nodes.push({
-            type: 'octave',
-            angle: false,
-            values: [parseOctaveDelta(adjustedInnerTokens)],
-            children: [],
-            modifiers: getDefaultMods(),
-            source: makeSource(input, token.start, token.end),
-          })
-          continue
-        }
-        if (innerHead === 'transpose') {
-          nodes.push({
-            type: 'transpose',
-            angle: false,
-            values: [parseDeltaToken(adjustedInnerTokens[1])],
-            children: [],
-            modifiers: getDefaultMods(),
-            source: makeSource(input, token.start, token.end),
-          })
-          continue
-        }
-      }
-
-      const modifiers = parseModifiers(modText)
-      const children = scaleTokensToNodes(adjustedInnerTokens, input, scale)
-      nodes.push({
-        type: 'group',
-        angle: first === '<',
-        values: [],
-        children,
-        modifiers,
-        source: makeSource(input, token.start, token.end),
-      })
-      continue
-    }
-
-    const { value, mods } = splitValueAndModifiers(raw)
-    if (value === '~') {
-      const modifiers = parseModifiers(mods)
-      nodes.push({
-        type: 'rest',
-        angle: false,
-        values: [],
-        children: [],
-        modifiers,
-        source: makeSource(input, token.start, token.end),
-      })
-      continue
-    }
-
-    const romanDegree = romanToDegree(value)
-    if (romanDegree !== null) {
-      const base = romanDegree
-      const values = [
-        degreeToFrequency(scale.rootMidi, scale.intervals, base),
-        degreeToFrequency(scale.rootMidi, scale.intervals, base + 2),
-        degreeToFrequency(scale.rootMidi, scale.intervals, base + 4),
-      ]
-      const modifiers = parseModifiers(mods)
-      nodes.push({
-        type: 'event',
-        angle: false,
-        values,
-        children: [],
-        modifiers,
-        source: makeSource(input, token.start, token.end),
-      })
-      continue
-    }
-
-    const degreeMatch = value.match(/^\d+$/)
-    if (degreeMatch) {
-      const degree = parseInt(value, 10)
-      const values = [degreeToFrequency(scale.rootMidi, scale.intervals, degree)]
-      const modifiers = parseModifiers(mods)
-      nodes.push({
-        type: 'event',
-        angle: false,
-        values,
-        children: [],
-        modifiers,
-        source: makeSource(input, token.start, token.end),
-      })
-      continue
-    }
-
-    const values = parseValues(value || (mods ? 'c4' : ''))
-    const modifiers = parseModifiers(mods)
-    nodes.push({
-      type: 'event',
-      angle: false,
-      values,
-      children: [],
-      modifiers,
-      source: makeSource(input, token.start, token.end),
-    })
-  }
-
-  return nodes
-}
-
-function parseScaleCall(tokens: Token[], input: string): Node[] {
-  const t0 = tokens[0]?.text
-  if (t0 !== 'scale') {
-    return scaleTokensToNodes(tokens, input, { rootMidi: noteNameToMidi('c4'), intervals: SCALE_INTERVALS.major! })
-  }
-
-  let i = 1
-  let rootMidi = noteNameToMidi('c4')
-  let scaleName = tokens[i]?.text?.toLowerCase()
-
-  if (scaleName && isNoteNameText(scaleName)) {
-    rootMidi = noteNameToMidi(scaleName)
-    i++
-    scaleName = tokens[i]?.text?.toLowerCase()
-  }
-
-  const intervals = findScaleIntervals(scaleName) ?? SCALE_INTERVALS.major!
-  const items = tokens.slice(i + 1)
-  return scaleTokensToNodes(items, input, { rootMidi, intervals })
-}
-
-export function tokensToNodes(tokens: Token[], input: string): Node[] {
-  const nodes: Node[] = []
-  for (let ti = 0; ti < tokens.length; ti++) {
-    const token = tokens[ti]!
-    const raw = token.text
-    const first = raw[0]!
-
-    if (first === '_') {
-      const last = nodes.at(-1)
-      if (last) last.modifiers.elongate += 1
+      ti = nextIndex - 1
       continue
     }
 
@@ -660,7 +524,7 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
         start: t.start + token.start + 1, // +1 to account for opening bracket
         end: t.end + token.start + 1,
       }))
-      const children = tokensToNodes(adjustedInnerTokens, input)
+      const children = tokensToNodesInternal(adjustedInnerTokens, input)
       nodes.push({
         type: 'group',
         angle: first === '<',
@@ -683,7 +547,18 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
 
       const head = adjustedInnerTokens[0]?.text
       if (head === 'scale') {
-        const children = parseScaleCall(adjustedInnerTokens, input)
+        const { rootMidi, scaleIndex, nextIndex } = parseScaleDirective(adjustedInnerTokens, 1)
+        const items = adjustedInnerTokens.slice(nextIndex)
+        const scaleNode: Node = {
+          type: 'scale',
+          angle: false,
+          values: [rootMidi, scaleIndex],
+          children: [],
+          modifiers: getDefaultMods(),
+          source: makeSource(input, token.start, token.end),
+        }
+        const restChildren = tokensToNodesInternal(items, input)
+        const children = [scaleNode, ...restChildren]
         nodes.push({
           type: 'group',
           angle: false,
@@ -718,7 +593,7 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
       }
 
       const modifiers = parseModifiers(modText)
-      const children = tokensToNodes(adjustedInnerTokens, input)
+      const children = tokensToNodesInternal(adjustedInnerTokens, input)
       nodes.push({
         type: 'group',
         angle: false,
@@ -750,6 +625,37 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
       valueText = 'c4'
     }
 
+    const romanDegree = romanToDegree(valueText)
+    if (romanDegree !== null) {
+      const base = romanDegree
+      const values = [-base, -(base + 2), -(base + 4)]
+      const modifiers = parseModifiers(mods)
+      nodes.push({
+        type: 'event',
+        angle: false,
+        values,
+        children: [],
+        modifiers,
+        source: makeSource(input, token.start, token.end),
+      })
+      continue
+    }
+
+    if (/^\d+$/.test(valueText)) {
+      const degree = parseInt(valueText, 10)
+      const values = [-degree]
+      const modifiers = parseModifiers(mods)
+      nodes.push({
+        type: 'event',
+        angle: false,
+        values,
+        children: [],
+        modifiers,
+        source: makeSource(input, token.start, token.end),
+      })
+      continue
+    }
+
     const values = parseValues(valueText)
     const modifiers = parseModifiers(mods)
 
@@ -762,5 +668,10 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
       source: makeSource(input, token.start, token.end),
     })
   }
+
   return nodes
+}
+
+export function tokensToNodes(tokens: Token[], input: string): Node[] {
+  return tokensToNodesInternal(tokens, input)
 }

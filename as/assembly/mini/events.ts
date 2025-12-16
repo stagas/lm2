@@ -4,9 +4,11 @@ import {
   OP_EVENT,
   OP_GROUP_START,
   OP_OCTAVE,
+  OP_SCALE,
   OP_TRANSPOSE,
 } from '../constants'
 import { GroupStartOp } from './ops'
+import { degreeToFrequency } from './scales'
 import {
   BytecodeReader,
   ChildOpsBuffer,
@@ -29,6 +31,9 @@ export class MiniEvents {
   private reader: BytecodeReader = new BytecodeReader()
   private emitter: EventEmitter = new EventEmitter(this.reader)
   private randomSeed: u32 = 0
+  private scaleActive: bool = false
+  private scaleRootMidi: i32 = 0
+  private scaleIndex: i32 = 0
 
   constructor() {
     // We keep per-depth buffers so nested groups don't overwrite the parent's
@@ -68,6 +73,9 @@ export class MiniEvents {
       hash *= 16777619 // FNV-1a prime
     }
     this.randomSeed = hash
+    this.scaleActive = false
+    this.scaleRootMidi = 0
+    this.scaleIndex = 0
 
     this.reader.update(bytecode$, opEnd)
     this.emitter.update(eventBuffer, cycleStartSample, cycleLength, cycleSamples, windowStart, windowEnd)
@@ -267,7 +275,7 @@ export class MiniEvents {
       for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
         const off = childOpsBuffer.get(i)
         const opcode = reader.getOpcode(off)
-        if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE) continue
+        if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE || opcode === OP_SCALE) continue
         if (opcode === OP_EVENT) {
           const op = reader.getEvent(off)
           timedLength += this.getTimedWeight(op.replicate as f64, op.elongate as f64)
@@ -338,6 +346,12 @@ export class MiniEvents {
         else if (opcode0 === OP_TRANSPOSE) {
           const op0 = reader.getTranspose(childOpOffset0)
           pitch *= this.pow2((op0.delta as f64) / 12.0)
+        }
+        else if (opcode0 === OP_SCALE) {
+          const op0 = reader.getScale(childOpOffset0)
+          this.scaleRootMidi = i32(op0.rootMidi)
+          this.scaleIndex = i32(op0.scaleIndex)
+          this.scaleActive = true
         }
       }
 
@@ -410,7 +424,7 @@ export class MiniEvents {
             isTimed = true
           }
         }
-        else if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE) {
+        else if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE || opcode === OP_SCALE) {
           if (posIndex >= timedLength) posIndex = timedLength - 0.000001
         }
         else {
@@ -551,7 +565,19 @@ export class MiniEvents {
             const strumAmount: f64 = this.getStrumAmount(strum)
             for (let vi: i32 = 0; vi < valueCount; vi++) {
               const rawValue = event.getValue(vi)
-              if (rawValue <= 0.0) continue
+              if (rawValue === 0.0) continue
+
+              let valueHz: f64 = rawValue as f64
+              if (rawValue < 0.0) {
+                if (!this.scaleActive) continue
+                const degree: i32 = i32(-rawValue)
+                if (degree <= 0) continue
+                valueHz = degreeToFrequency(this.scaleRootMidi, this.scaleIndex, degree)
+                if (valueHz <= 0.0) continue
+              }
+
+              valueHz *= pitch
+              if (valueHz <= 0.0) continue
 
               // apply strum as time spread across chord voices within the slot
               let strumOffset0: f64 = 0.0
@@ -603,7 +629,7 @@ export class MiniEvents {
                   slotDurationScaled,
                   hold,
                   vi,
-                  pitch,
+                  valueHz,
                 )
               }
             }
@@ -625,6 +651,15 @@ export class MiniEvents {
         const op = reader.getTranspose(opOffset)
         emitter.emitControl(opOffset, groupVelocity, groupStartTime + relativeTime)
         pitch *= this.pow2((op.delta as f64) / 12.0)
+        break
+      }
+
+      case OP_SCALE: {
+        const op = reader.getScale(opOffset)
+        emitter.emitControl(opOffset, groupVelocity, groupStartTime + relativeTime)
+        this.scaleRootMidi = i32(op.rootMidi)
+        this.scaleIndex = i32(op.scaleIndex)
+        this.scaleActive = true
         break
       }
 

@@ -23,6 +23,8 @@ class MiniVoice {
   holdEndSample: i32 = 0
   value: f32 = 0
   velocity: f32 = 0
+  // Stable chord voice slot (MiniEvent.voiceIndex) for matching across live bytecode changes.
+  slot: i32 = -1
   glidePower: f32 = 0.0
   glideTarget: f32 = 0.0
   glideEndSample: i32 = 0
@@ -34,6 +36,7 @@ class MiniVoice {
     this.holdEndSample = other.holdEndSample
     this.value = other.value
     this.velocity = other.velocity
+    this.slot = other.slot
     this.glidePower = other.glidePower
     this.glideTarget = other.glideTarget
     this.glideEndSample = other.glideEndSample
@@ -96,6 +99,7 @@ export class Mini extends Gen {
       voice.holdEndSample = 0
       voice.value = 0
       voice.velocity = 0
+      voice.slot = -1
       voice.glidePower = 0.0
       voice.glideTarget = 0.0
       voice.glideEndSample = 0
@@ -239,6 +243,18 @@ export class Mini extends Gen {
       this.eventVoices[eventIndex] = voiceIndex
     }
     return voiceIndex
+  }
+
+  private bindVoiceToEvent(voiceIndex: i32, eventIndex: i32): void {
+    const size = ARRAY_SIZE * MAX_EVENT_VALUES
+    const prevEvent = this.voiceEventIndex[voiceIndex]
+    if (prevEvent >= 0 && prevEvent < size) {
+      this.eventVoices[prevEvent] = -1
+    }
+    this.voiceEventIndex[voiceIndex] = eventIndex
+    if (eventIndex >= 0 && eventIndex < size) {
+      this.eventVoices[eventIndex] = voiceIndex
+    }
   }
 
   private findSlotForEvent(
@@ -443,14 +459,64 @@ export class Mini extends Gen {
       // chord voices can be tracked consistently across events.
       if (voiceIndexHist < 0 || voiceIndexHist >= MAX_EVENT_VALUES) continue
       const eventIndex = opIndex * MAX_EVENT_VALUES + voiceIndexHist
-      const voiceIndex = this.claimVoice(eventIndex, windowStart)
+      let voiceIndex: i32 = -1
+      let reuseMode: i32 = 0 // 0 = allocate, 1 = same note already holding, 2 = replace slot voice
+
+      // If the regenerated event started before "now" but is still holding, try to reuse an already
+      // holding voice in the same chord slot to avoid double-triggering.
+      const overlapsNow = startSample < windowStart && endSample > windowStart
+      if (overlapsNow) {
+        // Prefer exact match: same slot + same pitch already holding.
+        for (let v = 0; v < SEQ_VOICES; v++) {
+          const vv = this.voices[v]
+          if (!vv.active) continue
+          if (vv.slot !== voiceIndexHist) continue
+          if (windowStart < vv.triggerSample || windowStart >= vv.holdEndSample) continue
+          if (vv.baseValue === value) {
+            voiceIndex = v
+            reuseMode = 1
+            break
+          }
+        }
+
+        // Otherwise reuse the slot voice (different pitch): swap it to the new note.
+        if (voiceIndex < 0) {
+          for (let v = 0; v < SEQ_VOICES; v++) {
+            const vv = this.voices[v]
+            if (!vv.active) continue
+            if (vv.slot !== voiceIndexHist) continue
+            if (windowStart < vv.triggerSample || windowStart >= vv.holdEndSample) continue
+            voiceIndex = v
+            reuseMode = 2
+            break
+          }
+        }
+
+        if (voiceIndex >= 0) {
+          this.bindVoiceToEvent(voiceIndex, eventIndex)
+        }
+      }
+
+      if (voiceIndex < 0) {
+        voiceIndex = this.claimVoice(eventIndex, windowStart)
+      }
       const voice = this.voices[voiceIndex]
       voice.active = true
-      voice.triggerSample = startSample
-      voice.holdEndSample = endSample <= startSample ? startSample + 1 : endSample
-      voice.velocity = velocity
-      voice.value = value
-      voice.baseValue = value
+      voice.slot = voiceIndexHist
+
+      if (reuseMode === 1) {
+        // Same note already holding: avoid re-triggering. Only extend the hold if needed.
+        if (endSample > voice.holdEndSample) {
+          voice.holdEndSample = endSample
+        }
+      }
+      else {
+        voice.triggerSample = reuseMode === 2 ? windowStart : startSample
+        voice.holdEndSample = endSample <= voice.triggerSample ? voice.triggerSample + 1 : endSample
+        voice.velocity = velocity
+        voice.value = value
+        voice.baseValue = value
+      }
 
       // Read glide power from the event opcode
       const eventOp = EventOp.at(changetype<usize>(bytecodeArray), eventOffset)

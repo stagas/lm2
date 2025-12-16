@@ -34,6 +34,7 @@ export const OP_GROUP_END: i32 = 2
 export const OP_REST: i32 = 3
 export const OP_OCTAVE: i32 = 4
 export const OP_TRANSPOSE: i32 = 5
+export const OP_SCALE: i32 = 6
 
 // Operation sizes (in floats)
 export const OP_GROUP_START_SIZE: i32 = 13 // opcode, childCount, angle, velocity, hold, replicate, elongate, density, offset, jitter, prob, glide, strum
@@ -42,4 +43,5 @@ export const OP_REST_SIZE: i32 = 1 // opcode
 export const OP_OCTAVE_SIZE: i32 = 2 // opcode, deltaOctaves
 export const OP_TRANSPOSE_SIZE: i32 = 2 // opcode, deltaSemitones
 export const MAX_EVENT_VALUES: i32 = 16
+export const OP_SCALE_SIZE: i32 = 3 // opcode, rootMidi, scaleIndex
 export const OP_EVENT_BASE_SIZE: i32 = 12 + MAX_EVENT_VALUES // opcode, valueCount, values..., velocity, hold, glide, prob, density
