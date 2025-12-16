@@ -69,6 +69,21 @@ export function createSequenceVisualization(
   let fadingTransposeFromSample: number | null = null
   let fadingScaleOpIndex: number | null = null
   let fadingScaleFromSample: number | null = null
+  let lastSampleCount: number | null = null
+  let lastSampleChangeAtMs = 0
+  const STOP_TIMEOUT_MS = 120
+
+  function clearActiveControls(): void {
+    activeOctaveOpIndex = null
+    activeTransposeOpIndex = null
+    activeScaleOpIndex = null
+    fadingOctaveOpIndex = null
+    fadingOctaveFromSample = null
+    fadingTransposeOpIndex = null
+    fadingTransposeFromSample = null
+    fadingScaleOpIndex = null
+    fadingScaleFromSample = null
+  }
 
   function getOpSize(op: number): number {
     if (op === OP_EVENT) return OP_EVENT_BASE_SIZE
@@ -159,6 +174,28 @@ export function createSequenceVisualization(
     // Use the raw sample count directly - it's already synchronized with the audio thread
     // The history buffer events are written using the same globalSampleCount value
     const currentSampleCount = Math.max(0, rawSampleCount)
+    const nowMs = performance.now()
+
+    let didSeek = false
+    if (lastSampleCount == null) {
+      lastSampleCount = currentSampleCount
+      lastSampleChangeAtMs = nowMs
+    }
+    else {
+      if (currentSampleCount !== lastSampleCount) {
+        lastSampleChangeAtMs = nowMs
+      }
+      if (currentSampleCount < lastSampleCount) {
+        didSeek = true
+      }
+      lastSampleCount = currentSampleCount
+    }
+
+    // Treat backwards jumps (stop/reset/seek) as a reposition: clear previous active/fading
+    // so we only highlight what is active at the new "present" sample position.
+    if (didSeek) {
+      clearActiveControls()
+    }
 
     const historyRaw = currentHistory.raw
 
