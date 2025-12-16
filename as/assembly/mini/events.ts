@@ -152,7 +152,8 @@ export class MiniEvents {
     // cycle so the pattern drifts instead of restarting.
     const density: f64 = group.density as f64
     const invDensity: f64 = 1.0 / density
-    const phaseStart: f64 = fract(roundToDecimals(cycle * density, 6))
+    const cycleDensity: f64 = roundToDecimals(cycle * density, 6)
+    const phaseStart: f64 = fract(cycleDensity)
     const slotDurationScaled: f64 = slotDuration * invDensity
     const groupOffsetTime: f64 = groupOffset * parentSlotDuration
 
@@ -173,7 +174,7 @@ export class MiniEvents {
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
         if (roundToDecimals(childRelativeTime, 2) < parentSlotDuration) {
-          const childCycle: f64 = cycle * density + delta + passF
+          const childCycle: f64 = roundToDecimals(cycleDensity + delta + passF, 6)
           const stepIndex: i32 = i32(Math.floor(childCycle))
           let childIndex: i32 = stepIndex % childOpsBuffer.length
           if (childIndex < 0) childIndex += childOpsBuffer.length
