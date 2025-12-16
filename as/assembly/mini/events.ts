@@ -139,11 +139,12 @@ export class MiniEvents {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
-    const slotDuration = parentSlotDuration / childrenLength
-
     if (group.density === 0 || group.density > 8) {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
+
+    const isAngleGroup: bool = group.angle !== 0.0
+    const slotDuration: f64 = isAngleGroup ? parentSlotDuration : parentSlotDuration / childrenLength
 
     // density controls the playback speed of the phrase across cycles.
     // For density < 1, the phrase spans multiple cycles; for density > 1, the phrase repeats
@@ -154,6 +155,51 @@ export class MiniEvents {
     const phaseStart: f64 = fract(roundToDecimals(cycle * density, 6))
     const slotDurationScaled: f64 = slotDuration * invDensity
     const groupOffsetTime: f64 = groupOffset * parentSlotDuration
+
+    if (isAngleGroup) {
+      // Angle groups (<...>) pick exactly one child per virtual cycle and play it in the group's slot.
+      // The chosen child advances with the same virtual cycle we propagate for density, so alternation
+      // stays consistent for density > 1 and density < 1.
+      const normalizedPosition: f64 = 0.0
+      let delta: f64 = normalizedPosition - phaseStart
+      if (delta < 0.0) delta += 1.0
+
+      let pass: i32 = 0
+      while (true) {
+        const passF: f64 = pass as f64
+        if (delta + passF >= density) break
+
+        const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
+        const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
+
+        if (roundToDecimals(childRelativeTime, 2) < parentSlotDuration) {
+          const childCycle: f64 = cycle * density + delta + passF
+          const stepIndex: i32 = i32(Math.floor(childCycle))
+          let childIndex: i32 = stepIndex % childOpsBuffer.length
+          if (childIndex < 0) childIndex += childOpsBuffer.length
+          const childOpOffset = childOpsBuffer.get(childIndex)
+
+          this.processChild(
+            reader,
+            childOpOffset,
+            groupStartTime,
+            childRelativeTime,
+            slotDurationScaled,
+            f64(stepIndex),
+            cycleStartSample,
+            cycleSamples,
+            groupVelocity,
+            groupJitter,
+            emitter,
+            depth,
+          )
+        }
+
+        pass++
+      }
+
+      return findGroupEnd(reader.array$, opOffset, reader.opEnd)
+    }
 
     for (let i: f64 = 0; i < childrenLength; i++) {
       const childOpOffset = childOpsBuffer.get(i32(i))

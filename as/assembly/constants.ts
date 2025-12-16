@@ -23,8 +23,8 @@ export const MINI_EVENT_SIZE: i32 = 7
 export const MINI_HEADER_SIZE: i32 = 1
 
 // Timeline constants for visualizers
-export const PAST_SECONDS = 2
-export const FUTURE_SECONDS = 16
+export const PAST_SECONDS = 4
+export const FUTURE_SECONDS = 12
 export const TIME_WINDOW_SECONDS = PAST_SECONDS + FUTURE_SECONDS
 
 // Operation types
