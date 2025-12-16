@@ -10,7 +10,6 @@ import {
   ChildOpsBuffer,
   EventEmitter,
   findGroupEnd,
-  floorToFactor,
   fract,
   MiniEventBuffer,
   parseGroupChildren,
@@ -171,7 +170,7 @@ export class MiniEvents {
         const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 3)
 
-        if (density <= 1.0 || childRelativeTime < parentSlotDuration) {
+        if (childRelativeTime < parentSlotDuration) {
           // Propagate a "virtual cycle" that advances with the group's density and per-pass
           // repetition, so nested groups with density < 1 can advance inside parent groups
           // with density > 1 (e.g. `[a b]/2` inside `[*2]`).
@@ -235,48 +234,59 @@ export class MiniEvents {
           if (randEvent < eventProb) break
         }
 
-        const shouldPlay: bool = (cycle + event.density) % (1.0 / event.density) < 1
-        if (!shouldPlay) break
+        // Same phase-drifting density scheduling used in evaluateGroup().
+        const density: f64 = event.density as f64
+        const invDensity: f64 = 1.0 / density
+        const phaseStart: f64 = fract(roundToDecimals(cycle * density, 6))
+        const slotDurationScaled: f64 = slotDuration * invDensity
+        const eventOffsetTime: f64 = eventOffset * slotDuration
 
-        const durationDividedByDensity: f64 = slotDuration / event.density
-        const validSlotDuration = slotDuration - (slotDuration / 8.0)
-        let startTime: f64 = floorToFactor(fract(cycle + (cycle % 2 === 0 ? 0.000001 : 0)) % durationDividedByDensity,
-          8)
-        startTime = fract(startTime)
+        const normalizedPosition: f64 = 0.0
+        let delta: f64 = normalizedPosition - phaseStart
+        if (delta < 0.0) delta += 1.0
 
-        while (startTime < validSlotDuration) {
-          // emit one voice per value to support chords
-          for (let vi: i32 = 0; vi < valueCount; vi++) {
-            const rawValue = event.getValue(vi)
-            if (rawValue <= 0.0) continue
+        let pass: i32 = 0
+        while (true) {
+          const passF: f64 = pass as f64
+          if (delta + passF >= density) break
 
-            // apply group.strum as time spread across chord voices within the slot
-            let strumOffset: f64 = 0.0
-            if (strum > 0.0 && valueCount > 1) {
-              const position: f64 = f64(vi) / f64(valueCount - 1) // 0..1 across chord
-              const strumSpan: f64 = slotDuration * (strum > 1.0 ? 1.0 : strum)
-              strumOffset = position * strumSpan
+          const startTime: f64 = (delta + passF) * invDensity * slotDuration
+          const eventRelativeTime: f64 = roundToDecimals(startTime + eventOffsetTime, 3)
+
+          if (eventRelativeTime < slotDuration) {
+            // emit one voice per value to support chords
+            for (let vi: i32 = 0; vi < valueCount; vi++) {
+              const rawValue = event.getValue(vi)
+              if (rawValue <= 0.0) continue
+
+              // apply strum as time spread across chord voices within the slot
+              let strumOffset: f64 = 0.0
+              if (strum > 0.0 && valueCount > 1) {
+                const position: f64 = f64(vi) / f64(valueCount - 1) // 0..1 across chord
+                const strumSpan: f64 = slotDuration * (strum > 1.0 ? 1.0 : strum)
+                strumOffset = position * strumSpan
+              }
+
+              // Apply jitter as a symmetric random offset within the slot duration.
+              // Jitter amount is interpreted as a fraction of the slot duration; group jitter
+              // accumulates with event jitter.
+              let jitterOffset: f64 = 0.0
+              if (eventJitter !== 0.0) {
+                const eventIndex: i32 = reader.getOpIndex(opOffset)
+                const r: f64 = seededRandom01(this.randomSeed, cycle, eventIndex, vi) // 0..1
+                jitterOffset = (r - 0.5) * 2.0 * eventJitter * slotDuration
+              }
+
+              emitter.emit(
+                opOffset,
+                groupVelocity,
+                groupStartTime + relativeTime + eventRelativeTime + strumOffset + jitterOffset,
+                slotDurationScaled,
+                vi,
+              )
             }
-
-            // Apply jitter as a symmetric random offset within the slot duration.
-            // Jitter amount is interpreted as a fraction of the slot duration; group jitter
-            // accumulates with event jitter.
-            let jitterOffset: f64 = 0.0
-            if (eventJitter !== 0.0) {
-              const eventIndex: i32 = reader.getOpIndex(opOffset)
-              const r: f64 = seededRandom01(this.randomSeed, cycle, eventIndex, vi) // 0..1
-              jitterOffset = (r - 0.5) * 2.0 * eventJitter * slotDuration
-            }
-
-            emitter.emit(
-              opOffset,
-              groupVelocity,
-              groupStartTime + relativeTime + startTime + strumOffset + eventOffset * slotDuration + jitterOffset,
-              durationDividedByDensity,
-              vi,
-            )
           }
-          startTime += durationDividedByDensity
+          pass++
         }
 
         break
