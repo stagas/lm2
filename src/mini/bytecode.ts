@@ -1,5 +1,5 @@
 import { MAX_EVENT_VALUES, MINI_HEADER_SIZE, OP_EVENT, OP_EVENT_BASE_SIZE, OP_GROUP_END, OP_GROUP_END_SIZE,
-  OP_GROUP_START, OP_GROUP_START_SIZE, OP_OCTAVE, OP_OCTAVE_SIZE, OP_REST, OP_REST_SIZE } from '../../as/assembly/constants.ts'
+  OP_GROUP_START, OP_GROUP_START_SIZE, OP_OCTAVE, OP_OCTAVE_SIZE, OP_REST, OP_REST_SIZE, OP_TRANSPOSE, OP_TRANSPOSE_SIZE } from '../../as/assembly/constants.ts'
 import type { Modifiers, NodeSource } from './tokenizer.ts'
 
 export interface MiniSourceMapEntry {
@@ -110,4 +110,15 @@ export function writeOctaveOp(
   buffer[base + 0] = OP_OCTAVE
   buffer[base + 1] = delta
   return OP_OCTAVE_SIZE
+}
+
+export function writeTransposeOp(
+  buffer: Float32Array,
+  offset: number,
+  delta: number,
+): number {
+  const base = MINI_HEADER_SIZE + offset
+  buffer[base + 0] = OP_TRANSPOSE
+  buffer[base + 1] = delta
+  return OP_TRANSPOSE_SIZE
 }

@@ -4,7 +4,7 @@ import {
   OP_GROUP_END,
   OP_GROUP_START,
 } from '../constants'
-import { EventOp, getOpcode, GroupEndOp, GroupStartOp, OctaveOp, skipOp } from './ops'
+import { EventOp, getOpcode, GroupEndOp, GroupStartOp, OctaveOp, skipOp, TransposeOp } from './ops'
 
 export class MiniEvent {
   opIndex: i32 = 0
@@ -175,6 +175,10 @@ export class BytecodeReader {
 
   getOctave(offset: i32): OctaveOp {
     return OctaveOp.at(this.array$, offset)
+  }
+
+  getTranspose(offset: i32): TransposeOp {
+    return TransposeOp.at(this.array$, offset)
   }
 
   getOpIndex(offset: i32): i32 {

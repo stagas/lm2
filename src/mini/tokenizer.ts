@@ -1,6 +1,6 @@
 import { midiToFrequency, noteNameToMidi } from './note-utils.ts'
 
-type NodeType = 'event' | 'rest' | 'group' | 'octave'
+type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose'
 
 export interface Modifiers {
   velocity: number
@@ -29,7 +29,7 @@ export interface NodeSource {
 
 export interface Node {
   type: NodeType
-  values: number[] // empty for rest/group, [delta] for octave
+  values: number[] // empty for rest/group, [delta] for octave/transpose
   children: Node[]
   modifiers: Modifiers
   angle: boolean
@@ -346,11 +346,15 @@ function parseGroupedTokenText(
   return { inner, modText }
 }
 
-function parseOctaveDelta(tokens: Token[]): number {
-  const raw = tokens[1]?.text
+function parseDeltaToken(token: Token | undefined): number {
+  const raw = token?.text
   if (!raw) return 0
   const v = parseFloat(raw)
   return Number.isFinite(v) ? v : 0
+}
+
+function parseOctaveDelta(tokens: Token[]): number {
+  return parseDeltaToken(tokens[1])
 }
 
 function scaleTokensToNodes(
@@ -360,13 +364,30 @@ function scaleTokensToNodes(
 ): Node[] {
   const nodes: Node[] = []
 
-  for (const token of tokens) {
+  for (let ti = 0; ti < tokens.length; ti++) {
+    const token = tokens[ti]!
     const raw = token.text
     const first = raw[0]!
 
     if (first === '_') {
       const last = nodes.at(-1)
       if (last) last.modifiers.elongate += 1
+      continue
+    }
+
+    if (raw === 'octave' || raw === 'transpose') {
+      const next = tokens[ti + 1]
+      const delta = parseDeltaToken(next)
+      const end = next?.end ?? token.end
+      nodes.push({
+        type: raw === 'octave' ? 'octave' : 'transpose',
+        angle: false,
+        values: [delta],
+        children: [],
+        modifiers: getDefaultMods(),
+        source: makeSource(input, token.start, end),
+      })
+      if (next) ti++
       continue
     }
 
@@ -398,6 +419,17 @@ function scaleTokensToNodes(
             type: 'octave',
             angle: false,
             values: [parseOctaveDelta(adjustedInnerTokens)],
+            children: [],
+            modifiers: getDefaultMods(),
+            source: makeSource(input, token.start, token.end),
+          })
+          continue
+        }
+        if (innerHead === 'transpose') {
+          nodes.push({
+            type: 'transpose',
+            angle: false,
+            values: [parseDeltaToken(adjustedInnerTokens[1])],
             children: [],
             modifiers: getDefaultMods(),
             source: makeSource(input, token.start, token.end),
@@ -507,13 +539,30 @@ function parseScaleCall(tokens: Token[], input: string): Node[] {
 
 export function tokensToNodes(tokens: Token[], input: string): Node[] {
   const nodes: Node[] = []
-  for (const token of tokens) {
+  for (let ti = 0; ti < tokens.length; ti++) {
+    const token = tokens[ti]!
     const raw = token.text
     const first = raw[0]!
 
     if (first === '_') {
       const last = nodes.at(-1)
       if (last) last.modifiers.elongate += 1
+      continue
+    }
+
+    if (raw === 'octave' || raw === 'transpose') {
+      const next = tokens[ti + 1]
+      const delta = parseDeltaToken(next)
+      const end = next?.end ?? token.end
+      nodes.push({
+        type: raw === 'octave' ? 'octave' : 'transpose',
+        angle: false,
+        values: [delta],
+        children: [],
+        modifiers: getDefaultMods(),
+        source: makeSource(input, token.start, end),
+      })
+      if (next) ti++
       continue
     }
 
@@ -566,6 +615,17 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
           type: 'octave',
           angle: false,
           values: [parseOctaveDelta(adjustedInnerTokens)],
+          children: [],
+          modifiers: getDefaultMods(),
+          source: makeSource(input, token.start, token.end),
+        })
+        continue
+      }
+      if (head === 'transpose') {
+        nodes.push({
+          type: 'transpose',
+          angle: false,
+          values: [parseDeltaToken(adjustedInnerTokens[1])],
           children: [],
           modifiers: getDefaultMods(),
           source: makeSource(input, token.start, token.end),

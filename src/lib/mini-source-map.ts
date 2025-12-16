@@ -1,4 +1,4 @@
-import { MINI_HEADER_SIZE, OP_EVENT_BASE_SIZE, OP_GROUP_END_SIZE, OP_GROUP_START_SIZE, OP_REST_SIZE } from '../../as/assembly/constants.ts'
+import { OP_EVENT_BASE_SIZE, OP_GROUP_END_SIZE, OP_GROUP_START_SIZE, OP_OCTAVE_SIZE, OP_REST_SIZE, OP_TRANSPOSE_SIZE } from '../../as/assembly/constants.ts'
 import type { Node } from '../mini/tokenizer.ts'
 import { getDefaultMods } from '../mini/tokenizer.ts'
 
@@ -28,6 +28,12 @@ function buildSourceMapFromNodes(
     }
     else if (node.type === 'rest') {
       currentOffset += OP_REST_SIZE
+    }
+    else if (node.type === 'octave') {
+      currentOffset += OP_OCTAVE_SIZE
+    }
+    else if (node.type === 'transpose') {
+      currentOffset += OP_TRANSPOSE_SIZE
     }
     else if (node.type === 'group') {
       currentOffset += OP_GROUP_START_SIZE

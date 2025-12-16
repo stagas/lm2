@@ -4,6 +4,7 @@ import {
   OP_EVENT,
   OP_GROUP_START,
   OP_OCTAVE,
+  OP_TRANSPOSE,
 } from '../constants'
 import { GroupStartOp } from './ops'
 import {
@@ -134,7 +135,8 @@ export class MiniEvents {
     let count: i32 = 0
     for (let i: i32 = 0; i < buffer.length; i++) {
       const off = buffer.get(i)
-      if (reader.getOpcode(off) !== OP_OCTAVE) count++
+      const opcode = reader.getOpcode(off)
+      if (opcode !== OP_OCTAVE && opcode !== OP_TRANSPOSE) count++
     }
     return count
   }
@@ -314,7 +316,7 @@ export class MiniEvents {
           }
         }
 
-        if (opcode !== OP_OCTAVE) timedIndex++
+        if (opcode !== OP_OCTAVE && opcode !== OP_TRANSPOSE) timedIndex++
       }
 
       if (!scheduled) break
@@ -466,6 +468,12 @@ export class MiniEvents {
       case OP_OCTAVE: {
         const op = reader.getOctave(opOffset)
         pitch *= this.pow2(op.delta as f64)
+        break
+      }
+
+      case OP_TRANSPOSE: {
+        const op = reader.getTranspose(opOffset)
+        pitch *= this.pow2((op.delta as f64) / 12.0)
         break
       }
 
