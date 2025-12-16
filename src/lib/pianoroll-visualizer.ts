@@ -32,7 +32,7 @@ export function createPianorollVisualization(
   const MIN_MIDI = 0
   const MAX_MIDI = 127
 
-  const SCROLL_SMOOTHING = 0.2
+  const SCROLL_SMOOTHING = 0.18
 
   const PIXELS_PER_SECOND = width / TIME_WINDOW_SECONDS
 
