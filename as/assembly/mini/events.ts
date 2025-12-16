@@ -14,6 +14,7 @@ import {
   fract,
   MiniEventBuffer,
   parseGroupChildren,
+  roundToDecimals,
   seededRandom01,
 } from './util'
 
@@ -145,56 +146,39 @@ export class MiniEvents {
       return findGroupEnd(reader.array$, opOffset, reader.opEnd)
     }
 
-    // density < 1 stretches the phrase across multiple cycles.
-    // We advance through the phrase by `density` each cycle, so the phrase
-    // restarts only when that phase wraps (e.g. density=2/3 repeats every 1.5 cycles).
+    // density controls the playback speed of the phrase across cycles.
+    // For density < 1, the phrase spans multiple cycles; for density > 1, the phrase repeats
+    // within a cycle. In both cases, a fractional density must advance the start phase each
+    // cycle so the pattern drifts instead of restarting.
     const density: f64 = group.density as f64
     const invDensity: f64 = 1.0 / density
-    const phaseStart: f64 = density < 1.0 ? fract(cycle * density) : 0.0
+    const phaseStart: f64 = fract(roundToDecimals(cycle * density, 6))
+    const slotDurationScaled: f64 = slotDuration * invDensity
+    const groupOffsetTime: f64 = groupOffset * parentSlotDuration
 
-    let didAllPlay: bool = true
-    const repeatStep: f64 = density > 1.0 ? parentSlotDuration * invDensity : 0.0
+    for (let i: f64 = 0; i < childrenLength; i++) {
+      const childOpOffset = childOpsBuffer.get(i32(i))
+      const normalizedPosition: f64 = i / childrenLength // position in [0, 1)
 
-    let pass: i32 = 0
-    while (true) {
-      const offset: f64 = pass === 0 ? 0.0 : f64(pass) * repeatStep
+      let delta: f64 = normalizedPosition - phaseStart
+      if (delta < 0.0) delta += 1.0
 
-      if (pass > 0) {
-        if (!didAllPlay || repeatStep <= 0.0 || offset >= parentSlotDuration) break
-      }
+      let pass: i32 = 0
+      while (true) {
+        const passF: f64 = pass as f64
+        if (delta + passF >= density) break
 
-      for (let i: f64 = 0; i < childrenLength; i++) {
-        const childOpOffset = childOpsBuffer.get(i32(i))
-        const opcode = reader.getOpcode(childOpOffset)
+        const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
+        const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 3)
 
-        const normalizedPosition = i / childrenLength // position in [0, 1)
-        let childPhase: f64 = normalizedPosition
-
-        if (density < 1.0) {
-          let delta: f64 = childPhase - phaseStart
-          if (delta < 0.0) delta += 1.0
-          if (pass === 0 && delta >= density) {
-            didAllPlay = false
-            continue
-          }
-          childPhase = delta / density
-        }
-        else {
-          childPhase = fract(childPhase / density)
-        }
-
-        // phase child start within parent slot over cycles to distribute across time
-        const startTime: f64 = childPhase * parentSlotDuration
-        const childRelativeTime: f64 = startTime + offset + groupOffset * parentSlotDuration
-        const validSlotDuration = parentSlotDuration - (parentSlotDuration / 8.0)
-        if (childRelativeTime < validSlotDuration) {
+        if (density <= 1.0 || childRelativeTime < parentSlotDuration) {
           this.processChild(
             reader,
             childOpOffset,
             groupStartTime,
             childRelativeTime,
-            slotDuration / density,
-            cycle,
+            slotDurationScaled,
+            Math.floor(cycle * group.density),
             cycleStartSample,
             cycleSamples,
             groupVelocity,
@@ -203,10 +187,9 @@ export class MiniEvents {
             depth,
           )
         }
-      }
 
-      if (repeatStep <= 0.0) break
-      pass++
+        pass++
+      }
     }
 
     return findGroupEnd(reader.array$, opOffset, reader.opEnd)
