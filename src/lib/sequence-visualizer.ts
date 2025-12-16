@@ -69,8 +69,6 @@ export function createSequenceVisualization(
   let fadingScaleOpIndex: number | null = null
   let fadingScaleFromSample: number | null = null
   let lastSampleCount: number | null = null
-  let lastSampleChangeAtMs = 0
-  const STOP_TIMEOUT_MS = 120
 
   function clearActiveControls(): void {
     activeOctaveOpIndex = null
