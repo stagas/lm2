@@ -41,8 +41,8 @@ export function createPianorollVisualization(
 
   // Track display range state
   let isInitialState = true
-  let lastDisplayMinMidi = 48 // C3
-  let lastDisplayMaxMidi = 72 // C5 (2 octaves centered on C4)
+  let lastDisplayMinMidi = 54 // Default span as if C4 note was present (F#3)
+  let lastDisplayMaxMidi = 66 // Default span as if C4 note was present (F#4)
 
   const draw = () => {
     c.clearRect(0, 0, width, height)
@@ -133,8 +133,8 @@ export function createPianorollVisualization(
       const maxActive = Math.max(...activeMidis)
 
       // Ensure display bounds are always integral MIDI values
-      displayMinMidi = Math.max(MIN_MIDI, minActive - 2)
-      displayMaxMidi = Math.min(MAX_MIDI, maxActive + 2)
+      displayMinMidi = Math.max(MIN_MIDI, minActive)
+      displayMaxMidi = Math.min(MAX_MIDI, maxActive)
 
       if (displayMaxMidi - displayMinMidi < 11) {
         const center = Math.round((displayMinMidi + displayMaxMidi) / 2)
@@ -148,10 +148,10 @@ export function createPianorollVisualization(
       isInitialState = false
     }
     else {
-      // Use last range if we've seen events before, otherwise use initial 2-octave range
+      // Use last range if we've seen events before, otherwise use default span as if C4 note was present
       if (isInitialState) {
-        displayMinMidi = 48 // C3
-        displayMaxMidi = 72 // C5
+        displayMinMidi = 54 // F#3
+        displayMaxMidi = 66 // F#4
       }
       else {
         displayMinMidi = lastDisplayMinMidi
