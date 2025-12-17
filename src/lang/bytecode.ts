@@ -343,7 +343,7 @@ class Compiler {
       case 'pipe_value': {
         const name = this.pipe[this.pipe.length - 1]
         if (!name) {
-          this.err(expr.loc, 'Pipe value \'%\' is only valid on the right side of a pipe')
+          this.err(expr.loc, 'Pipe value \'$\' is only valid on the right side of a pipe')
           this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
           return
         }
@@ -557,7 +557,7 @@ class Compiler {
 
   private compileBinary(expr: BinaryExpr): void {
     if (expr.op === '|>') {
-      const temp = `%pipe${this.pipe.length}`
+      const temp = `$pipe${this.pipe.length}`
       this.compileExpr(expr.left)
       this.emit({ op: 'STORE', name: this.nameConst(temp) })
       this.emit({ op: 'POP' })
