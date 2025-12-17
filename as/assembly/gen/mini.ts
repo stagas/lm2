@@ -72,7 +72,10 @@ export class Mini extends Gen {
   private voiceCursor: i32 = 0
   private rng: MiniRng = new MiniRng()
   private lastBytecode$: usize = 0
+  private lastHistory$: usize = 0
   private lastVersion: i32 = -1
+  // Sample position up to which the history has been generated (exclusive).
+  private historyGeneratedUntilSample: i32 = 0
   private eventEmitter: MiniEvents = new MiniEvents()
   private eventBuffer: MiniEventBuffer = new MiniEventBuffer()
   private scratchHistory: StaticArray<f32> = new StaticArray<f32>(
@@ -90,7 +93,9 @@ export class Mini extends Gen {
   reset(): void {
     this.voiceCursor = 0
     this.lastBytecode$ = 0
+    this.lastHistory$ = 0
     this.lastVersion = -1
+    this.historyGeneratedUntilSample = 0
     this.resetVoiceMaps()
     for (let i = 0; i < SEQ_VOICES; i++) {
       const voice = this.voices[i]
@@ -114,6 +119,9 @@ export class Mini extends Gen {
     this.outVoiceCount$ = src.outVoiceCount$
     this.voiceCursor = src.voiceCursor
     this.lastBytecode$ = src.lastBytecode$
+    this.lastHistory$ = src.lastHistory$
+    this.lastVersion = src.lastVersion
+    this.historyGeneratedUntilSample = src.historyGeneratedUntilSample
 
     for (let i = 0; i < SEQ_VOICES; i++) {
       this.outTrig$[i] = src.outTrig$[i]
@@ -123,7 +131,7 @@ export class Mini extends Gen {
       this.voiceEventIndex[i] = src.voiceEventIndex[i]
     }
 
-    for (let i = 0; i < ARRAY_SIZE; i++) {
+    for (let i = 0; i < ARRAY_SIZE * MAX_EVENT_VALUES; i++) {
       this.eventVoices[i] = src.eventVoices[i]
     }
 
@@ -257,15 +265,6 @@ export class Mini extends Gen {
     }
   }
 
-  private findSlotForEvent(
-    historyWritePos: i32,
-  ): i32 {
-    // After defragmentation, simply write sequentially from writePos
-    // If we reach the end, wrap around to 0
-    const slotIndex = historyWritePos % HISTORY_SIZE
-    return HISTORY_DATA_OFFSET + slotIndex * HISTORY_ENTRY_SIZE
-  }
-
   generateHistory(): void {
     if (this.bytecode$ === 0 || this.history$ === 0) return
 
@@ -277,7 +276,6 @@ export class Mini extends Gen {
 
     const windowStart = globalSampleCount
 
-    // Generate events for current window and future windows (lookahead)
     const cycleLength = 1.0 as f32
     const secondsPerBeat = 60.0 / bpm
     const cycleSeconds = cycleLength * secondsPerBeat
@@ -285,48 +283,56 @@ export class Mini extends Gen {
     if (cycleSamples <= 0.0) return
     const lookAheadSamples = i32(<f32> FUTURE_SECONDS * sampleRate)
 
-    // Limit generation to visible window: from windowStart to windowStart + FUTURE_SECONDS
-    // Don't generate beyond what the visualizer needs
-    const targetEndSample = windowStart + lookAheadSamples
-
-    const currentCycle = i32(Mathf.floor(f32((windowStart as f32) / cycleSamples)))
-
-    // Check for bytecode changes by comparing version
     const currentVersion = i32(bytecodeArray[3])
-    let startCycle = currentCycle
+    // If the history buffer pointer changes, reset our generation cursor.
+    if (this.history$ !== this.lastHistory$) {
+      this.lastHistory$ = this.history$
+      this.lastVersion = -1
+      this.historyGeneratedUntilSample = 0
+      memory.fill(changetype<usize>(historyArray), 0, (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4)
+    }
+
+    // The "desired" end is the visible lookahead. We generate in larger chunks so we don't do work
+    // on every audio block.
+    const desiredEndSample = windowStart + lookAheadSamples
+
+    // Version changes: rewrite forward from "now" (keep fully past entries for the visualizer, clear overlap).
     if (currentVersion !== this.lastVersion) {
       this.lastVersion = currentVersion
       this.resetVoiceMaps()
-
-      // When the bytecode changes, regenerate from one full cycle in the past so strums/holds that
-      // began earlier can be re-materialized. Keep already-played notes for the visualizer.
-      startCycle = currentCycle - 1
-      if (startCycle < 0) startCycle = 0
-
-      // Defragment history buffer: keep fully past events, clear anything overlapping "now",
-      // then set writePos for clean writing ahead.
       this.defragmentHistory(historyArray, windowStart, true)
+      this.historyGeneratedUntilSample = windowStart
     }
 
-    // Get history buffer info
+    // First fill: generate up to the full visible window (including the visible past).
+    if (this.historyGeneratedUntilSample === 0) {
+      const visualizerStart = windowStart - i32(<f32> PAST_SECONDS * sampleRate)
+      this.historyGeneratedUntilSample = visualizerStart > 0 ? visualizerStart : 0
+    }
+
+    if (this.historyGeneratedUntilSample >= desiredEndSample) return
+
+    // Generate a bit beyond the visible window so subsequent blocks don't need to top-up immediately.
+    const chunkSamples = i32(cycleSamples)
+    const sliceStart = this.historyGeneratedUntilSample
+    const sliceEnd = desiredEndSample + (chunkSamples > 0 ? chunkSamples : 0)
+    if (sliceEnd <= sliceStart) return
+
+    // Determine cycle range to evaluate. We look back a couple cycles to catch events whose start time
+    // is shifted forward (e.g. strum/jitter) into the new slice.
+    const startCycle0 = i32(Mathf.floor(f32((sliceStart as f32) / cycleSamples))) - 2
+    const startCycle = startCycle0 > 0 ? startCycle0 : 0
+    const endCycle = i32(Mathf.ceil(f32((sliceEnd as f32) / cycleSamples))) + 1
+
     let historyWritePos = i32(historyArray[HISTORY_WRITE_POS_OFFSET])
 
-    const opStart = bytecodeBase + MINI_HEADER_SIZE
-
-    // Generate events for the visible window only (windowStart to windowStart + FUTURE_SECONDS)
-    const endCycle = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamples)))
-
-    // Generate and write events to history buffer
-    // Stop if we've written too many events (leave some space)
     const maxEventsToWrite = HISTORY_SIZE
     let eventsWritten = 0
 
     for (let cycle = startCycle; cycle <= endCycle; cycle++) {
-      // Stop if we've written too many events
       if (eventsWritten >= maxEventsToWrite) break
 
       const cycleStartSample = i32(cycleSamples * (cycle as f32))
-
       this.eventBuffer.clear()
       this.eventEmitter.emitEvents(
         this.bytecode$,
@@ -334,51 +340,18 @@ export class Mini extends Gen {
         cycleStartSample,
         cycleLength,
         cycleSamples,
-        windowStart,
-        targetEndSample,
+        sliceStart,
+        sliceEnd,
       )
 
-      // Write events to history buffer
       for (let i = 0; i < this.eventBuffer.writePos; i++) {
+        if (eventsWritten >= maxEventsToWrite) break
         const event = this.eventBuffer.events[i]
         if (!event) continue
         if (event.opIndex < 0) continue
         if (event.value <= 0) continue
 
-        // Check if this event already exists (same opIndex, voiceIndex, startSample and value)
-        // Search backwards from writePos, but limit search to recent events to avoid duplicates
-        let alreadyExists = false
-        for (let n = 0; n < HISTORY_SIZE; n++) {
-          const checkPos = (historyWritePos - 1 - n + HISTORY_SIZE) % HISTORY_SIZE
-          const checkIdx = HISTORY_DATA_OFFSET + checkPos * HISTORY_ENTRY_SIZE
-          const existingOpIndex = i32(historyArray[checkIdx])
-          const existingVoiceIndex = i32(historyArray[checkIdx + 1])
-          const existingValue = historyArray[checkIdx + 2]
-          const existingStartSample = i32(historyArray[checkIdx + 4])
-          const existingEndSample = i32(historyArray[checkIdx + 5])
-
-          // Skip invalid entries
-          if (existingEndSample === 0) continue
-
-          // If we find the same event (same opIndex, voiceIndex, startSample and value), skip writing
-          if (
-            existingOpIndex === event.opIndex
-            && existingVoiceIndex === event.voiceIndex
-            && existingStartSample === event.startSample
-            && existingValue === event.value
-          ) {
-            alreadyExists = true
-            break
-          }
-        }
-
-        if (alreadyExists) continue
-
-        // Get next slot (sequentially, wraps around)
-        const slotToUse = this.findSlotForEvent(historyWritePos)
-        const slotIndex = (slotToUse - HISTORY_DATA_OFFSET) / HISTORY_ENTRY_SIZE
-
-        // Write the event
+        const slotIndex = historyWritePos % HISTORY_SIZE
         const historyIdx = HISTORY_DATA_OFFSET + slotIndex * HISTORY_ENTRY_SIZE
         historyArray[historyIdx] = event.opIndex as f32
         historyArray[historyIdx + 1] = event.voiceIndex as f32
@@ -387,20 +360,13 @@ export class Mini extends Gen {
         historyArray[historyIdx + 4] = event.startSample as f32
         historyArray[historyIdx + 5] = event.endSample as f32
 
-        // Advance write position (wraps around)
-        historyWritePos = (slotIndex + 1) % HISTORY_SIZE
+        historyWritePos = (historyWritePos + 1) % HISTORY_SIZE
         eventsWritten++
-
-        // Stop if we've written too many events
-        if (eventsWritten >= maxEventsToWrite) break
       }
-
-      // Stop outer loop if we've written too many events
-      if (eventsWritten >= maxEventsToWrite) break
     }
 
-    // Update history write position
     historyArray[HISTORY_WRITE_POS_OFFSET] = historyWritePos as f32
+    this.historyGeneratedUntilSample = sliceEnd
   }
 
   private processAudio(length: i32): void {

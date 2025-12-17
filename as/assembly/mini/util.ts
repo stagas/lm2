@@ -262,7 +262,8 @@ export class EventEmitter {
 
     if (value <= 0.0) return
 
-    if (endSample > this.windowStart && startSample < this.windowEnd) {
+    // History generation is incremental; only write events whose startSample falls in the requested window.
+    if (startSample >= this.windowStart && startSample < this.windowEnd) {
       this.buffer!.write(
         this.reader.getOpIndex(opOffset),
         voiceIndex,
