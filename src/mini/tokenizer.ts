@@ -300,6 +300,10 @@ function parseValues(valueText: string): number[] {
   const values: number[] = []
   let cursor = 0
   while (cursor < valueText.length) {
+    // Skip separators (commas and whitespace)
+    while (cursor < valueText.length && (valueText[cursor] === ',' || /\s/.test(valueText[cursor]!))) cursor++
+    if (cursor >= valueText.length) break
+
     const rest = valueText.slice(cursor)
     const noteMatch = rest.match(/^([a-gA-G][#b]?)(-?\d+)/)
     if (noteMatch) {
@@ -315,7 +319,9 @@ function parseValues(valueText: string): number[] {
       cursor += numMatch[0]!.length
       continue
     }
-    break
+
+    // If we encounter an unexpected character, skip it to avoid infinite loop
+    cursor++
   }
   return values
 }
@@ -700,9 +706,10 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       continue
     }
 
-    if (/^\d+$/.test(valueText)) {
-      const degree = parseInt(valueText, 10)
-      const values = [-degree]
+    // Support comma-separated numeric degrees like "1,3,5"
+    if (/^\d+(?:,\d+)*$/.test(valueText)) {
+      const parts = valueText.split(',').filter(Boolean)
+      const values = parts.map(p => -parseInt(p, 10))
       const modifiers = parseModifiers(mods)
       nodes.push({
         type: 'event',

@@ -16,8 +16,9 @@ import {
   RING_BUFFER_SIZE,
 } from '../../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from '../assembly.ts'
+import type { MiniSequenceRef } from '../bytecode.ts'
 import { encodeLangToVmOps } from '../bytecode.ts'
-import { buildMiniSourceMap } from '../lib/mini-source-map.ts'
+import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
 import { ControlOp } from '../worklet-shared.ts'
 import type { DspProcessor } from '../worklet.ts'
@@ -37,7 +38,7 @@ export type VmHistory = {
 export type Program = Awaited<ReturnType<typeof createProgram>>
 export type ProgramDataView = ReturnType<typeof createProgramDataView>
 
-async function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataView) {
+function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataView): Map<number, SourceLocation> {
   const compiled = compileMiniNotation(sequence)
   const target = data.arrays[arrayIndex]
 
@@ -53,16 +54,20 @@ async function updateSequence(sequence: string, arrayIndex: number, data: Progra
   const currentVersion = target.raw[3] || 0
   target.raw[3] = currentVersion + 1
 
-  const sourceMap = buildMiniSourceMap(compiled.nodes, target.raw)
+  return buildMiniSourceMap(compiled.nodes, target.raw)
 }
 
-function buildProgram(data: ProgramDataView, dspSource: string): string[] {
-  const { errors, miniSequences } = encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
+function buildProgram(
+  data: ProgramDataView,
+  dspSource: string,
+): { sequences: string[]; miniRefs: MiniSequenceRef[] }
+{
+  const { errors, miniSequences, miniRefs } = encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
   }
-  return miniSequences ?? []
+  return { sequences: miniSequences ?? [], miniRefs: miniRefs ?? [] }
 }
 
 type CompileOptions = {
@@ -81,6 +86,8 @@ export type ProgramBuildDiff = {
 
 export type ProgramBuildResult = {
   sequences: string[]
+  miniRefs: MiniSequenceRef[]
+  miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   data: ProgramDataView
   diff: ProgramBuildDiff
   previousData?: ProgramDataView
@@ -259,7 +266,8 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const sequences = buildProgram(newData, source)
+        const { sequences, miniRefs } = buildProgram(newData, source)
+        const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
 
         await this.acquireLock()
         try {
@@ -272,7 +280,7 @@ async function createProgram(
               newData.arrays[arrayIndex].raw[3] = oldArray.raw[3]
             }
 
-            updateSequence(sequence, arrayIndex, newData)
+            miniSourceMaps[arrayIndex] = updateSequence(sequence, arrayIndex, newData)
           }
 
           if (setData) {
@@ -291,6 +299,8 @@ async function createProgram(
         const diff = computeProgramDiff(referenceData, newData)
         return {
           sequences,
+          miniRefs,
+          miniSourceMaps,
           data: newData,
           diff,
           previousData: referenceData,

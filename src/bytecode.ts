@@ -1,6 +1,6 @@
 import { OPS_COUNT, SEQ_VOICES } from '../as/assembly/constants.ts'
 import { Op, SeqOp } from '../as/assembly/shared.ts'
-import type { Program } from './lang/ast.ts'
+import type { Loc, Program } from './lang/ast.ts'
 import { type LangError, lineText } from './lang/errors.ts'
 import { analyze } from './lang/pipeline.ts'
 
@@ -111,31 +111,75 @@ function binaryCode(opName: string): VmBinary | null {
   return null
 }
 
-function extractMiniSequencesFromProgram(program: Program): string[] {
+export type MiniSequenceRef = {
+  seqIndex: number
+  sequence: string
+  /** Absolute start index (0-based) of the string content (excluding quotes) in the DSP source. */
+  start: number
+  /** Absolute end index (0-based, exclusive) of the string content (excluding quotes) in the DSP source. */
+  end: number
+  /** Location of the full string token (including quotes). */
+  loc: Loc
+}
+
+function buildLineStarts(src: string): number[] {
+  const starts = [0]
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === '\n') starts.push(i + 1)
+  }
+  return starts
+}
+
+function locToIndex(lineStarts: number[], loc: Pick<Loc, 'line' | 'column'>): number {
+  const lineStart = lineStarts[loc.line - 1] ?? 0
+  return lineStart + (loc.column - 1)
+}
+
+function extractMiniSequencesFromProgramWithRefs(src: string,
+  program: Program): { sequences: string[]; refs: MiniSequenceRef[] }
+{
   const sequences: string[] = []
+  const refs: MiniSequenceRef[] = []
   const sequenceToIndex = new Map<string, number>()
+  const lineStarts = buildLineStarts(src)
+
+  function ensureIndex(sequence: string): number {
+    const prev = sequenceToIndex.get(sequence)
+    if (prev !== undefined) return prev
+    const idx = sequences.length
+    sequences.push(sequence)
+    sequenceToIndex.set(sequence, idx)
+    return idx
+  }
+
+  function addRef(sequence: string, loc: Loc): void {
+    const seqIndex = ensureIndex(sequence)
+    const quoteStart = locToIndex(lineStarts, loc)
+    refs.push({
+      seqIndex,
+      sequence,
+      start: quoteStart + 1,
+      end: quoteStart + Math.max(0, loc.length - 1),
+      loc,
+    })
+  }
 
   function visitExpr(expr: any): void {
     if (!expr) return
 
     if (expr.kind === 'call') {
-      if (expr.callee.kind === 'ident' && expr.callee.name === 'mini') {
-        const firstArg = expr.args[0]
-        if (firstArg?.kind === 'pos' && firstArg.value.kind === 'string') {
-          const sequence = firstArg.value.value
-          if (!sequenceToIndex.has(sequence)) {
-            const index = sequences.length
-            sequences.push(sequence)
-            sequenceToIndex.set(sequence, index)
-          }
+      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'mini') {
+        const firstArg = expr.args?.[0]
+        const v = firstArg?.kind === 'pos' ? firstArg.value : null
+        if (v?.kind === 'string') {
+          const sequence = String(v.value ?? '')
+          addRef(sequence, v.loc)
         }
       }
 
       visitExpr(expr.callee)
-      for (const arg of expr.args) {
-        if (arg.kind === 'pos' || arg.kind === 'named') {
-          visitExpr(arg.value)
-        }
+      for (const arg of expr.args ?? []) {
+        if (arg.kind === 'pos' || arg.kind === 'named') visitExpr(arg.value)
       }
       return
     }
@@ -158,18 +202,18 @@ function extractMiniSequencesFromProgram(program: Program): string[] {
     }
 
     if (expr.kind === 'array') {
-      for (const item of expr.items) visitExpr(item)
+      for (const item of expr.items ?? []) visitExpr(item)
       return
     }
 
     if (expr.kind === 'object') {
-      for (const prop of expr.props) visitExpr(prop.value)
+      for (const prop of expr.props ?? []) visitExpr(prop.value)
       return
     }
 
     if (expr.kind === 'if') {
       visitExpr(expr.test)
-      if (expr.then.kind === 'block') visitStmt(expr.then)
+      if (expr.then?.kind === 'block') visitStmt(expr.then)
       else visitExpr(expr.then)
       if (expr.else) {
         if (expr.else.kind === 'block') visitStmt(expr.else)
@@ -179,7 +223,7 @@ function extractMiniSequencesFromProgram(program: Program): string[] {
     }
 
     if (expr.kind === 'func') {
-      if (expr.body.kind === 'block') visitStmt(expr.body)
+      if (expr.body?.kind === 'block') visitStmt(expr.body)
       else visitExpr(expr.body)
       return
     }
@@ -194,18 +238,18 @@ function extractMiniSequencesFromProgram(program: Program): string[] {
     }
 
     if (stmt.kind === 'block') {
-      for (const s of stmt.body) visitStmt(s)
+      for (const s of stmt.body ?? []) visitStmt(s)
       return
     }
 
     if (stmt.kind === 'for') {
-      if (stmt.head.kind === 'c_style') {
+      if (stmt.head?.kind === 'c_style') {
         if (stmt.head.init) visitExpr(stmt.head.init)
         if (stmt.head.test) visitExpr(stmt.head.test)
         if (stmt.head.update) visitExpr(stmt.head.update)
       }
       else {
-        visitExpr(stmt.head.iterable)
+        visitExpr(stmt.head?.iterable)
       }
       visitStmt(stmt.body)
       return
@@ -219,9 +263,9 @@ function extractMiniSequencesFromProgram(program: Program): string[] {
 
     if (stmt.kind === 'switch') {
       visitExpr(stmt.test)
-      for (const c of stmt.cases) {
+      for (const c of stmt.cases ?? []) {
         if (c.test) visitExpr(c.test)
-        for (const s of c.body) visitStmt(s)
+        for (const s of c.body ?? []) visitStmt(s)
       }
       return
     }
@@ -233,7 +277,12 @@ function extractMiniSequencesFromProgram(program: Program): string[] {
       return
     }
 
-    if (stmt.kind === 'return' || stmt.kind === 'throw') {
+    if (stmt.kind === 'throw') {
+      visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'return') {
       if (stmt.value) visitExpr(stmt.value)
       return
     }
@@ -253,15 +302,18 @@ function extractMiniSequencesFromProgram(program: Program): string[] {
     visitStmt(stmt)
   }
 
-  return sequences
+  return { sequences, refs }
 }
 
-export function encodeLangToVmOps(src: string, target: VmTarget): { errors: LangError[]; miniSequences?: string[] } {
+export function encodeLangToVmOps(
+  src: string,
+  target: VmTarget,
+): { errors: LangError[]; miniSequences?: string[]; miniRefs?: MiniSequenceRef[] } {
   const a = analyze(src)
   const errors: LangError[] = [...a.errors]
   if (errors.length) return { errors }
 
-  const sequences = extractMiniSequencesFromProgram(a.program)
+  const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, a.program)
   const sequenceToIndex = new Map<string, number>()
   sequences.forEach((seq, idx) => sequenceToIndex.set(seq, idx))
 
@@ -555,5 +607,7 @@ export function encodeLangToVmOps(src: string, target: VmTarget): { errors: Lang
 
   target.ops[writePc++] = VmOp.End
 
-  return errors.length ? { errors, miniSequences: sequences } : { errors: [], miniSequences: sequences }
+  return errors.length
+    ? { errors, miniSequences: sequences, miniRefs: refs }
+    : { errors: [], miniSequences: sequences, miniRefs: refs }
 }

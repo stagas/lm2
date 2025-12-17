@@ -4,7 +4,9 @@ import {
   MAX_DSP_INSTANCES,
 } from '../../as/assembly/constants.ts'
 import { type Dsp, DspStruct } from '../assembly.ts'
+import type { MiniSequenceRef } from '../bytecode.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
+import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { ControlOp } from '../worklet-shared.ts'
 import workletUrl from '../worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
@@ -30,6 +32,8 @@ type EngineState = {
   programSwapStatus?: Int32Array<SharedArrayBuffer>
   prepareDsp?: Uint32Array<SharedArrayBuffer>
   sequences: string[]
+  miniRefs: MiniSequenceRef[]
+  miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   dspSource: string
   isInitialized: boolean
   isProgramReady: boolean
@@ -79,19 +83,23 @@ export const useEngineStore = create<EngineState>((set, get) => {
       })
 
       const sequences = primaryResult.sequences
+      const miniRefs = primaryResult.miniRefs
+      const miniSourceMaps = primaryResult.miniSourceMaps
 
       if (!primaryResult.diff.significantChange) {
         await primaryProgram.program.applyPreparedData(primaryResult.data)
         set({
           dspSource: source,
           sequences,
+          miniRefs,
+          miniSourceMaps,
           lastSuccessfulProgramData: primaryResult.data,
         })
         localStorage.setItem('engine2:dsp-source', source)
         return sequences
       }
 
-      await stagingProgram.program.compileSource(source, {
+      const stagingResult = await stagingProgram.program.compileSource(source, {
         apply: false,
         setData: true,
         compareAgainst: primaryResult.previousData,
@@ -129,6 +137,8 @@ export const useEngineStore = create<EngineState>((set, get) => {
       set({
         dspSource: source,
         sequences,
+        miniRefs: stagingResult.miniRefs,
+        miniSourceMaps: stagingResult.miniSourceMaps,
         ...swappedPrograms,
         lastSuccessfulProgramData: stagingProgram.program.data,
       })
@@ -179,6 +189,8 @@ export const useEngineStore = create<EngineState>((set, get) => {
   return {
     wasmDspPtr: 0,
     sequences: [...DEFAULT_SEQUENCES],
+    miniRefs: [],
+    miniSourceMaps: [],
     dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     isInitialized: false,
     isProgramReady: false,
@@ -225,6 +237,8 @@ export const useEngineStore = create<EngineState>((set, get) => {
         programSwapStatus: undefined,
         prepareDsp: undefined,
         lastSuccessfulProgramData: undefined,
+        miniRefs: [],
+        miniSourceMaps: [],
         isInitialized: false,
         isProgramReady: false,
         playbackState: 'stopped',
