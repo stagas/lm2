@@ -145,7 +145,7 @@ export function DspSourceEditor() {
           widgets={widgets}
           theme={theme}
           tokenizer={tokenizer}
-          isAnimating={showWidgets && playbackState === 'running'}
+          isAnimating={true}
           onBeforeDraw={onBeforeDraw}
         />
       </div>

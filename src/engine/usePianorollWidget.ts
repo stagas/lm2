@@ -11,6 +11,7 @@ import {
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { frequencyToMidi } from '../mini/util.ts'
 import type { ProgramInstance } from './program.ts'
+import { useEngineStore } from './store.ts'
 
 type PianorollNote = {
   midi: number
@@ -25,6 +26,12 @@ type PianorollState = {
   isInitial: boolean
   lastMinMidi: number
   lastMaxMidi: number
+  savedEvents?: Array<{
+    startSample: number
+    endSample: number
+    noteValue: number
+    velocity: number
+  }>
 }
 
 type UsePianorollParams = {
@@ -98,38 +105,57 @@ export function usePianorollWidget({
     const windowEndTime = st.timeSeconds + FUTURE_SECONDS
 
     const historyRaw = history.raw
-    const events: Array<{
+
+    // Decide whether to read the latest shared history buffer or reuse a saved snapshot.
+    // If the engine's prepareDspStatus exists and its first slot is non-zero,
+    // the worklet is not in the "ready to copy latest" state, so we should use our saved snapshot.
+    // Otherwise, copy the latest buffer into a snapshot we keep on the state.
+    const prepareStatus = useEngineStore.getState().prepareDspStatus
+    let events: Array<{
       startSample: number
       endSample: number
       noteValue: number
       velocity: number
     }> = []
 
-    for (let slot = 0; slot < HISTORY_SIZE; slot++) {
-      const idx = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
-      if (idx + 5 >= historyRaw.length) break
+    const shouldUseSaved = prepareStatus && Atomics.load(prepareStatus, 0) === 0 && Array.isArray(st.savedEvents)
+      && st.savedEvents!.length > 0
 
-      const voiceIndex = Math.floor(historyRaw[idx + 1])
-      const noteValue = historyRaw[idx + 2]
-      const velocity = historyRaw[idx + 3]
-      const startSample = Math.floor(historyRaw[idx + 4])
-      const endSample = Math.floor(historyRaw[idx + 5])
+    if (shouldUseSaved) {
+      // Use previously saved snapshot of events
+      events = st.savedEvents!.slice()
+    }
+    else {
+      // Build events from the latest history buffer and save a snapshot
+      for (let slot = 0; slot < HISTORY_SIZE; slot++) {
+        const idx = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
+        if (idx + 5 >= historyRaw.length) break
 
-      if (startSample === 0 && endSample === 0) continue
-      if (voiceIndex < 0) continue
-      if (noteValue <= 0) continue
+        const voiceIndex = Math.floor(historyRaw[idx + 1])
+        const noteValue = historyRaw[idx + 2]
+        const velocity = historyRaw[idx + 3]
+        const startSample = Math.floor(historyRaw[idx + 4])
+        const endSample = Math.floor(historyRaw[idx + 5])
 
-      const startTimeSeconds = startSample / sampleRate
-      const endTimeSeconds = endSample / sampleRate
+        if (startSample === 0 && endSample === 0) continue
+        if (voiceIndex < 0) continue
+        if (noteValue <= 0) continue
 
-      if (endTimeSeconds < windowStartTime || startTimeSeconds > windowEndTime) continue
+        const startTimeSeconds = startSample / sampleRate
+        const endTimeSeconds = endSample / sampleRate
 
-      events.push({
-        startSample,
-        endSample,
-        noteValue,
-        velocity,
-      })
+        if (endTimeSeconds < windowStartTime || startTimeSeconds > windowEndTime) continue
+
+        events.push({
+          startSample,
+          endSample,
+          noteValue,
+          velocity,
+        })
+      }
+
+      // Save a shallow copy of events so we can reuse it while the worklet is busy.
+      st.savedEvents = events.slice()
     }
 
     const preActive = new Set<number>()

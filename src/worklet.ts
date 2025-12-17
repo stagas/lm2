@@ -240,6 +240,9 @@ export class DspProcessor extends AudioWorkletProcessor {
     // Only respond to control changes
     if (control !== this.lastControl) {
       if (control === ControlOp.Start && this.state === 'stopped') {
+        const status = this.options.processorOptions.prepareDspStatus
+        Atomics.store(status, 0, 0)
+
         this.state = 'fade-in'
         this.shouldReset = false
       }
@@ -364,6 +367,8 @@ export class DspProcessor extends AudioWorkletProcessor {
         outputs[0][1][i] *= gain
       }
       this.state = 'running'
+      const status = this.options.processorOptions.prepareDspStatus
+      Atomics.store(status, 0, 1)
     }
     else if (this.state === 'fade-out') {
       for (let i = 0; i < CHUNK_SIZE; i++) {
