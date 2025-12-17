@@ -42,12 +42,14 @@ export function DspSourceEditor() {
   } = useEngineStore()
   const [localSource, setLocalSource] = useState(dspSource)
   const [error, setError] = useState<string>()
+  const [isApplying, setIsApplying] = useState(false)
   const theme = useTheme()
 
   const showWidgets = localSource === dspSource
-
+    || isApplying
   const handleApply = async () => {
     if (!isProgramReady) return
+    setIsApplying(true)
     try {
       setError(undefined)
       await updateDspSource(localSource)
@@ -55,12 +57,25 @@ export function DspSourceEditor() {
     }
     catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+      // If update failed, stop applying so widgets don't remain stuck.
+      requestAnimationFrame(() => {
+        setIsApplying(false)
+      })
     }
   }
 
   useEffect(() => {
     handleApply()
   }, [localSource, isProgramReady])
+
+  // Clear `isApplying` once the engine's `dspSource` has caught up to the editor
+  // `localSource`. This prevents flicker when many rapid edits enqueue builds;
+  // `isApplying` will remain true until the store reflects the latest editor text.
+  useEffect(() => {
+    if (dspSource === localSource) {
+      requestAnimationFrame(() => setIsApplying(false))
+    }
+  }, [dspSource, localSource])
 
   type SeqFrame = {
     events: Map<number, number>
@@ -123,11 +138,14 @@ export function DspSourceEditor() {
       <div className="bg-gray-900 text-white p-4 rounded-md border border-gray-600 font-mono text-sm w-full h-[550px]">
         <CodeEditor
           value={localSource}
-          setValue={(value) => setLocalSource(value)}
+          setValue={(value) => {
+            setLocalSource(value)
+            if (isProgramReady) setIsApplying(true)
+          }}
           widgets={widgets}
           theme={theme}
           tokenizer={tokenizer}
-          isAnimating={true}
+          isAnimating={showWidgets && playbackState === 'running'}
           onBeforeDraw={onBeforeDraw}
         />
       </div>
