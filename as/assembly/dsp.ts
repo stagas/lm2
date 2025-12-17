@@ -8,7 +8,7 @@ import {
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Mini } from './gen/mini'
-import { Sin } from './gen/sin'
+import { Sine } from './gen/sine'
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from './globals'
 import { Program, ProgramData } from './program'
 import { Op } from './shared'
@@ -346,7 +346,7 @@ enum VmBinary {
 
 enum VmBuiltin {
   Out = 1,
-  Sin = 2,
+  Sine = 2,
   Ad = 3,
   Adsr = 4,
   Mini = 5,
@@ -491,8 +491,8 @@ export class Dsp {
       this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Out)
       return
     }
-    if (sym === VmBuiltin.Sin) {
-      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Sin)
+    if (sym === VmBuiltin.Sine) {
+      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Sine)
       return
     }
     if (sym === VmBuiltin.Ad) {
@@ -938,7 +938,7 @@ export class Dsp {
       return
     }
 
-    if (calleeAux === VmBuiltin.Sin) {
+    if (calleeAux === VmBuiltin.Sine) {
       const hzTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
       const hzNum = posCount >= 1 ? posNums[0] : 0.0
       const hzAux = posCount >= 1 ? posAux[0] : 0
@@ -952,7 +952,7 @@ export class Dsp {
       const outIndex = this.vmAllocOut()
       const out$ = this.program.getOutBuffer(outIndex)
 
-      const sin = this.program.gensPool.get(Op.Sin) as Sin
+      const sin = this.program.gensPool.get(Op.Sine) as Sine
       sin.hz$ = hz$
       sin.trig$ = trig$
       sin.process(out$, length)

@@ -261,7 +261,27 @@ export function tokenize(input: string): Token[] {
     }
     tokens.push({ text: input.slice(start, i), start, end: i })
   }
-  return tokens
+  // Merge adjacent tokens where a letter-only token is immediately followed by a digit-only token
+  // without any separator. This preserves tokens like "augmented2" when tokenizer previously
+  // produced ["augmented", "2"].
+  const mergedTokens: Token[] = []
+  for (let ti = 0; ti < tokens.length; ti++) {
+    const t = tokens[ti]!
+    const next = tokens[ti + 1]
+    if (
+      next
+      && t.end === next.start
+      && /^[A-Za-z]+$/.test(t.text)
+      && /^[0-9]+$/.test(next.text)
+    ) {
+      mergedTokens.push({ text: t.text + next.text, start: t.start, end: next.end })
+      ti++ // skip the numeric token we just merged
+    }
+    else {
+      mergedTokens.push(t)
+    }
+  }
+  return mergedTokens
 }
 
 export function splitValueAndModifiers(text: string): { value: string; mods: string } {
@@ -461,9 +481,21 @@ function parseScaleDirective(tokens: Token[],
   }
 
   const t1 = tokens[i]?.text?.toLowerCase()
-  if (t1 && /^[a-z]+$/.test(t1)) {
-    scaleIndex = findScaleIndex(t1) ?? scaleIndex
-    i++
+  if (t1) {
+    // Accept names that include trailing digits (e.g. "augmented2").
+    // Also handle the case where the tokenizer produced two tokens "augmented" and "2"
+    // by merging them logically here when they're contiguous.
+    if (/^[a-z][a-z0-9]*$/.test(t1)) {
+      let scaleName = t1
+      const nextToken = tokens[i + 1]
+      if (/^[a-z]+$/.test(t1) && nextToken && /^[0-9]+$/.test(nextToken.text) && nextToken.start === tokens[i].end) {
+        // Merge letter token + adjacent digit token into a single scale name
+        scaleName = t1 + nextToken.text
+        i++ // consume the numeric token as well
+      }
+      scaleIndex = findScaleIndex(scaleName) ?? scaleIndex
+      i++
+    }
   }
 
   return { rootMidi, scaleIndex, nextIndex: i }

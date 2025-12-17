@@ -269,6 +269,7 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
     else if (c === '[') add('l_bracket', start, startLine, startCol)
     else if (c === ']') add('r_bracket', start, startLine, startCol)
     else if (c === ',') add('comma', start, startLine, startCol)
+    else if (c === '?') add('question' as TokenKind, start, startLine, startCol)
     else if (c === ':') add('colon', start, startLine, startCol)
     else if (c === ';') add('semicolon', start, startLine, startCol)
     else if (c === '.') add('dot', start, startLine, startCol)

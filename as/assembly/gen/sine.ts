@@ -1,7 +1,7 @@
 import { clampNyquist } from '../util'
 import { Gen } from './gen'
 
-export class Sin extends Gen {
+export class Sine extends Gen {
   hz$: usize = 0
   trig$: usize = 0
 
@@ -9,7 +9,7 @@ export class Sin extends Gen {
   private phase: f64 = 0
 
   copyFrom(other: Gen): void {
-    const src = other as Sin
+    const src = other as Sine
     this.lastTrig = src.lastTrig
     this.phase = src.phase
   }

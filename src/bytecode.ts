@@ -60,7 +60,7 @@ export enum VmBinary {
 
 const builtinSyms: Record<string, number> = {
   out: 1,
-  sin: 2,
+  sine: 2,
   ad: 3,
   adsr: 4,
   mini: 5,

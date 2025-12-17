@@ -13,6 +13,7 @@ export type TokenKind =
   | "r_bracket"
   | "comma"
   | "colon"
+  | "question"
   | "semicolon"
   | "dot"
   | "ellipsis"

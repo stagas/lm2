@@ -368,10 +368,95 @@ class Compiler {
         this.compileCall(expr)
         return
       case 'unary':
+        // Handle prefix increment/decrement specially (convert to load/add/store)
+        if (expr.op === '++' || expr.op === '--') {
+          const delta = expr.op === '++' ? 1 : -1
+          // ident: LOAD name; PUSH_CONST delta; BINARY '+'; STORE name
+          if (expr.expr.kind === 'ident') {
+            const name = this.nameConst(expr.expr.name)
+            this.emit({ op: 'LOAD', name })
+            this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+            this.emit({ op: 'BINARY', opName: '+' })
+            this.emit({ op: 'STORE', name })
+            return
+          }
+
+          // member: handle computed and non-computed props
+          if (expr.expr.kind === 'member') {
+            this.compileExpr(expr.expr.object)
+            if (expr.expr.computed === true) {
+              this.compileExpr(expr.expr.index)
+              this.emit({ op: 'DUP2' })
+              this.emit({ op: 'GET_INDEX' })
+              this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+              this.emit({ op: 'BINARY', opName: '+' })
+              this.emit({ op: 'SET_INDEX' })
+            }
+            else {
+              this.emit({ op: 'DUP' })
+              this.emit({ op: 'GET_PROP', key: this.k(expr.expr.prop) })
+              this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+              this.emit({ op: 'BINARY', opName: '+' })
+              this.emit({ op: 'SET_PROP', key: this.k(expr.expr.prop) })
+            }
+            return
+          }
+
+          this.err(expr.loc, 'Invalid increment/decrement target')
+          this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+          return
+        }
+
+        // default unary handling
         this.compileExpr(expr.expr)
         this.emit({ op: 'UNARY', opName: expr.op })
         return
       case 'postfix':
+        // Handle postfix ++/-- (return old value, update variable/property)
+        if (expr.op === '++' || expr.op === '--') {
+          const delta = expr.op === '++' ? 1 : -1
+          if (expr.expr.kind === 'ident') {
+            const name = this.nameConst(expr.expr.name)
+            // LOAD old; DUP; PUSH_CONST delta; BINARY '+'; STORE; POP -> leaves old
+            this.emit({ op: 'LOAD', name })
+            this.emit({ op: 'DUP' })
+            this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+            this.emit({ op: 'BINARY', opName: '+' })
+            this.emit({ op: 'STORE', name })
+            this.emit({ op: 'POP' })
+            return
+          }
+
+          if (expr.expr.kind === 'member') {
+            this.compileExpr(expr.expr.object)
+            if (expr.expr.computed === true) {
+              this.compileExpr(expr.expr.index)
+              this.emit({ op: 'DUP2' })
+              this.emit({ op: 'GET_INDEX' })
+              this.emit({ op: 'DUP' })
+              this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+              this.emit({ op: 'BINARY', opName: '+' })
+              this.emit({ op: 'SET_INDEX' })
+              this.emit({ op: 'POP' })
+            }
+            else {
+              this.emit({ op: 'DUP' })
+              this.emit({ op: 'GET_PROP', key: this.k(expr.expr.prop) })
+              this.emit({ op: 'DUP' })
+              this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+              this.emit({ op: 'BINARY', opName: '+' })
+              this.emit({ op: 'SET_PROP', key: this.k(expr.expr.prop) })
+              this.emit({ op: 'POP' })
+            }
+            return
+          }
+
+          this.err(expr.loc, 'Invalid increment/decrement target')
+          this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+          return
+        }
+
+        // default postfix handling (shouldn't reach here often)
         this.compileExpr(expr.expr)
         this.emit({ op: 'UNARY', opName: `${expr.op}_post` })
         return
@@ -445,7 +530,7 @@ class Compiler {
     // Builtin signatures (compile-time arg binding for named + shorthand + mixed ordering).
     const sigs: Record<string, string[]> = {
       out: ['signal'],
-      sin: ['hz', 'trig'],
+      sine: ['hz', 'trig'],
       ad: ['attack', 'decay', 'trig'],
       adsr: ['attack', 'decay', 'sustain', 'release', 'trig'],
       mini: ['seq', 'cb'],
@@ -557,7 +642,7 @@ class Compiler {
 
   private compileBinary(expr: BinaryExpr): void {
     if (expr.op === '|>') {
-      const temp = `$pipe${this.pipe.length}`
+      const temp = `%pipe${this.pipe.length}`
       this.compileExpr(expr.left)
       this.emit({ op: 'STORE', name: this.nameConst(temp) })
       this.emit({ op: 'POP' })

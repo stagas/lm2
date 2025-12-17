@@ -18,7 +18,7 @@ import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
-import { Sin } from './gen/sin'
+import { Sine } from './gen/sine'
 import { Smoothed } from './lib/smoothed'
 import { Op } from './shared'
 
@@ -51,13 +51,13 @@ export class GenPool<T extends Gen> {
 }
 
 class GensPool {
-  private sins: GenPool<Sin> = new GenPool<Sin>(() => new Sin())
+  private sines: GenPool<Sine> = new GenPool<Sine>(() => new Sine())
   private ads: GenPool<Ad> = new GenPool<Ad>(() => new Ad())
   private adsrs: GenPool<Adsr> = new GenPool<Adsr>(() => new Adsr())
   private minis: GenPool<Mini> = new GenPool<Mini>(() => new Mini())
   private analysers: GenPool<Analyser> = new GenPool<Analyser>(() => new Analyser())
   resetIndices(): void {
-    this.sins.resetIndex()
+    this.sines.resetIndex()
     this.ads.resetIndex()
     this.adsrs.resetIndex()
     this.minis.resetIndex()
@@ -70,8 +70,8 @@ class GensPool {
   }
   get(op: Op): Gen {
     switch (op) {
-      case Op.Sin:
-        return this.sins.get()
+      case Op.Sine:
+        return this.sines.get()
       case Op.Ad:
         return this.ads.get()
       case Op.Adsr:
@@ -85,7 +85,7 @@ class GensPool {
   }
 
   copyFrom(source: GensPool): void {
-    this.sins.copyFrom(source.sins)
+    this.sines.copyFrom(source.sines)
     this.ads.copyFrom(source.ads)
     this.adsrs.copyFrom(source.adsrs)
     this.minis.copyFrom(source.minis)

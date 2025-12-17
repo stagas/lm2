@@ -414,11 +414,21 @@ class Parser {
   }
 
   private parseOr(): Expr {
+    const start = this.cur()
     let expr = this.parseAnd()
     while (this.match('or_or')) {
       const right = this.parseAnd()
       expr = { kind: 'binary', op: '||', left: expr, right, loc: locFrom(expr.loc, right.loc) }
     }
+
+    // Ternary operator (condition ? thenExpr : elseExpr) desugared to `if` expression.
+    if (this.match('question' as TokenKind)) {
+      const thenExpr = this.parseExpr()
+      this.expect('colon', 'Expected \':\' after ternary consequent')
+      const elseExpr = this.parseExpr()
+      return { kind: 'if', test: expr, then: thenExpr, else: elseExpr, loc: locFrom(start, locOf(elseExpr)) }
+    }
+
     return expr
   }
 
@@ -745,7 +755,8 @@ class Parser {
       const kind = this.tokens[i].kind
       if (kind === 'l_paren') {
         depth++
-      } else if (kind === 'r_paren') {
+      }
+      else if (kind === 'r_paren') {
         depth--
         if (depth === 0) {
           return this.tokens[i + 1]?.kind === 'arrow'

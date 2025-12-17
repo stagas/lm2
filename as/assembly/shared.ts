@@ -26,7 +26,7 @@ export enum Op {
   Not,
   BitNot,
   Select,
-  Sin,
+  Sine,
   Ad,
   Adsr,
   Analyser,
