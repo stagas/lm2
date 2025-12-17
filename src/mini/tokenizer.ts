@@ -1,4 +1,4 @@
-import { midiToFrequency, noteNameToMidi } from './note-utils.ts'
+import { midiToFrequency, noteNameToMidi } from './util.ts'
 
 type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale' | 'cycle'
 

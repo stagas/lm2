@@ -714,8 +714,7 @@ class Parser {
   }
 
   private tryParseArrowFuncFromParen(): Expr | null {
-    if (!this.at('l_paren')) return null
-    const save = this.i
+    if (!this.at('l_paren') || !this.hasArrowAfterParen(this.i)) return null
     const start = this.next()
     const params: Param[] = []
 
@@ -735,11 +734,24 @@ class Parser {
       }
     }
     this.expect('r_paren', 'Expected \')\'')
-    if (!this.match('arrow')) {
-      this.i = save
-      return null
-    }
+    this.expect('arrow', 'Expected \'->\' for arrow function')
     const body = this.at('l_brace') ? this.parseBlockStmt() : this.parseExpr()
     return { kind: 'func', params, body, loc: locFrom(start, locOf(body)) }
+  }
+
+  private hasArrowAfterParen(startIdx: number): boolean {
+    let depth = 0
+    for (let i = startIdx; i < this.tokens.length; i++) {
+      const kind = this.tokens[i].kind
+      if (kind === 'l_paren') {
+        depth++
+      } else if (kind === 'r_paren') {
+        depth--
+        if (depth === 0) {
+          return this.tokens[i + 1]?.kind === 'arrow'
+        }
+      }
+    }
+    return false
   }
 }

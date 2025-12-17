@@ -2,7 +2,7 @@ import { expect } from 'bun:test'
 import type { TimelineEvent } from '../mini/bytecode.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
 import { evaluateMiniBytecode } from '../mini/evaluator.ts'
-import { midiToFrequency, noteNameToMidi } from '../mini/note-utils.ts'
+import { midiToFrequency, noteNameToMidi } from '../mini/util.ts'
 
 export interface MiniRunOptions {
   from?: number

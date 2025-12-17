@@ -7,7 +7,7 @@ import {
   TIME_WINDOW_SECONDS,
 } from '../../as/assembly/constants.ts'
 import type { VmHistory } from '../index.ts'
-import { frequencyToMidi } from '../mini/note-utils.ts'
+import { frequencyToMidi } from '../mini/util.ts'
 import type { AnimationManager } from './animation-manager.ts'
 
 export function createPianorollVisualization(

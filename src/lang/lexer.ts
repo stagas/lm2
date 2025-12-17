@@ -72,9 +72,9 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
     });
   };
 
-  const readNumber = (start: number, startLine: number, startCol: number) => {
+  const readNumber = (start: number, startLine: number, startCol: number, leadingDot = false) => {
     while (isDigit(peek())) advance();
-    if (peek() === "." && isDigit(peek(1))) {
+    if (!leadingDot && peek() === "." && peek(1) !== ".") {
       advance();
       while (isDigit(peek())) advance();
     }
@@ -225,6 +225,10 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
       advance();
       advance();
       add("ellipsis", start, startLine, startCol);
+      continue;
+    }
+    if (c === "." && isDigit(peek())) {
+      readNumber(start, startLine, startCol, true);
       continue;
     }
 
