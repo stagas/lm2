@@ -234,7 +234,7 @@ async function updateSequence(program: Program, sequence: string, data: ProgramD
 function buildProgram(data: ProgramDataView) {
   const src = `
 mini(${MINI_ARRAY_INDEX}, (trig, velocity, hz) -> {
-  env = adsr(attack:0.01, decay:0.3, sustain:0.2, release:0.4, trig:trig)
+  env = adsr(attack:0.01, decay:0.3, sustain:0.2, release:0.4, trig)
   sin(hz, trig) * env * velocity * 0.25
 }) |> out(%)
 `

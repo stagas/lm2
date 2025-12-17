@@ -598,12 +598,6 @@ class Parser {
         const value = this.parseExpr()
         args.push({ kind: 'named', name: nameTok.lexeme, value, loc: locFrom(nameTok, value.loc) })
       }
-      else if (this.at('identifier')) {
-        // Treat identifiers as regular expressions in call position.
-        // Named arguments must use `name: expr` explicitly.
-        const value = this.parseExpr()
-        args.push({ kind: 'pos', value, loc: locFrom(start, value.loc) })
-      }
       else {
         const value = this.parseExpr()
         args.push({ kind: 'pos', value, loc: locFrom(start, value.loc) })

@@ -122,6 +122,7 @@ class Compiler {
   readonly errors: LangError[] = []
   private pipe: string[] = []
   private labelId = 0
+  private callTempId = 0
 
   constructor(private readonly src: string) {}
 
@@ -402,14 +403,142 @@ class Compiler {
 
   private compileCall(expr: CallExpr): void {
     this.compileExpr(expr.callee)
-    let pos = 0
-    let named = 0
+    type TempArg =
+      | { kind: 'pos'; temp: string; valueKind?: string; identName?: string; isImplicitNamedCandidate: boolean }
+      | { kind: 'named'; temp: string; name: string }
+
+    const temps: TempArg[] = []
+
+    const tmp = () => `%arg${this.callTempId++}`
+
+    // Evaluate args left-to-right, storing each into a temp so we can reorder stack layout later.
     for (const a of expr.args) {
-      this.compileArg(a)
-      if (a.kind === 'pos') pos++
-      else named++
+      const t = tmp()
+      if (a.kind === 'pos') {
+        this.compileExpr(a.value)
+        this.emit({ op: 'STORE', name: this.nameConst(t) })
+        this.emit({ op: 'POP' })
+        let identName: string | undefined
+        if (a.value.kind === 'ident') identName = a.value.name
+        temps.push({
+          kind: 'pos',
+          temp: t,
+          identName,
+          isImplicitNamedCandidate: identName !== undefined,
+        })
+        continue
+      }
+      if (a.kind === 'named') {
+        this.compileExpr(a.value)
+        this.emit({ op: 'STORE', name: this.nameConst(t) })
+        this.emit({ op: 'POP' })
+        temps.push({ kind: 'named', temp: t, name: a.name })
+        continue
+      }
+      // shorthand: store the loaded value into a temp (keeps evaluation behavior consistent)
+      this.emit({ op: 'LOAD', name: this.nameConst(a.name) })
+      this.emit({ op: 'STORE', name: this.nameConst(t) })
+      this.emit({ op: 'POP' })
+      temps.push({ kind: 'named', temp: t, name: a.name })
     }
-    this.emit({ op: 'CALL', pos, named })
+
+    // Builtin signatures (compile-time arg binding for named + shorthand + mixed ordering).
+    const sigs: Record<string, string[]> = {
+      out: ['signal'],
+      sin: ['hz', 'trig'],
+      ad: ['attack', 'decay', 'trig'],
+      adsr: ['attack', 'decay', 'sustain', 'release', 'trig'],
+      mini: ['seq', 'cb'],
+    }
+
+    const calleeName = expr.callee.kind === 'ident' ? expr.callee.name : null
+    const sig = calleeName ? sigs[calleeName] : undefined
+
+    const emitUndef = () => this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+    const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
+
+    if (sig) {
+      const idxOf = new Map<string, number>()
+      for (let i = 0; i < sig.length; i++) idxOf.set(sig[i]!, i)
+
+      const reserved = new Set<number>()
+      const extraNamed: { name: string; temp: string }[] = []
+
+      for (const a of temps) {
+        if (a.kind === 'named') {
+          const idx = idxOf.get(a.name)
+          if (idx !== undefined) reserved.add(idx)
+          else extraNamed.push({ name: a.name, temp: a.temp })
+          continue
+        }
+        if (a.isImplicitNamedCandidate && a.identName) {
+          const idx = idxOf.get(a.identName)
+          if (idx !== undefined) reserved.add(idx)
+        }
+      }
+
+      const slots = new Map<number, string>()
+
+      // Assign named + implicit shorthand-by-name (last write wins).
+      for (const a of temps) {
+        if (a.kind === 'named') {
+          const idx = idxOf.get(a.name)
+          if (idx !== undefined) slots.set(idx, a.temp)
+          continue
+        }
+        if (a.isImplicitNamedCandidate && a.identName) {
+          const idx = idxOf.get(a.identName)
+          if (idx !== undefined) slots.set(idx, a.temp)
+        }
+      }
+
+      // Fill remaining slots with positional args, skipping reserved/filled indices.
+      let next = 0
+      for (const a of temps) {
+        if (a.kind !== 'pos') continue
+        if (a.isImplicitNamedCandidate && a.identName && idxOf.has(a.identName)) continue
+        while (reserved.has(next) || slots.has(next)) next++
+        slots.set(next, a.temp)
+        next++
+      }
+
+      let maxIdx = -1
+      for (const i of slots.keys()) if (i > maxIdx) maxIdx = i
+      const pos = maxIdx + 1
+
+      for (let i = 0; i < pos; i++) {
+        const t = slots.get(i)
+        if (t) emitLoadTemp(t)
+        else emitUndef()
+      }
+
+      // Push extra named pairs (unknown keys) last; last one in source should win -> push in reverse.
+      for (let i = extraNamed.length - 1; i >= 0; i--) {
+        const a = extraNamed[i]!
+        this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
+        emitLoadTemp(a.temp)
+      }
+
+      this.emit({ op: 'CALL', pos, named: extraNamed.length })
+      return
+    }
+
+    // Generic call layout: positional values first, then named pairs (reverse order so last wins).
+    const posTemps: string[] = []
+    const namedTemps: { name: string; temp: string }[] = []
+    for (const a of temps) {
+      if (a.kind === 'pos') posTemps.push(a.temp)
+      else namedTemps.push({ name: a.name, temp: a.temp })
+    }
+
+    for (const t of posTemps) emitLoadTemp(t)
+    for (let i = namedTemps.length - 1; i >= 0; i--) {
+      const a = namedTemps[i]!
+      this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
+      emitLoadTemp(a.temp)
+    }
+
+    this.emit({ op: 'CALL', pos: posTemps.length, named: namedTemps.length })
   }
 
   private compileArg(arg: Arg): void {
