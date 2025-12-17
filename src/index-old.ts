@@ -13,7 +13,7 @@ import {
 import WaveFFT from '../vendor/WaveFFT/WaveFFT.js'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, OutsPoolStruct, ProgramDataStruct,
   ProgramStruct } from './assembly.ts'
-import { Bytecode, SeqOp } from './bytecode.ts'
+import { encodeLangToVmOps, SeqOp } from './bytecode.ts'
 import { WaveformBuffer } from './lib/waveform-buffer.ts'
 import { compileMiniNotation } from './mini/compiler.ts'
 import { generateSequenceEvents } from './seq-event-generator.ts'
@@ -276,56 +276,18 @@ async function createProgram() {
   console.log('  8 events (4 notes × 2 repeats) in 1 bar (4 beats)')
   console.log('  Mode: Monophonic latch (each note replaces the previous)')
 
-  const bytecode = new Bytecode()
+  const src = `
+mini(1, (trig, velocity, hz) -> {
+  env = adsr(attack:0.0001, decay:0.05, sustain:0.7, release:0.2, trig)
+  sin(hz, trig) * env * velocity * 0.3
+}) |> out(%)
+`
 
-  // Mini auto-cycles based on globalSampleCount and global BPM
-  bytecode.Mini(1)
+  const { errors } = encodeLangToVmOps(src, { ops: data.ops, literals: data.literals })
+  if (errors.length) {
+    console.error('VM compile errors:', errors)
+  }
 
-  // Now let's try manually using one of those outputs with Sin
-  // We can't easily access them from here, so let's use SeqForEach
-
-  // Set initial values
-  data.writeLiteral(3, 1 / 4)
-  data.writeLiteral(4, 0.0001) // attack
-  data.writeLiteral(5, 0.05) // decay
-  data.writeLiteral(6, 0.7) // sustain
-  data.writeLiteral(7, 0.2) // release
-
-  data.writeLiteral(8, 1)
-  bytecode.SeqForEach(() => {
-    bytecode.SeqVoiceValue() // Get note value (frequency) from current voice
-    bytecode.LiteralSmoothed(8)
-    bytecode.Mul()
-
-    bytecode.SeqVoiceTrig() // Get trigger from current voice
-    bytecode.Sin() // Generate audio
-
-    bytecode.Literal(4) // attack
-    bytecode.Literal(5) // decay
-    bytecode.Literal(6) // sustain
-    bytecode.Literal(7) // release
-    bytecode.SeqVoiceTrig() // Get trigger again for ADSR
-    bytecode.Adsr() // Generate envelope
-
-    bytecode.Mul() // Multiply ADSR by Sin
-
-    bytecode.SeqVoiceVelocity() // Get velocity
-    bytecode.Mul() // Multiply by velocity
-  })
-
-  createAnalysers(analyserOuts[bytecode.Analyser()], 100, 30)
-
-  bytecode.Literal(2)
-  data.writeLiteral(2, 0.3)
-  bytecode.Mul()
-
-  bytecode.Dup()
-  bytecode.Out()
-
-  // Debug: Log bytecode
-  console.log('Bytecode ops:', Array.from(bytecode.ops.slice(0, bytecode.pc)))
-  console.log('Bytecode PC:', bytecode.pc)
-  console.log('Outs count:', bytecode.outsCount)
   console.log('\n⚠️  Press the START button to begin audio playback!')
 
   // Old example code below (commented out)

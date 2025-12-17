@@ -263,21 +263,7 @@ export class Program {
   }
 
   prepare(): void {
-    const ops = this.data.ops
-    let pc = 0
-    while (pc < ops.length) {
-      const op = ops[pc] as Op
-      pc++
-      if (op === Op.Mini) {
-        const arrayIndex = ops[pc++]
-        const mini = this.gensPool.get(Op.Mini) as Mini
-        mini.bytecode$ = changetype<usize>(this.data.arrays[arrayIndex])
-        mini.history$ = changetype<usize>(this.histories[arrayIndex])
-        mini.generateHistory()
-        // Skip remaining parameters: voiceCountOut + (3 * SEQ_VOICES) + 9 callback params
-        pc += 1 + (3 * SEQ_VOICES) + 9
-      }
-    }
+    // The new VM calls `mini` at runtime, so sequence history generation happens there.
   }
 
   copyFrom(source: Program): void {

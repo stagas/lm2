@@ -18,7 +18,7 @@ import {
 } from '../as/assembly/constants.ts'
 import WaveFFT from '../vendor/WaveFFT/WaveFFT.js'
 import { AnalyserOutsPoolStruct, type Dsp, DspStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
-import { Bytecode } from './bytecode.ts'
+import { encodeLangToVmOps } from './bytecode.ts'
 import { AnimationManager } from './lib/animation-manager.ts'
 import { buildMiniSourceMap } from './lib/mini-source-map.ts'
 import { createPianorollVisualization } from './lib/pianoroll-visualizer.ts'
@@ -57,11 +57,6 @@ let pianorollVisualization: ReturnType<typeof createPianorollVisualization> | un
 let analysers: { canvas: HTMLCanvasElement; fftCanvas: HTMLCanvasElement; draw: () => void }[] = []
 
 const MINI_ARRAY_INDEX = 0
-const LIT_ATTACK = 0
-const LIT_DECAY = 1
-const LIT_SUSTAIN = 2
-const LIT_RELEASE = 3
-const LIT_MASTER = 4
 
 type Program = Awaited<ReturnType<typeof createProgram>>
 type ProgramDataView = ReturnType<typeof createProgramDataView>
@@ -237,42 +232,17 @@ async function updateSequence(program: Program, sequence: string, data: ProgramD
 }
 
 function buildProgram(data: ProgramDataView) {
-  const bytecode = new Bytecode()
+  const src = `
+mini(${MINI_ARRAY_INDEX}, (trig, velocity, hz) -> {
+  env = adsr(attack:0.01, decay:0.3, sustain:0.2, release:0.4, trig:trig)
+  sin(hz, trig) * env * velocity * 0.25
+}) |> out(%)
+`
 
-  data.writeLiteral(LIT_ATTACK, 0.01)
-  data.writeLiteral(LIT_DECAY, 0.3)
-  data.writeLiteral(LIT_SUSTAIN, 0.2)
-  data.writeLiteral(LIT_RELEASE, 0.4)
-  data.writeLiteral(LIT_MASTER, 0.25)
-
-  bytecode.Mini(MINI_ARRAY_INDEX)
-
-  bytecode.SeqForEach(() => {
-    bytecode.SeqVoiceValue()
-    bytecode.Literal(5)
-    bytecode.Sin()
-
-    bytecode.Literal(LIT_ATTACK)
-    bytecode.Literal(LIT_DECAY)
-    bytecode.Literal(LIT_SUSTAIN)
-    bytecode.Literal(LIT_RELEASE)
-    bytecode.SeqVoiceTrig()
-    bytecode.Adsr()
-    bytecode.Mul()
-
-    bytecode.SeqVoiceVelocity()
-    bytecode.Mul()
-  })
-
-  bytecode.Analyser()
-  bytecode.Literal(LIT_MASTER)
-  bytecode.Mul()
-  bytecode.Dup()
-  bytecode.Out()
-
-  bytecode.End()
-  data.ops.fill(0)
-  data.ops.set(bytecode.ops.subarray(0, bytecode.pc))
+  const { errors } = encodeLangToVmOps(src, { ops: data.ops, literals: data.literals })
+  if (errors.length) {
+    console.error('VM compile errors:', errors)
+  }
 }
 
 function clearAnalysers() {

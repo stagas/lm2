@@ -20,6 +20,8 @@ export type ConstVal = number | string | boolean | null | undefined
 
 export type Instr =
   | { op: 'PUSH_CONST'; k: number }
+  | { op: 'ENTER_SCOPE' }
+  | { op: 'EXIT_SCOPE' }
   | { op: 'POP' }
   | { op: 'DUP' }
   | { op: 'DUP2' }
@@ -247,9 +249,11 @@ class Compiler {
   }
 
   private compileBlockStmt(block: BlockStmt, isLast: boolean): void {
+    this.emit({ op: 'ENTER_SCOPE' })
     for (let i = 0; i < block.body.length; i++) {
       this.compileStmt(block.body[i]!, isLast && i === block.body.length - 1)
     }
+    this.emit({ op: 'EXIT_SCOPE' })
   }
 
   private compileForStmt(stmt: ForStmt): void {
@@ -433,6 +437,29 @@ class Compiler {
       this.pipe.pop()
       return
     }
+
+    if (expr.op === '||') {
+      this.compileExpr(expr.left)
+      this.emit({ op: 'DUP' })
+      const jFalse = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
+      const jEnd = this.emit({ op: 'JUMP', to: -1 })
+      this.patch(jFalse, this.chunk.code.length)
+      this.emit({ op: 'POP' })
+      this.compileExpr(expr.right)
+      this.patch(jEnd, this.chunk.code.length)
+      return
+    }
+
+    if (expr.op === '&&') {
+      this.compileExpr(expr.left)
+      this.emit({ op: 'DUP' })
+      const jFalse = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
+      this.emit({ op: 'POP' })
+      this.compileExpr(expr.right)
+      this.patch(jFalse, this.chunk.code.length)
+      return
+    }
+
     this.compileExpr(expr.left)
     this.compileExpr(expr.right)
     this.emit({ op: 'BINARY', opName: expr.op })
@@ -513,8 +540,10 @@ class Compiler {
   }
 
   private compileBlockAsExpr(block: BlockStmt): void {
+    this.emit({ op: 'ENTER_SCOPE' })
     if (!block.body.length) {
       this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+      this.emit({ op: 'EXIT_SCOPE' })
       return
     }
     for (let i = 0; i < block.body.length; i++) {
@@ -525,10 +554,10 @@ class Compiler {
         continue
       }
       this.compileStmt(s, false)
-      if (s.kind === 'expr_stmt') this.emit({ op: 'POP' })
     }
     const last = block.body[block.body.length - 1]!
     if (last.kind !== 'expr_stmt') this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+    this.emit({ op: 'EXIT_SCOPE' })
   }
 
   private compileFunc(expr: FuncExpr): void {
