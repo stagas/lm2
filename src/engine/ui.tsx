@@ -32,7 +32,6 @@ export function DspSourceEditor() {
     dspSource,
     updateDspSource,
     isProgramReady,
-    playbackState,
     program1,
     audioContext,
     bpmValue,
@@ -42,40 +41,29 @@ export function DspSourceEditor() {
   } = useEngineStore()
   const [localSource, setLocalSource] = useState(dspSource)
   const [error, setError] = useState<string>()
-  const [isApplying, setIsApplying] = useState(false)
+  const { isUpdatingDsp } = useEngineStore()
   const theme = useTheme()
 
+  // Keep widgets visible while the store is still processing updates.
   const showWidgets = localSource === dspSource
-    || isApplying
+    || isUpdatingDsp
+
   const handleApply = async () => {
     if (!isProgramReady) return
-    setIsApplying(true)
+    const requested = localSource
     try {
       setError(undefined)
-      await updateDspSource(localSource)
+      await updateDspSource(requested)
       console.log('updated dsp source')
     }
     catch (err) {
       setError(err instanceof Error ? err.message : String(err))
-      // If update failed, stop applying so widgets don't remain stuck.
-      requestAnimationFrame(() => {
-        setIsApplying(false)
-      })
     }
   }
 
   useEffect(() => {
     handleApply()
   }, [localSource, isProgramReady])
-
-  // Clear `isApplying` once the engine's `dspSource` has caught up to the editor
-  // `localSource`. This prevents flicker when many rapid edits enqueue builds;
-  // `isApplying` will remain true until the store reflects the latest editor text.
-  useEffect(() => {
-    if (dspSource === localSource) {
-      requestAnimationFrame(() => setIsApplying(false))
-    }
-  }, [dspSource, localSource])
 
   type SeqFrame = {
     events: Map<number, number>
@@ -140,7 +128,6 @@ export function DspSourceEditor() {
           value={localSource}
           setValue={(value) => {
             setLocalSource(value)
-            if (isProgramReady) setIsApplying(true)
           }}
           widgets={widgets}
           theme={theme}

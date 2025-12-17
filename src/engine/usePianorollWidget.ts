@@ -118,7 +118,7 @@ export function usePianorollWidget({
       velocity: number
     }> = []
 
-    const shouldUseSaved = prepareStatus && Atomics.load(prepareStatus, 0) === 0 && Array.isArray(st.savedEvents)
+    const shouldUseSaved = prepareStatus && Atomics.load(prepareStatus, 0) !== 1 && Array.isArray(st.savedEvents)
       && st.savedEvents!.length > 0
 
     if (shouldUseSaved) {

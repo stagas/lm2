@@ -259,6 +259,12 @@ async function createProgram(
     get data() {
       return programData
     },
+    prepareDsp() {
+      Atomics.store(prepareDspStatus, 0, 0)
+      Atomics.store(prepareDspStatus, 1, 0)
+      Atomics.store(prepareDsp, 0, wasmDspPtr)
+      Atomics.store(control, 0, ControlOp.Prepare)
+    },
     async compileSource(source: string, options: CompileOptions = {}): Promise<ProgramBuildResult> {
       const { apply = true, setData = apply, compareAgainst, copyVersionFrom } = options
       const referenceData = compareAgainst ?? programData
@@ -289,7 +295,8 @@ async function createProgram(
           }
 
           if (apply) {
-            await waitForPrepareResult(prepareDspStatus, prepareDsp, control, wasmDspPtr)
+            this.prepareDsp()
+            await waitForPrepareResult(prepareDspStatus)
           }
         }
         finally {
@@ -316,10 +323,11 @@ async function createProgram(
       return result.sequences
     },
     async applyPreparedData(value: ProgramDataView) {
+      this.prepareDsp()
       await this.withLock(() => {
         this._setData(value)
       })
-      await waitForPrepareResult(prepareDspStatus, prepareDsp, control, wasmDspPtr)
+      await waitForPrepareResult(prepareDspStatus)
     },
     async acquireLock() {
       while (true) {
@@ -353,16 +361,9 @@ async function createProgram(
 
 async function waitForPrepareResult(
   status: Int32Array,
-  prepareDsp: Uint32Array,
-  control: Uint32Array,
-  dspPtr: number,
   timeoutMs: number = 2000,
 ) {
   const deadline = performance.now() + timeoutMs
-  Atomics.store(status, 0, 0)
-  Atomics.store(status, 1, 0)
-  Atomics.store(prepareDsp, 0, dspPtr)
-  Atomics.store(control, 0, ControlOp.Prepare)
 
   while (true) {
     const currentResult = Atomics.load(status, 0)

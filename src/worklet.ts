@@ -89,6 +89,7 @@ export class DspProcessor extends AudioWorkletProcessor {
   private limiter = new Limiter()
   private swapStatus?: Int32Array
   private crossfadeState: Map<number, SwapState> = new Map()
+  private resetRunningDspOnNextChunk = false
 
   constructor(private options: DspProcessorOptions) {
     super()
@@ -258,11 +259,6 @@ export class DspProcessor extends AudioWorkletProcessor {
         const dsp$ = Atomics.load(this.options.processorOptions.prepareDsp, 0)
         if (dsp$) {
           this.core.wasm.prepareDsp(dsp$)
-          // Process one frame to populate history even when stopped
-          const instance = this.dsps.find(d => d.dsp$ === dsp$)
-          if (instance) {
-            this.core.wasm.processAudio(instance.dsp$, this.scratchLeft$, this.scratchRight$, 0, CHUNK_SIZE)
-          }
           const status = this.options.processorOptions.prepareDspStatus
           Atomics.store(status, 0, 1)
           Atomics.store(status, 1, 1)
@@ -360,6 +356,14 @@ export class DspProcessor extends AudioWorkletProcessor {
     outputs[0][0].set(L)
     outputs[0][1].set(R)
 
+    if (this.resetRunningDspOnNextChunk) {
+      this.resetRunningDspOnNextChunk = false
+      const status = this.options.processorOptions.prepareDspStatus
+      Atomics.store(status, 0, 1)
+      Atomics.store(status, 1, 1)
+      Atomics.notify(status, 1)
+    }
+
     if (this.state === 'fade-in') {
       for (let i = 0; i < CHUNK_SIZE; i++) {
         const gain = i / CHUNK_SIZE
@@ -387,6 +391,10 @@ export class DspProcessor extends AudioWorkletProcessor {
         }
         this.shouldReset = false
       }
+    }
+    else if (this.state === 'running' && control === ControlOp.Prepare) {
+      this.resetRunningDspOnNextChunk = true
+      Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
     }
 
     return true

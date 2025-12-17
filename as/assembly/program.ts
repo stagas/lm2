@@ -6,6 +6,8 @@ import {
   CALLBACK_SCOPE_MAX_DEPTH,
   CHUNK_SIZE,
   HISTORIES_COUNT,
+  HISTORY_ENTRY_SIZE,
+  HISTORY_HEADER_SIZE,
   HISTORY_SIZE,
   LITERALS_COUNT,
   MINI_HEADER_SIZE,
@@ -187,6 +189,7 @@ export class Program {
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
   outsPool: OutsPool = new OutsPool()
+  miniScratch: Mini = new Mini()
 
   // Callback scope stack for remapped buffers and bound inputs
   private callbackDepth: i32 = 0
@@ -265,7 +268,36 @@ export class Program {
   }
 
   prepare(): void {
-    // The new VM calls `mini` at runtime, so sequence history generation happens there.
+    // Populate sequence histories for any bytecode arrays (mini sequences).
+    // Use a scratch Mini instance so we don't mutate the runtime gensPool or other state.
+    const scratch = this.miniScratch
+
+    // Ensure gens pool indices are reset for deterministic behavior elsewhere
+    this.gensPool.resetIndices()
+
+    // Iterate over arrays and generate history for those that look like mini bytecode
+    for (let i = 0; i < this.data.arrays.length; i++) {
+      const arr$ = this.data.arrays[i]
+      if (arr$ === 0) continue
+
+      const arr = changetype<StaticArray<f32>>(arr$)
+      const opLength = i32(arr[ARRAY_HEADER_SIZE])
+      if (opLength <= 0) continue
+
+      // Ensure a history buffer exists for this array
+      let hist$ = this.histories[i]
+      if (hist$ === 0) {
+        const newHist = new StaticArray<f32>(HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE)
+        hist$ = changetype<usize>(newHist)
+        this.histories[i] = hist$
+      }
+
+      // Use scratch mini to generate history for this bytecode into the history buffer
+      scratch.reset()
+      scratch.bytecode$ = arr$
+      scratch.history$ = hist$
+      scratch.generateHistory()
+    }
   }
 
   copyFrom(source: Program): void {

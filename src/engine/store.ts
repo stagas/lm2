@@ -37,6 +37,7 @@ type EngineState = {
   miniRefs: MiniSequenceRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   dspSource: string
+  isUpdatingDsp: boolean
   isInitialized: boolean
   isProgramReady: boolean
   playbackState: PlaybackState
@@ -78,6 +79,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
       const comparisonReference = state.lastSuccessfulProgramData ?? primaryProgram.program.data
         ?? state.program2?.program.data
+
       const primaryResult = await primaryProgram.program.compileSource(source, {
         apply: false,
         setData: false,
@@ -177,10 +179,16 @@ export const useEngineStore = create<EngineState>((set, get) => {
       if (dspUpdateQueue.requests.length) {
         void processDspQueue()
       }
+      else {
+        // No more pending requests — clear the public updating flag.
+        set({ isUpdatingDsp: false })
+      }
     }
   }
 
   function enqueueDspUpdate(source: string) {
+    // Mark that the store is processing updates so UI can show applying state.
+    set({ isUpdatingDsp: true })
     return new Promise<string[] | undefined>((resolve, reject) => {
       dspUpdateQueue.requests.push({ source, resolve, reject })
       dspUpdateQueue.pendingSource = source
@@ -194,6 +202,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     miniRefs: [],
     miniSourceMaps: [],
     dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
+    isUpdatingDsp: false,
     isInitialized: false,
     isProgramReady: false,
     playbackState: 'stopped',
