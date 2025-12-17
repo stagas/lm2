@@ -236,7 +236,7 @@ function buildProgram(data: ProgramDataView) {
 mini(${MINI_ARRAY_INDEX}, (trig, velocity, hz) -> {
   env = adsr(attack:0.01, decay:0.3, sustain:0.2, release:0.4, trig)
   sin(hz, trig) * env * velocity * 0.25
-}) |> out(%)
+}) |> analyser(%) |> out(%)
 `
 
   const { errors } = encodeLangToVmOps(src, { ops: data.ops, literals: data.literals })

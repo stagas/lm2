@@ -350,6 +350,7 @@ enum VmBuiltin {
   Ad = 3,
   Adsr = 4,
   Mini = 5,
+  Analyser = 6,
 }
 
 const VM_FUNC_HEADER: i32 = -2
@@ -372,6 +373,7 @@ export class Dsp {
   private scopeStart: StaticArray<i32> = new StaticArray<i32>(64)
 
   private outCursor: i32 = 0
+  private analyserRingBase: i32 = 0
 
   private callKeySyms: StaticArray<i32> = new StaticArray<i32>(8)
   private callValTags: StaticArray<i32> = new StaticArray<i32>(8)
@@ -499,6 +501,10 @@ export class Dsp {
     }
     if (sym === VmBuiltin.Adsr) {
       this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Adsr)
+      return
+    }
+    if (sym === VmBuiltin.Analyser) {
+      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Analyser)
       return
     }
     if (sym === VmBuiltin.Mini) {
@@ -901,6 +907,37 @@ export class Dsp {
       return
     }
 
+    if (calleeAux === VmBuiltin.Analyser) {
+      // analyser(audio, index=0)
+      if (posCount < 1) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      const aTag = posTags[0] as VmTag
+      const aNum = posNums[0]
+      const aAux = posAux[0]
+      const aPtr$ = this.vmToAudioPtr(aTag, aNum, aAux, length)
+
+      // Optional second positional argument selects analyser index
+      let analyserIndex = 0
+      if (posCount >= 2 && posTags[1] === VmTag.Num) analyserIndex = i32(posNums[1])
+      if (analyserIndex < 0) analyserIndex = 0
+
+      const analyser$ = this.program.analyserOutsPool.get(analyserIndex)
+      const baseOffset = this.analyserRingBase
+      // Copy samples into the analyser ring buffer at current base
+      for (let i = 0; i < length; i++) {
+        const s = load<f32>(aPtr$ + (i * 4) as usize)
+        store<f32>(analyser$ + ((baseOffset + i) * 4) as usize, s)
+      }
+
+      // Return the input unchanged
+      if (aTag === VmTag.Audio) this.vmPush(VmTag.Audio, 0.0, aAux)
+      else this.vmPush(aTag, aNum, aAux)
+      return
+    }
+
     if (calleeAux === VmBuiltin.Sin) {
       const hzTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
       const hzNum = posCount >= 1 ? posNums[0] : 0.0
@@ -1152,6 +1189,8 @@ export class Dsp {
       const leftBlock$ = left$ + (offset * 4) as usize
       const rightBlock$ = right$ + (offset * 4) as usize
 
+      // Track ring write base for analyser() calls (begin is the ring base in samples)
+      this.analyserRingBase = begin + offset
       this.vmExec(1, ops.length, block, leftBlock$, rightBlock$, false)
 
       if (vmErrorCode !== 0) return
