@@ -65,6 +65,73 @@ function buildProgram(data: ProgramDataView, dspSource: string): string[] {
   return miniSequences ?? []
 }
 
+type CompileOptions = {
+  apply?: boolean
+  setData?: boolean
+  compareAgainst?: ProgramDataView
+  copyVersionFrom?: ProgramDataView
+}
+
+export type ProgramBuildDiff = {
+  significantChange: boolean
+  opsChanged: boolean
+  oldOpCount: number
+  newOpCount: number
+}
+
+export type ProgramBuildResult = {
+  sequences: string[]
+  data: ProgramDataView
+  diff: ProgramBuildDiff
+  previousData?: ProgramDataView
+}
+
+type OpsSnapshot = {
+  ops: Int32Array
+  length: number
+}
+
+function captureOpsSnapshot(data?: ProgramDataView): OpsSnapshot | undefined {
+  if (!data) return undefined
+  const opsCopy = new Int32Array(data.ops)
+  let length = opsCopy.length
+  while (length > 0 && opsCopy[length - 1] === 0) {
+    length--
+  }
+  return { ops: opsCopy, length }
+}
+
+function detectOpsChange(oldSnapshot: OpsSnapshot | undefined, newSnapshot: OpsSnapshot): boolean {
+  if (!oldSnapshot) return false
+  const maxLength = Math.max(oldSnapshot.length, newSnapshot.length)
+  for (let i = 0; i < maxLength; i++) {
+    const oldOp = i < oldSnapshot.length ? oldSnapshot.ops[i] : 0
+    const newOp = i < newSnapshot.length ? newSnapshot.ops[i] : 0
+    if (oldOp !== newOp) {
+      return true
+    }
+  }
+  return false
+}
+
+function computeProgramDiff(
+  reference: ProgramDataView | undefined,
+  target: ProgramDataView,
+): ProgramBuildDiff {
+  const isInitial = !reference
+  const oldSnapshot = captureOpsSnapshot(reference)
+  const newSnapshot = captureOpsSnapshot(target)!
+  const opsChanged = detectOpsChange(oldSnapshot, newSnapshot)
+  const significantChange = !!(reference && opsChanged)
+
+  return {
+    significantChange,
+    opsChanged,
+    oldOpCount: oldSnapshot?.length ?? 0,
+    newOpCount: newSnapshot.length,
+  }
+}
+
 function createProgramDataView(data$: number, arrays$: number[], wasmMemory: WebAssembly.Memory) {
   const programData = ProgramDataStruct(wasmMemory.buffer, data$)
   const lock = new Int32Array(wasmMemory.buffer, programData.lock, 1)
@@ -184,33 +251,58 @@ async function createProgram(
     get data() {
       return programData
     },
-    async buildFromSource(source: string): Promise<string[]> {
+    async compileSource(source: string, options: CompileOptions = {}): Promise<ProgramBuildResult> {
+      const { apply = true, setData = apply, compareAgainst, copyVersionFrom } = options
+      const referenceData = compareAgainst ?? programData
+      const versionSource = copyVersionFrom ?? referenceData
       const newData = nextProgramData()
       const sequences = buildProgram(newData, source)
 
       await this.acquireLock()
+      try {
+        for (let arrayIndex = 0; arrayIndex < sequences.length; arrayIndex++) {
+          const sequence = sequences[arrayIndex]
+          if (!sequence) continue
 
-      for (let arrayIndex = 0; arrayIndex < sequences.length; arrayIndex++) {
-        const sequence = sequences[arrayIndex]
-        if (!sequence) continue
+          const oldArray = versionSource?.arrays[arrayIndex]
+          if (oldArray) {
+            newData.arrays[arrayIndex].raw[3] = oldArray.raw[3]
+          }
 
-        const oldArray = programData?.arrays[arrayIndex]
-        if (oldArray) {
-          const newArray = newData.arrays[arrayIndex]
-          newArray.raw[3] = oldArray.raw[3]
+          updateSequence(sequence, arrayIndex, newData)
         }
 
-        updateSequence(sequence, arrayIndex, newData)
+        if (setData) {
+          this._setData(newData)
+        }
+
+        if (apply) {
+          Atomics.store(prepareDsp, 0, wasmDspPtr)
+          Atomics.store(control, 0, ControlOp.Prepare)
+        }
+      }
+      finally {
+        this.releaseLock()
       }
 
-      this._setData(newData)
-
-      Atomics.store(prepareDsp, 0, wasmDspPtr)
-      Atomics.store(control, 0, ControlOp.Prepare)
-
-      this.releaseLock()
-
-      return sequences
+      const diff = computeProgramDiff(referenceData, newData)
+      return {
+        sequences,
+        data: newData,
+        diff,
+        previousData: referenceData,
+      }
+    },
+    async buildFromSource(source: string): Promise<string[]> {
+      const result = await this.compileSource(source)
+      return result.sequences
+    },
+    async applyPreparedData(value: ProgramDataView) {
+      await this.withLock(() => {
+        this._setData(value)
+        Atomics.store(prepareDsp, 0, wasmDspPtr)
+        Atomics.store(control, 0, ControlOp.Prepare)
+      })
     },
     async acquireLock() {
       while (true) {

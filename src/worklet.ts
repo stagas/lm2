@@ -13,6 +13,11 @@ type DspInstance = {
   view: ReturnType<typeof DspStruct>
 }
 
+type SwapTarget = {
+  old$: number
+  new$: number
+}
+
 class Limiter {
   private gain = 1
   constructor(
@@ -50,6 +55,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
     globalSampleCount: Int32Array<SharedArrayBuffer>
     programSwap: Uint32Array<SharedArrayBuffer>
     prepareDsp: Uint32Array<SharedArrayBuffer>
+    swapStatus: Int32Array<SharedArrayBuffer>
   }
 }
 
@@ -71,10 +77,12 @@ export class DspProcessor extends AudioWorkletProcessor {
   private fadeLeft: Float32Array | undefined
   private fadeRight: Float32Array | undefined
   private limiter = new Limiter()
+  private swapStatus?: Int32Array
 
   constructor(private options: DspProcessorOptions) {
     super()
     rpc(this.port, this)
+    this.swapStatus = this.options.processorOptions.swapStatus
   }
 
   async setWasmBinary(binary: ArrayBuffer) {
@@ -153,11 +161,14 @@ export class DspProcessor extends AudioWorkletProcessor {
   {
     if (!this.core || !this.fadeLeft || !this.fadeRight || !this.scratchLeft || !this.scratchRight) return
 
-    this.core.wasm.globalSampleCount.value = sampleBefore
+    const wasm = this.core.wasm
+    wasm.globalSampleCount.value = sampleBefore
+    wasm.clearVmError()
     this.renderProgram(instance, oldProgram$, this.scratchLeft$, this.scratchRight$, begin, length)
 
-    this.core.wasm.globalSampleCount.value = sampleBefore
-    this.core.wasm.copyProgram(newProgram$, oldProgram$)
+    wasm.globalSampleCount.value = sampleBefore
+    wasm.clearVmError()
+    wasm.copyProgram(newProgram$, oldProgram$)
     this.renderProgram(instance, newProgram$, this.fadeLeft$, this.fadeRight$, begin, length)
 
     for (let i = 0; i < CHUNK_SIZE; i++) {
@@ -167,9 +178,17 @@ export class DspProcessor extends AudioWorkletProcessor {
       this.scratchRight[i] = this.scratchRight[i] * inv + this.fadeRight[i] * t
     }
 
-    this.core.wasm.globalSampleCount.value = sampleBefore + CHUNK_SIZE
+    wasm.globalSampleCount.value = sampleBefore + CHUNK_SIZE
 
     instance.view.program = newProgram$
+
+    const vmErrorCode = (wasm as any).getVmErrorCode?.() ?? 0
+    const statusValue = vmErrorCode === 0 ? 1 : -1
+    if (this.swapStatus) {
+      Atomics.store(this.swapStatus, 0, statusValue)
+      Atomics.store(this.swapStatus, 1, 1)
+      Atomics.notify(this.swapStatus, 1, 1)
+    }
 
     Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
   }
@@ -231,9 +250,10 @@ export class DspProcessor extends AudioWorkletProcessor {
     R.fill(0)
 
     const swap = this.options.processorOptions.programSwap
-    let swaps: Map<number, { old$: number; new$: number }> | undefined
+    const swapStatus = this.swapStatus
+    let swaps: Map<number, SwapTarget> | undefined
     if (control === ControlOp.Swap) {
-      swaps = new Map<number, { old$: number; new$: number }>()
+      swaps = new Map<number, SwapTarget>()
       for (let i = 0; i < MAX_DSP_INSTANCES; i++) {
         const base = i * 3
         const old$ = Atomics.load(swap, base)

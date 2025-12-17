@@ -22,12 +22,13 @@ type EngineState = {
   animationManager?: AnimationManager
   worklet?: ReturnType<typeof rpc<DspProcessor>>
   audioContext?: AudioContext
-  ringPos?: Uint8Array
-  control?: Uint32Array
-  bpmValue?: Float32Array
-  globalSampleCount?: Int32Array
-  programSwap?: Uint32Array
-  prepareDsp?: Uint32Array
+  ringPos?: Uint8Array<SharedArrayBuffer>
+  control?: Uint32Array<SharedArrayBuffer>
+  bpmValue?: Float32Array<SharedArrayBuffer>
+  globalSampleCount?: Int32Array<SharedArrayBuffer>
+  programSwap?: Uint32Array<SharedArrayBuffer>
+  programSwapStatus?: Int32Array<SharedArrayBuffer>
+  prepareDsp?: Uint32Array<SharedArrayBuffer>
   sequences: string[]
   dspSource: string
   isInitialized: boolean
@@ -36,7 +37,7 @@ type EngineState = {
 
   initialize: () => Promise<void>
   dispose: () => void
-  updateDspSource: (source: string) => Promise<void>
+  updateDspSource: (source: string) => Promise<string[] | undefined>
   updateWasmBinary: () => Promise<void>
   start: () => void
   pause: () => void
@@ -88,6 +89,7 @@ export const useEngineStore = create<EngineState>((set, get) => ({
       bpmValue: undefined,
       globalSampleCount: undefined,
       programSwap: undefined,
+      programSwapStatus: undefined,
       prepareDsp: undefined,
       isInitialized: false,
       isProgramReady: false,
@@ -97,13 +99,74 @@ export const useEngineStore = create<EngineState>((set, get) => ({
 
   updateDspSource: async (source: string) => {
     const state = get()
-    if (!state.program1) return
+    if (!state.program1 || !state.program2) return
 
     try {
-      const sequences = await state.program1.program.buildFromSource(source)
+      const primaryProgram = state.program1
+      const stagingProgram = state.program2
 
-      set({ dspSource: source, sequences })
+      const comparisonReference = state.program2?.program.data ?? primaryProgram.program.data
+      const primaryResult = await primaryProgram.program.compileSource(source, {
+        apply: false,
+        setData: false,
+        compareAgainst: comparisonReference,
+      })
+
+      const sequences = primaryResult.sequences
+
+      if (!primaryResult.diff.significantChange) {
+        await primaryProgram.program.applyPreparedData(primaryResult.data)
+        set({ dspSource: source, sequences })
+        localStorage.setItem('engine2:dsp-source', source)
+        return sequences
+      }
+
+      await stagingProgram.program.compileSource(source, {
+        apply: false,
+        setData: true,
+        compareAgainst: primaryResult.previousData,
+        copyVersionFrom: primaryResult.previousData,
+      })
+
+      const swap = state.programSwap
+      const control = state.control
+      const dspPtr = state.wasmDspPtr
+      const swapStatus = state.programSwapStatus
+      if (!swap || !control || !dspPtr || !swapStatus) {
+        throw new Error('Program swap buffers not initialized')
+      }
+
+      swapStatus.fill(0)
+      swap.fill(0)
+      Atomics.store(swap, 0, primaryProgram.program.ptr$)
+      Atomics.store(swap, 1, stagingProgram.program.ptr$)
+      Atomics.store(swap, 2, dspPtr)
+      Atomics.store(control, 0, ControlOp.Swap)
+
+      const swapResult = await waitForSwapResult(swapStatus, 0, 1)
+      Atomics.store(swapStatus, 0, 0)
+
+      const swappedPrograms = {
+        program1: stagingProgram,
+        program2: primaryProgram,
+      }
+
+      if (swapResult !== 1) {
+        console.warn('Program swap failed; will retry against the last-known program on the next update.')
+        set({
+          ...swappedPrograms,
+        })
+        return undefined
+      }
+
+      set({
+        dspSource: source,
+        sequences,
+        ...swappedPrograms,
+      })
+
       localStorage.setItem('engine2:dsp-source', source)
+      return sequences
     }
     catch (error) {
       console.error('Failed to build program:', error)
@@ -126,8 +189,21 @@ export const useEngineStore = create<EngineState>((set, get) => ({
 
     state.animationManager?.start()
 
-    const program1 = await createProgramInstance(state.worklet, wasmMemory, wasmDspPtr, state.prepareDsp!,
-      state.control!)
+    const program1 = await createProgramInstance(
+      state.worklet,
+      wasmMemory,
+      wasmDspPtr,
+      state.prepareDsp!,
+      state.control!,
+    )
+
+    const program2 = await createProgramInstance(
+      state.worklet,
+      wasmMemory,
+      wasmDspPtr,
+      state.prepareDsp!,
+      state.control!,
+    )
 
     wasmDsp.program = program1.program.ptr$
 
@@ -136,6 +212,7 @@ export const useEngineStore = create<EngineState>((set, get) => ({
       wasmDsp,
       wasmDspPtr,
       program1,
+      program2,
       isProgramReady: true,
     })
   },
@@ -185,6 +262,9 @@ async function createWorklet() {
   const programSwap = new Uint32Array(
     new SharedArrayBuffer(3 * MAX_DSP_INSTANCES * Uint32Array.BYTES_PER_ELEMENT),
   )
+  const programSwapStatus = new Int32Array(
+    new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT),
+  )
   const prepareDsp = new Uint32Array(new SharedArrayBuffer(1 * Uint32Array.BYTES_PER_ELEMENT))
   const dsp = new AudioWorkletNode(audioContext, 'dsp', {
     outputChannelCount: [2],
@@ -196,6 +276,7 @@ async function createWorklet() {
       globalSampleCount,
       programSwap,
       prepareDsp,
+      swapStatus: programSwapStatus,
     },
   } satisfies DspProcessorOptions)
   dsp.connect(audioContext.destination)
@@ -209,5 +290,30 @@ async function createWorklet() {
     prepareDsp,
     worklet,
     audioContext,
+    programSwapStatus,
+  }
+}
+
+async function waitForSwapResult(
+  status: Int32Array,
+  resultIndex: number,
+  eventIndex: number,
+  timeoutMs: number = 2000,
+) {
+  const deadline = performance.now() + timeoutMs
+  Atomics.store(status, eventIndex, 0)
+  while (true) {
+    const currentResult = Atomics.load(status, resultIndex)
+    if (currentResult !== 0) {
+      return currentResult
+    }
+    const remaining = deadline - performance.now()
+    if (remaining <= 0) {
+      return 0
+    }
+    const waitResult = await Atomics.waitAsync(status, eventIndex, 0, remaining).value
+    if (waitResult === 'timed-out') {
+      return 0
+    }
   }
 }

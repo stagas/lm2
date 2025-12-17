@@ -41,3 +41,11 @@ export function setVmError(code: i32, pc: i32): void {
   vmErrorCode = code
   vmErrorPc = pc
 }
+
+export function getVmErrorCode(): i32 {
+  return vmErrorCode
+}
+
+export function getVmErrorPc(): i32 {
+  return vmErrorPc
+}
