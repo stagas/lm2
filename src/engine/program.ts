@@ -37,6 +37,7 @@ export type VmHistory = {
 
 export type Program = Awaited<ReturnType<typeof createProgram>>
 export type ProgramDataView = ReturnType<typeof createProgramDataView>
+export type ProgramInstance = Awaited<ReturnType<typeof createProgramInstance>>
 
 function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataView): Map<number, SourceLocation> {
   const compiled = compileMiniNotation(sequence)
@@ -60,8 +61,7 @@ function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataV
 function buildProgram(
   data: ProgramDataView,
   dspSource: string,
-): { sequences: string[]; miniRefs: MiniSequenceRef[] }
-{
+): { sequences: string[]; miniRefs: MiniSequenceRef[] } {
   const { errors, miniSequences, miniRefs } = encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
   if (errors.length) {
     console.error('VM compile errors:', errors)
@@ -210,6 +210,7 @@ async function createProgram(
   wasmMemory: WebAssembly.Memory,
   wasmDspPtr: number,
   prepareDsp: Uint32Array,
+  prepareDspStatus: Int32Array,
   control: Uint32Array,
 ) {
   const program$ = await worklet.createProgram()
@@ -288,8 +289,7 @@ async function createProgram(
           }
 
           if (apply) {
-            Atomics.store(prepareDsp, 0, wasmDspPtr)
-            Atomics.store(control, 0, ControlOp.Prepare)
+            await waitForPrepareResult(prepareDspStatus, prepareDsp, control, wasmDspPtr)
           }
         }
         finally {
@@ -318,9 +318,8 @@ async function createProgram(
     async applyPreparedData(value: ProgramDataView) {
       await this.withLock(() => {
         this._setData(value)
-        Atomics.store(prepareDsp, 0, wasmDspPtr)
-        Atomics.store(control, 0, ControlOp.Prepare)
       })
+      await waitForPrepareResult(prepareDspStatus, prepareDsp, control, wasmDspPtr)
     },
     async acquireLock() {
       while (true) {
@@ -352,14 +351,44 @@ async function createProgram(
   return out
 }
 
+async function waitForPrepareResult(
+  status: Int32Array,
+  prepareDsp: Uint32Array,
+  control: Uint32Array,
+  dspPtr: number,
+  timeoutMs: number = 2000,
+) {
+  const deadline = performance.now() + timeoutMs
+  Atomics.store(status, 0, 0)
+  Atomics.store(status, 1, 0)
+  Atomics.store(prepareDsp, 0, dspPtr)
+  Atomics.store(control, 0, ControlOp.Prepare)
+
+  while (true) {
+    const currentResult = Atomics.load(status, 0)
+    if (currentResult !== 0) {
+      return currentResult
+    }
+    const remaining = deadline - performance.now()
+    if (remaining <= 0) {
+      return 0
+    }
+    const waitResult = await Atomics.waitAsync(status, 1, 0, remaining).value
+    if (waitResult === 'timed-out') {
+      return 0
+    }
+  }
+}
+
 export async function createProgramInstance(
   worklet: ReturnType<typeof rpc<DspProcessor>>,
   wasmMemory: WebAssembly.Memory,
   wasmDspPtr: number,
   prepareDsp: Uint32Array,
+  prepareDspStatus: Int32Array,
   control: Uint32Array,
 ) {
-  const program = await createProgram(worklet, wasmMemory, wasmDspPtr, prepareDsp, control)
+  const program = await createProgram(worklet, wasmMemory, wasmDspPtr, prepareDsp, prepareDspStatus, control)
 
   function cleanup() {
     // Cleanup logic if needed

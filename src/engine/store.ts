@@ -1,5 +1,6 @@
 import { rpc } from 'utils/rpc'
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import {
   MAX_DSP_INSTANCES,
 } from '../../as/assembly/constants.ts'
@@ -11,7 +12,7 @@ import { ControlOp } from '../worklet-shared.ts'
 import workletUrl from '../worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
-import { createProgramInstance, type Program, type ProgramDataView } from './program.ts'
+import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
 
 type PlaybackState = 'stopped' | 'running' | 'paused'
 
@@ -19,8 +20,8 @@ type EngineState = {
   wasmMemory?: WebAssembly.Memory
   wasmDsp?: Dsp
   wasmDspPtr: number
-  program1?: { program: Program; cleanup: () => void }
-  program2?: { program: Program; cleanup: () => void }
+  program1?: ProgramInstance
+  program2?: ProgramInstance
   animationManager?: AnimationManager
   worklet?: ReturnType<typeof rpc<DspProcessor>>
   audioContext?: AudioContext
@@ -31,6 +32,7 @@ type EngineState = {
   programSwap?: Uint32Array<SharedArrayBuffer>
   programSwapStatus?: Int32Array<SharedArrayBuffer>
   prepareDsp?: Uint32Array<SharedArrayBuffer>
+  prepareDspStatus?: Int32Array<SharedArrayBuffer>
   sequences: string[]
   miniRefs: MiniSequenceRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
@@ -236,6 +238,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         programSwap: undefined,
         programSwapStatus: undefined,
         prepareDsp: undefined,
+        prepareDspStatus: undefined,
         lastSuccessfulProgramData: undefined,
         miniRefs: [],
         miniSourceMaps: [],
@@ -273,6 +276,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         wasmMemory,
         wasmDspPtr,
         state.prepareDsp!,
+        state.prepareDspStatus!,
         state.control!,
       )
 
@@ -281,6 +285,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         wasmMemory,
         wasmDspPtr,
         state.prepareDsp!,
+        state.prepareDspStatus!,
         state.control!,
       )
 
@@ -293,7 +298,6 @@ export const useEngineStore = create<EngineState>((set, get) => {
         program1,
         program2,
         isProgramReady: true,
-        lastSuccessfulProgramData: program1.program.data,
       })
 
       const currentSource = get().dspSource
@@ -353,6 +357,7 @@ async function createWorklet() {
     new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT),
   )
   const prepareDsp = new Uint32Array(new SharedArrayBuffer(1 * Uint32Array.BYTES_PER_ELEMENT))
+  const prepareDspStatus = new Int32Array(new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT))
   const dsp = new AudioWorkletNode(audioContext, 'dsp', {
     outputChannelCount: [2],
     processorOptions: {
@@ -364,6 +369,7 @@ async function createWorklet() {
       programSwap,
       prepareDsp,
       swapStatus: programSwapStatus,
+      prepareDspStatus,
     },
   } satisfies DspProcessorOptions)
   dsp.connect(audioContext.destination)
@@ -375,6 +381,7 @@ async function createWorklet() {
     globalSampleCount,
     programSwap,
     prepareDsp,
+    prepareDspStatus,
     worklet,
     audioContext,
     programSwapStatus,
@@ -413,3 +420,24 @@ if (import.meta.hot) {
     }
   })
 }
+
+interface FontState {
+  currentFont: string
+  previewFont: string | null
+  setFont: (font: string) => void
+  setPreviewFont: (font: string | null) => void
+}
+
+export const useFontStore = create<FontState>()(
+  persist(
+    set => ({
+      currentFont: 'IBM Plex Mono',
+      previewFont: null,
+      setFont: (font: string) => set({ currentFont: font }),
+      setPreviewFont: (previewFont: string | null) => set({ previewFont }),
+    }),
+    {
+      name: 'dspscript-font',
+    },
+  ),
+)

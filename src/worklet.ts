@@ -65,6 +65,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
     programSwap: Uint32Array<SharedArrayBuffer>
     prepareDsp: Uint32Array<SharedArrayBuffer>
     swapStatus: Int32Array<SharedArrayBuffer>
+    prepareDspStatus: Int32Array<SharedArrayBuffer>
   }
 }
 
@@ -252,7 +253,18 @@ export class DspProcessor extends AudioWorkletProcessor {
       }
       else if (control === ControlOp.Prepare && this.state === 'stopped') {
         const dsp$ = Atomics.load(this.options.processorOptions.prepareDsp, 0)
-        if (dsp$) this.core.wasm.prepareDsp(dsp$)
+        if (dsp$) {
+          this.core.wasm.prepareDsp(dsp$)
+          // Process one frame to populate history even when stopped
+          const instance = this.dsps.find(d => d.dsp$ === dsp$)
+          if (instance) {
+            this.core.wasm.processAudio(instance.dsp$, this.scratchLeft$, this.scratchRight$, 0, CHUNK_SIZE)
+          }
+          const status = this.options.processorOptions.prepareDspStatus
+          Atomics.store(status, 0, 1)
+          Atomics.store(status, 1, 1)
+          Atomics.notify(status, 1)
+        }
         // Set the control back to its previous value.
         Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
       }
