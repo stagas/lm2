@@ -65,6 +65,7 @@ const builtinSyms: Record<string, number> = {
   adsr: 4,
   mini: 5,
   analyser: 6,
+  t: 7,
   // Named args for adsr()
   attack: 100,
   decay: 101,

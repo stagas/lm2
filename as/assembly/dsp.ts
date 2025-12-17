@@ -351,6 +351,7 @@ enum VmBuiltin {
   Adsr = 4,
   Mini = 5,
   Analyser = 6,
+  T = 7,
 }
 
 const VM_FUNC_HEADER: i32 = -2
@@ -509,6 +510,16 @@ export class Dsp {
     }
     if (sym === VmBuiltin.Mini) {
       this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Mini)
+      return
+    }
+    // Global time scaled to BPM: t = seconds * (bpm / 60)
+    if (sym === VmBuiltin.T) {
+      // globalSampleCount: i32 samples since start
+      // sampleRate: f32 samples per second
+      // bpm: f32 current beats per minute
+      const seconds = (globalSampleCount as f64) / (sampleRate as f64)
+      const scaled = seconds * (bpm as f64) / 60.0
+      this.vmPush(VmTag.Num, scaled)
       return
     }
 
