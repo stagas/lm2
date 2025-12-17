@@ -1102,15 +1102,6 @@ export class Dsp {
 
       mini.process(0, length)
 
-      let numVoices = 0
-      const voiceCount$ = this.program.getOutBuffer(voiceCountOut)
-      for (let i = 0; i < length; i++) {
-        const v = Mathf.round(load<f32>(voiceCount$ + i * 4)) as i32
-        if (v > numVoices) numVoices = v
-      }
-      if (numVoices > SEQ_VOICES) numVoices = SEQ_VOICES
-      if (numVoices < 0) numVoices = 0
-
       const mixOut = this.vmAllocOut()
       const mixOut$ = this.program.getOutBuffer(mixOut)
       clearAudio(mixOut$, length)
@@ -1135,7 +1126,7 @@ export class Dsp {
       argNums[2] = 0.0
       argAux[2] = scopeValIndex
 
-      for (let v = 0; v < numVoices; v++) {
+      for (let v = 0; v < SEQ_VOICES; v++) {
         const remapBase = CALLBACK_SCOPE_BASE + v * CALLBACK_SCOPE_BUFFERS_PER_VOICE
         this.program.pushCallbackScope(bodyBufBase, remapBase)
         this.program.bindScope(scopeTrigIndex, this.program.getOutBuffer(trigOuts[v]))

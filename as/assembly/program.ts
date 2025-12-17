@@ -239,10 +239,8 @@ export class Program {
 
   // Get buffer with remapping applied when inside a callback scope
   getOutBuffer(index: i32): usize {
+    // Check bindings first across all depths (bindings take precedence over remapping)
     for (let depth = this.callbackDepth - 1; depth >= 0; depth--) {
-      const base = this.callbackBodyBase[depth]
-
-      // Bound inputs for this scope (e.g., trig/velocity/value)
       const bindingCount = this.callbackBindingCount[depth]
       const bindingOffset = depth * CALLBACK_SCOPE_MAX_BINDINGS
       for (let i = 0; i < bindingCount; i++) {
@@ -251,14 +249,18 @@ export class Program {
           return this.callbackBindingOuts[bindingOffset + i]
         }
       }
+    }
 
-      // Scratch/remapped outputs for this scope
+    // Then apply remapping for scratch buffers
+    for (let depth = this.callbackDepth - 1; depth >= 0; depth--) {
+      const base = this.callbackBodyBase[depth]
       if (index >= base) {
         const offset = index - base
         const remapped = this.callbackRemapBase[depth] + offset
         return this.outsPool.get(remapped)
       }
     }
+
     return this.outsPool.get(index)
   }
 

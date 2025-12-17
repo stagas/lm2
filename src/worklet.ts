@@ -18,6 +18,15 @@ type SwapTarget = {
   new$: number
 }
 
+type SwapState = {
+  oldProgram$: number
+  newProgram$: number
+  chunkIndex: number
+  totalChunks: number
+}
+
+const CROSSFADE_CHUNKS = 8
+
 class Limiter {
   private gain = 1
   constructor(
@@ -78,6 +87,7 @@ export class DspProcessor extends AudioWorkletProcessor {
   private fadeRight: Float32Array | undefined
   private limiter = new Limiter()
   private swapStatus?: Int32Array
+  private crossfadeState: Map<number, SwapState> = new Map()
 
   constructor(private options: DspProcessorOptions) {
     super()
@@ -156,32 +166,54 @@ export class DspProcessor extends AudioWorkletProcessor {
     this.core.wasm.processAudio(instance.dsp$, left$, right$, begin, length)
   }
 
-  private performProgramSwap(instance: DspInstance, sampleBefore: number, oldProgram$: number, newProgram$: number,
-    begin: number, length: number)
-  {
+  private renderSwapChunk(
+    instance: DspInstance,
+    state: SwapState,
+    begin: number,
+    length: number,
+    sampleBefore: number,
+  ) {
     if (!this.core || !this.fadeLeft || !this.fadeRight || !this.scratchLeft || !this.scratchRight) return
 
     const wasm = this.core.wasm
     wasm.globalSampleCount.value = sampleBefore
     wasm.clearVmError()
-    this.renderProgram(instance, oldProgram$, this.scratchLeft$, this.scratchRight$, begin, length)
+    this.renderProgram(instance, state.oldProgram$, this.scratchLeft$, this.scratchRight$, begin, length)
+
+    if (state.chunkIndex === 0) {
+      wasm.globalSampleCount.value = sampleBefore
+      wasm.clearVmError()
+      wasm.copyProgram(state.newProgram$, state.oldProgram$)
+    }
 
     wasm.globalSampleCount.value = sampleBefore
     wasm.clearVmError()
-    wasm.copyProgram(newProgram$, oldProgram$)
-    this.renderProgram(instance, newProgram$, this.fadeLeft$, this.fadeRight$, begin, length)
+    this.renderProgram(instance, state.newProgram$, this.fadeLeft$, this.fadeRight$, begin, length)
 
-    for (let i = 0; i < CHUNK_SIZE; i++) {
-      const t = i / CHUNK_SIZE
+    const totalSamples = state.totalChunks * length
+    const chunkOffset = state.chunkIndex * length
+
+    for (let i = 0; i < length; i++) {
+      const sampleNumber = chunkOffset + i
+      const t = totalSamples > 1 ? sampleNumber / (totalSamples - 1) : 1
       const inv = 1 - t
       this.scratchLeft[i] = this.scratchLeft[i] * inv + this.fadeLeft[i] * t
       this.scratchRight[i] = this.scratchRight[i] * inv + this.fadeRight[i] * t
     }
 
-    wasm.globalSampleCount.value = sampleBefore + CHUNK_SIZE
+    state.chunkIndex += 1
 
-    instance.view.program = newProgram$
+    if (state.chunkIndex >= state.totalChunks) {
+      this.finishCrossfade(instance, state)
+    }
+  }
 
+  private finishCrossfade(instance: DspInstance, state: SwapState) {
+    if (!this.core) return
+    this.crossfadeState.delete(instance.dsp$)
+    instance.view.program = state.newProgram$
+
+    const wasm = this.core.wasm
     const vmErrorCode = (wasm as any).getVmErrorCode?.() ?? 0
     const statusValue = vmErrorCode === 0 ? 1 : -1
     if (this.swapStatus) {
@@ -190,7 +222,9 @@ export class DspProcessor extends AudioWorkletProcessor {
       Atomics.notify(this.swapStatus, 1, 1)
     }
 
-    Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
+    if (!this.crossfadeState.size) {
+      Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
+    }
   }
 
   process(
@@ -249,19 +283,31 @@ export class DspProcessor extends AudioWorkletProcessor {
     L.fill(0)
     R.fill(0)
 
-    const swap = this.options.processorOptions.programSwap
-    const swapStatus = this.swapStatus
-    let swaps: Map<number, SwapTarget> | undefined
-    if (control === ControlOp.Swap) {
-      swaps = new Map<number, SwapTarget>()
+    if (control === ControlOp.Swap && !this.crossfadeState.size) {
+      const swap = this.options.processorOptions.programSwap
+      const states = new Map<number, SwapState>()
       for (let i = 0; i < MAX_DSP_INSTANCES; i++) {
         const base = i * 3
         const old$ = Atomics.load(swap, base)
         const new$ = Atomics.load(swap, base + 1)
         const targetDsp$ = Atomics.load(swap, base + 2)
         if (old$ && new$ && targetDsp$) {
-          swaps.set(targetDsp$, { old$, new$ })
+          states.set(targetDsp$, {
+            oldProgram$: old$,
+            newProgram$: new$,
+            chunkIndex: 0,
+            totalChunks: CROSSFADE_CHUNKS,
+          })
         }
+      }
+
+      if (states.size && this.swapStatus) {
+        Atomics.store(this.swapStatus, 0, 0)
+        Atomics.store(this.swapStatus, 1, 0)
+      }
+
+      if (states.size) {
+        this.crossfadeState = states
       }
     }
 
@@ -274,14 +320,9 @@ export class DspProcessor extends AudioWorkletProcessor {
 
       this.core.wasm.globalSampleCount.value = sampleBefore
 
-      if (control === ControlOp.Swap && swaps) {
-        const swapTarget = swaps.get(dsp.dsp$)
-        if (swapTarget) {
-          this.performProgramSwap(dsp, sampleBefore, swapTarget.old$, swapTarget.new$, begin, length)
-        }
-        else {
-          this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, begin, length)
-        }
+      const swapState = this.crossfadeState.get(dsp.dsp$)
+      if (swapState) {
+        this.renderSwapChunk(dsp, swapState, begin, length, sampleBefore)
       }
       else {
         this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, begin, length)

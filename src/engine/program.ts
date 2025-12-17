@@ -255,42 +255,50 @@ async function createProgram(
       const { apply = true, setData = apply, compareAgainst, copyVersionFrom } = options
       const referenceData = compareAgainst ?? programData
       const versionSource = copyVersionFrom ?? referenceData
+      const previousProgramDataIndex = programDataPoolIndex
       const newData = nextProgramData()
-      const sequences = buildProgram(newData, source)
 
-      await this.acquireLock()
       try {
-        for (let arrayIndex = 0; arrayIndex < sequences.length; arrayIndex++) {
-          const sequence = sequences[arrayIndex]
-          if (!sequence) continue
+        const sequences = buildProgram(newData, source)
 
-          const oldArray = versionSource?.arrays[arrayIndex]
-          if (oldArray) {
-            newData.arrays[arrayIndex].raw[3] = oldArray.raw[3]
+        await this.acquireLock()
+        try {
+          for (let arrayIndex = 0; arrayIndex < sequences.length; arrayIndex++) {
+            const sequence = sequences[arrayIndex]
+            if (!sequence) continue
+
+            const oldArray = versionSource?.arrays[arrayIndex]
+            if (oldArray) {
+              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3]
+            }
+
+            updateSequence(sequence, arrayIndex, newData)
           }
 
-          updateSequence(sequence, arrayIndex, newData)
+          if (setData) {
+            this._setData(newData)
+          }
+
+          if (apply) {
+            Atomics.store(prepareDsp, 0, wasmDspPtr)
+            Atomics.store(control, 0, ControlOp.Prepare)
+          }
+        }
+        finally {
+          this.releaseLock()
         }
 
-        if (setData) {
-          this._setData(newData)
-        }
-
-        if (apply) {
-          Atomics.store(prepareDsp, 0, wasmDspPtr)
-          Atomics.store(control, 0, ControlOp.Prepare)
+        const diff = computeProgramDiff(referenceData, newData)
+        return {
+          sequences,
+          data: newData,
+          diff,
+          previousData: referenceData,
         }
       }
-      finally {
-        this.releaseLock()
-      }
-
-      const diff = computeProgramDiff(referenceData, newData)
-      return {
-        sequences,
-        data: newData,
-        diff,
-        previousData: referenceData,
+      catch (error) {
+        programDataPoolIndex = previousProgramDataIndex
+        throw error
       }
     },
     async buildFromSource(source: string): Promise<string[]> {

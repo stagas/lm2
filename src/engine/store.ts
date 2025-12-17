@@ -9,7 +9,7 @@ import { ControlOp } from '../worklet-shared.ts'
 import workletUrl from '../worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
-import { createProgramInstance, type Program } from './program.ts'
+import { createProgramInstance, type Program, type ProgramDataView } from './program.ts'
 
 type PlaybackState = 'stopped' | 'running' | 'paused'
 
@@ -34,6 +34,7 @@ type EngineState = {
   isInitialized: boolean
   isProgramReady: boolean
   playbackState: PlaybackState
+  lastSuccessfulProgramData?: ProgramDataView
 
   initialize: () => Promise<void>
   dispose: () => void
@@ -44,68 +45,33 @@ type EngineState = {
   stop: () => void
 }
 
-export const useEngineStore = create<EngineState>((set, get) => ({
-  wasmDspPtr: 0,
-  sequences: [...DEFAULT_SEQUENCES],
-  dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
-  isInitialized: false,
-  isProgramReady: false,
-  playbackState: 'stopped',
+type PendingDspUpdate = {
+  source: string
+  resolve: (value: string[] | undefined) => void
+  reject: (reason: unknown) => void
+}
 
-  initialize: async () => {
+export const useEngineStore = create<EngineState>((set, get) => {
+  const dspUpdateQueue = {
+    isProcessing: false,
+    pendingSource: undefined as string | undefined,
+    requests: [] as PendingDspUpdate[],
+  }
+
+  async function runQueuedDspUpdate(source: string): Promise<string[] | undefined> {
     const state = get()
-    if (state.isInitialized) return
+    if (!state.program1 || !state.program2) return undefined
 
-    const workletData = await createWorklet()
-    const animationManager = new AnimationManager()
-
-    set({
-      ...workletData,
-      animationManager,
-      isInitialized: true,
-    })
-
-    await get().updateWasmBinary()
-  },
-
-  dispose: () => {
-    const state = get()
-    state.program1?.cleanup()
-    state.program2?.cleanup()
-    state.animationManager?.stop()
-    state.audioContext?.close()
-
-    set({
-      wasmMemory: undefined,
-      wasmDsp: undefined,
-      wasmDspPtr: 0,
-      program1: undefined,
-      program2: undefined,
-      animationManager: undefined,
-      worklet: undefined,
-      audioContext: undefined,
-      ringPos: undefined,
-      control: undefined,
-      bpmValue: undefined,
-      globalSampleCount: undefined,
-      programSwap: undefined,
-      programSwapStatus: undefined,
-      prepareDsp: undefined,
-      isInitialized: false,
-      isProgramReady: false,
-      playbackState: 'stopped',
-    })
-  },
-
-  updateDspSource: async (source: string) => {
-    const state = get()
-    if (!state.program1 || !state.program2) return
+    if (state.lastSuccessfulProgramData && state.dspSource === source) {
+      return state.sequences
+    }
 
     try {
       const primaryProgram = state.program1
       const stagingProgram = state.program2
 
-      const comparisonReference = state.program2?.program.data ?? primaryProgram.program.data
+      const comparisonReference = state.lastSuccessfulProgramData ?? primaryProgram.program.data
+        ?? state.program2?.program.data
       const primaryResult = await primaryProgram.program.compileSource(source, {
         apply: false,
         setData: false,
@@ -116,7 +82,11 @@ export const useEngineStore = create<EngineState>((set, get) => ({
 
       if (!primaryResult.diff.significantChange) {
         await primaryProgram.program.applyPreparedData(primaryResult.data)
-        set({ dspSource: source, sequences })
+        set({
+          dspSource: source,
+          sequences,
+          lastSuccessfulProgramData: primaryResult.data,
+        })
         localStorage.setItem('engine2:dsp-source', source)
         return sequences
       }
@@ -153,9 +123,6 @@ export const useEngineStore = create<EngineState>((set, get) => ({
 
       if (swapResult !== 1) {
         console.warn('Program swap failed; will retry against the last-known program on the next update.')
-        set({
-          ...swappedPrograms,
-        })
         return undefined
       }
 
@@ -163,6 +130,7 @@ export const useEngineStore = create<EngineState>((set, get) => ({
         dspSource: source,
         sequences,
         ...swappedPrograms,
+        lastSuccessfulProgramData: stagingProgram.program.data,
       })
 
       localStorage.setItem('engine2:dsp-source', source)
@@ -172,72 +140,177 @@ export const useEngineStore = create<EngineState>((set, get) => ({
       console.error('Failed to build program:', error)
       throw error
     }
-  },
+  }
 
-  updateWasmBinary: async () => {
-    const state = get()
-    if (!state.worklet) throw new Error('Worklet not initialized')
+  async function processDspQueue() {
+    if (dspUpdateQueue.isProcessing) return
+    dspUpdateQueue.isProcessing = true
+    try {
+      while (dspUpdateQueue.requests.length) {
+        const batch = dspUpdateQueue.requests.splice(0)
+        const sourceToBuild = dspUpdateQueue.pendingSource ?? batch[batch.length - 1].source
+        dspUpdateQueue.pendingSource = undefined
 
-    const binary = await fetchWasmBinary()
-    const { memory, dsp$ } = await state.worklet.setWasmBinary(binary)
-    const wasmMemory = memory
-    const wasmDsp = DspStruct(wasmMemory.buffer, dsp$)
-    const wasmDspPtr = dsp$
+        try {
+          const result = await runQueuedDspUpdate(sourceToBuild)
+          batch.forEach(({ resolve }) => resolve(result))
+        }
+        catch (error) {
+          batch.forEach(({ reject }) => reject(error))
+        }
+      }
+    }
+    finally {
+      dspUpdateQueue.isProcessing = false
+      if (dspUpdateQueue.requests.length) {
+        void processDspQueue()
+      }
+    }
+  }
 
-    state.program1?.cleanup()
-    state.program2?.cleanup()
-
-    state.animationManager?.start()
-
-    const program1 = await createProgramInstance(
-      state.worklet,
-      wasmMemory,
-      wasmDspPtr,
-      state.prepareDsp!,
-      state.control!,
-    )
-
-    const program2 = await createProgramInstance(
-      state.worklet,
-      wasmMemory,
-      wasmDspPtr,
-      state.prepareDsp!,
-      state.control!,
-    )
-
-    wasmDsp.program = program1.program.ptr$
-
-    set({
-      wasmMemory,
-      wasmDsp,
-      wasmDspPtr,
-      program1,
-      program2,
-      isProgramReady: true,
+  function enqueueDspUpdate(source: string) {
+    return new Promise<string[] | undefined>((resolve, reject) => {
+      dspUpdateQueue.requests.push({ source, resolve, reject })
+      dspUpdateQueue.pendingSource = source
+      void processDspQueue()
     })
-  },
+  }
 
-  start: () => {
-    const state = get()
-    if (!state.control) return
-    Atomics.store(state.control, 0, ControlOp.Start)
-    set({ playbackState: 'running' })
-  },
+  return {
+    wasmDspPtr: 0,
+    sequences: [...DEFAULT_SEQUENCES],
+    dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
+    isInitialized: false,
+    isProgramReady: false,
+    playbackState: 'stopped',
+    lastSuccessfulProgramData: undefined,
 
-  pause: () => {
-    const state = get()
-    if (!state.control) return
-    Atomics.store(state.control, 0, ControlOp.Pause)
-    set({ playbackState: 'paused' })
-  },
+    initialize: async () => {
+      const state = get()
+      if (state.isInitialized) return
 
-  stop: () => {
-    const state = get()
-    if (!state.control) return
-    Atomics.store(state.control, 0, ControlOp.Stop)
-    set({ playbackState: 'stopped' })
-  },
-}))
+      const workletData = await createWorklet()
+      const animationManager = new AnimationManager()
+
+      set({
+        ...workletData,
+        animationManager,
+        isInitialized: true,
+      })
+
+      await get().updateWasmBinary()
+    },
+
+    dispose: () => {
+      const state = get()
+      state.program1?.cleanup()
+      state.program2?.cleanup()
+      state.animationManager?.stop()
+      state.audioContext?.close()
+
+      set({
+        wasmMemory: undefined,
+        wasmDsp: undefined,
+        wasmDspPtr: 0,
+        program1: undefined,
+        program2: undefined,
+        animationManager: undefined,
+        worklet: undefined,
+        audioContext: undefined,
+        ringPos: undefined,
+        control: undefined,
+        bpmValue: undefined,
+        globalSampleCount: undefined,
+        programSwap: undefined,
+        programSwapStatus: undefined,
+        prepareDsp: undefined,
+        lastSuccessfulProgramData: undefined,
+        isInitialized: false,
+        isProgramReady: false,
+        playbackState: 'stopped',
+      })
+    },
+
+    updateDspSource: (source: string) => {
+      const state = get()
+      if (!state.program1 || !state.program2) {
+        return Promise.resolve(undefined)
+      }
+      return enqueueDspUpdate(source)
+    },
+
+    updateWasmBinary: async () => {
+      const state = get()
+      if (!state.worklet) throw new Error('Worklet not initialized')
+
+      const binary = await fetchWasmBinary()
+      const { memory, dsp$ } = await state.worklet.setWasmBinary(binary)
+      const wasmMemory = memory
+      const wasmDsp = DspStruct(wasmMemory.buffer, dsp$)
+      const wasmDspPtr = dsp$
+
+      state.program1?.cleanup()
+      state.program2?.cleanup()
+
+      state.animationManager?.start()
+
+      const program1 = await createProgramInstance(
+        state.worklet,
+        wasmMemory,
+        wasmDspPtr,
+        state.prepareDsp!,
+        state.control!,
+      )
+
+      const program2 = await createProgramInstance(
+        state.worklet,
+        wasmMemory,
+        wasmDspPtr,
+        state.prepareDsp!,
+        state.control!,
+      )
+
+      wasmDsp.program = program1.program.ptr$
+
+      set({
+        wasmMemory,
+        wasmDsp,
+        wasmDspPtr,
+        program1,
+        program2,
+        isProgramReady: true,
+        lastSuccessfulProgramData: program1.program.data,
+      })
+
+      const currentSource = get().dspSource
+      if (currentSource) {
+        // Reapply the current DSP source once the new programs are ready.
+        await enqueueDspUpdate(currentSource)
+      }
+    },
+
+    start: () => {
+      const state = get()
+      if (!state.control) return
+      Atomics.store(state.control, 0, ControlOp.Start)
+      set({ playbackState: 'running' })
+    },
+
+    pause: () => {
+      const state = get()
+      if (!state.control) return
+      Atomics.store(state.control, 0, ControlOp.Pause)
+      set({ playbackState: 'paused' })
+    },
+
+    stop: () => {
+      const state = get()
+      if (!state.control) return
+      Atomics.store(state.control, 0, ControlOp.Stop)
+      set({ playbackState: 'stopped' })
+    },
+  }
+})
 
 async function fetchWasmBinary() {
   const wasmUrl = new URL('/as/build/index.wasm', location.origin).toString()
@@ -316,4 +389,13 @@ async function waitForSwapResult(
       return 0
     }
   }
+}
+
+if (import.meta.hot) {
+  import.meta.hot.on('vite:beforeUpdate', async () => {
+    const { isInitialized, updateWasmBinary } = useEngineStore.getState()
+    if (isInitialized) {
+      await updateWasmBinary()
+    }
+  })
 }

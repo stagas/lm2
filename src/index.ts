@@ -762,6 +762,6 @@ await updateWasmBinary()
 
 if (import.meta.hot) {
   import.meta.hot.on('vite:beforeUpdate', () => {
-    location.reload()
+    updateWasmBinary()
   })
 }
