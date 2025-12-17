@@ -95,6 +95,7 @@ export class MiniEvents {
       0.0,
       0.0,
       1.0,
+      0.0,
       this.emitter,
       0,
       1.0,
@@ -263,6 +264,7 @@ export class MiniEvents {
     parentStrumMul: f64,
     parentJitter: f64,
     parentPitch: f64,
+    parentGlide: f64,
     emitter: EventEmitter,
     depth: i32,
     densityMul: f64,
@@ -287,6 +289,9 @@ export class MiniEvents {
     const groupVelocity: f64 = parentVelocity * (group.velocity as f64)
     const groupHoldMul: f64 = this.combineOptionalMul(parentHoldMul, group.hold as f64)
     const groupStrumMul: f64 = this.combineStrum(parentStrumMul, group.strum as f64)
+    // glide inheritance: group's glide overrides parentGlide when non-zero
+    const groupGlide: f64 = group.glide as f64
+    const effectiveGlide: f64 = groupGlide !== 0.0 ? groupGlide : parentGlide
     let pitch: f64 = parentPitch
 
     const groupProb: f64 = group.prob as f64
@@ -392,6 +397,7 @@ export class MiniEvents {
             groupHoldMul,
             groupStrumMul,
             groupJitter,
+            effectiveGlide,
             pitch,
             emitter,
             depth,
@@ -475,6 +481,7 @@ export class MiniEvents {
             groupHoldMul,
             groupStrumMul,
             groupJitter,
+            effectiveGlide,
             pitch,
             emitter,
             depth,
@@ -558,6 +565,7 @@ export class MiniEvents {
               groupHoldMul,
               groupStrumMul,
               groupJitter,
+              effectiveGlide,
               pitch,
               emitter,
               depth,
@@ -590,6 +598,7 @@ export class MiniEvents {
     holdMul: f64,
     strumMul: f64,
     groupJitter: f64,
+    parentGlide: f64,
     pitch: f64,
     emitter: EventEmitter,
     depth: i32,
@@ -620,6 +629,13 @@ export class MiniEvents {
         const eventOffset: f64 = event.offset as f64
         const eventJitter: f64 = groupJitter + (event.jitter as f64)
         const eventProb: f64 = event.prob as f64
+        // Inherit glide from parent/group when event has no explicit glide
+        const eventGlide: f64 = event.glide as f64
+        if (eventGlide === 0.0 && parentGlide !== 0.0) {
+          const arr = changetype<StaticArray<f32>>(reader.array$)
+          // glide is stored at struct index 10 for EventOp
+          arr[opOffset + 10] = parentGlide as f32
+        }
 
         const invDensity: f64 = 1.0 / density
         const phaseStart: f64 = fract(roundToDecimals(cycle * density, 3))
@@ -766,6 +782,7 @@ export class MiniEvents {
           strumMul,
           groupJitter,
           pitch,
+          parentGlide,
           emitter,
           depth + 1,
           group.replicate as f64,

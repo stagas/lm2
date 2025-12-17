@@ -1,3 +1,4 @@
+import react from '@vitejs/plugin-react-swc'
 import fs from 'node:fs'
 import path from 'node:path'
 import { type ConfigEnv, defineConfig, loadEnv, type Plugin, type UserConfig } from 'vite'
@@ -27,6 +28,7 @@ export default ({ mode }: ConfigEnv): UserConfig => {
 
   return defineConfig({
     plugins: [
+      react(),
       openInEditor({ cmd: 'cursor' }),
       coopCoep(),
       assemblyScript({
