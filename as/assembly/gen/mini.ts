@@ -81,6 +81,11 @@ export class Mini extends Gen {
   private scratchHistory: StaticArray<f32> = new StaticArray<f32>(
     HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE,
   )
+  // Scratch space for glide successor lookup (avoids O(HISTORY_SIZE^2) scans in processAudio).
+  private glideSlots: StaticArray<i32> = new StaticArray<i32>(HISTORY_SIZE)
+  private glideKeys: StaticArray<i64> = new StaticArray<i64>(HISTORY_SIZE)
+  private glideNextStartBySlot: StaticArray<i32> = new StaticArray<i32>(HISTORY_SIZE)
+  private glideNextValueBySlot: StaticArray<f32> = new StaticArray<f32>(HISTORY_SIZE)
 
   constructor() {
     super()
@@ -265,6 +270,97 @@ export class Mini extends Gen {
     }
   }
 
+  private pairLess(aKey: i64, aSlot: i32, bKey: i64, bSlot: i32): bool {
+    if (aKey < bKey) return true
+    if (aKey > bKey) return false
+    return aSlot < bSlot
+  }
+
+  private sortGlidePairs(lo: i32, hi: i32): void {
+    let i: i32 = lo
+    let j: i32 = hi
+    const pivotIndex: i32 = (lo + hi) >> 1
+    const pivotKey: i64 = this.glideKeys[pivotIndex]
+    const pivotSlot: i32 = this.glideSlots[pivotIndex]
+
+    while (i <= j) {
+      while (this.pairLess(this.glideKeys[i], this.glideSlots[i], pivotKey, pivotSlot)) i++
+      while (this.pairLess(pivotKey, pivotSlot, this.glideKeys[j], this.glideSlots[j])) j--
+      if (i <= j) {
+        const k: i64 = this.glideKeys[i]
+        this.glideKeys[i] = this.glideKeys[j]
+        this.glideKeys[j] = k
+        const s: i32 = this.glideSlots[i]
+        this.glideSlots[i] = this.glideSlots[j]
+        this.glideSlots[j] = s
+        i++
+        j--
+      }
+    }
+
+    if (lo < j) this.sortGlidePairs(lo, j)
+    if (i < hi) this.sortGlidePairs(i, hi)
+  }
+
+  private prepareGlideSuccessors(historyArray: StaticArray<f32>): void {
+    // Reset successor tables.
+    for (let n: i32 = 0; n < HISTORY_SIZE; n++) {
+      this.glideNextStartBySlot[n] = i32.MAX_VALUE
+      this.glideNextValueBySlot[n] = 0.0
+    }
+
+    // Build sortable (voiceIndexHist, startSample, slotIndex) tuples for valid entries.
+    let count: i32 = 0
+    for (let n: i32 = 0; n < HISTORY_SIZE; n++) {
+      const historyIdx: i32 = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
+      const startSample: i32 = i32(historyArray[historyIdx + 4])
+      const endSample: i32 = i32(historyArray[historyIdx + 5])
+      if (startSample === 0 && endSample === 0) continue
+      const voiceIndexHist: i32 = i32(historyArray[historyIdx + 1])
+      if (voiceIndexHist < 0 || voiceIndexHist >= MAX_EVENT_VALUES) continue
+      const key: i64 = (i64(voiceIndexHist) << 32) | i64(u32(startSample))
+      this.glideKeys[count] = key
+      this.glideSlots[count] = n
+      count++
+    }
+
+    if (count <= 1) return
+
+    this.sortGlidePairs(0, count - 1)
+
+    // For each (voiceIndexHist) group, link each startSample run to the next distinct startSample run.
+    let p: i32 = 0
+    while (p < count) {
+      const voiceKey: i32 = i32(this.glideKeys[p] >> 32)
+      let groupEnd: i32 = p + 1
+      while (groupEnd < count && i32(this.glideKeys[groupEnd] >> 32) === voiceKey) groupEnd++
+
+      let i: i32 = p
+      while (i < groupEnd) {
+        const startKey: u32 = u32(this.glideKeys[i])
+        let runEnd: i32 = i + 1
+        while (runEnd < groupEnd && u32(this.glideKeys[runEnd]) === startKey) runEnd++
+
+        if (runEnd < groupEnd) {
+          const nextStart: i32 = i32(u32(this.glideKeys[runEnd]))
+          const nextSlot: i32 = this.glideSlots[runEnd]
+          const nextIdx: i32 = HISTORY_DATA_OFFSET + nextSlot * HISTORY_ENTRY_SIZE
+          const nextValue: f32 = historyArray[nextIdx + 2]
+
+          for (let j: i32 = i; j < runEnd; j++) {
+            const slot: i32 = this.glideSlots[j]
+            this.glideNextStartBySlot[slot] = nextStart
+            this.glideNextValueBySlot[slot] = nextValue
+          }
+        }
+
+        i = runEnd
+      }
+
+      p = groupEnd
+    }
+  }
+
   generateHistory(): void {
     if (this.bytecode$ === 0 || this.history$ === 0) return
 
@@ -386,16 +482,16 @@ export class Mini extends Gen {
       const trig$ = this.outTrig$[v]
       const vel$ = this.outVelocity$[v]
       const val$ = this.outValue$[v]
-      for (let i = 0; i < length; i++) {
-        store<f32>(trig$ + (i << 2), 0)
-        store<f32>(vel$ + (i << 2), 0)
-        store<f32>(val$ + (i << 2), 0)
-      }
+      const bytes: usize = (length << 2) as usize
+      memory.fill(trig$, 0, bytes)
+      memory.fill(vel$, 0, bytes)
+      memory.fill(val$, 0, bytes)
     }
     const opStart = bytecodeBase + MINI_HEADER_SIZE
 
     // Read events from history buffer that intersect with current window and schedule voices
     // After defragmentation, events are sequential from 0 to writePos-1, so read all slots
+    let glidePrepared: bool = false
     for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const opIndex = i32(historyArray[historyIdx])
@@ -493,95 +589,60 @@ export class Mini extends Gen {
       voice.glideEndSample = voice.holdEndSample
 
       if (glidePower > 0.0) {
-        // Find the next scheduled event for the same voiceIndex (any opIndex) with a later startSample.
-        // This makes each chord voice glide to its equivalent in the next chord regardless of which
-        // mini op generated it.
-        let nextStart: i32 = i32.MAX_VALUE
-
-        // First pass: find the earliest later startSample for this voiceIndex
-        for (let m = 0; m < HISTORY_SIZE; m++) {
-          if (m === n) continue
-          const otherIdx = HISTORY_DATA_OFFSET + m * HISTORY_ENTRY_SIZE
-          const otherVoiceIndex = i32(historyArray[otherIdx + 1])
-          const otherStart = i32(historyArray[otherIdx + 4])
-          const otherEnd = i32(historyArray[otherIdx + 5])
-
-          if (otherStart === 0 && otherEnd === 0) continue
-          if (otherVoiceIndex !== voiceIndexHist) continue
-          if (otherStart <= startSample) continue
-
-          if (otherStart < nextStart) {
-            nextStart = otherStart
-          }
+        if (!glidePrepared) {
+          this.prepareGlideSuccessors(historyArray)
+          glidePrepared = true
         }
 
-        // Second pass: among events at nextStart for this voiceIndex, pick its value
+        const nextStart = this.glideNextStartBySlot[n]
         if (nextStart < i32.MAX_VALUE) {
-          // Second pass: fetch the value at (any opIndex, voiceIndexHist, nextStart)
-          for (let m = 0; m < HISTORY_SIZE; m++) {
-            const otherIdx = HISTORY_DATA_OFFSET + m * HISTORY_ENTRY_SIZE
-            const otherVoiceIndex = i32(historyArray[otherIdx + 1])
-            const otherStart = i32(historyArray[otherIdx + 4])
-            const otherEnd = i32(historyArray[otherIdx + 5])
-
-            if (otherStart === 0 && otherEnd === 0) continue
-            if (otherVoiceIndex !== voiceIndexHist) continue
-            if (otherStart !== nextStart) continue
-
-            const otherValue = historyArray[otherIdx + 2]
-            if (otherValue <= 0.0) continue
-
-            voice.glideTarget = otherValue
-            // Glide until the next event starts (or current hold end, whichever is earlier)
+          const nextValue = this.glideNextValueBySlot[n]
+          if (nextValue > 0.0) {
+            voice.glideTarget = nextValue
             voice.glideEndSample = nextStart < voice.holdEndSample ? nextStart : voice.holdEndSample
-            break
           }
         }
       }
     }
 
-    let maxActive = 0
-    let activeVoiceCount = 0
-    for (let v = 0; v < SEQ_VOICES; v++) {
-      if (this.voices[v].active) activeVoiceCount++
+    let activeCount: i32 = 0
+    for (let v: i32 = 0; v < SEQ_VOICES; v++) {
+      if (this.voices[v].active) activeCount++
     }
-    for (let i = 0; i < length; i++) {
-      const absSample = windowStart + i
-      let activeNow = 0
 
-      for (let v = 0; v < SEQ_VOICES; v++) {
-        const voice = this.voices[v]
-        const trig$ = this.outTrig$[v]
-        const vel$ = this.outVelocity$[v]
-        const val$ = this.outValue$[v]
+    for (let v: i32 = 0; v < SEQ_VOICES; v++) {
+      const voice = this.voices[v]
+      if (!voice.active) continue
 
-        if (voice.active) {
-          activeNow++
-          const inHold = absSample >= voice.triggerSample && absSample < voice.holdEndSample
-          store<f32>(trig$ + (i << 2), inHold ? 1 : 0)
-          store<f32>(vel$ + (i << 2), voice.velocity)
+      const trig$ = this.outTrig$[v]
+      const vel$ = this.outVelocity$[v]
+      const val$ = this.outValue$[v]
 
-          let currentValue = voice.baseValue
-          if (voice.glidePower > 0.0 && absSample >= voice.triggerSample && absSample < voice.glideEndSample) {
-            const span = voice.glideEndSample - voice.triggerSample
-            if (span > 0) {
-              const t = f32(absSample - voice.triggerSample) / f32(span)
-              const powered = Mathf.pow(t, voice.glidePower)
-              currentValue = voice.baseValue + (voice.glideTarget - voice.baseValue) * powered
-            }
+      let absSample: i32 = windowStart
+      for (let i: i32 = 0; i < length; i++) {
+        const inHold: bool = absSample >= voice.triggerSample && absSample < voice.holdEndSample
+        store<f32>(trig$ + (i << 2), inHold ? 1.0 : 0.0)
+        store<f32>(vel$ + (i << 2), voice.velocity)
+
+        let currentValue: f32 = voice.baseValue
+        if (voice.glidePower > 0.0 && absSample >= voice.triggerSample && absSample < voice.glideEndSample) {
+          const span: i32 = voice.glideEndSample - voice.triggerSample
+          if (span > 0) {
+            const t: f32 = f32(absSample - voice.triggerSample) / f32(span)
+            const powered: f32 = Mathf.pow(t, voice.glidePower)
+            currentValue = voice.baseValue + (voice.glideTarget - voice.baseValue) * powered
           }
-
-          store<f32>(val$ + (i << 2), currentValue)
         }
-      }
 
-      if (activeNow > maxActive) maxActive = activeNow
+        store<f32>(val$ + (i << 2), currentValue)
+        absSample++
+      }
     }
 
     // Write voice count
     if (this.outVoiceCount$ !== 0) {
       for (let i = 0; i < length; i++) {
-        store<f32>(this.outVoiceCount$ + (i << 2), maxActive as f32)
+        store<f32>(this.outVoiceCount$ + (i << 2), activeCount as f32)
       }
     }
   }

@@ -1,7 +1,7 @@
 export const RING_BUFFER_SIZE = 16384
 export const CHUNK_SIZE = 128
 export const ARRAY_SIZE = 1024
-export const HISTORY_SIZE = 8192 // ring buffer for event history
+export const HISTORY_SIZE = 512 // ring buffer for event history
 export const HISTORY_HEADER_SIZE = 1 // writePos
 export const HISTORY_ENTRY_SIZE = 6 // opIndex, voiceIndex, value, velocity, startSample, endSample
 export const HISTORY_WRITE_POS_OFFSET = 0

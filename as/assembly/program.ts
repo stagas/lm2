@@ -199,9 +199,17 @@ export class Program {
   private callbackBindingIndices: StaticArray<i32> = new StaticArray<i32>(
     CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS,
   )
-  private callbackBindingOuts: StaticArray<usize> = new StaticArray<usize>(
+  private callbackBindingPrevHas: StaticArray<i32> = new StaticArray<i32>(
     CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS,
   )
+  private callbackBindingPrevOuts: StaticArray<usize> = new StaticArray<usize>(
+    CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS,
+  )
+
+  // Fast binding lookup table (current effective bindings across all active scopes)
+  // Uses the out-buffer index directly; size must match `OutsPool.outs.length`.
+  private callbackBoundHas: StaticArray<i32> = new StaticArray<i32>(1024)
+  private callbackBoundOuts: StaticArray<usize> = new StaticArray<usize>(1024)
 
   constructor() {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
@@ -219,52 +227,76 @@ export class Program {
   }
 
   pushCallbackScope(bodyBufferBase: i32, remapBase: i32): void {
-    const depth = this.callbackDepth
+    const depth: i32 = this.callbackDepth
     this.callbackBodyBase[depth] = bodyBufferBase
     this.callbackRemapBase[depth] = remapBase
     this.callbackBindingCount[depth] = 0
     this.callbackDepth = depth + 1
   }
 
+  @inline
   bindScope(index: i32, out$: usize): void {
-    const depth = this.callbackDepth - 1
-    const bindingIndex = depth * CALLBACK_SCOPE_MAX_BINDINGS
-    const count = this.callbackBindingCount[depth]
-    this.callbackBindingIndices[bindingIndex + count] = index
-    this.callbackBindingOuts[bindingIndex + count] = out$
+    const depth: i32 = this.callbackDepth - 1
+    const bindingOffset: i32 = depth * CALLBACK_SCOPE_MAX_BINDINGS
+    const count: i32 = this.callbackBindingCount[depth]
+    const bindingIndex: i32 = bindingOffset + count
+
+    this.callbackBindingIndices[bindingIndex] = index
+
+    const prevHas: i32 = this.callbackBoundHas[index]
+    this.callbackBindingPrevHas[bindingIndex] = prevHas
+    this.callbackBindingPrevOuts[bindingIndex] = this.callbackBoundOuts[index]
+
+    this.callbackBoundHas[index] = 1
+    this.callbackBoundOuts[index] = out$
+
     this.callbackBindingCount[depth] = count + 1
   }
 
   popCallbackScope(): void {
-    if (this.callbackDepth <= 0) return
-    this.callbackDepth--
+    const depth: i32 = this.callbackDepth - 1
+    if (depth < 0) return
+
+    const count: i32 = this.callbackBindingCount[depth]
+    const bindingOffset: i32 = depth * CALLBACK_SCOPE_MAX_BINDINGS
+
+    for (let i: i32 = count - 1; i >= 0; i--) {
+      const bindingIndex: i32 = bindingOffset + i
+      const index: i32 = this.callbackBindingIndices[bindingIndex]
+      const prevHas: i32 = this.callbackBindingPrevHas[bindingIndex]
+      this.callbackBoundHas[index] = prevHas
+      if (prevHas !== 0) {
+        this.callbackBoundOuts[index] = this.callbackBindingPrevOuts[bindingIndex]
+      }
+    }
+
+    this.callbackDepth = depth
   }
 
   // Get buffer with remapping applied when inside a callback scope
+  @inline
   getOutBuffer(index: i32): usize {
-    // Check bindings first across all depths (bindings take precedence over remapping)
-    for (let depth = this.callbackDepth - 1; depth >= 0; depth--) {
-      const bindingCount = this.callbackBindingCount[depth]
-      const bindingOffset = depth * CALLBACK_SCOPE_MAX_BINDINGS
-      for (let i = 0; i < bindingCount; i++) {
-        const bindingIndex = this.callbackBindingIndices[bindingOffset + i]
-        if (bindingIndex === index) {
-          return this.callbackBindingOuts[bindingOffset + i]
-        }
-      }
-    }
+    const depth: i32 = this.callbackDepth
+    if (depth === 0) return this.outsPool.get(index)
+
+    // Bindings take precedence over remapping
+    if (this.callbackBoundHas[index] !== 0) return this.callbackBoundOuts[index]
 
     // Then apply remapping for scratch buffers
-    for (let depth = this.callbackDepth - 1; depth >= 0; depth--) {
-      const base = this.callbackBodyBase[depth]
+    const bodyBase: StaticArray<i32> = this.callbackBodyBase
+    const remapBase: StaticArray<i32> = this.callbackRemapBase
+    const outsPool: OutsPool = this.outsPool
+
+    for (let d: i32 = depth - 1; d >= 0; d--) {
+      const base: i32 = bodyBase[d]
       if (index >= base) {
-        const offset = index - base
-        const remapped = this.callbackRemapBase[depth] + offset
-        return this.outsPool.get(remapped)
+        const offset: i32 = index - base
+        const remapped: i32 = remapBase[d] + offset
+        return outsPool.get(remapped)
       }
     }
 
-    return this.outsPool.get(index)
+    return outsPool.get(index)
   }
 
   prepare(): void {
@@ -340,9 +372,25 @@ export class Program {
       CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS << 2,
     )
     memory.copy(
-      changetype<usize>(this.callbackBindingOuts),
-      changetype<usize>(source.callbackBindingOuts),
+      changetype<usize>(this.callbackBindingPrevHas),
+      changetype<usize>(source.callbackBindingPrevHas),
+      CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS << 2,
+    )
+    memory.copy(
+      changetype<usize>(this.callbackBindingPrevOuts),
+      changetype<usize>(source.callbackBindingPrevOuts),
       CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS * sizeof<usize>(),
+    )
+
+    memory.copy(
+      changetype<usize>(this.callbackBoundHas),
+      changetype<usize>(source.callbackBoundHas),
+      1024 << 2,
+    )
+    memory.copy(
+      changetype<usize>(this.callbackBoundOuts),
+      changetype<usize>(source.callbackBoundOuts),
+      1024 * sizeof<usize>(),
     )
 
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
