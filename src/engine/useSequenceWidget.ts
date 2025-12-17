@@ -167,7 +167,12 @@ export function useSequenceWidget({
 
     const nextFrame: Array<SeqFrame | undefined> = new Array(miniSourceMaps.length)
 
-    for (let seqIndex = 0; seqIndex < miniSourceMaps.length; seqIndex++) {
+    // Iterate only over referenced mini sequences so frames align with actual refs
+    const seenSeqs = new Set<number>()
+    for (const ref of miniRefs) {
+      const seqIndex = ref.seqIndex
+      if (seenSeqs.has(seqIndex)) continue
+      seenSeqs.add(seqIndex)
       const map = miniSourceMaps[seqIndex]
       if (!map) continue
 
@@ -293,7 +298,8 @@ export function useSequenceWidget({
     }
 
     frameRef.current = nextFrame
-  }, [showWidgets, program1, audioContext, globalSampleCount, miniSourceMaps, controlStateRef, frameRef])
+  }, [showWidgets, program1, audioContext, globalSampleCount, miniSourceMaps, miniRefs, dspSource, controlStateRef,
+    frameRef])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []

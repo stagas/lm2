@@ -44,9 +44,34 @@ export function DspSourceEditor() {
   const { isUpdatingDsp } = useEngineStore()
   const theme = useTheme()
 
-  // Keep widgets visible while the store is still processing updates.
+  // Keep widgets visible while the store is still processing updates or when
+  // the editor has compilation errors so the user can see widgets while fixing.
+  const localAnalysis = useMemo(() => {
+    try {
+      return analyze(localSource)
+    }
+    catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const fallback: LangError = {
+        message,
+        line: 0,
+        column: 0,
+        length: 0,
+        code: '',
+      }
+      return {
+        bytecodeText: '',
+        errors: [fallback],
+        tokenCount: 0,
+      } as any
+    }
+  }, [localSource])
+
+  const hasLocalErrors = (localAnalysis?.errors?.length ?? 0) > 0
+
   const showWidgets = localSource === dspSource
     || isUpdatingDsp
+    || hasLocalErrors
 
   const handleApply = async () => {
     if (!isProgramReady) return
