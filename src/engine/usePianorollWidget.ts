@@ -1,17 +1,31 @@
 import type { EditorWidget } from 'mini-code'
-import { useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import {
   FUTURE_SECONDS,
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
-  HISTORY_SIZE,
   PAST_SECONDS,
   TIME_WINDOW_SECONDS,
 } from '../../as/assembly/constants.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
-import { frequencyToMidi } from '../mini/util.ts'
+import { frequencyToMidi, midiToNoteName } from '../mini/util.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
+
+const KEY_WIDTH = 20
+const SCROLL_SMOOTHING = 0.17
+const MIDI_IS_BLACK = new Uint8Array(128)
+const MIDI_IS_OCTAVE = new Uint8Array(128)
+const MIDI_LABELS = new Array<string>(128)
+for (let midi = 0; midi < 128; midi++) {
+  const noteInOctave = midi % 12
+  MIDI_IS_BLACK[midi] = noteInOctave === 1 || noteInOctave === 3 || noteInOctave === 6 || noteInOctave === 8
+      || noteInOctave === 10
+    ? 1
+    : 0
+  MIDI_IS_OCTAVE[midi] = noteInOctave === 0 ? 1 : 0
+  MIDI_LABELS[midi] = midiToNoteName(midi)
+}
 
 type PianorollNote = {
   midi: number
@@ -22,16 +36,16 @@ type PianorollNote = {
 
 type PianorollState = {
   timeSeconds: number | null
+  sampleCount: number
   notes: PianorollNote[]
   isInitial: boolean
   lastMinMidi: number
   lastMaxMidi: number
-  savedEvents?: Array<{
-    startSample: number
-    endSample: number
-    noteValue: number
-    velocity: number
-  }>
+  ev: number[]
+  savedEv: number[]
+  frameEv: number[]
+  activeMask: Uint8Array
+  activeList: number[]
 }
 
 type UsePianorollParams = {
@@ -54,19 +68,149 @@ export function usePianorollWidget({
   miniRefs,
   dspSource,
   showWidgets,
-}: UsePianorollParams): EditorWidget[] {
+}: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
 
-  const drawPianoroll = (
+  const onBeforeDraw = useCallback(() => {
+    if (!showWidgets) return
+    if (!program1?.program?.histories || !audioContext || !globalSampleCount) return
+
+    const sampleRate = audioContext.sampleRate
+    const sampleCount = Math.max(0, Atomics.load(globalSampleCount, 0))
+    const timeSeconds = sampleCount / sampleRate
+
+    const prepareStatus = useEngineStore.getState().prepareDspStatus
+    const isWorkletBusy = !!(prepareStatus && Atomics.load(prepareStatus, 0) !== 1)
+
+    const seenSeqs = new Set<number>()
+    for (const ref of miniRefs) {
+      const seqIndex = ref.seqIndex
+      if (seenSeqs.has(seqIndex)) continue
+      seenSeqs.add(seqIndex)
+      const map = miniSourceMaps[seqIndex]
+      if (!map) continue
+
+      const history = program1.program.histories[seqIndex]
+      if (!history) continue
+
+      const st = pianorollStateRef.current.get(seqIndex) ?? {
+        timeSeconds: null,
+        sampleCount: 0,
+        notes: [],
+        isInitial: true,
+        lastMinMidi: 54,
+        lastMaxMidi: 66,
+        ev: [],
+        savedEv: [],
+        frameEv: [],
+        activeMask: new Uint8Array(128),
+        activeList: [],
+      }
+
+      st.sampleCount = sampleCount
+      if (st.timeSeconds == null) {
+        st.timeSeconds = timeSeconds
+      }
+      else {
+        st.timeSeconds += (timeSeconds - st.timeSeconds) * SCROLL_SMOOTHING
+      }
+
+      const windowStartTime = st.timeSeconds - PAST_SECONDS
+      const windowEndTime = st.timeSeconds + FUTURE_SECONDS
+
+      const activeMask = st.activeMask
+      activeMask.fill(0)
+      const activeList = st.activeList
+      activeList.length = 0
+
+      let minMidi = 128
+      let maxMidi = -1
+
+      const canUseSaved = isWorkletBusy && st.savedEv.length > 0
+      if (canUseSaved) {
+        const ev = st.savedEv
+        for (let i = 0; i < ev.length; i += 4) {
+          const midi = ev[i + 2]!
+          if (midi < minMidi) minMidi = midi
+          if (midi > maxMidi) maxMidi = midi
+
+          const startSample = ev[i]!
+          const endSample = ev[i + 1]!
+          const isActive = sampleCount >= startSample && (sampleCount <= Math.max(startSample + 5000, endSample))
+          if (isActive && activeMask[midi] === 0) {
+            activeMask[midi] = 1
+            activeList.push(midi)
+          }
+        }
+        st.frameEv = ev
+      }
+      else {
+        const historyRaw = history.raw
+        const ev = st.ev
+        ev.length = 0
+
+        for (let idx = HISTORY_DATA_OFFSET; idx + 5 < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
+          const voiceIndex = historyRaw[idx + 1]!
+          const noteValue = historyRaw[idx + 2]!
+          const velocity = historyRaw[idx + 3]!
+          const startSample = historyRaw[idx + 4]!
+          const endSample = historyRaw[idx + 5]!
+
+          if (startSample === 0 && endSample === 0) continue
+          if (voiceIndex < 0) continue
+          if (noteValue <= 0) continue
+
+          const startTimeSeconds = startSample / sampleRate
+          const endTimeSeconds = endSample / sampleRate
+          if (endTimeSeconds < windowStartTime || startTimeSeconds > windowEndTime) continue
+
+          const midi = frequencyToMidi(noteValue)
+          if (midi < 0 || midi > 127) continue
+
+          ev.push(startSample, endSample, midi, velocity)
+
+          if (midi < minMidi) minMidi = midi
+          if (midi > maxMidi) maxMidi = midi
+
+          const isActive = sampleCount >= startSample && (sampleCount <= Math.max(startSample + 5000, endSample))
+          if (isActive && activeMask[midi] === 0) {
+            activeMask[midi] = 1
+            activeList.push(midi)
+          }
+        }
+
+        const savedEv = st.savedEv
+        savedEv.length = ev.length
+        for (let i = 0; i < ev.length; i++) savedEv[i] = ev[i]!
+
+        st.frameEv = ev
+      }
+
+      if (maxMidi >= 0) {
+        const displayMinMidi = Math.max(0, minMidi)
+        const displayMaxMidi = Math.min(127, maxMidi)
+        st.lastMinMidi = displayMinMidi
+        st.lastMaxMidi = displayMaxMidi
+        st.isInitial = false
+      }
+      else if (st.isInitial) {
+        st.lastMinMidi = 54
+        st.lastMaxMidi = 66
+      }
+
+      pianorollStateRef.current.set(seqIndex, st)
+    }
+  }, [showWidgets, program1, audioContext, globalSampleCount, miniRefs, miniSourceMaps])
+
+  const drawPianoroll = useCallback((
     ctx: CanvasRenderingContext2D,
     seqIndex: number,
     widgetY: number,
     widgetHeight: number,
   ) => {
-    if (!program1?.program?.histories || !audioContext || !bpmValue || !globalSampleCount) return
-
-    const history = program1.program.histories[seqIndex]
-    if (!history) return
+    if (!audioContext || !bpmValue) return
+    const st = pianorollStateRef.current.get(seqIndex)
+    if (!st || st.timeSeconds == null) return
 
     const dpr = window.devicePixelRatio || 1
     const editorWidth = ctx.canvas.width / dpr
@@ -77,112 +221,15 @@ export function usePianorollWidget({
     ctx.save()
     ctx.translate(x, -3)
 
-    const KEY_WIDTH = 20
     const NOTE_WIDTH = Math.max(1, w - KEY_WIDTH)
     const PIXELS_PER_SECOND = NOTE_WIDTH / TIME_WINDOW_SECONDS
-    const SCROLL_SMOOTHING = 0.17
-
-    const st = pianorollStateRef.current.get(seqIndex) ?? {
-      timeSeconds: null,
-      notes: [],
-      isInitial: true,
-      lastMinMidi: 54,
-      lastMaxMidi: 66,
-    }
 
     const sampleRate = audioContext.sampleRate
-    const currentSampleCount = Math.max(0, Atomics.load(globalSampleCount, 0))
-    const currentTimeSeconds = currentSampleCount / sampleRate
-
-    if (st.timeSeconds == null) {
-      st.timeSeconds = currentTimeSeconds
-    }
-    else {
-      st.timeSeconds += (currentTimeSeconds - st.timeSeconds) * SCROLL_SMOOTHING
-    }
 
     const windowStartTime = st.timeSeconds - PAST_SECONDS
     const windowEndTime = st.timeSeconds + FUTURE_SECONDS
-
-    const historyRaw = history.raw
-
-    // Decide whether to read the latest shared history buffer or reuse a saved snapshot.
-    // If the engine's prepareDspStatus exists and its first slot is non-zero,
-    // the worklet is not in the "ready to copy latest" state, so we should use our saved snapshot.
-    // Otherwise, copy the latest buffer into a snapshot we keep on the state.
-    const prepareStatus = useEngineStore.getState().prepareDspStatus
-    let events: Array<{
-      startSample: number
-      endSample: number
-      noteValue: number
-      velocity: number
-    }> = []
-
-    const shouldUseSaved = prepareStatus && Atomics.load(prepareStatus, 0) !== 1 && Array.isArray(st.savedEvents)
-      && st.savedEvents!.length > 0
-
-    if (shouldUseSaved) {
-      // Use previously saved snapshot of events
-      events = st.savedEvents!.slice()
-    }
-    else {
-      // Build events from the latest history buffer and save a snapshot
-      for (let slot = 0; slot < HISTORY_SIZE; slot++) {
-        const idx = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
-        if (idx + 5 >= historyRaw.length) break
-
-        const voiceIndex = Math.floor(historyRaw[idx + 1])
-        const noteValue = historyRaw[idx + 2]
-        const velocity = historyRaw[idx + 3]
-        const startSample = Math.floor(historyRaw[idx + 4])
-        const endSample = Math.floor(historyRaw[idx + 5])
-
-        if (startSample === 0 && endSample === 0) continue
-        if (voiceIndex < 0) continue
-        if (noteValue <= 0) continue
-
-        const startTimeSeconds = startSample / sampleRate
-        const endTimeSeconds = endSample / sampleRate
-
-        if (endTimeSeconds < windowStartTime || startTimeSeconds > windowEndTime) continue
-
-        events.push({
-          startSample,
-          endSample,
-          noteValue,
-          velocity,
-        })
-      }
-
-      // Save a shallow copy of events so we can reuse it while the worklet is busy.
-      st.savedEvents = events.slice()
-    }
-
-    const preActive = new Set<number>()
-    for (const e of events) {
-      const midi = frequencyToMidi(e.noteValue)
-      preActive.add(midi)
-    }
-
-    let displayMinMidi: number
-    let displayMaxMidi: number
-
-    if (preActive.size > 0) {
-      const active = Array.from(preActive)
-      displayMinMidi = Math.max(0, Math.min(...active))
-      displayMaxMidi = Math.min(127, Math.max(...active))
-      st.lastMinMidi = displayMinMidi
-      st.lastMaxMidi = displayMaxMidi
-      st.isInitial = false
-    }
-    else if (st.isInitial) {
-      displayMinMidi = 54
-      displayMaxMidi = 66
-    }
-    else {
-      displayMinMidi = st.lastMinMidi
-      displayMaxMidi = st.lastMaxMidi
-    }
+    const displayMinMidi = st.isInitial ? 54 : st.lastMinMidi
+    const displayMaxMidi = st.isInitial ? 66 : st.lastMaxMidi
 
     const displayRange = displayMaxMidi - displayMinMidi + 1
     const keyHeight = h / displayRange
@@ -209,14 +256,12 @@ export function usePianorollWidget({
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
       const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight
-      const noteInOctave = midi % 12
-      const isBlack = noteInOctave === 1 || noteInOctave === 3 || noteInOctave === 6 || noteInOctave === 8
-        || noteInOctave === 10
+      const isBlack = MIDI_IS_BLACK[midi] === 1
 
       ctx.fillStyle = isBlack ? 'rgba(30, 30, 30, 0.5)' : 'rgba(75, 75, 75, 0.3)'
       ctx.fillRect(0, y, NOTE_WIDTH, keyHeight)
       ctx.strokeStyle = 'rgba(100, 100, 100, 0.4)'
-      ctx.lineWidth = noteInOctave === 0 ? 1.5 : 0.5
+      ctx.lineWidth = MIDI_IS_OCTAVE[midi] === 1 ? 1.5 : 0.5
       ctx.strokeRect(0, y, NOTE_WIDTH, keyHeight)
     }
 
@@ -241,26 +286,27 @@ export function usePianorollWidget({
       ctx.stroke()
     }
 
-    const activeMidis = new Set<number>()
-    for (const e of events) {
-      const startTimeSeconds = e.startSample / sampleRate
-      const endTimeSeconds = e.endSample / sampleRate
+    const ev = st.frameEv
+    for (let i = 0; i < ev.length; i += 4) {
+      const startSample = ev[i]!
+      const endSample = ev[i + 1]!
+      const midi = ev[i + 2]!
+      const velocityRaw = ev[i + 3]!
+
+      const startTimeSeconds = startSample / sampleRate
+      const endTimeSeconds = endSample / sampleRate
       const durationSeconds = endTimeSeconds - startTimeSeconds
 
       const x = (startTimeSeconds - windowStartTime) * PIXELS_PER_SECOND
       const eventWidth = durationSeconds * PIXELS_PER_SECOND
 
-      const midi = frequencyToMidi(e.noteValue)
       if (midi < displayMinMidi || midi > displayMaxMidi) continue
 
       const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight
 
-      const isActive = currentSampleCount >= e.startSample
-        && (currentSampleCount <= Math.max(e.startSample + 5000, e.endSample))
-      if (isActive) activeMidis.add(midi)
-
-      const velocity = Math.max(0, Math.min(1, e.velocity))
+      const isActive = st.sampleCount >= startSample && (st.sampleCount <= Math.max(startSample + 5000, endSample))
+      const velocity = Math.max(0, Math.min(1, velocityRaw))
       if (isActive) {
         ctx.fillStyle = 'rgba(255, 200, 0, 0.9)'
         ctx.strokeStyle = 'rgba(255, 255, 100, 1)'
@@ -274,7 +320,7 @@ export function usePianorollWidget({
       ctx.strokeRect(x, y, Math.max(1, eventWidth), keyHeight - 1)
     }
 
-    for (const midi of activeMidis) {
+    for (const midi of st.activeList) {
       if (midi < displayMinMidi || midi > displayMaxMidi) continue
       const existing = st.notes.find(n => n.midi === midi)
       if (existing) {
@@ -283,10 +329,7 @@ export function usePianorollWidget({
       else {
         const keyIndex = displayMaxMidi - midi
         const y = keyIndex * keyHeight + keyHeight / 2
-        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-        const octave = Math.floor(midi / 12) - 1
-        const noteName = noteNames[midi % 12]
-        st.notes.push({ midi, noteText: `${noteName}${octave}`, fade: 1.0, y })
+        st.notes.push({ midi, noteText: MIDI_LABELS[midi]!, fade: 1.0, y })
       }
     }
 
@@ -322,11 +365,9 @@ export function usePianorollWidget({
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
       const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight
-      const noteInOctave = midi % 12
-      const isBlack = noteInOctave === 1 || noteInOctave === 3 || noteInOctave === 6 || noteInOctave === 8
-        || noteInOctave === 10
-      const isOctave = noteInOctave === 0
-      const isActive = activeMidis.has(midi)
+      const isBlack = MIDI_IS_BLACK[midi] === 1
+      const isOctave = MIDI_IS_OCTAVE[midi] === 1
+      const isActive = st.activeMask[midi] === 1
 
       if (isActive) ctx.fillStyle = 'rgba(255, 220, 0, 1.0)'
       else if (isOctave) ctx.fillStyle = 'rgba(255, 255, 255, 1.0)'
@@ -343,20 +384,14 @@ export function usePianorollWidget({
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi += 1) {
       const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight + keyHeight / 2
-      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-      const octave = Math.floor(midi / 12) - 1
-      const noteName = noteNames[midi % 12]
-      const noteInOctave = midi % 12
-      const isBlack = noteInOctave === 1 || noteInOctave === 3 || noteInOctave === 6 || noteInOctave === 8
-        || noteInOctave === 10
+      const isBlack = MIDI_IS_BLACK[midi] === 1
       ctx.fillStyle = isBlack ? 'rgba(255, 255, 255, 1.0)' : 'rgba(0, 0, 0, 1.0)'
-      ctx.fillText(`${noteName}${octave}`, NOTE_WIDTH + KEY_WIDTH / 2, y + 0.5)
+      ctx.fillText(MIDI_LABELS[midi]!, NOTE_WIDTH + KEY_WIDTH / 2, y + 0.5)
     }
 
     ctx.restore()
     ctx.restore()
-    pianorollStateRef.current.set(seqIndex, st)
-  }
+  }, [audioContext, bpmValue])
 
   const widgets = useMemo(() => {
     if (!showWidgets) return []
@@ -381,7 +416,7 @@ export function usePianorollWidget({
     }
 
     return out
-  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, miniSourceMaps, miniRefs, dspSource])
+  }, [showWidgets, miniSourceMaps, miniRefs, dspSource, drawPianoroll])
 
-  return widgets
+  return { widgets, onBeforeDraw }
 }

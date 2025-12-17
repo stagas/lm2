@@ -8,18 +8,18 @@ import {
   OP_SCALE,
   OP_TRANSPOSE,
 } from '../constants'
+import {
+  fract,
+  roundToDecimals,
+} from '../util'
 import { CycleStartOp, GroupStartOp } from './ops'
 import { degreeToFrequency } from './scales'
 import {
   BytecodeReader,
   ChildOpsBuffer,
   EventEmitter,
-  findGroupEnd,
-  fract,
   MiniEventBuffer,
   parseGroupChildren,
-  roundToDecimals,
-  roundToFactor,
   seededRandom01,
 } from './util'
 

@@ -1,12 +1,37 @@
-import { clampNyquist } from '../util'
+import { fract } from '../util'
 import { Gen } from './gen'
+
+const SINE_TABLE_BITS: i32 = 11
+const SINE_TABLE_SIZE: i32 = 1 << SINE_TABLE_BITS
+const SINE_TABLE_SIZE_F32: f32 = SINE_TABLE_SIZE as f32
+const SINE_TABLE_SIZE_F64: f64 = SINE_TABLE_SIZE as f64
+
+const sineTable: StaticArray<f32> = new StaticArray<f32>(SINE_TABLE_SIZE + 1)
+let sineTableReady: bool = false
+
+function initSineTable(): void {
+  if (sineTableReady) return
+  sineTableReady = true
+
+  const invSize: f32 = 1.0 / SINE_TABLE_SIZE_F32
+  for (let i: i32 = 0; i < SINE_TABLE_SIZE; i++) {
+    const phase: f32 = (i as f32) * invSize
+    sineTable[i] = Mathf.sin(phase * TWO_PI)
+  }
+  sineTable[SINE_TABLE_SIZE] = sineTable[0]
+}
 
 export class Sine extends Gen {
   hz$: usize = 0
   trig$: usize = 0
 
-  private lastTrig: f64 = 0
+  private lastTrig: f32 = 0
   private phase: f64 = 0
+
+  constructor() {
+    super()
+    initSineTable()
+  }
 
   copyFrom(other: Gen): void {
     const src = other as Sine
@@ -15,34 +40,38 @@ export class Sine extends Gen {
   }
 
   @inline
-  generate(hz: f32, trig: f32): f32 {
-    hz = clampNyquist(hz)
-
-    const isZeroCrossing = trig > 0 && this.lastTrig <= 0
-    if (isZeroCrossing) {
-      this.phase = 0
-    }
-    this.lastTrig = trig
-
-    const sample = Math.sin(this.phase * TWO_PI) as f32
-
-    this.phase += hz / sampleRate
-    if (this.phase >= 1.0) {
-      this.phase -= 1.0
-    }
-
-    return sample
+  private static wavetable(phase: f64): f32 {
+    const t: f64 = phase * SINE_TABLE_SIZE_F64
+    const i: i32 = t as i32
+    const frac: f32 = (t - (i as f64)) as f32
+    const a: f32 = unchecked(sineTable[i])
+    const b: f32 = unchecked(sineTable[i + 1])
+    return a + (b - a) * frac
   }
 
   process(out$: usize, length: i32): void {
+    initSineTable()
+
     let hz$ = this.hz$
     let trig$ = this.trig$
 
+    let phase: f64 = this.phase
+    let lastTrig: f32 = this.lastTrig
+
     for (let i = 0; i < length; i++) {
-      const sample = this.generate(
-        load<f32>(hz$),
-        load<f32>(trig$),
-      )
+      const trig = load<f32>(trig$)
+      if (trig > 0 && lastTrig <= 0) {
+        phase = 0
+      }
+      lastTrig = trig
+
+      const hz = Mathf.max(0, load<f32>(hz$))
+      const sample = Sine.wavetable(phase)
+
+      phase += (hz as f64) / (sampleRate as f64)
+      if (phase >= 1.0) {
+        phase = fract(phase)
+      }
 
       store<f32>(out$, sample)
 
@@ -50,5 +79,8 @@ export class Sine extends Gen {
       hz$ += 4
       trig$ += 4
     }
+
+    this.phase = phase
+    this.lastTrig = lastTrig
   }
 }

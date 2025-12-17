@@ -13,3 +13,25 @@ export function clamp11(value: f32): f32 {
 export function clampNyquist(value: f32): f32 {
   return clamp(value, 0.0, nyquist)
 }
+
+export function fract(value: f64): f64 {
+  return value - Math.floor(value)
+}
+
+export function roundToDecimals(value: f64, decimals: f64): f64 {
+  const factor: f64 = Math.pow(10, decimals)
+  return Math.round(value * factor) / factor
+}
+
+export function floorToDecimals(value: f64, decimals: f64): f64 {
+  const factor: f64 = Math.pow(10, decimals)
+  return Math.floor(value * factor) / factor
+}
+
+export function roundToFactor(value: f64, factor: f64): f64 {
+  return Math.round(value * factor) / factor
+}
+
+export function floorToFactor(value: f64, factor: f64): f64 {
+  return Math.floor(value * factor) / factor
+}

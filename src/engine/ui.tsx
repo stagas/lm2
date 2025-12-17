@@ -1,5 +1,5 @@
 import { CodeEditor, type EditorWidget } from 'mini-code'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
 import { useEngine } from './program.ts'
@@ -121,7 +121,7 @@ export function DspSourceEditor() {
     bpmValue,
   })
 
-  const pianorollWidgets = usePianorollWidget({
+  const { widgets: pianorollWidgets, onBeforeDraw: onBeforeDrawPianoroll } = usePianorollWidget({
     program1,
     audioContext,
     bpmValue,
@@ -131,6 +131,11 @@ export function DspSourceEditor() {
     dspSource,
     showWidgets,
   })
+
+  const onBeforeDrawCombined = useCallback(() => {
+    onBeforeDraw()
+    onBeforeDrawPianoroll()
+  }, [onBeforeDraw, onBeforeDrawPianoroll])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
@@ -158,7 +163,7 @@ export function DspSourceEditor() {
           theme={theme}
           tokenizer={tokenizer}
           isAnimating={true}
-          onBeforeDraw={onBeforeDraw}
+          onBeforeDraw={onBeforeDrawCombined}
         />
       </div>
       {error && (
