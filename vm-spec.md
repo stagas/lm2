@@ -34,5 +34,5 @@ The final `mini` API should look like this in the language:
 mini(pattern:'<mini notation pattern>',cb:(trig,velocity,hz)->{
   env=adsr(attack:.01,decay:.2,sustain:.3,release:.2,trig)
   osc(hz,trig)*env*velocity
-}) |> out(%)
+}) |> out($)
 ```

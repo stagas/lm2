@@ -359,6 +359,13 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
       continue
     }
 
+    // Dollar operator ($)
+    if (char === '$') {
+      tokens.push({ type: 'keyword', content: '$', length: 1 })
+      i++
+      continue
+    }
+
     // Arrow operator (->)
     if (char === '-' && i + 1 < line.length && line[i + 1] === '>') {
       tokens.push({ type: 'keyword', content: '->', length: 2 })
@@ -388,7 +395,7 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
     }
 
     // Operators
-    const operators = ['+', '-', '*', '/', '=', '!', '<', '>', '&', '|']
+    const operators = ['+', '-', '*', '/', '=', '!', '<', '>', '&', '|', '%']
     if (operators.includes(char)) {
       tokens.push({ type: 'operator', content: char, length: 1 })
       i++
@@ -471,13 +478,6 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
     const punctuation = ['[', ']', '{', '}', ';', ',', '.', ':', '?']
     if (punctuation.includes(char)) {
       tokens.push({ type: 'punctuation', content: char, length: 1 })
-      i++
-      continue
-    }
-
-    // Variable syntax (%)
-    if (char === '%') {
-      tokens.push({ type: 'keyword', content: char, length: 1 })
       i++
       continue
     }

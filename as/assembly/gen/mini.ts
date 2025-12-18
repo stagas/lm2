@@ -390,7 +390,7 @@ export class Mini extends Gen {
       this.lastHistory$ = this.history$
       this.lastVersion = -1
       this.historyGeneratedUntilCycle = -1
-      memory.fill(changetype<usize>(historyArray), 0, (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4)
+      // memory.fill(changetype<usize>(historyArray), 0, (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4)
     }
 
     // Version changes: rewrite forward from "now" (keep fully past entries for the visualizer, clear overlap).

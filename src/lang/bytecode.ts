@@ -534,6 +534,7 @@ class Compiler {
       ad: ['attack', 'decay', 'trig'],
       adsr: ['attack', 'decay', 'sustain', 'release', 'trig'],
       mini: ['seq', 'cb'],
+      play: ['seq', 'cb'],
     }
 
     const calleeName = expr.callee.kind === 'ident' ? expr.callee.name : null

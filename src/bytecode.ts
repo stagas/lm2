@@ -1,8 +1,10 @@
 import { OPS_COUNT, SEQ_VOICES } from '../as/assembly/constants.ts'
 import { Op, SeqOp } from '../as/assembly/shared.ts'
 import type { Loc, Program } from './lang/ast.ts'
+import { compile } from './lang/bytecode.ts'
 import { type LangError, lineText } from './lang/errors.ts'
-import { analyze } from './lang/pipeline.ts'
+import { lex } from './lang/lexer.ts'
+import { parse } from './lang/parser.ts'
 
 export { Op, SEQ_VOICES, SeqOp }
 
@@ -30,6 +32,9 @@ export enum VmOp {
   EnterScope = 18,
   ExitScope = 19,
   Func = 20,
+  Array = 21, // immediate: n
+  GetIndex = 22,
+  SetIndex = 23,
 }
 
 export enum VmUnary {
@@ -66,6 +71,7 @@ const builtinSyms: Record<string, number> = {
   mini: 5,
   analyser: 6,
   t: 7,
+  play: 8,
   // Named args for adsr()
   attack: 100,
   decay: 101,
@@ -135,9 +141,10 @@ function locToIndex(lineStarts: number[], loc: Pick<Loc, 'line' | 'column'>): nu
   return lineStart + (loc.column - 1)
 }
 
-function extractMiniSequencesFromProgramWithRefs(src: string,
-  program: Program): { sequences: string[]; refs: MiniSequenceRef[] }
-{
+function extractMiniSequencesFromProgramWithRefs(
+  src: string,
+  program: Program,
+): { sequences: string[]; refs: MiniSequenceRef[] } {
   const sequences: string[] = []
   const refs: MiniSequenceRef[] = []
   const sequenceToIndex = new Map<string, number>()
@@ -168,7 +175,10 @@ function extractMiniSequencesFromProgramWithRefs(src: string,
     if (!expr) return
 
     if (expr.kind === 'call') {
-      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'mini') {
+      if (
+        expr.callee?.kind === 'ident'
+        && (expr.callee?.name === 'mini' || expr.callee?.name === 'play')
+      ) {
         const firstArg = expr.args?.[0]
         const v = firstArg?.kind === 'pos' ? firstArg.value : null
         if (v?.kind === 'string') {
@@ -184,9 +194,15 @@ function extractMiniSequencesFromProgramWithRefs(src: string,
       return
     }
 
-    if (expr.kind === 'binary' || expr.kind === 'assign') {
+    if (expr.kind === 'binary') {
       visitExpr(expr.left)
       visitExpr(expr.right)
+      return
+    }
+
+    if (expr.kind === 'assign') {
+      visitExpr(expr.target)
+      visitExpr(expr.value)
       return
     }
 
@@ -309,27 +325,155 @@ export function encodeLangToVmOps(
   src: string,
   target: VmTarget,
 ): { errors: LangError[]; miniSequences?: string[]; miniRefs?: MiniSequenceRef[] } {
-  const a = analyze(src)
-  const errors: LangError[] = [...a.errors]
+  const lexed = lex(src)
+  const parsed = parse(src, lexed.tokens)
+  const errors: LangError[] = [...lexed.errors, ...parsed.errors]
   if (errors.length) return { errors }
 
-  const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, a.program)
+  const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, parsed.program)
   const sequenceToIndex = new Map<string, number>()
   sequences.forEach((seq, idx) => sequenceToIndex.set(seq, idx))
 
-  function transformChunkConsts(chunk: any): void {
-    for (let i = 0; i < chunk.consts.length; i++) {
-      const c = chunk.consts[i]
-      if (typeof c === 'string' && sequenceToIndex.has(c)) {
-        chunk.consts[i] = sequenceToIndex.get(c)!
+  const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
+
+  const transformExpr = (expr: any): any => {
+    if (!expr) return expr
+
+    if (expr.kind === 'call') {
+      const callee = transformExpr(expr.callee)
+      const args = (expr.args ?? []).map((a: any) => {
+        if (a.kind === 'pos' || a.kind === 'named') return { ...a, value: transformExpr(a.value) }
+        return a
+      })
+
+      const calleeName = callee?.kind === 'ident' ? callee.name : null
+
+      const isMini = calleeName === 'mini'
+      const isPlay = calleeName === 'play'
+
+      if (isMini || isPlay) {
+        // Find "seq" argument (positional #0 or named seq:)
+        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq')
+          ?? args.find((a: any) => a.kind === 'pos') // first positional
+
+        if (seqArg?.kind === 'pos' || seqArg?.kind === 'named') {
+          const v = seqArg.value
+          if (v?.kind === 'string') {
+            const idx = sequenceToIndex.get(String(v.value ?? ''))
+            if (idx !== undefined) {
+              seqArg.value = toSeqIndexExpr(v.loc, idx)
+            }
+          }
+        }
+
+        // mini(x) is a compile-time identity for sequence refs
+        if (isMini && args.length === 1 && seqArg && (seqArg.kind === 'pos' || seqArg.kind === 'named')) {
+          return seqArg.value
+        }
+
+        // play(seq, cb) is a compile-time alias of mini(seq, cb)
+        if (isPlay) {
+          return { ...expr, callee: { kind: 'ident', name: 'mini', loc: callee.loc }, args }
+        }
       }
+
+      return { ...expr, callee, args }
     }
-    for (const fn of chunk.funcs) {
-      transformChunkConsts(fn.chunk)
+
+    if (expr.kind === 'binary') {
+      return { ...expr, left: transformExpr(expr.left), right: transformExpr(expr.right) }
     }
+
+    if (expr.kind === 'assign') {
+      return { ...expr, target: transformExpr(expr.target), value: transformExpr(expr.value) }
+    }
+
+    if (expr.kind === 'unary' || expr.kind === 'postfix') {
+      return { ...expr, expr: transformExpr(expr.expr) }
+    }
+
+    if (expr.kind === 'member') {
+      const out: any = { ...expr, object: transformExpr(expr.object) }
+      if (expr.computed) out.index = transformExpr(expr.index)
+      return out
+    }
+
+    if (expr.kind === 'array') {
+      return { ...expr, items: (expr.items ?? []).map(transformExpr) }
+    }
+
+    if (expr.kind === 'object') {
+      return { ...expr, props: (expr.props ?? []).map((p: any) => ({ ...p, value: transformExpr(p.value) })) }
+    }
+
+    if (expr.kind === 'if') {
+      const thenPart = expr.then?.kind === 'block' ? transformStmt(expr.then) : transformExpr(expr.then)
+      const elsePart = expr.else?.kind === 'block' ? transformStmt(expr.else) : transformExpr(expr.else)
+      return { ...expr, test: transformExpr(expr.test), then: thenPart, else: elsePart }
+    }
+
+    if (expr.kind === 'func') {
+      const body = expr.body?.kind === 'block' ? transformStmt(expr.body) : transformExpr(expr.body)
+      return { ...expr, body }
+    }
+
+    return expr
   }
 
-  transformChunkConsts(a.chunk)
+  const transformStmt = (stmt: any): any => {
+    if (!stmt) return stmt
+    if (stmt.kind === 'expr_stmt') return { ...stmt, expr: transformExpr(stmt.expr) }
+    if (stmt.kind === 'block') return { ...stmt, body: (stmt.body ?? []).map(transformStmt) }
+    if (stmt.kind === 'for') {
+      if (stmt.head?.kind === 'c_style') {
+        return {
+          ...stmt,
+          head: {
+            ...stmt.head,
+            init: stmt.head.init ? transformExpr(stmt.head.init) : undefined,
+            test: stmt.head.test ? transformExpr(stmt.head.test) : undefined,
+            update: stmt.head.update ? transformExpr(stmt.head.update) : undefined,
+          },
+          body: transformStmt(stmt.body),
+        }
+      }
+      return { ...stmt, head: { ...stmt.head, iterable: transformExpr(stmt.head.iterable) },
+        body: transformStmt(stmt.body) }
+    }
+    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+      return { ...stmt, test: transformExpr(stmt.test), body: transformStmt(stmt.body) }
+    }
+    if (stmt.kind === 'switch') {
+      return {
+        ...stmt,
+        test: transformExpr(stmt.test),
+        cases: (stmt.cases ?? []).map((c: any) => ({
+          ...c,
+          test: c.test ? transformExpr(c.test) : undefined,
+          body: (c.body ?? []).map(transformStmt),
+        })),
+      }
+    }
+    if (stmt.kind === 'try') {
+      return {
+        ...stmt,
+        body: transformStmt(stmt.body),
+        catchBody: stmt.catchBody ? transformStmt(stmt.catchBody) : undefined,
+        finallyBody: stmt.finallyBody ? transformStmt(stmt.finallyBody) : undefined,
+      }
+    }
+    if (stmt.kind === 'throw') return { ...stmt, value: transformExpr(stmt.value) }
+    if (stmt.kind === 'return') return { ...stmt, value: stmt.value ? transformExpr(stmt.value) : undefined }
+    if (stmt.kind === 'label') return { ...stmt, stmt: transformStmt(stmt.stmt) }
+    if (stmt.kind === 'destructure') return { ...stmt, value: transformExpr(stmt.value) }
+    return stmt
+  }
+
+  const transformedProgram = { ...parsed.program, body: parsed.program.body.map(transformStmt) } as any
+  const compiled = compile(src, transformedProgram)
+  errors.push(...compiled.errors)
+  if (errors.length) return { errors }
+  const chunk = compiled.chunk
 
   const syms = new Map<string, number>()
   let nextSym = 1000
@@ -425,11 +569,15 @@ export function encodeLangToVmOps(
           pc += 1
           break
         case 'ARRAY':
+          pc += 2
+          break
+        case 'GET_INDEX':
+        case 'SET_INDEX':
+          pc += 1
+          break
         case 'OBJECT':
         case 'GET_PROP':
         case 'SET_PROP':
-        case 'GET_INDEX':
-        case 'SET_INDEX':
           errors.push(encoderError(src, `${ins.op} not supported in VM encoder yet`))
           pc += 1
           break
@@ -518,6 +666,19 @@ export function encodeLangToVmOps(
           target.ops[w++] = code
           break
         }
+        case 'ARRAY': {
+          target.ops[w++] = VmOp.Array
+          target.ops[w++] = ins.n | 0
+          break
+        }
+        case 'GET_INDEX': {
+          target.ops[w++] = VmOp.GetIndex
+          break
+        }
+        case 'SET_INDEX': {
+          target.ops[w++] = VmOp.SetIndex
+          break
+        }
         case 'CALL':
           target.ops[w++] = VmOp.Call
           target.ops[w++] = ins.pos
@@ -568,7 +729,7 @@ export function encodeLangToVmOps(
 
   // Encode main chunk at pc=1
   let writePc = 1
-  const main = encodeChunk(a.chunk as any, writePc)
+  const main = encodeChunk(chunk as any, writePc)
   writePc = main.writtenEnd
 
   // Encode functions (BFS), patching FUNC placeholders to absolute pcs.

@@ -21,16 +21,16 @@ This DSL is designed for audio/music applications.
 The pipe operator `|>` is a core feature.
 
 * The left-hand side expression is evaluated first.
-* Its result is bound to the special variable `%` for use in the right-hand side.
-* `%` is read-only and immutable.
-* `%` is scoped only to the right-hand side expression.
-* Nested pipes create new `%` bindings that shadow outer ones.
+* Its result is bound to the special variable `$` for use in the right-hand side.
+* `$` is read-only and immutable.
+* `$` is scoped only to the right-hand side expression.
+* Nested pipes create new `$` bindings that shadow outer ones.
 * The right-hand side may be **any expression**, not just a function call.
 
 Evaluation order:
 
 ```
-a |> b(%) |> c(%)
+a |> b($) |> c($)
 ```
 
 is equivalent to:
@@ -43,14 +43,14 @@ Example with nested pipes:
 
 ```
 saw(hz:440)
-  |> lp(%, cut:500, q:0.75)
-  |> out(%)
+  |> lp($, cut:500, q:0.75)
+  |> out($)
 ```
 
 ```
-a |> b(%, c |> d(%))
-// The % in b(%) refers to a
-// The % in d(%) refers to c
+a |> b($, c |> d($))
+// The % in b($) refers to a
+// The % in d($) refers to c
 ```
 
 ---
@@ -321,11 +321,11 @@ cut = 200
 q = 1
 
 // These are equivalent:
-saw(hz:hz) |> lp(%, cut:cut, q:q)
-saw(hz) |> lp(%, cut, q)
+saw(hz:hz) |> lp($, cut:cut, q:q)
+saw(hz) |> lp($, cut, q)
 ```
 
-The shorthand `lp(%, cut, q)` is equivalent to `lp(%, cut:cut, q:q)`.
+The shorthand `lp($, cut, q)` is equivalent to `lp($, cut:cut, q:q)`.
 
 ### Default Values
 

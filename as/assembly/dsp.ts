@@ -305,6 +305,9 @@ enum VmOp {
   EnterScope = 18,
   ExitScope = 19,
   Func = 20, // absolute pc
+  Array = 21, // n
+  GetIndex = 22,
+  SetIndex = 23,
 }
 
 enum VmTag {
@@ -316,6 +319,7 @@ enum VmTag {
   Audio = 5, // aux = outIndex
   Builtin = 6, // aux = builtin id
   Func = 7, // aux = absolute pc
+  Arr = 8, // aux = array pool id
 }
 
 enum VmUnary {
@@ -352,6 +356,7 @@ enum VmBuiltin {
   Mini = 5,
   Analyser = 6,
   T = 7,
+  Play = 8,
 }
 
 const VM_FUNC_HEADER: i32 = -2
@@ -393,6 +398,14 @@ export class Dsp {
   private cbArgTags: StaticArray<i32> = new StaticArray<i32>(3)
   private cbArgNums: StaticArray<f64> = new StaticArray<f64>(3)
   private cbArgAux: StaticArray<i32> = new StaticArray<i32>(3)
+
+  private arrCount: i32 = 0
+  private arrElemCount: i32 = 0
+  private arrStart: StaticArray<i32> = new StaticArray<i32>(512)
+  private arrLen: StaticArray<i32> = new StaticArray<i32>(512)
+  private arrElemTag: StaticArray<i32> = new StaticArray<i32>(8192)
+  private arrElemNum: StaticArray<f64> = new StaticArray<f64>(8192)
+  private arrElemAux: StaticArray<i32> = new StaticArray<i32>(8192)
 
   prepare(): void {
     this.program.prepare()
@@ -512,6 +525,10 @@ export class Dsp {
       this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Mini)
       return
     }
+    if (sym === VmBuiltin.Play) {
+      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Play)
+      return
+    }
     // Global time scaled to BPM: t = seconds * (bpm / 60)
     if (sym === VmBuiltin.T) {
       // globalSampleCount: i32 samples since start
@@ -610,6 +627,106 @@ export class Dsp {
       if (op === VmOp.Store) {
         const sym = ops[pc++]
         this.envStore(sym)
+        continue
+      }
+      if (op === VmOp.Array) {
+        const n = ops[pc++]
+        const arrId = this.arrCount
+        const start = this.arrElemCount
+        const end = start + n
+
+        if (arrId < 0 || arrId >= this.arrStart.length) {
+          setVmError(20, pc - 1)
+          this.vmPush(VmTag.Undef)
+          continue
+        }
+        if (end < 0 || end > this.arrElemTag.length) {
+          setVmError(21, pc - 1)
+          this.vmPush(VmTag.Undef)
+          continue
+        }
+
+        this.arrStart[arrId] = start
+        this.arrLen[arrId] = n
+        this.arrCount = arrId + 1
+        this.arrElemCount = end
+
+        for (let i = n - 1; i >= 0; i--) {
+          const idx = this.vmPop()
+          this.arrElemTag[start + i] = this.vmTag[idx]
+          this.arrElemNum[start + i] = this.vmNum[idx]
+          this.arrElemAux[start + i] = this.vmAux[idx]
+        }
+
+        this.vmPush(VmTag.Arr, 0.0, arrId)
+        continue
+      }
+      if (op === VmOp.GetIndex) {
+        const indexIdx = this.vmPop()
+        const arrayIdx = this.vmPop()
+        const arrayTag = this.vmTag[arrayIdx] as VmTag
+        const arrayAux = this.vmAux[arrayIdx]
+        const indexTag = this.vmTag[indexIdx] as VmTag
+        const indexNum = this.vmNum[indexIdx]
+
+        if (arrayTag !== VmTag.Arr) {
+          this.vmPush(VmTag.Undef)
+          continue
+        }
+
+        const arrId = arrayAux
+        if (arrId < 0 || arrId >= this.arrCount) {
+          this.vmPush(VmTag.Undef)
+          continue
+        }
+
+        const i = i32(indexTag === VmTag.Bool ? (indexNum != 0.0 ? 1 : 0) : indexNum)
+        const start = this.arrStart[arrId]
+        const len = this.arrLen[arrId]
+        if (i < 0 || i >= len) {
+          this.vmPush(VmTag.Undef)
+          continue
+        }
+
+        const at = start + i
+        this.vmPush(this.arrElemTag[at] as VmTag, this.arrElemNum[at], this.arrElemAux[at])
+        continue
+      }
+      if (op === VmOp.SetIndex) {
+        const valueIdx = this.vmPop()
+        const indexIdx = this.vmPop()
+        const arrayIdx = this.vmPop()
+
+        const arrayTag = this.vmTag[arrayIdx] as VmTag
+        const arrayAux = this.vmAux[arrayIdx]
+        const indexTag = this.vmTag[indexIdx] as VmTag
+        const indexNum = this.vmNum[indexIdx]
+
+        if (arrayTag !== VmTag.Arr) {
+          this.vmPush(VmTag.Undef)
+          continue
+        }
+
+        const arrId = arrayAux
+        if (arrId < 0 || arrId >= this.arrCount) {
+          this.vmPush(VmTag.Undef)
+          continue
+        }
+
+        const i = i32(indexTag === VmTag.Bool ? (indexNum != 0.0 ? 1 : 0) : indexNum)
+        const start = this.arrStart[arrId]
+        const len = this.arrLen[arrId]
+        if (i < 0 || i >= len) {
+          this.vmPush(VmTag.Undef)
+          continue
+        }
+
+        const at = start + i
+        this.arrElemTag[at] = this.vmTag[valueIdx]
+        this.arrElemNum[at] = this.vmNum[valueIdx]
+        this.arrElemAux[at] = this.vmAux[valueIdx]
+
+        this.vmPush(this.vmTag[valueIdx] as VmTag, this.vmNum[valueIdx], this.vmAux[valueIdx])
         continue
       }
       if (op === VmOp.Unary) {
@@ -856,6 +973,88 @@ export class Dsp {
     this.vmPush(VmTag.Audio, 0.0, outIndex)
   }
 
+  private vmPlayMini(arrayIndex: i32, cbAux: i32, length: i32, left$: usize, right$: usize): void {
+    const voiceCountOut = this.vmAllocOut()
+    const trigOuts = this.miniTrigOuts
+    const velOuts = this.miniVelOuts
+    const valOuts = this.miniValOuts
+
+    for (let v = 0; v < SEQ_VOICES; v++) {
+      const t = this.vmAllocOut()
+      const vel = this.vmAllocOut()
+      const val = this.vmAllocOut()
+      trigOuts[v] = t
+      velOuts[v] = vel
+      valOuts[v] = val
+    }
+
+    const mini = this.program.gensPool.get(Op.Mini) as Mini
+    mini.bytecode$ = changetype<usize>(this.program.data.arrays[arrayIndex])
+    mini.history$ = changetype<usize>(this.program.histories[arrayIndex])
+    mini.outVoiceCount$ = this.program.getOutBuffer(voiceCountOut)
+    for (let v = 0; v < SEQ_VOICES; v++) {
+      mini.outTrig$[v] = this.program.getOutBuffer(trigOuts[v])
+      mini.outVelocity$[v] = this.program.getOutBuffer(velOuts[v])
+      mini.outValue$[v] = this.program.getOutBuffer(valOuts[v])
+    }
+
+    mini.process(0, length)
+
+    const mixOut = this.vmAllocOut()
+    const mixOut$ = this.program.getOutBuffer(mixOut)
+    clearAudio(mixOut$, length)
+
+    const scopeTrigIndex = this.vmAllocOut()
+    const scopeVelIndex = this.vmAllocOut()
+    const scopeValIndex = this.vmAllocOut()
+
+    const bodyBufBase = this.outCursor
+
+    // Prepare args arrays for callback invocation (must not alias call scratch arrays)
+    const argTags = this.cbArgTags
+    const argNums = this.cbArgNums
+    const argAux = this.cbArgAux
+    argTags[0] = VmTag.Audio
+    argNums[0] = 0.0
+    argAux[0] = scopeTrigIndex
+    argTags[1] = VmTag.Audio
+    argNums[1] = 0.0
+    argAux[1] = scopeVelIndex
+    argTags[2] = VmTag.Audio
+    argNums[2] = 0.0
+    argAux[2] = scopeValIndex
+
+    for (let v = 0; v < SEQ_VOICES; v++) {
+      const remapBase = CALLBACK_SCOPE_BASE + v * CALLBACK_SCOPE_BUFFERS_PER_VOICE
+      this.program.pushCallbackScope(bodyBufBase, remapBase)
+      this.program.bindScope(scopeTrigIndex, this.program.getOutBuffer(trigOuts[v]))
+      this.program.bindScope(scopeVelIndex, this.program.getOutBuffer(velOuts[v]))
+      this.program.bindScope(scopeValIndex, this.program.getOutBuffer(valOuts[v]))
+
+      // Reuse the same body buffer indices for each voice; remapping makes them per-voice.
+      this.outCursor = bodyBufBase
+      this.vmSp = 0
+
+      this.vmInvokeFunc(cbAux, 3, argTags, argNums, argAux, length, left$, right$)
+
+      if (vmErrorCode !== 0) {
+        this.program.popCallbackScope()
+        return
+      }
+
+      const outIdx = this.vmPop()
+      const outTag = this.vmTag[outIdx] as VmTag
+      const outNum = this.vmNum[outIdx]
+      const outAux = this.vmAux[outIdx]
+      const voiceAudio$ = this.vmToAudioPtr(outTag, outNum, outAux, length)
+      addAudio(mixOut$, mixOut$, voiceAudio$, length)
+
+      this.program.popCallbackScope()
+    }
+
+    this.vmPush(VmTag.Audio, 0.0, mixOut)
+  }
+
   private vmCall(pos: i32, named: i32, length: i32, left$: usize, right$: usize): void {
     // Named args are on stack as (nameSym, value) pairs.
     // Collect named args into linear arrays (small fixed cap).
@@ -1070,6 +1269,36 @@ export class Dsp {
     }
 
     if (calleeAux === VmBuiltin.Mini) {
+      if (posCount < 1) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      const arrayTag = posTags[0] as VmTag
+      const arrayNum = posNums[0]
+      if (arrayTag !== VmTag.Num) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      // mini(seq) -> seq
+      if (posCount === 1) {
+        this.vmPush(VmTag.Num, arrayNum)
+        return
+      }
+
+      const cbTag = posTags[1] as VmTag
+      const cbAux = posAux[1]
+      if (cbTag !== VmTag.Func) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      this.vmPlayMini(i32(arrayNum), cbAux, length, left$, right$)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Play) {
       if (posCount < 2) {
         this.vmPush(VmTag.Undef)
         return
@@ -1085,87 +1314,7 @@ export class Dsp {
         return
       }
 
-      const arrayIndex = i32(arrayNum)
-
-      const voiceCountOut = this.vmAllocOut()
-      const trigOuts = this.miniTrigOuts
-      const velOuts = this.miniVelOuts
-      const valOuts = this.miniValOuts
-
-      for (let v = 0; v < SEQ_VOICES; v++) {
-        const t = this.vmAllocOut()
-        const vel = this.vmAllocOut()
-        const val = this.vmAllocOut()
-        trigOuts[v] = t
-        velOuts[v] = vel
-        valOuts[v] = val
-      }
-
-      const mini = this.program.gensPool.get(Op.Mini) as Mini
-      mini.bytecode$ = changetype<usize>(this.program.data.arrays[arrayIndex])
-      mini.history$ = changetype<usize>(this.program.histories[arrayIndex])
-      mini.outVoiceCount$ = this.program.getOutBuffer(voiceCountOut)
-      for (let v = 0; v < SEQ_VOICES; v++) {
-        mini.outTrig$[v] = this.program.getOutBuffer(trigOuts[v])
-        mini.outVelocity$[v] = this.program.getOutBuffer(velOuts[v])
-        mini.outValue$[v] = this.program.getOutBuffer(valOuts[v])
-      }
-
-      mini.process(0, length)
-
-      const mixOut = this.vmAllocOut()
-      const mixOut$ = this.program.getOutBuffer(mixOut)
-      clearAudio(mixOut$, length)
-
-      const scopeTrigIndex = this.vmAllocOut()
-      const scopeVelIndex = this.vmAllocOut()
-      const scopeValIndex = this.vmAllocOut()
-
-      const bodyBufBase = this.outCursor
-
-      // Prepare args arrays for callback invocation (must not alias call scratch arrays)
-      const argTags = this.cbArgTags
-      const argNums = this.cbArgNums
-      const argAux = this.cbArgAux
-      argTags[0] = VmTag.Audio
-      argNums[0] = 0.0
-      argAux[0] = scopeTrigIndex
-      argTags[1] = VmTag.Audio
-      argNums[1] = 0.0
-      argAux[1] = scopeVelIndex
-      argTags[2] = VmTag.Audio
-      argNums[2] = 0.0
-      argAux[2] = scopeValIndex
-
-      for (let v = 0; v < SEQ_VOICES; v++) {
-        const remapBase = CALLBACK_SCOPE_BASE + v * CALLBACK_SCOPE_BUFFERS_PER_VOICE
-        this.program.pushCallbackScope(bodyBufBase, remapBase)
-        this.program.bindScope(scopeTrigIndex, this.program.getOutBuffer(trigOuts[v]))
-        this.program.bindScope(scopeVelIndex, this.program.getOutBuffer(velOuts[v]))
-        this.program.bindScope(scopeValIndex, this.program.getOutBuffer(valOuts[v]))
-
-        // Reuse the same body buffer indices for each voice; remapping makes them per-voice.
-        this.outCursor = bodyBufBase
-        this.vmSp = 0
-
-        this.vmInvokeFunc(cbAux, 3, argTags, argNums, argAux, length, left$, right$)
-
-        if (vmErrorCode !== 0) {
-          this.program.popCallbackScope()
-          return
-        }
-
-        const outIdx = this.vmPop()
-        const outTag = this.vmTag[outIdx] as VmTag
-        const outNum = this.vmNum[outIdx]
-        const outAux = this.vmAux[outIdx]
-        const voiceAudio$ = this.vmToAudioPtr(outTag, outNum, outAux, length)
-        addAudio(mixOut$, mixOut$, voiceAudio$, length)
-
-        this.program.popCallbackScope()
-      }
-
-      this.vmPush(VmTag.Audio, 0.0, mixOut)
+      this.vmPlayMini(i32(arrayNum), cbAux, length, left$, right$)
       return
     }
 
@@ -1187,6 +1336,8 @@ export class Dsp {
       this.outCursor = 0
       this.envCount = 0
       this.scopeDepth = 0
+      this.arrCount = 0
+      this.arrElemCount = 0
 
       const leftBlock$ = left$ + (offset * 4) as usize
       const rightBlock$ = right$ + (offset * 4) as usize
