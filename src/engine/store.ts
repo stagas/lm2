@@ -5,7 +5,7 @@ import {
   MAX_DSP_INSTANCES,
 } from '../../as/assembly/constants.ts'
 import { type Dsp, DspStruct } from '../assembly.ts'
-import type { ArrayLiteralRef, MiniSequenceRef } from '../bytecode.ts'
+import type { AnalyserRef, ArrayLiteralRef, MiniSequenceRef } from '../bytecode.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { ControlOp } from '../worklet-shared.ts'
@@ -36,6 +36,7 @@ type EngineState = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
   dspSource: string
   isUpdatingDsp: boolean
@@ -90,6 +91,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const sequences = primaryResult.sequences
       const miniRefs = primaryResult.miniRefs
       const miniSourceMaps = primaryResult.miniSourceMaps
+      const analyserRefs = primaryResult.analyserRefs
       const arrayLiterals = primaryResult.arrayLiterals
 
       if (!primaryResult.diff.significantChange) {
@@ -99,6 +101,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           sequences,
           miniRefs,
           miniSourceMaps,
+          analyserRefs,
           arrayLiterals,
           lastSuccessfulProgramData: primaryResult.data,
         })
@@ -146,6 +149,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         sequences,
         miniRefs: stagingResult.miniRefs,
         miniSourceMaps: stagingResult.miniSourceMaps,
+        analyserRefs: stagingResult.analyserRefs,
         arrayLiterals: stagingResult.arrayLiterals,
         ...swappedPrograms,
         lastSuccessfulProgramData: stagingProgram.program.data,
@@ -205,6 +209,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     sequences: [...DEFAULT_SEQUENCES],
     miniRefs: [],
     miniSourceMaps: [],
+    analyserRefs: [],
     arrayLiterals: [],
     dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     isUpdatingDsp: false,
@@ -256,6 +261,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         lastSuccessfulProgramData: undefined,
         miniRefs: [],
         miniSourceMaps: [],
+        analyserRefs: [],
         arrayLiterals: [],
         isInitialized: false,
         isProgramReady: false,

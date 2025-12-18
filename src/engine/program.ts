@@ -18,7 +18,7 @@ import {
   RING_BUFFER_SIZE,
 } from '../../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from '../assembly.ts'
-import type { MiniSequenceRef } from '../bytecode.ts'
+import type { AnalyserRef, ArrayLiteralRef, MiniSequenceRef } from '../bytecode.ts'
 import { encodeLangToVmOps } from '../bytecode.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
@@ -68,14 +68,19 @@ function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataV
 function buildProgram(
   data: ProgramDataView,
   dspSource: string,
-): { sequences: string[]; miniRefs: MiniSequenceRef[]; arrayLiterals: import('../bytecode.ts').ArrayLiteralRef[] } {
-  const { errors, miniSequences, miniRefs, arrayLiterals } = encodeLangToVmOps(dspSource, { ops: data.ops,
+): { sequences: string[]; miniRefs: MiniSequenceRef[]; analyserRefs: AnalyserRef[]; arrayLiterals: ArrayLiteralRef[] } {
+  const { errors, miniSequences, miniRefs, analyserRefs, arrayLiterals } = encodeLangToVmOps(dspSource, { ops: data.ops,
     literals: data.literals })
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
   }
-  return { sequences: miniSequences ?? [], miniRefs: miniRefs ?? [], arrayLiterals: arrayLiterals ?? [] }
+  return {
+    sequences: miniSequences ?? [],
+    miniRefs: miniRefs ?? [],
+    analyserRefs: analyserRefs ?? [],
+    arrayLiterals: arrayLiterals ?? [],
+  }
 }
 
 type CompileOptions = {
@@ -95,8 +100,9 @@ export type ProgramBuildDiff = {
 export type ProgramBuildResult = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
+  analyserRefs: AnalyserRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
-  arrayLiterals: import('../bytecode.ts').ArrayLiteralRef[]
+  arrayLiterals: ArrayLiteralRef[]
   data: ProgramDataView
   diff: ProgramBuildDiff
   previousData?: ProgramDataView
@@ -292,7 +298,7 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, miniRefs, arrayLiterals } = buildProgram(newData, source)
+        const { sequences, miniRefs, analyserRefs, arrayLiterals } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
 
         await this.acquireLock()
@@ -326,6 +332,7 @@ async function createProgram(
         return {
           sequences,
           miniRefs,
+          analyserRefs,
           miniSourceMaps,
           arrayLiterals,
           data: newData,

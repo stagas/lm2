@@ -8,6 +8,7 @@ import { useEngine } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
+import { useAnalyserWidget } from './useAnalyserWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
@@ -39,8 +40,10 @@ export function DspSourceEditor() {
     audioContext,
     bpmValue,
     globalSampleCount,
+    ringPos,
     miniRefs,
     miniSourceMaps,
+    analyserRefs,
     arrayLiterals,
   } = useEngineStore()
   const [localSource, setLocalSource] = useState(dspSource)
@@ -120,6 +123,14 @@ export function DspSourceEditor() {
     showWidgets,
   })
 
+  const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
+    program1,
+    ringPos,
+    analyserRefs,
+    dspSource,
+    showWidgets,
+  })
+
   const { widgets: arrayAccessWidgets, onBeforeDraw: onBeforeDrawArrayAccess } = useArrayAccessWidget({
     program1,
     dspSource,
@@ -130,13 +141,14 @@ export function DspSourceEditor() {
   const onBeforeDrawCombined = useCallback(() => {
     onBeforeDraw()
     onBeforeDrawPianoroll()
+    onBeforeDrawAnalyser()
     onBeforeDrawArrayAccess()
-  }, [onBeforeDraw, onBeforeDrawPianoroll, onBeforeDrawArrayAccess])
+  }, [onBeforeDraw, onBeforeDrawPianoroll, onBeforeDrawAnalyser, onBeforeDrawArrayAccess])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
-    return [...pianorollWidgets, ...sequenceWidgets, ...arrayAccessWidgets]
-  }, [showWidgets, pianorollWidgets, sequenceWidgets, arrayAccessWidgets])
+    return [...analyserWidgets, ...pianorollWidgets, ...sequenceWidgets, ...arrayAccessWidgets]
+  }, [showWidgets, analyserWidgets, pianorollWidgets, sequenceWidgets, arrayAccessWidgets])
 
   const timelineTimeRef = useRef<number | null>(null)
 
