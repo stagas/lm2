@@ -29,6 +29,7 @@ type EngineState = {
   control?: Uint32Array<SharedArrayBuffer>
   bpmValue?: Float32Array<SharedArrayBuffer>
   globalSampleCount?: Int32Array<SharedArrayBuffer>
+  seekSampleCount?: Int32Array<SharedArrayBuffer>
   programSwap?: Uint32Array<SharedArrayBuffer>
   programSwapStatus?: Int32Array<SharedArrayBuffer>
   prepareDsp?: Uint32Array<SharedArrayBuffer>
@@ -254,6 +255,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         control: undefined,
         bpmValue: undefined,
         globalSampleCount: undefined,
+        seekSampleCount: undefined,
         programSwap: undefined,
         programSwapStatus: undefined,
         prepareDsp: undefined,
@@ -372,6 +374,8 @@ async function createWorklet() {
   bpmValue[0] = 60
   const globalSampleCount = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
   globalSampleCount[0] = 0
+  const seekSampleCount = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
+  seekSampleCount[0] = 0
   const programSwap = new Uint32Array(
     new SharedArrayBuffer(3 * MAX_DSP_INSTANCES * Uint32Array.BYTES_PER_ELEMENT),
   )
@@ -388,6 +392,7 @@ async function createWorklet() {
       control,
       bpmValue,
       globalSampleCount,
+      seekSample: seekSampleCount,
       programSwap,
       prepareDsp,
       swapStatus: programSwapStatus,
@@ -401,6 +406,7 @@ async function createWorklet() {
     control,
     bpmValue,
     globalSampleCount,
+    seekSampleCount,
     programSwap,
     prepareDsp,
     prepareDspStatus,

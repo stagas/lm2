@@ -473,6 +473,8 @@ async function createWorklet() {
   bpmValue[0] = 60 // Initialize BPM to 60
   const globalSampleCount = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
   globalSampleCount[0] = 0
+  const seekSampleCount = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
+  seekSampleCount[0] = 0
   const programSwap = new Uint32Array(
     new SharedArrayBuffer(3 * MAX_DSP_INSTANCES * Uint32Array.BYTES_PER_ELEMENT),
   ) // old, new, dsp$ per instance
@@ -485,6 +487,7 @@ async function createWorklet() {
       control,
       bpmValue,
       globalSampleCount,
+      seekSample: seekSampleCount,
       programSwap,
       prepareDsp,
     },
@@ -496,6 +499,7 @@ async function createWorklet() {
     control,
     bpmValue,
     globalSampleCount,
+    seekSampleCount,
     programSwap,
     prepareDsp,
     worklet,

@@ -57,6 +57,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
     control: Uint32Array<SharedArrayBuffer>
     bpmValue: Float32Array<SharedArrayBuffer>
     globalSampleCount: Int32Array<SharedArrayBuffer>
+    seekSample: Int32Array<SharedArrayBuffer>
     programSwap: Uint32Array<SharedArrayBuffer>
     prepareDsp: Uint32Array<SharedArrayBuffer>
     swapStatus: Int32Array<SharedArrayBuffer>
@@ -85,11 +86,13 @@ export class DspProcessor extends AudioWorkletProcessor {
   private swapStatus?: Int32Array
   private crossfadeState: Map<number, SwapState> = new Map()
   private resetRunningDspOnNextChunk = false
+  private seekSample?: Int32Array
 
   constructor(private options: DspProcessorOptions) {
     super()
     rpc(this.port, this)
     this.swapStatus = this.options.processorOptions.swapStatus
+    this.seekSample = this.options.processorOptions.seekSample
   }
 
   async setWasmBinary(binary: ArrayBuffer) {
@@ -224,6 +227,13 @@ export class DspProcessor extends AudioWorkletProcessor {
     }
   }
 
+  private applySeekSample(targetSample: number) {
+    if (!this.core) return
+    const clamped = Math.max(0, targetSample)
+    this.core.wasm.globalSampleCount.value = clamped
+    Atomics.store(this.options.processorOptions.globalSampleCount, 0, clamped)
+  }
+
   process(
     inputs: Float32Array[][],
     outputs: Float32Array[][],
@@ -231,7 +241,17 @@ export class DspProcessor extends AudioWorkletProcessor {
   ) {
     if (!this.core || !this.scratchLeft || !this.scratchRight) return true
 
-    const control = Atomics.load(this.options.processorOptions.control, 0)
+    let control = Atomics.load(this.options.processorOptions.control, 0)
+
+    if (control === ControlOp.Seek) {
+      const seekSample = this.seekSample
+      if (seekSample) {
+        const targetSample = Math.max(0, Atomics.load(seekSample, 0))
+        this.applySeekSample(targetSample)
+      }
+      control = this.lastControl
+      Atomics.store(this.options.processorOptions.control, 0, control)
+    }
 
     // Only respond to control changes
     if (control !== this.lastControl) {

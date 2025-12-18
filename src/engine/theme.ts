@@ -337,3 +337,7 @@ export function useTheme(): Theme {
 export const getBaseTheme = (themeName: string): Omit<Theme, 'font'> => {
   return themes[themeName] ?? themes.monokai
 }
+
+export const getCurrentTheme = (): Theme => {
+  return themes[useThemeStore.getState().currentTheme] as Theme
+}
