@@ -215,13 +215,12 @@ export function usePianorollWidget({
     const st = pianorollStateRef.current.get(seqIndex)
     if (!st || st.timeSeconds == null) return
 
-    const dpr = window.devicePixelRatio || 1
     const x = viewX
     const h = Math.max(40, widgetHeight)
     const w = viewWidth
 
     c.save()
-    c.translate(x, -2.5)
+    c.translate(x, 0)
 
     const NOTE_WIDTH = Math.max(1, w - PIANOROLL_KEY_WIDTH)
     const PIXELS_PER_SECOND = NOTE_WIDTH / TIME_WINDOW_SECONDS

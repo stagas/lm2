@@ -254,8 +254,12 @@ function drawAmplitudeScroller(
     ctx.fillStyle = state.bg
     ctx.fillRect(0, 0, state.pxW, state.pxH)
     const cy = (state.pxH / 2) | 0
-    ctx.fillStyle = 'rgba(180, 180, 180, 0.9)'
-    ctx.fillRect(0, cy, state.pxW, 1)
+    ctx.strokeStyle = 'rgba(180, 180, 180, 0.9)'
+    ctx.lineWidth = 1.35 * dpr
+    ctx.beginPath()
+    ctx.moveTo(0, cy)
+    ctx.lineTo(state.pxW, cy)
+    ctx.stroke()
   }
 
   if (!st) {
@@ -296,12 +300,17 @@ function drawAmplitudeScroller(
   }
 
   const drawX = st.col
+  const cy = (st.pxH / 2) | 0
+
   offCtx.fillStyle = st.bg
   offCtx.fillRect(drawX, 0, 1, st.pxH)
 
-  const cy = (st.pxH / 2) | 0
-  offCtx.fillStyle = 'rgba(180, 180, 180, 0.9)'
-  offCtx.fillRect(drawX, cy, 1, 1)
+  offCtx.strokeStyle = 'rgba(180, 180, 180, 0.9)'
+  offCtx.lineWidth = 1.35 * dpr
+  offCtx.beginPath()
+  offCtx.moveTo(drawX, cy)
+  offCtx.lineTo(drawX + 1, cy)
+  offCtx.stroke()
 
   const ampBarHeight = Math.max(1, Math.min(st.pxH, peak * st.pxH))
   const ampY = (st.pxH - ampBarHeight) / 2
@@ -369,16 +378,16 @@ export function useAnalyserWidget({
     }
   }, [])
 
-  useEffect(() => {
-    for (const st of analyserStateRef.current) {
-      st?.waveform.reset()
-      if (st) st.floats = null
-    }
-    ampCanvasRef.current.length = 0
-    animatedSpectrumHeightsRef.current.length = 0
-    spectrumCacheRef.current.clear()
-    seenRef.current.clear()
-  }, [dspSource])
+  // useEffect(() => {
+  //   // for (const st of analyserStateRef.current) {
+  //   //   st?.waveform.reset()
+  //   //   if (st) st.floats = null
+  //   // }
+  //   ampCanvasRef.current.length = 0
+  //   animatedSpectrumHeightsRef.current.length = 0
+  //   spectrumCacheRef.current.clear()
+  //   seenRef.current.clear()
+  // }, [dspSource])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
