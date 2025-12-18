@@ -330,7 +330,7 @@ export class Mini extends Gen {
     let newWritePos = 0
 
     // Give some space for the edge case.
-    windowStart -= 1000
+    windowStart -= 1000000
 
     for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
