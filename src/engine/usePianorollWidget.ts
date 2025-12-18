@@ -16,6 +16,7 @@ const KEY_WIDTH = 20
 const SCROLL_SMOOTHING = 0.17
 const MIDI_IS_BLACK = new Uint8Array(128)
 const MIDI_IS_OCTAVE = new Uint8Array(128)
+const MIDI_IS_EF = new Uint8Array(128)
 const MIDI_LABELS = new Array<string>(128)
 for (let midi = 0; midi < 128; midi++) {
   const noteInOctave = midi % 12
@@ -24,6 +25,7 @@ for (let midi = 0; midi < 128; midi++) {
     ? 1
     : 0
   MIDI_IS_OCTAVE[midi] = noteInOctave === 0 ? 1 : 0
+  MIDI_IS_EF[midi] = noteInOctave === 5 ? 1 : 0
   MIDI_LABELS[midi] = midiToNoteName(midi)
 }
 
@@ -203,7 +205,7 @@ export function usePianorollWidget({
   }, [showWidgets, program1, audioContext, globalSampleCount, miniRefs, miniSourceMaps])
 
   const drawPianoroll = useCallback((
-    ctx: CanvasRenderingContext2D,
+    c: CanvasRenderingContext2D,
     seqIndex: number,
     widgetY: number,
     widgetHeight: number,
@@ -219,8 +221,8 @@ export function usePianorollWidget({
     const h = Math.max(40, widgetHeight)
     const w = viewWidth
 
-    ctx.save()
-    ctx.translate(x, -3)
+    c.save()
+    c.translate(x, -3)
 
     const NOTE_WIDTH = Math.max(1, w - KEY_WIDTH)
     const PIXELS_PER_SECOND = NOTE_WIDTH / TIME_WINDOW_SECONDS
@@ -240,30 +242,42 @@ export function usePianorollWidget({
     const cycleLengthSeconds = 60 / bpm
     const currentTimeX = PAST_SECONDS * PIXELS_PER_SECOND
 
-    ctx.save()
-    ctx.translate(0, widgetY)
-    ctx.beginPath()
-    ctx.rect(0, 0, w, h)
-    ctx.clip()
+    c.save()
+    c.translate(0, widgetY)
+    c.beginPath()
+    c.rect(0, 0, w, h)
+    c.clip()
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
-    ctx.fillRect(0, 0, w, h)
+    c.fillStyle = 'rgba(0, 0, 0, 0.35)'
+    c.fillRect(0, 0, w, h)
 
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(0, 0, NOTE_WIDTH, h)
-    ctx.clip()
+    c.save()
+    c.beginPath()
+    c.rect(0, 0, NOTE_WIDTH, h)
+    c.clip()
 
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
       const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight
       const isBlack = MIDI_IS_BLACK[midi] === 1
 
-      ctx.fillStyle = isBlack ? 'rgba(30, 30, 30, 0.5)' : 'rgba(75, 75, 75, 0.3)'
-      ctx.fillRect(0, y, NOTE_WIDTH, keyHeight)
-      ctx.strokeStyle = 'rgba(100, 100, 100, 0.4)'
-      ctx.lineWidth = MIDI_IS_OCTAVE[midi] === 1 ? 1.5 : 0.5
-      ctx.strokeRect(0, y, NOTE_WIDTH, keyHeight)
+      c.fillStyle = isBlack ? 'rgba(30, 30, 30, 0.5)' : 'rgba(75, 75, 75, 0.3)'
+      c.fillRect(0, y, NOTE_WIDTH, keyHeight)
+
+      // Only draw the thin horizontal separator when keys are tall enough,
+      // but always draw it for octave keys to keep octave visual anchors.
+      const isOctave = MIDI_IS_OCTAVE[midi] === 1
+      const isEF = MIDI_IS_EF[midi] === 1
+      const isNarrow = keyHeight < 4
+      const shouldDrawSeparator = isOctave || (isEF && !isNarrow)
+      if (shouldDrawSeparator) {
+        c.strokeStyle = isOctave ? 'rgba(100, 100, 100, 0.4)' : 'rgba(0,0,0, 0.2)'
+        c.lineWidth = isOctave ? 1 : 1
+        c.beginPath()
+        c.moveTo(0, y + keyHeight)
+        c.lineTo(NOTE_WIDTH, y + keyHeight)
+        c.stroke()
+      }
     }
 
     const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
@@ -272,19 +286,19 @@ export function usePianorollWidget({
       const isEvenBar = barIndex % 2 === 0
       const barX = (barStart - windowStartTime) * PIXELS_PER_SECOND
       const barWidth = barLengthSeconds * PIXELS_PER_SECOND
-      ctx.fillStyle = isEvenBar ? 'rgba(255, 255, 255, 0.09)' : 'rgba(255, 255, 255, 0.12)'
-      ctx.fillRect(barX, 0, barWidth, h)
+      c.fillStyle = isEvenBar ? 'rgba(255, 255, 255, 0.09)' : 'rgba(255, 255, 255, 0.12)'
+      c.fillRect(barX, 0, barWidth, h)
     }
 
     const firstCycleStart = Math.floor(windowStartTime / cycleLengthSeconds) * cycleLengthSeconds
     for (let cycleStart = firstCycleStart; cycleStart < windowEndTime; cycleStart += cycleLengthSeconds) {
       const cycleX = (cycleStart - windowStartTime) * PIXELS_PER_SECOND
-      ctx.strokeStyle = 'rgba(0, 0, 0, 1.0)'
-      ctx.lineWidth = 0.5
-      ctx.beginPath()
-      ctx.moveTo(cycleX, 0)
-      ctx.lineTo(cycleX, h)
-      ctx.stroke()
+      c.strokeStyle = 'rgba(0, 0, 0, 1.0)'
+      c.lineWidth = 0.25
+      c.beginPath()
+      c.moveTo(cycleX, 0)
+      c.lineTo(cycleX, h)
+      c.stroke()
     }
 
     const ev = st.frameEv
@@ -308,17 +322,53 @@ export function usePianorollWidget({
 
       const isActive = st.sampleCount >= startSample && (st.sampleCount <= Math.max(startSample + 5000, endSample))
       const velocity = Math.max(0, Math.min(1, velocityRaw))
+
+      let fillStyle = ''
+      let strokeBright = ''
+      let strokeDark = ''
       if (isActive) {
-        ctx.fillStyle = 'rgba(255, 200, 0, 0.9)'
-        ctx.strokeStyle = 'rgba(255, 255, 100, 1)'
+        fillStyle = '#ff0f'
+        strokeBright = '#ffff'
+        strokeDark = '#cc0f'
       }
       else {
-        ctx.fillStyle = `rgba(0, 200, 255, ${0.5 * velocity})`
-        ctx.strokeStyle = `rgba(0, 255, 255, ${0.7 * velocity})`
+        fillStyle = '#0aff'
+        strokeBright = '#cfff'
+        strokeDark = '#06cf'
       }
-      ctx.fillRect(x, y, Math.max(2, eventWidth), keyHeight - 1)
-      ctx.lineWidth = 1
-      ctx.strokeRect(x, y, Math.max(1, eventWidth), keyHeight - 1)
+      const ex = x + 0.5
+      const ew = Math.max(2, eventWidth) - 1
+      const ey = y + 0.5
+      const eh = keyHeight - 1
+
+      c.globalAlpha = velocity * 0.9 + 0.1
+
+      c.fillStyle = fillStyle
+      c.fillRect(ex, ey, ew, eh)
+      c.lineCap = 'square'
+
+      c.lineWidth = 0.5
+
+      c.beginPath()
+      c.moveTo(ex + ew, ey)
+      c.lineTo(ex + ew, ey + eh)
+      c.strokeStyle = strokeDark
+      c.stroke()
+
+      c.beginPath()
+      c.moveTo(ex, ey + eh)
+      c.lineTo(ex, ey)
+      c.lineTo(ex + ew, ey)
+      c.strokeStyle = strokeBright
+      c.stroke()
+
+      c.beginPath()
+      c.moveTo(ex, ey + eh)
+      c.lineTo(ex + ew, ey + eh)
+      c.strokeStyle = strokeDark
+      c.stroke()
+
+      c.globalAlpha = 1.0
     }
 
     for (const midi of st.activeList) {
@@ -346,22 +396,22 @@ export function usePianorollWidget({
       if (st.notes[i]!.fade < 0.01) st.notes.splice(i, 1)
     }
 
-    ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(currentTimeX, 0)
-    ctx.lineTo(currentTimeX, h)
-    ctx.stroke()
+    c.strokeStyle = 'rgba(255, 255, 0, 0.8)'
+    c.lineWidth = 2
+    c.beginPath()
+    c.moveTo(currentTimeX, 0)
+    c.lineTo(currentTimeX, h)
+    c.stroke()
 
-    ctx.font = '7px monospace'
-    ctx.textAlign = 'right'
-    ctx.textBaseline = 'middle'
+    c.font = '7px monospace'
+    c.textAlign = 'right'
+    c.textBaseline = 'middle'
     for (const n of st.notes) {
-      ctx.fillStyle = `rgba(255, 255, 0, ${n.fade})`
-      ctx.fillText(n.noteText, currentTimeX - 5, n.y + 0.5)
+      c.fillStyle = `rgba(255, 255, 0, ${n.fade})`
+      c.fillText(n.noteText, currentTimeX - 5, n.y + 0.5)
     }
 
-    ctx.restore()
+    c.restore()
 
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
       const keyIndex = displayMaxMidi - midi
@@ -370,28 +420,29 @@ export function usePianorollWidget({
       const isOctave = MIDI_IS_OCTAVE[midi] === 1
       const isActive = st.activeMask[midi] === 1
 
-      if (isActive) ctx.fillStyle = 'rgba(255, 220, 0, 1.0)'
-      else if (isOctave) ctx.fillStyle = 'rgba(255, 255, 255, 1.0)'
-      else if (isBlack) ctx.fillStyle = 'rgba(0, 0, 0, 1.0)'
-      else ctx.fillStyle = 'rgba(150, 150, 150, 1.0)'
-      ctx.fillRect(NOTE_WIDTH, y, KEY_WIDTH, keyHeight)
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'
-      ctx.fillRect(NOTE_WIDTH, y + keyHeight - 1, KEY_WIDTH, 1)
+      if (isActive) c.fillStyle = 'rgba(255, 220, 0, 1.0)'
+      else if (isOctave) c.fillStyle = 'rgba(255, 255, 255, 1.0)'
+      else if (isBlack) c.fillStyle = 'rgba(0, 0, 0, 1.0)'
+      else c.fillStyle = 'rgba(150, 150, 150, 1.0)'
+      c.fillRect(NOTE_WIDTH, y, KEY_WIDTH, keyHeight)
     }
 
-    ctx.font = '7px monospace'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    for (let midi = displayMinMidi; midi <= displayMaxMidi; midi += 1) {
-      const keyIndex = displayMaxMidi - midi
-      const y = keyIndex * keyHeight + keyHeight / 2
-      const isBlack = MIDI_IS_BLACK[midi] === 1
-      ctx.fillStyle = isBlack ? 'rgba(255, 255, 255, 1.0)' : 'rgba(0, 0, 0, 1.0)'
-      ctx.fillText(MIDI_LABELS[midi]!, NOTE_WIDTH + KEY_WIDTH / 2, y + 0.5)
+    if (keyHeight > 6) {
+      c.font = '6pt Inter'
+      c.textAlign = 'center'
+      c.textBaseline = 'middle'
+      for (let midi = displayMinMidi; midi <= displayMaxMidi; midi += 1) {
+        const keyIndex = displayMaxMidi - midi
+        const y = keyIndex * keyHeight + keyHeight / 2
+        const isBlack = MIDI_IS_BLACK[midi] === 1
+        const isActive = st.activeMask[midi] === 1
+        c.fillStyle = (isBlack && !isActive) ? 'rgba(255, 255, 255, 1.0)' : 'rgba(0, 0, 0, 1.0)'
+        c.fillText(MIDI_LABELS[midi]!, NOTE_WIDTH + KEY_WIDTH / 2, y + 0.5)
+      }
     }
 
-    ctx.restore()
-    ctx.restore()
+    c.restore()
+    c.restore()
   }, [audioContext, bpmValue])
 
   const widgets = useMemo(() => {

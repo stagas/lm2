@@ -1,4 +1,14 @@
-import { OP_EVENT_BASE_SIZE, OP_GROUP_END_SIZE, OP_GROUP_START_SIZE, OP_OCTAVE_SIZE, OP_REST_SIZE, OP_SCALE_SIZE, OP_TRANSPOSE_SIZE } from '../../as/assembly/constants.ts'
+import {
+  OP_CYCLE_END_SIZE,
+  OP_CYCLE_START_SIZE,
+  OP_EVENT_BASE_SIZE,
+  OP_GROUP_END_SIZE,
+  OP_GROUP_START_SIZE,
+  OP_OCTAVE_SIZE,
+  OP_REST_SIZE,
+  OP_SCALE_SIZE,
+  OP_TRANSPOSE_SIZE,
+} from '../../as/assembly/constants.ts'
 import type { Node } from '../mini/tokenizer.ts'
 
 export interface SourceLocation {
@@ -59,6 +69,11 @@ function buildSourceMapFromNodes(
       currentOffset += OP_GROUP_START_SIZE
       currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map)
       currentOffset += OP_GROUP_END_SIZE
+    }
+    else if (node.type === 'cycle') {
+      currentOffset += OP_CYCLE_START_SIZE
+      currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map)
+      currentOffset += OP_CYCLE_END_SIZE
     }
   }
 

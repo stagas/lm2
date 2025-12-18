@@ -235,6 +235,16 @@ export function tokenize(input: string): Token[] {
     const start = i
     const ch = input[i]!
 
+    // Handle single-line comments starting with "//"
+    if (ch === '/' && input[i + 1] === '/') {
+      let j = i + 2
+      // read until end of line or end of input
+      while (j < input.length && input[j] !== '\n' && input[j] !== '\r') j++
+      tokens.push({ text: input.slice(start, j), start, end: j })
+      i = j
+      continue
+    }
+
     if (GROUP_OPEN.has(ch)) {
       const close = ch === '[' ? ']' : ch === '<' ? '>' : ')'
       i++
@@ -514,6 +524,11 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
     const token = tokens[ti]!
     const raw = token.text
     const first = raw[0]!
+
+    // Skip single-line comment tokens entirely
+    if (raw.startsWith('//')) {
+      continue
+    }
 
     if (first === '_') {
       const last = nodes.at(-1)

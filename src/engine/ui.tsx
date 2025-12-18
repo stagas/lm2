@@ -79,7 +79,6 @@ export function DspSourceEditor() {
     try {
       setError(undefined)
       await updateDspSource(requested)
-      console.log('updated dsp source')
     }
     catch (err) {
       setError(err instanceof Error ? err.message : String(err))

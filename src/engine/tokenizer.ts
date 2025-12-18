@@ -54,7 +54,6 @@ function tokenizeMiniMods(mods: string): Token[] {
 
   while (i < mods.length) {
     const ch = mods[i]!
-
     if (ch === '+') {
       if (mods[i + 1] === '?') {
         tokens.push({ type: 'comment', content: '+?', length: 2 })
@@ -77,10 +76,12 @@ function tokenizeMiniMods(mods: string): Token[] {
       i++
     }
     else {
+      // Single-character fallback
       tokens.push({ type: 'default', content: ch, length: 1 })
       i++
     }
 
+    // Generic number parsing for any numbers immediately following other tokens.
     let j = i
     while (j < mods.length && /[0-9.]/.test(mods[j]!)) j++
     if (j > i) {
@@ -97,15 +98,81 @@ function tokenizeMiniText(text: string): Token[] {
   const tokens: Token[] = []
   const miniTokens = miniTokenize(text)
   let cursor = 0
+  // Precompute first comment position (single-line comment marker)
+  // We'll update this inside the loop if necessary.
+  let firstCommentPos = text.indexOf('//')
 
-  for (const t of miniTokens) {
+  let isScaleOperator = false
+
+  for (let ti = 0; ti < miniTokens.length; ti++) {
+    const t = miniTokens[ti]!
+
+    if (firstCommentPos !== -1 && firstCommentPos >= cursor && firstCommentPos < t.start) {
+      const beforeComment = text.slice(cursor, firstCommentPos)
+      if (beforeComment) tokens.push({ type: 'default', content: beforeComment, length: beforeComment.length })
+      const commentText = text.slice(firstCommentPos)
+      tokens.push({ type: 'comment', content: commentText, length: commentText.length })
+      return tokens
+    }
+
     if (t.start > cursor) {
       const between = text.slice(cursor, t.start)
       tokens.push({ type: 'default', content: between, length: between.length })
     }
 
+    if (isScaleOperator) {
+      isScaleOperator = false
+      tokens.push({ type: 'number', content: t.text, length: t.text.length })
+      cursor = t.end
+      continue
+    }
+
+    if (t.text === 'scale') {
+      isScaleOperator = true
+      tokens.push({ type: 'parameter', content: t.text, length: t.text.length })
+      cursor = t.end
+      continue
+    }
+
     const raw = t.text
     const first = raw[0]
+    // If '//' falls inside this mini token, split and emit a comment token.
+    if (firstCommentPos !== -1 && firstCommentPos >= t.start && firstCommentPos < t.end) {
+      const offsetInRaw = firstCommentPos - t.start
+      const before = raw.slice(0, offsetInRaw)
+      const commentPart = raw.slice(offsetInRaw)
+      if (before) {
+        // Process the prefix of this token as if it's the original raw token.
+        const pf = before
+        const pfirst = pf[0]
+        if (pfirst === '[' || pfirst === '<' || pfirst === '(') {
+          const closeIndex = findGroupClose(pf, pfirst)
+          if (closeIndex !== -1) {
+            const open = pfirst as '[' | '<' | '('
+            const close = open === '[' ? ']' : open === '<' ? '>' : ')'
+            const inner = pf.slice(1, closeIndex)
+            const after = pf.slice(closeIndex + 1)
+
+            tokens.push({ type: 'punctuation', content: open, length: 1 })
+            if (inner) tokens.push(...tokenizeMiniText(inner))
+            tokens.push({ type: 'punctuation', content: close, length: 1 })
+            if (after) tokens.push(...tokenizeMiniMods(after))
+          }
+          else {
+            tokens.push({ type: 'punctuation', content: pf, length: pf.length })
+          }
+        }
+        else {
+          const { value, mods } = splitValueAndModifiers(pf)
+          if (value) tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
+          if (mods) tokens.push(...tokenizeMiniMods(mods))
+        }
+      }
+
+      // Now emit the comment for the rest and finish
+      tokens.push({ type: 'comment', content: commentPart, length: commentPart.length })
+      return tokens
+    }
     if (first === '[' || first === '<' || first === '(') {
       const closeIndex = findGroupClose(raw, first)
       if (closeIndex !== -1) {
@@ -130,11 +197,25 @@ function tokenizeMiniText(text: string): Token[] {
     }
 
     cursor = t.end
+    // Update firstCommentPos in case there are later comments not found earlier
+    if (firstCommentPos !== -1 && firstCommentPos < cursor) {
+      // Already passed the comment; no further comment in this string
+      firstCommentPos = -1
+    }
   }
 
   if (cursor < text.length) {
     const rest = text.slice(cursor)
-    tokens.push({ type: 'default', content: rest, length: rest.length })
+    const idx = rest.indexOf('//')
+    if (idx !== -1) {
+      const before = rest.slice(0, idx)
+      const commentPart = rest.slice(idx)
+      if (before) tokens.push({ type: 'default', content: before, length: before.length })
+      tokens.push({ type: 'comment', content: commentPart, length: commentPart.length })
+    }
+    else {
+      tokens.push({ type: 'default', content: rest, length: rest.length })
+    }
   }
 
   return tokens

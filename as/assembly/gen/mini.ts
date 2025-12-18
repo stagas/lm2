@@ -431,7 +431,7 @@ export class Mini extends Gen {
     this.defragmentHistory(
       historyArray,
       windowStart - i32(<f32> PAST_SECONDS * sampleRate),
-      i32(cycleSamples * (endCycle as f32)),
+      i32(cycleSamples * ((endCycle + 1) as f32)),
     )
 
     let historyWritePos = i32(historyArray[HISTORY_WRITE_POS_OFFSET])
@@ -518,10 +518,17 @@ export class Mini extends Gen {
       const opIndex = i32(historyEntry.opIndex)
       const voiceIndexHist = i32(historyEntry.voiceIndex)
       const startSample = i32(historyEntry.startSample)
-      const endSample = i32(historyEntry.endSample)
+      let endSample = i32(historyEntry.endSample)
 
       // Skip invalid entries
       if (startSample === 0 && endSample === 0) continue
+
+      // History stores sample positions as f32. After ~2^24 samples, f32 can no longer represent
+      // single-sample deltas, so 1-sample triggers can collapse to endSample === startSample.
+      // Treat those as a minimal-length trigger so they still get scheduled.
+      if (endSample <= startSample) {
+        endSample = startSample + 1
+      }
 
       // Check if event intersects with current window
       if (endSample <= windowStart || startSample >= windowEnd) continue

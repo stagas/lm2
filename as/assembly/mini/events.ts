@@ -435,14 +435,17 @@ export class MiniEvents {
         const opcode0 = reader.getOpcode(childOpOffset0)
         if (opcode0 === OP_OCTAVE) {
           const op0 = reader.getOctave(childOpOffset0)
+          emitter.emitControl(childOpOffset0, groupVelocity, groupStartTime + groupOffsetTime)
           pitch *= this.pow2(op0.delta as f64)
         }
         else if (opcode0 === OP_TRANSPOSE) {
           const op0 = reader.getTranspose(childOpOffset0)
+          emitter.emitControl(childOpOffset0, groupVelocity, groupStartTime + groupOffsetTime)
           pitch *= this.pow2((op0.delta as f64) / 12.0)
         }
         else if (opcode0 === OP_SCALE) {
           const op0 = reader.getScale(childOpOffset0)
+          emitter.emitControl(childOpOffset0, groupVelocity, groupStartTime + groupOffsetTime)
           this.scaleRootMidi = i32(op0.rootMidi)
           this.scaleIndex = i32(op0.scaleIndex)
           this.scaleActive = true

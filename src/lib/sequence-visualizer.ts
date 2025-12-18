@@ -3,6 +3,10 @@ import {
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
   MINI_HEADER_SIZE,
+  OP_CYCLE_END,
+  OP_CYCLE_END_SIZE,
+  OP_CYCLE_START,
+  OP_CYCLE_START_SIZE,
   OP_EVENT,
   OP_EVENT_BASE_SIZE,
   OP_GROUP_END,
@@ -86,6 +90,8 @@ export function createSequenceVisualization(
     if (op === OP_EVENT) return OP_EVENT_BASE_SIZE
     if (op === OP_GROUP_START) return OP_GROUP_START_SIZE
     if (op === OP_GROUP_END) return OP_GROUP_END_SIZE
+    if (op === OP_CYCLE_START) return OP_CYCLE_START_SIZE
+    if (op === OP_CYCLE_END) return OP_CYCLE_END_SIZE
     if (op === OP_REST) return OP_REST_SIZE
     if (op === OP_OCTAVE) return OP_OCTAVE_SIZE
     if (op === OP_TRANSPOSE) return OP_TRANSPOSE_SIZE
