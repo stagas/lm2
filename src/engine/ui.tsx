@@ -169,6 +169,7 @@ export function DspSourceEditor() {
 
       const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
       for (let barStart = firstBarStart; barStart < windowEndTime + barLengthSeconds; barStart += barLengthSeconds) {
+        if (barStart < 0) continue
         const barIndex = Math.floor(barStart / barLengthSeconds)
         const barNumber = barIndex + 1
         const isPhraseStart = ((barNumber - 1) & 3) === 0
@@ -187,6 +188,16 @@ export function DspSourceEditor() {
         c.textAlign = 'left'
         c.textBaseline = 'top'
         c.fillText(String(barNumber), barX + 4, y + 4)
+
+        // Show time below the phrase number (formatted MM:SS) calculated from bar start seconds
+        const t = Math.max(0, barStart)
+        const mins = Math.floor(t / 60)
+        const secs = Math.floor(t % 60)
+        const timeLabel = mins + ':' + String(secs).padStart(2, '0')
+        c.font = '7pt Inter'
+        c.textBaseline = 'top'
+        c.fillStyle = 'rgba(200,200,200,0.6)'
+        c.fillText(timeLabel, barX + 4, y + 17)
       }
 
       c.strokeStyle = 'rgba(255, 220, 0, 0.9)'
