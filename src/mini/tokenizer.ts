@@ -467,6 +467,11 @@ function parseGroupedTokenText(
 ): { inner: string; modText: string } {
   const close = open === '[' ? ']' : open === '<' ? '>' : ')'
   const closingIndex = raw.lastIndexOf(close)
+  if (closingIndex === -1) {
+    // Unclosed bracket: treat everything after the opening bracket as inner content
+    const inner = raw.slice(1)
+    return { inner, modText: '' }
+  }
   const inner = raw.slice(1, closingIndex)
   const { mods: modText } = splitValueAndModifiers(raw.slice(closingIndex + 1))
   return { inner, modText }

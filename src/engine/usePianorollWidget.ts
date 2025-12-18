@@ -403,12 +403,16 @@ export function usePianorollWidget({
     c.lineTo(currentTimeX, h)
     c.stroke()
 
-    c.font = '7px monospace'
+    c.font = '6pt Inter'
     c.textAlign = 'right'
     c.textBaseline = 'middle'
     for (const n of st.notes) {
+      const x = currentTimeX - 5
+      const y = n.y - 0.35
+      c.fillStyle = `rgba(0,0,0, ${n.fade * 0.5})`
+      c.fillText(n.noteText, x + 1, y + 1)
       c.fillStyle = `rgba(255, 255, 0, ${n.fade})`
-      c.fillText(n.noteText, currentTimeX - 5, n.y + 0.5)
+      c.fillText(n.noteText, x, y)
     }
 
     c.restore()

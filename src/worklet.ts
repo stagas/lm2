@@ -13,11 +13,6 @@ type DspInstance = {
   view: ReturnType<typeof DspStruct>
 }
 
-type SwapTarget = {
-  old$: number
-  new$: number
-}
-
 type SwapState = {
   oldProgram$: number
   newProgram$: number
@@ -267,7 +262,31 @@ export class DspProcessor extends AudioWorkletProcessor {
         // Set the control back to its previous value.
         Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
       }
+      else if (control === ControlOp.Swap && this.state === 'stopped') {
+        // Handle swap when stopped
+        const swap = this.options.processorOptions.programSwap
+        for (let i = 0; i < MAX_DSP_INSTANCES; i++) {
+          const base = i * 3
+          const old$ = Atomics.load(swap, base)
+          const new$ = Atomics.load(swap, base + 1)
+          const targetDsp$ = Atomics.load(swap, base + 2)
+          if (old$ && new$ && targetDsp$) {
+            const dsp = this.dsps.find(d => d.dsp$ === targetDsp$)
+            if (dsp) {
+              dsp.view.program = new$
+              this.core.wasm.prepareDsp(dsp.dsp$)
+            }
+          }
+        }
 
+        if (this.swapStatus) {
+          Atomics.store(this.swapStatus, 0, 1)
+          Atomics.store(this.swapStatus, 1, 1)
+          Atomics.notify(this.swapStatus, 1, 1)
+        }
+
+        Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
+      }
       this.lastControl = control
     }
 
