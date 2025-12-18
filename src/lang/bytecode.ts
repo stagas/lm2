@@ -8,6 +8,7 @@ import type {
   ForStmt,
   FuncExpr,
   IfExpr,
+  Loc,
   MemberExpr,
   Program,
   Stmt,
@@ -53,6 +54,7 @@ export type Chunk = {
   consts: ConstVal[]
   funcs: FuncChunk[]
   code: Instr[]
+  arrayLiterals: Array<{ ins: number; loc: Loc; items: Loc[] }>
 }
 
 export type FuncChunk = {
@@ -118,7 +120,7 @@ export function disassemble(chunk: Chunk): string {
 }
 
 class Compiler {
-  readonly chunk: Chunk = { consts: [], funcs: [], code: [] }
+  readonly chunk: Chunk = { consts: [], funcs: [], code: [], arrayLiterals: [] }
   readonly errors: LangError[] = []
   private pipe: string[] = []
   private labelId = 0
@@ -352,7 +354,10 @@ class Compiler {
       }
       case 'array':
         for (const it of expr.items) this.compileExpr(it)
-        this.emit({ op: 'ARRAY', n: expr.items.length })
+        {
+          const ins = this.emit({ op: 'ARRAY', n: expr.items.length })
+          this.chunk.arrayLiterals.push({ ins, loc: expr.loc, items: expr.items.map(it => it.loc) })
+        }
         return
       case 'object':
         for (const p of expr.props) {

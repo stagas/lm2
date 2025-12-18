@@ -85,6 +85,12 @@ type VmTarget = {
   literals: Float32Array
 }
 
+export type ArrayLiteralRef = {
+  pc: number
+  loc: Loc
+  items: Loc[]
+}
+
 function encoderError(src: string, message: string): LangError {
   return { message, line: 1, column: 1, length: 1, code: lineText(src, 1) }
 }
@@ -324,7 +330,7 @@ function extractMiniSequencesFromProgramWithRefs(
 export function encodeLangToVmOps(
   src: string,
   target: VmTarget,
-): { errors: LangError[]; miniSequences?: string[]; miniRefs?: MiniSequenceRef[] } {
+): { errors: LangError[]; miniSequences?: string[]; miniRefs?: MiniSequenceRef[]; arrayLiterals?: ArrayLiteralRef[] } {
   const lexed = lex(src)
   const parsed = parse(src, lexed.tokens)
   const errors: LangError[] = [...lexed.errors, ...parsed.errors]
@@ -474,6 +480,7 @@ export function encodeLangToVmOps(
   errors.push(...compiled.errors)
   if (errors.length) return { errors }
   const chunk = compiled.chunk
+  const arrayLiterals: ArrayLiteralRef[] = []
 
   const syms = new Map<string, number>()
   let nextSym = 1000
@@ -507,7 +514,7 @@ export function encodeLangToVmOps(
 
   const vmFuncHeader = -2
 
-  const encodeChunk = (chunk: { consts: any[]; funcs: any[]; code: any[] }, base: number) => {
+  const encodeChunk = (chunk: { consts: any[]; funcs: any[]; code: any[]; arrayLiterals?: any[] }, base: number) => {
     const code = chunk.code as any[]
 
     const pcMap = new Int32Array(code.length)
@@ -588,6 +595,14 @@ export function encodeLangToVmOps(
     }
 
     const endPc = pc
+
+    const arrayMeta = chunk.arrayLiterals as Array<{ ins: number; loc: Loc; items: Loc[] }> | undefined
+    if (arrayMeta?.length) {
+      for (const lit of arrayMeta) {
+        const pcAt = pcMap[lit.ins]
+        if (pcAt != null) arrayLiterals.push({ pc: pcAt, loc: lit.loc, items: lit.items })
+      }
+    }
 
     let w = base
     for (let i = 0; i < code.length; i++) {
@@ -769,6 +784,6 @@ export function encodeLangToVmOps(
   target.ops[writePc++] = VmOp.End
 
   return errors.length
-    ? { errors, miniSequences: sequences, miniRefs: refs }
-    : { errors: [], miniSequences: sequences, miniRefs: refs }
+    ? { errors, miniSequences: sequences, miniRefs: refs, arrayLiterals }
+    : { errors: [], miniSequences: sequences, miniRefs: refs, arrayLiterals }
 }

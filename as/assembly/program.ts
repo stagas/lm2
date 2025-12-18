@@ -1,5 +1,7 @@
 import {
   ARRAY_HEADER_SIZE,
+  ARRAY_HISTORY_ENTRY_SIZE,
+  ARRAY_HISTORY_SIZE,
   ARRAY_SIZE,
   ARRAYS_COUNT,
   CALLBACK_SCOPE_MAX_BINDINGS,
@@ -162,6 +164,7 @@ export class Program {
   data: ProgramData = new ProgramData()
   histories: StaticArray<usize> = new StaticArray<usize>(HISTORIES_COUNT)
   analyserOutsPool: AnalyserOutsPool = new AnalyserOutsPool()
+  arrayAccessHistory: StaticArray<f32> = new StaticArray<f32>(1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE)
 
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
@@ -277,6 +280,8 @@ export class Program {
   }
 
   prepare(): void {
+    this.arrayAccessHistory[0] = 0.0
+
     // Populate sequence histories for any bytecode arrays (mini sequences).
     // Use a scratch Mini instance so we don't mutate the runtime gensPool or other state.
     const scratch = this.miniScratch

@@ -1,5 +1,7 @@
 import {
   ARRAY_HEADER_SIZE,
+  ARRAY_HISTORY_ENTRY_SIZE,
+  ARRAY_HISTORY_SIZE,
   ARRAY_SIZE,
   CALLBACK_SCOPE_BASE,
   CALLBACK_SCOPE_BUFFERS_PER_VOICE,
@@ -403,9 +405,22 @@ export class Dsp {
   private arrElemCount: i32 = 0
   private arrStart: StaticArray<i32> = new StaticArray<i32>(512)
   private arrLen: StaticArray<i32> = new StaticArray<i32>(512)
+  private arrCreatePc: StaticArray<i32> = new StaticArray<i32>(512)
   private arrElemTag: StaticArray<i32> = new StaticArray<i32>(8192)
   private arrElemNum: StaticArray<f64> = new StaticArray<f64>(8192)
   private arrElemAux: StaticArray<i32> = new StaticArray<i32>(8192)
+
+  @inline
+  private recordArrayAccess(createPc: i32, index: i32): void {
+    // Best-effort ring buffer for UI widgets (no atomics needed).
+    const hist = this.program.arrayAccessHistory
+    const writePos = i32(hist[0])
+    const slot = writePos % ARRAY_HISTORY_SIZE
+    const base = 1 + slot * ARRAY_HISTORY_ENTRY_SIZE
+    hist[base] = f32(createPc)
+    hist[base + 1] = f32(index)
+    hist[0] = f32((writePos + 1) & 0xfffff)
+  }
 
   prepare(): void {
     this.program.prepare()
@@ -648,6 +663,7 @@ export class Dsp {
 
         this.arrStart[arrId] = start
         this.arrLen[arrId] = n
+        this.arrCreatePc[arrId] = pc - 2
         this.arrCount = arrId + 1
         this.arrElemCount = end
 
@@ -687,6 +703,8 @@ export class Dsp {
           this.vmPush(VmTag.Undef)
           continue
         }
+
+        this.recordArrayAccess(this.arrCreatePc[arrId], i)
 
         const at = start + i
         this.vmPush(this.arrElemTag[at] as VmTag, this.arrElemNum[at], this.arrElemAux[at])

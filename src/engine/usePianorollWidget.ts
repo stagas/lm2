@@ -221,7 +221,7 @@ export function usePianorollWidget({
     const w = viewWidth
 
     c.save()
-    c.translate(x, -3)
+    c.translate(x, -2.5)
 
     const NOTE_WIDTH = Math.max(1, w - PIANOROLL_KEY_WIDTH)
     const PIXELS_PER_SECOND = NOTE_WIDTH / TIME_WINDOW_SECONDS

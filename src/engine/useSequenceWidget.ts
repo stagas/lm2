@@ -13,6 +13,7 @@ import {
 } from '../../as/assembly/constants.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { splitValueAndModifiers } from '../mini/tokenizer.ts'
+import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 
@@ -97,62 +98,6 @@ function getControlDeltaSpan(location: SourceLocation): { start: number; end: nu
   }
 
   return { start: location.start + start, end: location.start + j }
-}
-
-function buildLineStarts(src: string): number[] {
-  const starts = [0]
-  for (let i = 0; i < src.length; i++) {
-    if (src[i] === '\n') starts.push(i + 1)
-  }
-  return starts
-}
-
-function indexToLineColumn(lineStarts: number[], index: number): { line: number; column: number } {
-  let lo = 0
-  let hi = lineStarts.length - 1
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1
-    const start = lineStarts[mid]!
-    const next = mid + 1 < lineStarts.length ? lineStarts[mid + 1]! : Number.POSITIVE_INFINITY
-    if (index < start) hi = mid - 1
-    else if (index >= next) lo = mid + 1
-    else return { line: mid + 1, column: index - start + 1 }
-  }
-  return { line: 1, column: 1 }
-}
-
-type WidgetSpan = {
-  line: number
-  column: number
-  length: number
-}
-
-function spanToWidgetSpans(
-  lineStarts: number[],
-  start: number,
-  end: number,
-): WidgetSpan[] {
-  if (end <= start) return []
-  const a = indexToLineColumn(lineStarts, start)
-  const b = indexToLineColumn(lineStarts, end)
-  if (a.line === b.line) {
-    return [{ line: a.line, column: a.column, length: Math.max(1, b.column - a.column) }]
-  }
-  const spans: WidgetSpan[] = []
-  let s = start
-  for (let line = a.line;; line++) {
-    const lineStart = lineStarts[line - 1] ?? 0
-    const lineEnd = line < lineStarts.length ? (lineStarts[line] ?? end) - 1 : end
-    const segStart = Math.max(s, lineStart)
-    const segEnd = Math.min(end, lineEnd)
-    if (segEnd > segStart) {
-      const p = indexToLineColumn(lineStarts, segStart)
-      spans.push({ line: p.line, column: p.column, length: Math.max(1, segEnd - segStart) })
-    }
-    if (segEnd >= end) break
-    s = lineEnd + 1
-  }
-  return spans
 }
 
 export function useSequenceWidget({

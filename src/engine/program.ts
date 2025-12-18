@@ -3,6 +3,8 @@ import { toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
 import {
   ARRAY_HEADER_SIZE,
+  ARRAY_HISTORY_ENTRY_SIZE,
+  ARRAY_HISTORY_SIZE,
   ARRAY_SIZE,
   ARRAYS_COUNT,
   CHUNK_SIZE,
@@ -35,6 +37,11 @@ export type VmHistory = {
   raw: Float32Array
 }
 
+export type VmArrayAccessHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
 export type Program = Awaited<ReturnType<typeof createProgram>>
 export type ProgramDataView = ReturnType<typeof createProgramDataView>
 export type ProgramInstance = Awaited<ReturnType<typeof createProgramInstance>>
@@ -61,13 +68,14 @@ function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataV
 function buildProgram(
   data: ProgramDataView,
   dspSource: string,
-): { sequences: string[]; miniRefs: MiniSequenceRef[] } {
-  const { errors, miniSequences, miniRefs } = encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
+): { sequences: string[]; miniRefs: MiniSequenceRef[]; arrayLiterals: import('../bytecode.ts').ArrayLiteralRef[] } {
+  const { errors, miniSequences, miniRefs, arrayLiterals } = encodeLangToVmOps(dspSource, { ops: data.ops,
+    literals: data.literals })
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
   }
-  return { sequences: miniSequences ?? [], miniRefs: miniRefs ?? [] }
+  return { sequences: miniSequences ?? [], miniRefs: miniRefs ?? [], arrayLiterals: arrayLiterals ?? [] }
 }
 
 type CompileOptions = {
@@ -88,6 +96,7 @@ export type ProgramBuildResult = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  arrayLiterals: import('../bytecode.ts').ArrayLiteralRef[]
   data: ProgramDataView
   diff: ProgramBuildDiff
   previousData?: ProgramDataView
@@ -238,6 +247,15 @@ async function createProgram(
     }
   }
 
+  const arrayAccessHistory$ = program.arrayAccessHistory
+  const arrayAccessWritePos = new Float32Array(wasmMemory.buffer, arrayAccessHistory$, 1)
+  const arrayAccessHistory: VmArrayAccessHistory = {
+    get writePos() {
+      return arrayAccessWritePos[0] || 0
+    },
+    raw: new Float32Array(wasmMemory.buffer, arrayAccessHistory$, 1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE),
+  }
+
   function nextProgramData() {
     const data = programDataPool[programDataPoolIndex]
     programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length
@@ -256,6 +274,7 @@ async function createProgram(
     lock,
     analyserOuts,
     histories,
+    arrayAccessHistory,
     get data() {
       return programData
     },
@@ -273,7 +292,7 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, miniRefs } = buildProgram(newData, source)
+        const { sequences, miniRefs, arrayLiterals } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
 
         await this.acquireLock()
@@ -308,6 +327,7 @@ async function createProgram(
           sequences,
           miniRefs,
           miniSourceMaps,
+          arrayLiterals,
           data: newData,
           diff,
           previousData: referenceData,
