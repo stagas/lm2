@@ -318,7 +318,7 @@ export function usePianorollWidget({
     c.beginPath()
     c.rect(0, 0, NOTE_WIDTH, h)
     c.clip()
-    // Restore alternating horizontal key background across the note area
+
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
       const keyIndex = displayMaxMidi - midi
       const y = keyIndex * keyHeight
