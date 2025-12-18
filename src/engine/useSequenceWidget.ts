@@ -14,15 +14,20 @@ import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { splitValueAndModifiers } from '../mini/tokenizer.ts'
 import type { ProgramInstance } from './program.ts'
 
-type SeqFrame = {
+export type SeqFrame = {
   events: Map<number, number>
   controls: Map<number, number>
 }
 
-type SeqControlState = {
-  activeOctaveOpIndex: number | null
-  activeTransposeOpIndex: number | null
-  activeScaleOpIndex: number | null
+type ControlHistory = {
+  opIndex: number
+  startSample: number
+}
+
+export type SeqControlState = {
+  octaveHistory: ControlHistory | null
+  transposeHistory: ControlHistory | null
+  scaleHistory: ControlHistory | null
   fadingOctave?: { opIndex: number; fromSample: number }
   fadingTranspose?: { opIndex: number; fromSample: number }
   fadingScale?: { opIndex: number; fromSample: number }
@@ -38,8 +43,8 @@ type UseSequenceParams = {
   miniRefs: Array<{ seqIndex: number; loc: { line: number }; start: number }>
   dspSource: string
   showWidgets: boolean
-  frameRef: { current: Array<SeqFrame | undefined> }
-  controlStateRef: { current: Map<number, SeqControlState> }
+  frameRef: React.RefObject<Array<SeqFrame | undefined>>
+  controlStateRef: React.RefObject<Map<number, SeqControlState>>
 }
 
 function getControlKind(text: string): 'octave' | 'transpose' | 'scale' | null {
@@ -181,18 +186,18 @@ export function useSequenceWidget({
       if (!array || !history) continue
 
       const st = controlStateRef.current.get(seqIndex) ?? {
-        activeOctaveOpIndex: null,
-        activeTransposeOpIndex: null,
-        activeScaleOpIndex: null,
+        octaveHistory: null,
+        transposeHistory: null,
+        scaleHistory: null,
         lastSampleCount: null,
       }
 
       const didSeek = st.lastSampleCount != null && currentSampleCount < st.lastSampleCount
       st.lastSampleCount = currentSampleCount
       if (didSeek) {
-        st.activeOctaveOpIndex = null
-        st.activeTransposeOpIndex = null
-        st.activeScaleOpIndex = null
+        st.octaveHistory = null
+        st.transposeHistory = null
+        st.scaleHistory = null
         st.fadingOctave = undefined
         st.fadingTranspose = undefined
         st.fadingScale = undefined
@@ -200,16 +205,11 @@ export function useSequenceWidget({
 
       const historyRaw = history.raw
       const eventData = new Map<number, { startSample: number; endSample: number; velocity: number }>()
-      let nextOctaveOpIndex: number | null = null
-      let nextOctaveStartSample = -1
-      let nextTransposeOpIndex: number | null = null
-      let nextTransposeStartSample = -1
-      let nextScaleOpIndex: number | null = null
-      let nextScaleStartSample = -1
       const currentBytecodeLength = array.raw[ARRAY_HEADER_SIZE] as number
 
       for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
         const opIndex = Math.floor(historyRaw[idx])
+        const voiceIndex = Math.floor(historyRaw[idx + 1])
         const velocity = historyRaw[idx + 3]
         const startSample = Math.floor(historyRaw[idx + 4])
         const endSample = Math.floor(historyRaw[idx + 5])
@@ -219,7 +219,31 @@ export function useSequenceWidget({
         const toleranceSamples = sampleRate * 0.001
         if (startSample > currentSampleCount + toleranceSamples) continue
 
-        if (opIndex >= 0 && opIndex < currentBytecodeLength) {
+        if (voiceIndex < 0) {
+          const op = -voiceIndex
+          if (op === OP_OCTAVE) {
+            if (startSample <= currentSampleCount) {
+              if (!st.octaveHistory || startSample > st.octaveHistory.startSample) {
+                st.octaveHistory = { opIndex, startSample }
+              }
+            }
+          }
+          else if (op === OP_TRANSPOSE) {
+            if (startSample <= currentSampleCount) {
+              if (!st.transposeHistory || startSample > st.transposeHistory.startSample) {
+                st.transposeHistory = { opIndex, startSample }
+              }
+            }
+          }
+          else if (op === OP_SCALE) {
+            if (startSample <= currentSampleCount) {
+              if (!st.scaleHistory || startSample > st.scaleHistory.startSample) {
+                st.scaleHistory = { opIndex, startSample }
+              }
+            }
+          }
+        }
+        else if (opIndex >= 0 && opIndex < currentBytecodeLength) {
           const pc = ARRAY_HEADER_SIZE + MINI_HEADER_SIZE + opIndex
           const op = array.raw[pc] as number
 
@@ -229,37 +253,24 @@ export function useSequenceWidget({
               eventData.set(opIndex, { startSample, endSample, velocity })
             }
           }
-          else if (op === OP_OCTAVE) {
-            if (startSample <= currentSampleCount && startSample > nextOctaveStartSample) {
-              nextOctaveOpIndex = opIndex
-              nextOctaveStartSample = startSample
-            }
-          }
-          else if (op === OP_TRANSPOSE) {
-            if (startSample <= currentSampleCount && startSample > nextTransposeStartSample) {
-              nextTransposeOpIndex = opIndex
-              nextTransposeStartSample = startSample
-            }
-          }
-          else if (op === OP_SCALE) {
-            if (startSample <= currentSampleCount && startSample > nextScaleStartSample) {
-              nextScaleOpIndex = opIndex
-              nextScaleStartSample = startSample
-            }
-          }
         }
       }
 
-      const prevOctave = st.activeOctaveOpIndex
-      const prevTranspose = st.activeTransposeOpIndex
-      const prevScale = st.activeScaleOpIndex
-      st.activeOctaveOpIndex = nextOctaveOpIndex
-      st.activeTransposeOpIndex = nextTransposeOpIndex
-      st.activeScaleOpIndex = nextScaleOpIndex
+      const prevOctave = st.fadingOctave?.opIndex ?? null
+      const prevTranspose = st.fadingTranspose?.opIndex ?? null
+      const prevScale = st.fadingScale?.opIndex ?? null
+      const currentOctave = st.octaveHistory?.opIndex ?? null
+      const currentTranspose = st.transposeHistory?.opIndex ?? null
+      const currentScale = st.scaleHistory?.opIndex ?? null
 
-      if (prevOctave !== st.activeOctaveOpIndex && prevOctave != null) {
-        st.fadingOctave = { opIndex: prevOctave,
-          fromSample: nextOctaveStartSample >= 0 ? nextOctaveStartSample : currentSampleCount }
+      if (currentOctave !== null && prevOctave !== currentOctave && prevOctave !== null) {
+        st.fadingOctave = { opIndex: prevOctave, fromSample: st.octaveHistory!.startSample }
+      }
+      if (currentTranspose !== null && prevTranspose !== currentTranspose && prevTranspose !== null) {
+        st.fadingTranspose = { opIndex: prevTranspose, fromSample: st.transposeHistory!.startSample }
+      }
+      if (currentScale !== null && prevScale !== currentScale && prevScale !== null) {
+        st.fadingScale = { opIndex: prevScale, fromSample: st.scaleHistory!.startSample }
       }
 
       const events = new Map<number, number>()
@@ -276,9 +287,9 @@ export function useSequenceWidget({
       }
 
       const controls = new Map<number, number>()
-      if (st.activeOctaveOpIndex != null) controls.set(st.activeOctaveOpIndex, 1)
-      if (st.activeTransposeOpIndex != null) controls.set(st.activeTransposeOpIndex, 1)
-      if (st.activeScaleOpIndex != null) controls.set(st.activeScaleOpIndex, 1)
+      if (st.octaveHistory) controls.set(st.octaveHistory.opIndex, 1)
+      if (st.transposeHistory) controls.set(st.transposeHistory.opIndex, 1)
+      if (st.scaleHistory) controls.set(st.scaleHistory.opIndex, 1)
 
       if (st.fadingOctave) {
         const age = (currentSampleCount - st.fadingOctave.fromSample) / sampleRate
@@ -290,6 +301,30 @@ export function useSequenceWidget({
         }
         else {
           st.fadingOctave = undefined
+        }
+      }
+      if (st.fadingTranspose) {
+        const age = (currentSampleCount - st.fadingTranspose.fromSample) / sampleRate
+        if (age >= 0 && age <= FADEOUT_SECONDS) {
+          controls.set(
+            st.fadingTranspose.opIndex,
+            Math.max(controls.get(st.fadingTranspose.opIndex) ?? 0, 1 - age / FADEOUT_SECONDS),
+          )
+        }
+        else {
+          st.fadingTranspose = undefined
+        }
+      }
+      if (st.fadingScale) {
+        const age = (currentSampleCount - st.fadingScale.fromSample) / sampleRate
+        if (age >= 0 && age <= FADEOUT_SECONDS) {
+          controls.set(
+            st.fadingScale.opIndex,
+            Math.max(controls.get(st.fadingScale.opIndex) ?? 0, 1 - age / FADEOUT_SECONDS),
+          )
+        }
+        else {
+          st.fadingScale = undefined
         }
       }
 

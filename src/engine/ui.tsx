@@ -7,7 +7,7 @@ import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
-import { useSequenceWidget } from './useSequenceWidget.ts'
+import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
 
 type SequenceInputProps = {
   index: number
@@ -90,21 +90,6 @@ export function DspSourceEditor() {
     handleApply()
   }, [localSource, isProgramReady])
 
-  type SeqFrame = {
-    events: Map<number, number>
-    controls: Map<number, number>
-  }
-
-  type SeqControlState = {
-    activeOctaveOpIndex: number | null
-    activeTransposeOpIndex: number | null
-    activeScaleOpIndex: number | null
-    fadingOctave?: { opIndex: number; fromSample: number }
-    fadingTranspose?: { opIndex: number; fromSample: number }
-    fadingScale?: { opIndex: number; fromSample: number }
-    lastSampleCount: number | null
-  }
-
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())
 
@@ -163,6 +148,7 @@ export function DspSourceEditor() {
           theme={theme}
           tokenizer={tokenizer}
           isAnimating={true}
+          gutter={true}
           onBeforeDraw={onBeforeDrawCombined}
         />
       </div>

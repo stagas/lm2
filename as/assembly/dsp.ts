@@ -566,7 +566,7 @@ export class Dsp {
 
       if (op === VmOp.PushNum) {
         const k = ops[pc++]
-        const v = this.program.data.readLiteral(k) as f64
+        const v = this.program.data.literals[k] as f64
         this.vmPush(VmTag.Num, v)
         continue
       }

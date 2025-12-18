@@ -207,16 +207,17 @@ export function usePianorollWidget({
     seqIndex: number,
     widgetY: number,
     widgetHeight: number,
+    viewX: number,
+    viewWidth: number,
   ) => {
     if (!audioContext || !bpmValue) return
     const st = pianorollStateRef.current.get(seqIndex)
     if (!st || st.timeSeconds == null) return
 
     const dpr = window.devicePixelRatio || 1
-    const editorWidth = ctx.canvas.width / dpr
-    const x = 15
+    const x = viewX
     const h = Math.max(40, widgetHeight)
-    const w = editorWidth - 40
+    const w = viewWidth
 
     ctx.save()
     ctx.translate(x, -3)
@@ -408,9 +409,9 @@ export function usePianorollWidget({
         line: ref.loc.line,
         column: 1,
         length: 1,
-        height: 160,
-        render: (ctx, _x, y, _w, h) => {
-          drawPianoroll(ctx, ref.seqIndex, y, h)
+        height: 70,
+        render: (ctx, _x, y, _w, h, vx, vw) => {
+          drawPianoroll(ctx, ref.seqIndex, y, h, vx, vw)
         },
       })
     }

@@ -307,6 +307,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         program1,
         program2,
         isProgramReady: true,
+        lastSuccessfulProgramData: undefined,
       })
 
       const currentSource = get().dspSource

@@ -126,29 +126,6 @@ export class ProgramData {
   arrays: StaticArray<usize> = new StaticArray<usize>(ARRAYS_COUNT)
   literals: StaticArray<f32> = new StaticArray<f32>(LITERALS_COUNT)
 
-  private acquireLock(): void {
-    const lockPtr = changetype<usize>(this) + offsetof<ProgramData>('lock')
-    let lock = atomic.load<i32>(lockPtr)
-    while (lock !== 0) {
-      atomic.wait<i32>(lockPtr, 1, -1)
-      lock = atomic.load<i32>(lockPtr)
-    }
-    atomic.store<i32>(lockPtr, 1)
-  }
-
-  private releaseLock(): void {
-    const lockPtr = changetype<usize>(this) + offsetof<ProgramData>('lock')
-    atomic.store<i32>(lockPtr, 0)
-    atomic.notify(lockPtr, 1)
-  }
-
-  readLiteral(index: i32): f32 {
-    this.acquireLock()
-    const literal = this.literals[index]
-    this.releaseLock()
-    return literal
-  }
-
   copyFrom(source: ProgramData): void {
     this.lock = source.lock
 

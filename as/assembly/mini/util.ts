@@ -289,7 +289,6 @@ export class EventEmitter {
       this.cycleLength as f64,
       this.cycleSamples as f64,
     )
-    if (startSample < this.windowStart || startSample >= this.windowEnd) return
 
     const endSample: i32 = startSample + 1
     const opcode: i32 = this.reader.getOpcode(opOffset)
