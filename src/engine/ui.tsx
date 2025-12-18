@@ -1,5 +1,13 @@
 import { CodeEditor, type EditorHeader, type EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type MutableRefObject,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { FUTURE_SECONDS, PAST_SECONDS, TIME_WINDOW_SECONDS } from '../../as/assembly/constants.ts'
 import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
@@ -30,6 +38,12 @@ export function SequenceInput({ index, value, onChange }: SequenceInputProps) {
       placeholder={`Sequence ${index + 1}`}
     />
   )
+}
+
+type TimelineWindow = {
+  windowStartTime: number
+  windowEndTime: number
+  timeSeconds: number
 }
 
 export function DspSourceEditor() {
@@ -83,6 +97,15 @@ export function DspSourceEditor() {
   const showWidgets = localSource === dspSource
     || isUpdatingDsp
     || hasLocalErrors
+
+  const seekToSample = useCallback((targetSampleCount: number) => {
+    if (!control || !seekSampleCount || !globalSampleCount) return
+    const currentSample = Atomics.load(globalSampleCount, 0)
+    if (currentSample === targetSampleCount) return
+
+    Atomics.store(seekSampleCount, 0, targetSampleCount)
+    Atomics.store(control, 0, ControlOp.Seek)
+  }, [control, globalSampleCount, seekSampleCount])
 
   const handleApply = async () => {
     if (!isProgramReady) return
@@ -158,7 +181,7 @@ export function DspSourceEditor() {
 
   const timelineTimeRef = useRef<number | null>(null)
   const timelineLayoutRef = useRef({ viewX: 0, viewWidth: 0 })
-  const timelineWindowRef = useRef({
+  const timelineWindowRef = useRef<TimelineWindow>({
     windowStartTime: 0,
     windowEndTime: 0,
     timeSeconds: 0,
@@ -167,14 +190,7 @@ export function DspSourceEditor() {
 
   const timelineHeader = useMemo((): EditorHeader => {
     const handleSeek = (pointerX: number) => {
-      if (
-        !audioContext
-        || !control
-        || !seekSampleCount
-        || !globalSampleCount
-      ) {
-        return
-      }
+      if (!audioContext) return
 
       const layout = timelineLayoutRef.current
       const timelineWidth = Math.max(1, layout.viewWidth - PIANOROLL_KEY_WIDTH)
@@ -186,11 +202,7 @@ export function DspSourceEditor() {
       const secondsPerPixel = TIME_WINDOW_SECONDS / timelineWidth
       const targetTimeSeconds = windowStartTime + clampedX * secondsPerPixel
       const targetSampleCount = Math.max(0, Math.floor(targetTimeSeconds * audioContext.sampleRate))
-      const currentSample = Atomics.load(globalSampleCount, 0)
-      if (currentSample === targetSampleCount) return
-
-      Atomics.store(seekSampleCount, 0, targetSampleCount)
-      Atomics.store(control, 0, ControlOp.Seek)
+      seekToSample(targetSampleCount)
     }
 
     return {
@@ -284,7 +296,7 @@ export function DspSourceEditor() {
         c.restore()
       },
     }
-  }, [audioContext, bpmValue, globalSampleCount, control, seekSampleCount])
+  }, [audioContext, bpmValue, globalSampleCount, seekToSample])
 
   return (
     <div className="flex flex-col gap-2 w-full">
@@ -297,6 +309,13 @@ export function DspSourceEditor() {
           Apply Changes
         </button>
       </div>
+      <MinimapScrollbar
+        audioContext={audioContext}
+        bpmValue={bpmValue}
+        globalSampleCount={globalSampleCount}
+        seekToSample={seekToSample}
+        timelineWindowRef={timelineWindowRef}
+      />
       <div className="bg-gray-900 text-white p-4 rounded-md border border-gray-600 font-mono text-sm w-full h-[550px]">
         <CodeEditor
           value={localSource}
@@ -318,6 +337,172 @@ export function DspSourceEditor() {
         </div>
       )}
       <BytecodeInspector source={localSource} />
+    </div>
+  )
+}
+
+type MinimapScrollbarProps = {
+  audioContext?: AudioContext | null
+  bpmValue?: Float32Array
+  globalSampleCount?: Int32Array
+  seekToSample: (targetSampleCount: number) => void
+  timelineWindowRef: React.RefObject<TimelineWindow>
+}
+
+const MINIMAP_PHRASE_COUNT = 128
+const MINIMAP_PHRASE_SECONDS = 2
+const MINIMAP_MINOR_STEP = 4
+const MINIMAP_MAJOR_STEP = 16
+
+function MinimapScrollbar({
+  audioContext,
+  bpmValue,
+  globalSampleCount,
+  seekToSample,
+  timelineWindowRef,
+}: MinimapScrollbarProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const isDraggingRef = useRef(false)
+
+  let currentSample = 0
+
+  const seekFromPointer = useCallback((clientX: number) => {
+    const canvas = canvasRef.current
+    if (!canvas || !audioContext) return
+
+    const rect = canvas.getBoundingClientRect()
+    const width = rect.width
+    if (width <= 0) return
+
+    const relativeX = clientX - rect.left
+    const clampedRatio = Math.max(0, Math.min(1, relativeX / width))
+    const bpm = bpmValue?.[0] || 60
+    const barLengthSeconds = (MINIMAP_PHRASE_SECONDS * 60) / bpm
+    const phraseLengthSeconds = MINIMAP_PHRASE_SECONDS * barLengthSeconds
+    const totalSeconds = phraseLengthSeconds * MINIMAP_PHRASE_COUNT
+    const totalSamples = Math.max(1, Math.floor(totalSeconds * audioContext.sampleRate))
+    const targetSampleCount = Math.max(0, Math.floor(clampedRatio * totalSamples))
+    seekToSample(currentSample = targetSampleCount)
+  }, [audioContext, bpmValue, seekToSample])
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault()
+    isDraggingRef.current = true
+    seekFromPointer(event.clientX)
+    const listener = (e: PointerEvent) => {
+      handlePointerMove(e)
+    }
+    window.addEventListener('pointermove', listener)
+    window.addEventListener('pointerup', () => {
+      window.removeEventListener('pointermove', listener)
+      isDraggingRef.current = false
+    }, { once: true })
+  }, [seekFromPointer])
+
+  const handlePointerMove = useCallback((event: PointerEvent) => {
+    if (!isDraggingRef.current) return
+    event.preventDefault()
+    seekFromPointer(event.clientX)
+  }, [seekFromPointer])
+
+  const drawMinimap = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const width = canvas.clientWidth
+    const height = canvas.clientHeight
+    if (width === 0 || height === 0) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const pixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
+    canvas.width = width * pixelRatio
+    canvas.height = height * pixelRatio
+
+    ctx.scale(pixelRatio, pixelRatio)
+
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, width, height)
+
+    const bpm = bpmValue?.[0] || 60
+    const barLengthSeconds = (MINIMAP_PHRASE_SECONDS * 60) / bpm
+    const phraseLengthSeconds = MINIMAP_PHRASE_SECONDS * barLengthSeconds
+    const totalSeconds = phraseLengthSeconds * MINIMAP_PHRASE_COUNT
+    const sampleRate = audioContext?.sampleRate ?? 44100
+    const totalSamples = Math.max(1, Math.floor(totalSeconds * sampleRate))
+
+    const windowData = timelineWindowRef.current
+    const startRatio = Math.max(0, Math.min(1, windowData.windowStartTime / totalSeconds))
+    const endRatio = Math.max(0, Math.min(1, windowData.windowEndTime / totalSeconds))
+    const viewportWidth = Math.max(0, width * (endRatio - startRatio))
+
+    if (viewportWidth > 0) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.38)'
+      ctx.fillRect(width * startRatio, 0, viewportWidth, height)
+    }
+
+    for (let phraseIndex = 0; phraseIndex <= MINIMAP_PHRASE_COUNT; phraseIndex += MINIMAP_MINOR_STEP) {
+      if (phraseIndex === 0 || phraseIndex === MINIMAP_PHRASE_COUNT) continue
+      const x = (phraseIndex / MINIMAP_PHRASE_COUNT) * width
+      const isMajor = phraseIndex % MINIMAP_MAJOR_STEP === 0
+      ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.35)'
+      ctx.lineWidth = isMajor ? 2 : 1
+      ctx.beginPath()
+      ctx.moveTo(x, 0)
+      ctx.lineTo(x, height)
+      ctx.stroke()
+    }
+
+    if (!isDraggingRef.current) {
+      currentSample = globalSampleCount ? Math.max(0, Atomics.load(globalSampleCount, 0)) : 0
+    }
+    const currentRatio = currentSample / totalSamples
+    const playheadX = currentRatio * width + 1
+
+    ctx.strokeStyle = 'rgba(255, 220, 0, 0.95)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(playheadX, 0)
+    ctx.lineTo(playheadX, height)
+    ctx.stroke()
+
+    ctx.fillStyle = 'rgba(255, 220, 0, 0.2)'
+    ctx.fillRect(Math.max(0, playheadX - 1.5), 0, 3, height)
+  }, [audioContext, bpmValue, globalSampleCount, timelineWindowRef])
+
+  useEffect(() => {
+    let frameId: number | null = null
+    const render = () => {
+      drawMinimap()
+      frameId = requestAnimationFrame(render)
+    }
+    render()
+    return () => {
+      if (frameId != null) {
+        cancelAnimationFrame(frameId)
+      }
+    }
+  }, [drawMinimap])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const release = () => {
+      isDraggingRef.current = false
+    }
+    window.addEventListener('pointerup', release)
+    return () => {
+      window.removeEventListener('pointerup', release)
+    }
+  }, [])
+
+  return (
+    <div className="w-full h-[9dvh] border border-gray-600 bg-gray-900 overflow-hidden touch-none">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full cursor-crosshair"
+        onPointerDown={handlePointerDown}
+      />
     </div>
   )
 }

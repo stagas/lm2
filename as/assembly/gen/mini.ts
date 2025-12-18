@@ -405,7 +405,7 @@ export class Mini extends Gen {
       // Start generating from a couple cycles before "now" to catch strum/jitter events that start
       // in earlier cycles but land in the visible window.
       const nowCycle = i32(Mathf.floor(f32((windowStart as f32) / cycleSamples)))
-      this.historyGeneratedUntilCycle = nowCycle - 1
+      this.historyGeneratedUntilCycle = i32(Math.min(this.historyGeneratedUntilCycle as f32, (nowCycle - 1) as f32))
     }
 
     // First fill: generate from the visible past (for visualizer).
