@@ -9,11 +9,10 @@ import {
 } from '../../as/assembly/constants.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { frequencyToMidi, midiToNoteName } from '../mini/util.ts'
+import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 
-const KEY_WIDTH = 20
-const SCROLL_SMOOTHING = 0.17
 const MIDI_IS_BLACK = new Uint8Array(128)
 const MIDI_IS_OCTAVE = new Uint8Array(128)
 const MIDI_IS_EF = new Uint8Array(128)
@@ -224,7 +223,7 @@ export function usePianorollWidget({
     c.save()
     c.translate(x, -3)
 
-    const NOTE_WIDTH = Math.max(1, w - KEY_WIDTH)
+    const NOTE_WIDTH = Math.max(1, w - PIANOROLL_KEY_WIDTH)
     const PIXELS_PER_SECOND = NOTE_WIDTH / TIME_WINDOW_SECONDS
 
     const sampleRate = audioContext.sampleRate
@@ -428,7 +427,7 @@ export function usePianorollWidget({
       else if (isOctave) c.fillStyle = 'rgba(255, 255, 255, 1.0)'
       else if (isBlack) c.fillStyle = 'rgba(0, 0, 0, 1.0)'
       else c.fillStyle = 'rgba(150, 150, 150, 1.0)'
-      c.fillRect(NOTE_WIDTH, y, KEY_WIDTH, keyHeight)
+      c.fillRect(NOTE_WIDTH, y, PIANOROLL_KEY_WIDTH, keyHeight)
     }
 
     if (keyHeight > 6) {
@@ -441,7 +440,7 @@ export function usePianorollWidget({
         const isBlack = MIDI_IS_BLACK[midi] === 1
         const isActive = st.activeMask[midi] === 1
         c.fillStyle = (isBlack && !isActive) ? 'rgba(255, 255, 255, 1.0)' : 'rgba(0, 0, 0, 1.0)'
-        c.fillText(MIDI_LABELS[midi]!, NOTE_WIDTH + KEY_WIDTH / 2, y + 0.5)
+        c.fillText(MIDI_LABELS[midi]!, NOTE_WIDTH + PIANOROLL_KEY_WIDTH / 2, y + 0.5)
       }
     }
 

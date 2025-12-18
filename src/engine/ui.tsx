@@ -1,7 +1,9 @@
-import { CodeEditor, type EditorWidget } from 'mini-code'
+import { CodeEditor, type EditorHeader, type EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FUTURE_SECONDS, PAST_SECONDS, TIME_WINDOW_SECONDS } from '../../as/assembly/constants.ts'
 import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
+import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
 import { useEngine } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
@@ -126,6 +128,78 @@ export function DspSourceEditor() {
     return [...pianorollWidgets, ...sequenceWidgets]
   }, [showWidgets, pianorollWidgets, sequenceWidgets])
 
+  const timelineTimeRef = useRef<number | null>(null)
+
+  const timelineHeader = useMemo((): EditorHeader => ({
+    height: 30,
+    render: (c, x, y, w, h, vx, vw) => {
+      c.fillStyle = '#000'
+      c.fillRect(x, y, w, h)
+
+      if (!audioContext || !bpmValue || !globalSampleCount) return
+
+      const viewX = vx
+      const viewW = vw
+      const timelineW = Math.max(1, viewW - PIANOROLL_KEY_WIDTH)
+
+      const sampleRate = audioContext.sampleRate
+      const sampleCount = Math.max(0, Atomics.load(globalSampleCount, 0))
+      const nowSeconds = sampleCount / sampleRate
+      let smoothed = timelineTimeRef.current
+      if (smoothed == null) smoothed = nowSeconds
+      else smoothed += (nowSeconds - smoothed) * SCROLL_SMOOTHING
+      timelineTimeRef.current = smoothed
+      const timeSeconds = smoothed
+
+      const bpm = bpmValue[0] || 60
+      const barLengthSeconds = (4 * 60) / bpm
+      const windowStartTime = timeSeconds - PAST_SECONDS
+      const windowEndTime = timeSeconds + FUTURE_SECONDS
+
+      const pixelsPerSecond = timelineW / TIME_WINDOW_SECONDS
+      const playheadX = viewX + PAST_SECONDS * pixelsPerSecond
+
+      c.save()
+      c.beginPath()
+      // c.rect(viewX, y, viewW, h)
+      // c.clip()
+
+      c.fillStyle = 'rgba(0, 0, 0, 0.25)'
+      c.fillRect(viewX, y, viewW, h)
+
+      const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
+      for (let barStart = firstBarStart; barStart < windowEndTime + barLengthSeconds; barStart += barLengthSeconds) {
+        const barIndex = Math.floor(barStart / barLengthSeconds)
+        const barNumber = barIndex + 1
+        const isPhraseStart = ((barNumber - 1) & 3) === 0
+
+        const barX = viewX + (barStart - windowStartTime) * pixelsPerSecond
+
+        c.strokeStyle = isPhraseStart ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.25)'
+        c.lineWidth = isPhraseStart ? 1.5 : 1
+        c.beginPath()
+        c.moveTo(barX, y)
+        c.lineTo(barX, y + h)
+        c.stroke()
+
+        c.fillStyle = isPhraseStart ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.75)'
+        c.font = '9pt Inter'
+        c.textAlign = 'left'
+        c.textBaseline = 'top'
+        c.fillText(String(barNumber), barX + 4, y + 4)
+      }
+
+      c.strokeStyle = 'rgba(255, 220, 0, 0.9)'
+      c.lineWidth = 2
+      c.beginPath()
+      c.moveTo(playheadX, y)
+      c.lineTo(playheadX, y + h)
+      c.stroke()
+
+      c.restore()
+    },
+  }), [audioContext, bpmValue, globalSampleCount])
+
   return (
     <div className="flex flex-col gap-2 w-full">
       <div className="flex items-center justify-between">
@@ -144,6 +218,7 @@ export function DspSourceEditor() {
             setLocalSource(value)
           }}
           widgets={widgets}
+          header={timelineHeader}
           theme={theme}
           tokenizer={tokenizer}
           isAnimating={true}
