@@ -148,7 +148,7 @@ export function DspSourceEditor() {
 
       if (!audioContext || !bpmValue || !globalSampleCount) return
 
-      const viewX = vx
+      const viewX = vx + PIANOROLL_KEY_WIDTH
       const viewW = vw
       const timelineW = Math.max(1, viewW - PIANOROLL_KEY_WIDTH)
 

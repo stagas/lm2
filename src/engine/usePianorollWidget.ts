@@ -250,9 +250,10 @@ export function usePianorollWidget({
     c.fillStyle = 'rgba(0, 0, 0, 0.35)'
     c.fillRect(0, 0, w, h)
 
+    // Draw keys on the left
     c.save()
     c.beginPath()
-    c.rect(0, 0, NOTE_WIDTH, h)
+    c.rect(0, 0, PIANOROLL_KEY_WIDTH, h)
     c.clip()
 
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
@@ -261,7 +262,7 @@ export function usePianorollWidget({
       const isBlack = MIDI_IS_BLACK[midi] === 1
 
       c.fillStyle = isBlack ? 'rgba(30, 30, 30, 0.5)' : 'rgba(75, 75, 75, 0.3)'
-      c.fillRect(0, y, NOTE_WIDTH, keyHeight)
+      c.fillRect(0, y, PIANOROLL_KEY_WIDTH, keyHeight)
 
       // Only draw the thin horizontal separator when keys are tall enough,
       // but always draw it for octave keys to keep octave visual anchors.
@@ -271,14 +272,75 @@ export function usePianorollWidget({
       const shouldDrawSeparator = isOctave || (isEF && !isNarrow)
       if (shouldDrawSeparator) {
         c.strokeStyle = isOctave ? 'rgba(100, 100, 100, 0.4)' : 'rgba(0,0,0, 0.2)'
-        c.lineWidth = isOctave ? 1 : 1
+        c.lineWidth = 1
+        c.beginPath()
+        c.moveTo(0, y + keyHeight)
+        c.lineTo(PIANOROLL_KEY_WIDTH, y + keyHeight)
+        c.stroke()
+      }
+    }
+
+    // Draw active key fill inside left-hand keys area
+    for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
+      const keyIndex = displayMaxMidi - midi
+      const y = keyIndex * keyHeight
+      const isBlack = MIDI_IS_BLACK[midi] === 1
+      const isOctave = MIDI_IS_OCTAVE[midi] === 1
+      const isActive = st.activeMask[midi] === 1
+
+      if (isActive) c.fillStyle = 'rgba(255, 220, 0, 1.0)'
+      else if (isOctave) c.fillStyle = 'rgba(255, 255, 255, 1.0)'
+      else if (isBlack) c.fillStyle = 'rgba(0, 0, 0, 1.0)'
+      else c.fillStyle = 'rgba(150, 150, 150, 1.0)'
+      c.fillRect(0, y, PIANOROLL_KEY_WIDTH, keyHeight)
+    }
+
+    // Key labels on left
+    if (keyHeight > 6) {
+      c.font = '6pt Inter'
+      c.textAlign = 'center'
+      c.textBaseline = 'middle'
+      for (let midi = displayMinMidi; midi <= displayMaxMidi; midi += 1) {
+        const keyIndex = displayMaxMidi - midi
+        const y = keyIndex * keyHeight + keyHeight / 2
+        const isBlack = MIDI_IS_BLACK[midi] === 1
+        const isActive = st.activeMask[midi] === 1
+        c.fillStyle = (isBlack && !isActive) ? 'rgba(255, 255, 255, 1.0)' : 'rgba(0, 0, 0, 1.0)'
+        c.fillText(MIDI_LABELS[midi]!, PIANOROLL_KEY_WIDTH / 2, y + 0.5)
+      }
+    }
+
+    c.restore()
+
+    // Translate into the note area (to the right of the keys) and clip it
+    c.save()
+    c.translate(PIANOROLL_KEY_WIDTH, 0)
+    c.beginPath()
+    c.rect(0, 0, NOTE_WIDTH, h)
+    c.clip()
+    // Restore alternating horizontal key background across the note area
+    for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
+      const keyIndex = displayMaxMidi - midi
+      const y = keyIndex * keyHeight
+      const isBlack = MIDI_IS_BLACK[midi] === 1
+
+      c.fillStyle = isBlack ? 'rgba(30, 30, 30, 0.5)' : 'rgba(75, 75, 75, 0.3)'
+      c.fillRect(0, y, NOTE_WIDTH, keyHeight)
+
+      // Draw thin horizontal separators similar to the left keys area
+      const isOctave = MIDI_IS_OCTAVE[midi] === 1
+      const isEF = MIDI_IS_EF[midi] === 1
+      const isNarrow = keyHeight < 4
+      const shouldDrawSeparator = isOctave || (isEF && !isNarrow)
+      if (shouldDrawSeparator) {
+        c.strokeStyle = isOctave ? 'rgba(100, 100, 100, 0.4)' : 'rgba(0,0,0, 0.2)'
+        c.lineWidth = 1
         c.beginPath()
         c.moveTo(0, y + keyHeight)
         c.lineTo(NOTE_WIDTH, y + keyHeight)
         c.stroke()
       }
     }
-
     const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
     for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
       const barIndex = Math.floor(barStart / barLengthSeconds)
@@ -415,36 +477,8 @@ export function usePianorollWidget({
     }
 
     c.restore()
-
-    for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
-      const keyIndex = displayMaxMidi - midi
-      const y = keyIndex * keyHeight
-      const isBlack = MIDI_IS_BLACK[midi] === 1
-      const isOctave = MIDI_IS_OCTAVE[midi] === 1
-      const isActive = st.activeMask[midi] === 1
-
-      if (isActive) c.fillStyle = 'rgba(255, 220, 0, 1.0)'
-      else if (isOctave) c.fillStyle = 'rgba(255, 255, 255, 1.0)'
-      else if (isBlack) c.fillStyle = 'rgba(0, 0, 0, 1.0)'
-      else c.fillStyle = 'rgba(150, 150, 150, 1.0)'
-      c.fillRect(NOTE_WIDTH, y, PIANOROLL_KEY_WIDTH, keyHeight)
-    }
-
-    if (keyHeight > 6) {
-      c.font = '6pt Inter'
-      c.textAlign = 'center'
-      c.textBaseline = 'middle'
-      for (let midi = displayMinMidi; midi <= displayMaxMidi; midi += 1) {
-        const keyIndex = displayMaxMidi - midi
-        const y = keyIndex * keyHeight + keyHeight / 2
-        const isBlack = MIDI_IS_BLACK[midi] === 1
-        const isActive = st.activeMask[midi] === 1
-        c.fillStyle = (isBlack && !isActive) ? 'rgba(255, 255, 255, 1.0)' : 'rgba(0, 0, 0, 1.0)'
-        c.fillText(MIDI_LABELS[midi]!, NOTE_WIDTH + PIANOROLL_KEY_WIDTH / 2, y + 0.5)
-      }
-    }
-
     c.restore()
+    // restore the initial context saved before translating by x
     c.restore()
   }, [audioContext, bpmValue])
 
