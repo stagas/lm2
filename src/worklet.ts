@@ -232,6 +232,12 @@ export class DspProcessor extends AudioWorkletProcessor {
     const clamped = Math.max(0, targetSample)
     this.core.wasm.globalSampleCount.value = clamped
     Atomics.store(this.options.processorOptions.globalSampleCount, 0, clamped)
+    if (this.state !== 'running') {
+      for (const dsp of this.dsps) {
+        this.core.wasm.resetDsp(dsp.dsp$)
+        this.core.wasm.prepareDsp(dsp.dsp$)
+      }
+    }
   }
 
   process(
