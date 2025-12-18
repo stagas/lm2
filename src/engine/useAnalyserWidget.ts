@@ -48,6 +48,7 @@ type SpectrumCache = {
   binIndex: Int32Array
   binFrac: Float32Array
   prefix: Float32Array
+  avgHeights: Float32Array
 }
 
 const INV_LN10 = 1 / Math.LN10
@@ -98,6 +99,7 @@ function drawSpectrum(
   if (w <= 1 || h <= 1) return
   if (!fftState) return
 
+  w += 1
   const { fft, window, windowed } = fftState
   const fftSize = windowed.length
 
@@ -170,11 +172,20 @@ function drawSpectrum(
       binIndex,
       binFrac,
       prefix: new Float32Array(barCount + 1),
+      avgHeights: new Float32Array(barCount),
     }
     cacheMap.set(cacheKey, cache)
   }
 
-  c.fillStyle = '#777'
+  const fadeWidth = Math.min(64, w * 0.05)
+  const fadeStart = Math.max(0, w - fadeWidth)
+  const getFadeFactor = (pos: number) => {
+    if (fadeWidth <= 0 || pos <= fadeStart) return 1
+    const factor = 1 - (pos - fadeStart) / fadeWidth
+    return factor < 0 ? 0 : factor
+  }
+
+  c.fillStyle = '#666'
   for (let i = 0; i < barCount; i++) {
     const idx = cache.binIndex[i]!
     const frac = cache.binFrac[i]!
@@ -190,21 +201,24 @@ function drawSpectrum(
     const currentHeight = animatedHeights[i]!
     const newHeight = targetHeight > currentHeight ? targetHeight : Math.max(0, currentHeight - gravity)
     animatedHeights[i] = newHeight
-
+    const barRight = (i + 1) * barWidth
+    const fadeFactor = getFadeFactor(barRight)
+    const drawHeight = newHeight * fadeFactor
     const bx = x + i * barWidth
-    const by = y + h - newHeight
-    c.fillRect(bx, by, Math.max(1, barWidth + 1), newHeight)
+    const by = y + h / 2 - drawHeight / 2
+    c.fillRect(bx, by, Math.max(1, barWidth + 1), drawHeight)
   }
 
   c.save()
-  c.strokeStyle = '#ddd'
-  c.lineWidth = 2
+  c.strokeStyle = 'rgba(180, 180, 180, 0.7)'
+  c.lineWidth = 1.35
   c.beginPath()
 
   const movingAvgWindow = 8
   const halfWin = Math.floor(movingAvgWindow / 2)
   const prefix = cache.prefix
   prefix[0] = 0
+  const avgHeights = cache.avgHeights
   for (let i = 0; i < barCount; i++) {
     prefix[i + 1] = prefix[i]! + animatedHeights[i]!
   }
@@ -214,11 +228,29 @@ function drawSpectrum(
     const end = Math.min(barCount - 1, i + halfWin)
     const count = end - start + 1
     const sum = prefix[end + 1]! - prefix[start]!
-    const avgHeight = count ? sum / count : 0
+    avgHeights[i] = count ? sum / count : 0
+  }
+
+  const centerY = y + h / 2
+  c.beginPath()
+  for (let i = 0; i < barCount; i++) {
     const cx = x + i * barWidth + barWidth / 2
-    const cy = y + h - avgHeight
-    if (i === 0) c.moveTo(cx, cy)
-    else c.lineTo(cx, cy)
+    const localPos = i * barWidth + barWidth / 2
+    const drawAvg = avgHeights[i]! * getFadeFactor(localPos)
+    const cyTop = centerY - drawAvg / 2
+    if (i === 0) c.moveTo(cx, cyTop)
+    else c.lineTo(cx, cyTop)
+  }
+  c.stroke()
+
+  c.beginPath()
+  for (let i = 0; i < barCount; i++) {
+    const cx = x + i * barWidth + barWidth / 2
+    const localPos = i * barWidth + barWidth / 2
+    const drawAvg = avgHeights[i]! * getFadeFactor(localPos)
+    const cyBottom = centerY + drawAvg / 2
+    if (i === 0) c.moveTo(cx, cyBottom)
+    else c.lineTo(cx, cyBottom)
   }
   c.stroke()
   c.restore()
