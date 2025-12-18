@@ -19,7 +19,10 @@ export function useArrayAccessWidget({
   arrayLiterals,
 }: UseArrayAccessWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const lastWritePosRef = useRef<number>(0)
-  const accessTimeRef = useRef<Map<string, number>>(new Map())
+  // active index per array pc (keep highlighted until index changes)
+  const activeIndexRef = useRef<Map<number, number>>(new Map())
+  // fading map for previous indices: key = "pc:idx" -> startTime
+  const fadingRef = useRef<Map<string, number>>(new Map())
   const frameRef = useRef<Map<string, number>>(new Map())
 
   const pcToItems = useMemo(() => {
@@ -38,7 +41,8 @@ export function useArrayAccessWidget({
     const prevWritePos = lastWritePosRef.current >>> 0
     lastWritePosRef.current = writePos
 
-    const accessTime = accessTimeRef.current
+    const activeIndex = activeIndexRef.current
+    const fading = fadingRef.current
 
     if (writePos !== prevWritePos) {
       const raw = history.raw
@@ -54,17 +58,35 @@ export function useArrayAccessWidget({
         if (pc <= 0 || idx < 0) continue
         const items = pcToItems.get(pc)
         if (!items || idx >= items.length) continue
-        accessTime.set(pc + ':' + idx, nowSec)
+
+        const prev = activeIndex.get(pc)
+        if (prev === undefined) {
+          // first seen index for this array -> set active
+          activeIndex.set(pc, idx)
+        }
+        else if (prev !== idx) {
+          // index changed -> start fading previous entry, activate new
+          fading.set(pc + ':' + prev, nowSec)
+          activeIndex.set(pc, idx)
+        }
+        // if prev === idx => leave as active (no fade)
       }
     }
 
     const FADEOUT_SECONDS = 0.25
     const frame = frameRef.current
     frame.clear()
-    for (const [key, t0] of accessTime.entries()) {
+
+    // active entries: full opacity
+    for (const [pc, idx] of activeIndex.entries()) {
+      frame.set(pc + ':' + idx, 1)
+    }
+
+    // fading entries: compute alpha, remove expired
+    for (const [key, t0] of Array.from(fading.entries())) {
       const age = nowSec - t0
       if (age >= FADEOUT_SECONDS) {
-        accessTime.delete(key)
+        fading.delete(key)
         continue
       }
       const a = 1 - age / FADEOUT_SECONDS
