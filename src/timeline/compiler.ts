@@ -16,7 +16,7 @@ type TimelineSegment = {
 
 const numRe = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)'
 const valueTokenRe = new RegExp(`^(${numRe})(?:b(${numRe}))?$`)
-const glideTokenRe = new RegExp(`^([/\\\\])b(${numRe})(?:e(${numRe}))?$`)
+const glideTokenRe = new RegExp(`^([/\\\\])b(${numRe})(?:([el])(${numRe}))?$`)
 
 function parseTimelineNotation(input: string): { segments: TimelineSegment[]; totalUnits: number } {
   const tokens = input.trim().split(/\s+/).filter(Boolean)
@@ -29,7 +29,9 @@ function parseTimelineNotation(input: string): { segments: TimelineSegment[]; to
     const g = glideTokenRe.exec(t)
     if (g) {
       const durUnits = Number(g[2] ?? 0)
-      const exp = Number(g[3] ?? 1)
+      const kind = g[3]
+      const k = Number(g[4] ?? 0)
+      const exp = kind === 'l' ? -Math.abs(k) : kind === 'e' ? k : 1
       pending = { durUnits, exp }
       continue
     }

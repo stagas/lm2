@@ -22,6 +22,18 @@ type TimelineSeg = {
   exp: number
 }
 
+function curveValue(t: number, curve: number): number {
+  if (curve > 0) return Math.pow(t, curve)
+  if (curve < 0) {
+    const base = -curve
+    if (base > 0) {
+      const den = Math.log(base)
+      if (den !== 0) return Math.log(1 + (base - 1) * t) / den
+    }
+  }
+  return t
+}
+
 type TimelineState = {
   timeSeconds: number | null
   sampleCount: number
@@ -227,7 +239,7 @@ export function useTimelineWidget({
       if (!s || sample < s.startSample) return 0
       if (s.kind !== 1 || s.endSample <= s.startSample) return s.a
       const tt = (sample - s.startSample) / (s.endSample - s.startSample)
-      const p = s.exp > 0 ? Math.pow(tt, s.exp) : tt
+      const p = curveValue(tt, s.exp)
       return s.a + (s.b - s.a) * p
     }
 

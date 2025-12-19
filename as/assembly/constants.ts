@@ -25,8 +25,13 @@ export const MINI_HEADER_SIZE: i32 = 1
 // timeline(beat, seq) bytecode format
 // [opLength,
 //  TIMELINE_MAGIC, segmentCount, totalUnits, beatDiv,
-//  [kind, durUnits, startValue, endValue, exponent] * segmentCount
+//  [kind, durUnits, startValue, endValue, curve] * segmentCount
 // ]
+//
+// curve encoding:
+// - curve > 0: exponential curve using pow(t, curve)
+// - curve = 0: linear
+// - curve < 0: logarithmic curve with base = -curve
 export const TIMELINE_MAGIC: i32 = 1000
 export const TIMELINE_HEADER_SIZE: i32 = 4 // magic, segmentCount, totalUnits, beatDiv
 export const TIMELINE_SEGMENT_SIZE: i32 = 5 // kind, durUnits, startValue, endValue, exponent
