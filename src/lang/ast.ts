@@ -164,7 +164,7 @@ export type NumberExpr = {
   value: number
   raw: string
   loc: Loc
-  slider?: { min: number; max: number; widgetLength: number }
+  slider?: { min: number; max: number; widgetLength: number; precision: number }
 }
 export type StringExpr = { kind: 'string'; value: string; raw: string; loc: Loc }
 export type BoolExpr = { kind: 'bool'; value: boolean; loc: Loc }

@@ -2,6 +2,7 @@ import type { CodeFile, EditorWidget, Theme } from 'mini-code'
 import { useMemo, useRef } from 'react'
 import type React from 'react'
 import type { NumberWithParamsInfo } from '../bytecode.ts'
+import { decimalsOf } from '../utils/number.ts'
 
 type DragState = {
   key: string
@@ -11,6 +12,7 @@ type DragState = {
   line: number
   column: number
   length: number
+  precision: number
   x: number
   y: number
   width: number
@@ -21,25 +23,30 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n))
 }
 
-function decimalsOf(s: string): number {
-  const i = s.indexOf('.')
-  if (i === -1) return 0
-  return Math.max(0, Math.min(6, s.length - i - 1))
-}
-
-function formatNumberLike(value: number, like: string): string {
+function formatNumberLike(value: number, like: string, minDecimals?: number): string {
   const decimals = decimalsOf(like)
+  const totalDecimals = minDecimals != null ? Math.max(minDecimals, decimals) : decimals
   if (!Number.isFinite(value)) return String(value)
-  if (decimals === 0) return String(Math.round(value))
-  return value.toFixed(decimals)
+  if (totalDecimals === 0) return String(Math.round(value))
+  const out = value.toFixed(totalDecimals)
+  // Trim leading zero for values like "0.1" -> ".1" and "-0.1" -> "-.1"
+  return out.replace(/^(-?)0\.(\d.*)$/, '$1.$2')
 }
 
-function updateValueWithSpacing(line: string, column: number, oldStr: string, value: number, length: number): string {
+function updateValueWithSpacing(
+  line: string,
+  column: number,
+  oldStr: string,
+  value: number,
+  length: number,
+  precision?: number,
+): string {
   const start = Math.max(0, column - 1)
   const padLen = oldStr.length > 0 ? oldStr.length : Math.max(1, length)
 
   const before = line.slice(0, start)
-  let next = formatNumberLike(value, oldStr || line.slice(start, start + Math.max(1, length)))
+  const like = oldStr || line.slice(start, start + Math.max(1, length))
+  let next = formatNumberLike(value, like, precision)
   const extraChars = Math.max(0, next.length - padLen)
 
   if (next.length < padLen) next = next + ' '.repeat(padLen - next.length)
@@ -140,6 +147,7 @@ export class SliderWidget {
           line: this.info.line,
           column: this.info.column,
           length: this.info.length,
+          precision: this.info.precision,
           x,
           y,
           width: this.currentWidth,
@@ -157,7 +165,14 @@ export class SliderWidget {
         const from = this.info.column - 1
         const match = line.substring(from).match(/^-?\d*\.?\d*/)
         const oldStr = match?.[0] || line.slice(from, from + Math.max(1, this.info.length))
-        const newLine = updateValueWithSpacing(line, this.info.column, oldStr, value, this.info.length)
+        const newLine = updateValueWithSpacing(
+          line,
+          this.info.column,
+          oldStr,
+          value,
+          this.info.length,
+          this.info.precision,
+        )
         codeFile.edit(lineIndex, 0, line.length, newLine)
       },
 
@@ -187,8 +202,14 @@ export class SliderWidget {
             const from = currentDrag.column - 1
             const match = line.substring(from).match(/^-?\d*\.?\d*/)
             const oldStr = match?.[0] || line.slice(from, from + Math.max(1, currentDrag.length))
-            const newLine = updateValueWithSpacing(line, currentDrag.column, oldStr, currentDrag.value,
-              currentDrag.length)
+            const newLine = updateValueWithSpacing(
+              line,
+              currentDrag.column,
+              oldStr,
+              currentDrag.value,
+              currentDrag.length,
+              currentDrag.precision,
+            )
             codeFile.edit(lineIndex, 0, line.length, newLine)
           }
           this.rafRef.current = null

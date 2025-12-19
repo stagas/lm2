@@ -14,6 +14,7 @@ import type {
 } from './ast.ts'
 import { type LangError, lineText } from './errors.ts'
 import type { Token, TokenKind } from './token.ts'
+import { decimalsOf } from '../utils/number.ts'
 
 const locFrom = (a: { line: number; column: number; length: number },
   b?: { line: number; column: number; length: number }): Loc =>
@@ -571,6 +572,10 @@ class Parser {
           const maxTok = this.tokens[this.i + 1]
           const endTok = this.tokens[this.i + 2]
           if (minTok.kind === 'number' && maxTok?.kind === 'number' && endTok?.kind === 'r_paren') {
+            const minPrecision = decimalsOf(minTok.lexeme)
+            const maxPrecision = decimalsOf(maxTok.lexeme)
+            const valuePrecision = decimalsOf(expr.raw ?? '')
+            const precision = Math.max(minPrecision, maxPrecision, valuePrecision)
             this.next()
             this.next()
             this.next()
@@ -582,6 +587,7 @@ class Parser {
                 widgetLength: endTok.line === expr.loc.line
                   ? (endTok.column + endTok.length - expr.loc.column)
                   : expr.loc.length,
+                precision,
               },
             }
             continue

@@ -66,8 +66,10 @@ export function useTimelineWidget({
     if (!pred) return
     const { sampleRate, sampleCount, timeSeconds } = pred
 
-    const prepareStatus = useEngineStore.getState().prepareDspStatus
-    const isWorkletBusy = !!(prepareStatus && Atomics.load(prepareStatus, 0) !== 1)
+    const engineState = useEngineStore.getState()
+    const prepareStatus = engineState.prepareDspStatus
+    const isWorkletBusy = engineState.isUpdatingDsp
+      && !!(prepareStatus && Atomics.load(prepareStatus, 0) === 0)
 
     const seenSeqs = new Set<number>()
     for (const ref of timelineRefs) {

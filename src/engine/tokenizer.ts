@@ -3,8 +3,9 @@ import { splitValueAndModifiers, tokenize as miniTokenize } from '../mini/tokeni
 
 // State for multiline strings and context
 let inMultilineString: string | null = null // Tracks the quote type we're inside
-let inMiniString: { quote: string; depth: number } | null = null // Tracks if we're inside mini('...')
+let inMiniString: { quote: string; depth: number; callName?: string | null } | null = null // Tracks if we're inside mini('...')
 let inMiniCall: number = -1 // Tracks the paren depth when we entered a mini() call
+let inMiniCallName: string | null = null // Tracks the function name ('mini' or 'timeline')
 let persistedParenDepth: number = 0 // Tracks paren depth across lines
 
 // Check if text looks like mini notation (contains notes, octaves, scales, etc)
@@ -94,7 +95,7 @@ function tokenizeMiniMods(mods: string): Token[] {
   return tokens
 }
 
-function tokenizeMiniText(text: string): Token[] {
+function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
   const tokens: Token[] = []
   const miniTokens = miniTokenize(text)
   let cursor = 0
@@ -154,7 +155,7 @@ function tokenizeMiniText(text: string): Token[] {
             const after = pf.slice(closeIndex + 1)
 
             tokens.push({ type: 'punctuation', content: open, length: 1 })
-            if (inner) tokens.push(...tokenizeMiniText(inner))
+            if (inner) tokens.push(...tokenizeMiniText(inner, isTimeline))
             tokens.push({ type: 'punctuation', content: close, length: 1 })
             if (after) tokens.push(...tokenizeMiniMods(after))
           }
@@ -163,7 +164,18 @@ function tokenizeMiniText(text: string): Token[] {
           }
         }
         else {
-          const { value, mods } = splitValueAndModifiers(pf)
+          let { value, mods } = splitValueAndModifiers(pf)
+          // Special-case timeline notation: numeric value may have trailing alpha
+          // suffixes (e.g. "2,1l6"). If this is a timeline string, split alpha
+          // suffix from the numeric value and treat it as mods so the numeric
+          // portion is tokenized as a number.
+          if (isTimeline && value) {
+            const m = value.match(/^([0-9]+(?:,[0-9]+)*)([a-z].*)$/i)
+            if (m) {
+              value = m[1] ?? ''
+              mods = (m[2] ?? '') + mods
+            }
+          }
           if (value) tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
           if (mods) tokens.push(...tokenizeMiniMods(mods))
         }
@@ -182,7 +194,7 @@ function tokenizeMiniText(text: string): Token[] {
         const after = raw.slice(closeIndex + 1)
 
         tokens.push({ type: 'punctuation', content: open, length: 1 })
-        if (inner) tokens.push(...tokenizeMiniText(inner))
+        if (inner) tokens.push(...tokenizeMiniText(inner, isTimeline))
         tokens.push({ type: 'punctuation', content: close, length: 1 })
         if (after) tokens.push(...tokenizeMiniMods(after))
       }
@@ -191,7 +203,14 @@ function tokenizeMiniText(text: string): Token[] {
       }
     }
     else {
-      const { value, mods } = splitValueAndModifiers(raw)
+      let { value, mods } = splitValueAndModifiers(raw)
+      if (isTimeline && value) {
+        const m = value.match(/^([0-9]+(?:,[0-9]+)*)([a-z].*)$/i)
+        if (m) {
+          value = m[1] ?? ''
+          mods = (m[2] ?? '') + mods
+        }
+      }
       if (value) tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
       if (mods) tokens.push(...tokenizeMiniMods(mods))
     }
@@ -222,8 +241,8 @@ function tokenizeMiniText(text: string): Token[] {
 }
 
 // Tokenize mini notation content
-function tokenizeMiniContent(content: string): Token[] {
-  return tokenizeMiniText(content)
+function tokenizeMiniContent(content: string, isTimeline: boolean = false): Token[] {
+  return tokenizeMiniText(content, isTimeline)
 }
 
 export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
@@ -246,12 +265,12 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
     const quote = inMiniString.quote
     const end = findUnescapedChar(line, quote, i)
     if (end === -1) {
-      tokens.push(...tokenizeMiniContent(line))
+      tokens.push(...tokenizeMiniContent(line, Boolean(inMiniString.callName === 'timeline')))
       return tokens
     }
 
     const chunk = line.slice(0, end)
-    tokens.push(...tokenizeMiniContent(chunk))
+    tokens.push(...tokenizeMiniContent(chunk, Boolean(inMiniString.callName === 'timeline')))
     tokens.push({ type: 'string', content: quote, length: 1 })
     i = end + 1
     inMiniString = null
@@ -309,7 +328,10 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
         && tokens[_prevIdx]?.type === 'punctuation'
         && tokens[_prevIdx]?.content === '('
         && tokens[_prevIdx - 1]?.type === 'function'
-        && tokens[_prevIdx - 1]?.content === 'mini'
+        && (
+          tokens[_prevIdx - 1]?.content === 'mini'
+          || tokens[_prevIdx - 1]?.content === 'timeline'
+        )
 
       // Also check if we're inside a mini() call from a previous line
       const isMiniCallMultiline = inMiniCall !== -1 && parenDepth > inMiniCall
@@ -321,12 +343,14 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
 
       if (isMiniCallAny && looksLikeMini) {
         tokens.push({ type: 'string', content: quoteChar, length: 1 })
-        tokens.push(...tokenizeMiniContent(stringContent))
+        const isTimelineAny = (isMiniCallSameLine && tokens[_prevIdx - 1]?.content === 'timeline')
+          || (isMiniCallMultiline && inMiniCallName === 'timeline')
+        tokens.push(...tokenizeMiniContent(stringContent, Boolean(isTimelineAny)))
         if (foundClosing) tokens.push({ type: 'string', content: quoteChar, length: 1 })
 
         // If we didn't find the closing quote, we're starting a multiline mini string
         if (!foundClosing) {
-          inMiniString = { quote: quoteChar, depth: parenDepth }
+          inMiniString = { quote: quoteChar, depth: parenDepth, callName: inMiniCallName }
         }
       }
       else {
@@ -468,6 +492,7 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
         }
         if (parenDepth === inMiniCall) {
           inMiniCall = -1
+          inMiniCallName = null
         }
       }
       i++
@@ -505,9 +530,11 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
       // Any identifier followed by '(' is a function call (built-in or user-defined)
       if (isFollowedByParen) {
         tokens.push({ type: 'function', content: word, length: word.length })
-        // Track if this is a mini() call
-        if (word === 'mini' && inMiniCall === -1) {
+        // Track if this is a mini() or timeline() call so we can tokenize their
+        // string contents with the mini tokenizer.
+        if ((word === 'mini' || word === 'timeline') && inMiniCall === -1) {
           inMiniCall = parenDepth
+          inMiniCallName = word
         }
       }
       else if (inArrowParams) {

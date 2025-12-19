@@ -165,6 +165,7 @@ export type NumberWithParamsInfo = {
   min: number
   max: number
   literalIndex?: number
+  precision: number
 }
 
 function buildLineStarts(src: string): number[] {
@@ -739,6 +740,7 @@ function extractNumberParamsFromProgram(program: Program): NumberWithParamsInfo[
         value: Number(expr.value ?? 0),
         min,
         max,
+        precision: expr.slider.precision,
       })
       return
     }
