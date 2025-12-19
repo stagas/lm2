@@ -16,6 +16,12 @@ export function createDsp(): usize {
   return changetype<usize>(new Dsp())
 }
 
+export function resetDsp(dsp$: usize, voices: boolean): void {
+  if (dsp$ === 0) return
+  const dsp = changetype<Dsp>(dsp$)
+  dsp.reset(voices)
+}
+
 export function prepareDsp(dsp$: usize): void {
   const dsp = changetype<Dsp>(dsp$)
   dsp.prepare()
@@ -70,12 +76,4 @@ export function updateBpm(oldBpm: f32, newBpm: f32): void {
 
 export function resetGlobalSampleCount(): void {
   globalSampleCount = 0
-}
-
-export function resetDsp(dsp$: usize): void {
-  if (dsp$ === 0) return
-  const dsp = changetype<Dsp>(dsp$)
-
-  // Reset all sequence generators
-  dsp.program.gensPool.resetAllSeqs()
 }

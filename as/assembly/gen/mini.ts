@@ -109,25 +109,27 @@ export class Mini extends Gen {
     this.resetVoiceMaps()
   }
 
-  reset(): void {
-    this.voiceCursor = 0
+  reset(voices: boolean): void {
     this.lastBytecode$ = 0
     this.lastHistory$ = 0
     this.lastVersion = -1
     this.historyGeneratedUntilCycle = -1
-    this.resetVoiceMaps()
-    for (let i = 0; i < SEQ_VOICES; i++) {
-      const voice = this.voices[i]
-      voice.active = false
-      voice.triggerSample = 0
-      voice.holdEndSample = 0
-      voice.value = 0
-      voice.velocity = 0
-      voice.slot = -1
-      voice.glidePower = 0.0
-      voice.glideTarget = 0.0
-      voice.glideEndSample = 0
-      voice.baseValue = 0.0
+    if (voices) {
+      this.voiceCursor = 0
+      this.resetVoiceMaps()
+      for (let i = 0; i < SEQ_VOICES; i++) {
+        const voice = this.voices[i]
+        voice.active = false
+        voice.triggerSample = 0
+        voice.holdEndSample = 0
+        voice.value = 0
+        voice.velocity = 0
+        voice.slot = -1
+        voice.glidePower = 0.0
+        voice.glideTarget = 0.0
+        voice.glideEndSample = 0
+        voice.baseValue = 0.0
+      }
     }
   }
 
@@ -330,7 +332,7 @@ export class Mini extends Gen {
     let newWritePos = 0
 
     // Give some space for the edge case.
-    windowStart -= 1000000
+    // windowStart -= 1000000
 
     for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE

@@ -67,9 +67,9 @@ class GensPool {
     this.minis.resetIndex()
     this.analysers.resetIndex()
   }
-  resetAllSeqs(): void {
+  resetAllSeqs(voices: boolean): void {
     for (let i = 0; i < this.minis.gens.length; i++) {
-      this.minis.gens[i].reset()
+      this.minis.gens[i].reset(voices)
     }
   }
   get(op: Op): Gen {
@@ -307,7 +307,7 @@ export class Program {
       }
 
       // Use scratch mini to generate history for this bytecode into the history buffer
-      scratch.reset()
+      scratch.reset(true)
       scratch.bytecode$ = arr$
       scratch.history$ = hist$
       scratch.generateHistory()

@@ -422,6 +422,10 @@ export class Dsp {
     hist[0] = f32((writePos + 1) & 0xfffff)
   }
 
+  reset(voices: boolean): void {
+    this.program.gensPool.resetAllSeqs(voices)
+  }
+
   prepare(): void {
     this.program.prepare()
   }
