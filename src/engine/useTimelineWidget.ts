@@ -9,7 +9,7 @@ import type { TimelineSequenceRef } from '../bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
-import { getCurrentTheme } from './theme.ts'
+import { useTheme } from './theme.ts'
 import {
   getTimelineValue,
   getTimelineValueAtSample,
@@ -51,6 +51,8 @@ export function useTimelineWidget({
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
+
+  const theme = useTheme()
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
@@ -143,11 +145,11 @@ export function useTimelineWidget({
     c.rect(0, -10, w, h + 20)
     c.clip()
 
-    c.fillStyle = 'rgba(0, 0, 0, 0.35)'
-    c.fillRect(0, 0, w, h)
+    // c.fillStyle = 'rgba(0, 0, 0, 0.35)'
+    // c.fillRect(0, 0, w, h)
 
-    c.fillStyle = 'rgba(75, 75, 75, 0.3)'
-    c.fillRect(0, 0, w, h)
+    // c.fillStyle = 'rgba(75, 75, 75, 0.3)'
+    // c.fillRect(0, 0, w, h)
 
     // Grid (alternating bar fills like pianoroll)
     const pixelsPerSecond = w / TIME_WINDOW_SECONDS
@@ -180,7 +182,7 @@ export function useTimelineWidget({
     const segs = st.frameSegs
     let si = 0
 
-    c.strokeStyle = getCurrentTheme().colors.function
+    c.strokeStyle = theme.colors.argument
     c.lineWidth = 1.35
 
     // helper to compute pixel X for a sample
@@ -253,7 +255,7 @@ export function useTimelineWidget({
     c.stroke()
 
     // Draw small circles at every segment boundary, including the previous value when it changes
-    c.fillStyle = 'rgba(0, 255, 255, 0.95)'
+    c.fillStyle = theme.colors.argument
     c.strokeStyle = 'rgba(0, 0, 0, 0.6)'
     c.lineWidth = 0.25
     const circleRadius = 3

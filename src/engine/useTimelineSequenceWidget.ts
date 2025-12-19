@@ -152,9 +152,7 @@ export function useTimelineSequenceWidget({
                   ? 0.25 + 0.75 * (1 - tt)
                   : 0.25 + 0.75 * tt
 
-                const color = role === 'from'
-                  ? [0, 200, 255]
-                  : [255, 120, 255]
+                const color = [255, 255, 255]
 
                 ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${0.22 * a})`
                 ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
@@ -176,5 +174,3 @@ export function useTimelineSequenceWidget({
 
   return { widgets, onBeforeDraw }
 }
-
-

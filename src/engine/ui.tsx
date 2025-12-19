@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { Logo } from '../components/Logo.tsx'
 import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
@@ -204,7 +205,8 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
       ...sequenceWidgets,
       ...arrayAccessWidgets,
     ]
-  }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets, arrayAccessWidgets])
+  }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
+    arrayAccessWidgets])
 
   return (
     <div className="flex flex-row gap-2 w-full">
@@ -228,7 +230,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
           {error}
         </div>
       )}
-      <BytecodeInspector source={localSource} />
+      {/* <BytecodeInspector source={localSource} /> */}
     </div>
   )
 }
@@ -288,15 +290,76 @@ function BytecodeInspector({ source }: BytecodeInspectorProps) {
   )
 }
 
+function PlaybackButton({ icon, onClick }: { icon: React.ReactNode; onClick: () => void }) {
+  return (
+    <button onPointerDown={onClick} className="w-8 h-8 flex items-center justify-center text-orange-600">
+      {icon}
+    </button>
+  )
+}
+
+function PlayIcon() {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 256 256"
+    >
+      <defs>
+        <linearGradient id="gradient" x1="0" y1="0" x2=".75" y2=".75">
+          <stop offset="0%" stopColor="#f97316" /> {/* orange-500 */}
+          <stop offset="100%" stopColor="#ef4444" /> {/* red-500 */}
+        </linearGradient>
+      </defs>
+      <path
+        d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"
+        fill="url(#gradient)"
+      />
+    </svg>
+  )
+}
+
+function PauseIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 256 256">
+      <defs>
+        <linearGradient id="gradient" x1="0" y1="0" x2=".75" y2=".75">
+          <stop offset="0%" stopColor="#f97316" /> {/* orange-500 */}
+          <stop offset="100%" stopColor="#ef4444" /> {/* red-500 */}
+        </linearGradient>
+      </defs>
+      <path
+        d="M216,48V208a16,16,0,0,1-16,16H160a16,16,0,0,1-16-16V48a16,16,0,0,1,16-16h40A16,16,0,0,1,216,48ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Z"
+        fill="url(#gradient)"
+      />
+    </svg>
+  )
+}
+
+function StopIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 256 256">
+      <defs>
+        <linearGradient id="gradient" x1="0" y1="0" x2=".75" y2=".75">
+          <stop offset="0%" stopColor="#f97316" /> {/* orange-500 */}
+          <stop offset="100%" stopColor="#ef4444" /> {/* red-500 */}
+        </linearGradient>
+      </defs>
+      <path
+        d="M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z"
+        fill="url(#gradient)"
+      />
+    </svg>
+  )
+}
+
 export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: React.RefObject<TimelineWindow> }) {
   const {
     audioContext,
     bpmValue,
     globalSampleCount,
-    program1,
     timelineRefs,
     pause,
-    playbackState,
     start,
     stop,
   } = useEngineStore()
@@ -304,30 +367,12 @@ export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: Rea
   const seekToSample = useSeekToSample()
 
   return (
-    <div className="flex gap-2">
-      <button
-        onClick={start}
-        disabled={playbackState === 'running'}
-        className="bg-blue-500 text-white px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Start
-      </button>
-      <button
-        onClick={pause}
-        disabled={playbackState !== 'running'}
-        className="bg-yellow-500 text-white px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Pause
-      </button>
-      <button
-        onClick={stop}
-        disabled={playbackState === 'stopped'}
-        className="bg-red-500 text-white px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Stop
-      </button>
-      <div className="flex items-center px-4 text-white">
-        State: <span className="ml-2 font-bold">{playbackState}</span>
+    <div className="flex items-center justify-center gap-3 pl-3">
+      <Logo />
+      <div className="flex items-center justify-center">
+        <PlaybackButton icon={<PlayIcon />} onClick={start} />
+        <PlaybackButton icon={<PauseIcon />} onClick={pause} />
+        <PlaybackButton icon={<StopIcon />} onClick={stop} />
       </div>
       <MinimapScrollbar
         audioContext={audioContext}

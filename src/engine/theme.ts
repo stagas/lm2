@@ -250,10 +250,10 @@ export const themes: Record<string, Omit<Theme, 'font'>> = {
     {
       keyword: '#ffffff',
       string: '#cccccc',
-      number: '#aaaaaa',
-      function: '#f97316',
-      parameter: '#dddddd',
-      argument: '#eeeeee',
+      number: '#ffff00',
+      function: '#55ddff', //
+      parameter: '#f97316', // '#dddddd',
+      argument: '#ff44aa',
       comment: '#666666',
       operator: '#ffffff',
       punctuation: '#bbbbbb',
@@ -261,7 +261,7 @@ export const themes: Record<string, Omit<Theme, 'font'>> = {
     },
     ['#ffffff', '#cccccc', '#888888'],
     '#ff0000',
-    '#000000',
+    '#000',
     '#000000',
     '#333333',
     '#666666',
@@ -307,17 +307,17 @@ interface ThemeState {
 }
 
 export const useThemeStore = create<ThemeState>()(
-  persist(
-    set => ({
-      currentTheme: 'monokai',
-      previewTheme: null,
-      setTheme: (theme: string) => set({ currentTheme: theme }),
-      setPreviewTheme: (previewTheme: string | null) => set({ previewTheme }),
-    }),
-    {
-      name: 'theme-storage',
-    },
-  ),
+  // persist(
+  set => ({
+    currentTheme: 'duochrome',
+    previewTheme: null,
+    setTheme: (theme: string) => set({ currentTheme: theme }),
+    setPreviewTheme: (previewTheme: string | null) => set({ previewTheme }),
+  }),
+  //   {
+  //     name: 'theme-storage',
+  //   },
+  // ),
 )
 
 export function useTheme(): Theme {

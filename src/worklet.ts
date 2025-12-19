@@ -238,6 +238,18 @@ export class DspProcessor extends AudioWorkletProcessor {
     }
   }
 
+  reset() {
+    if (!this.core) return
+    // Reset globalSampleCount and sequence state if Stop was pressed (not just Pause)
+    this.core.wasm.resetGlobalSampleCount()
+    Atomics.store(this.options.processorOptions.globalSampleCount, 0, 0)
+    for (const dsp of this.dsps) {
+      this.core.wasm.resetDsp(dsp.dsp$, true)
+      this.core.wasm.prepareDsp(dsp.dsp$)
+    }
+    this.state = 'stopped'
+  }
+
   process(
     inputs: Float32Array[][],
     outputs: Float32Array[][],
@@ -270,9 +282,16 @@ export class DspProcessor extends AudioWorkletProcessor {
         this.state = 'fade-out'
         this.shouldReset = false
       }
-      else if (control === ControlOp.Stop && this.state === 'running') {
-        this.state = 'fade-out'
-        this.shouldReset = true
+      else if (control === ControlOp.Stop && (this.state === 'running' || this.state === 'stopped')) {
+        if (this.state === 'running') {
+          this.state = 'fade-out'
+          this.shouldReset = true
+        }
+        else {
+          this.reset()
+          Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
+          return true
+        }
       }
       else if (control === ControlOp.Prepare && this.state === 'stopped') {
         const dsp$ = Atomics.load(this.options.processorOptions.prepareDsp, 0)
@@ -424,14 +443,8 @@ export class DspProcessor extends AudioWorkletProcessor {
         outputs[0][1][i] *= gain
       }
       this.state = 'stopped'
-
-      // Reset globalSampleCount and sequence state if Stop was pressed (not just Pause)
       if (this.shouldReset) {
-        this.core.wasm.resetGlobalSampleCount()
-        for (const dsp of this.dsps) {
-          this.core.wasm.resetDsp(dsp.dsp$, true)
-          this.core.wasm.prepareDsp(dsp.dsp$)
-        }
+        this.reset()
         this.shouldReset = false
       }
     }

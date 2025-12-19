@@ -1,5 +1,6 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useMemo, useRef } from 'react'
+import { luminate } from 'utils/rgb'
 import {
   FUTURE_SECONDS,
   HISTORY_DATA_OFFSET,
@@ -12,6 +13,7 @@ import { frequencyToMidi, midiToNoteName } from '../mini/util.ts'
 import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
+import { useTheme } from './theme.ts'
 import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
 import { applySmoothing } from './util.ts'
 
@@ -77,6 +79,8 @@ export function usePianorollWidget({
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
 
+  const theme = useTheme()
+
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (!program1?.program?.histories) return
@@ -117,7 +121,7 @@ export function usePianorollWidget({
         activeList: [],
       }
 
-      st.sampleCount = sampleCount
+      st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount))
       if (st.timeSeconds == null) {
         st.timeSeconds = timeSeconds
       }
@@ -255,8 +259,8 @@ export function usePianorollWidget({
     c.rect(0, -10, w, h + 20)
     c.clip()
 
-    c.fillStyle = 'rgba(0, 0, 0, 0.35)'
-    c.fillRect(0, 0, w, h)
+    // c.fillStyle = 'rgba(0, 0, 0, 0.35)'
+    // c.fillRect(0, 0, w, h)
 
     // Draw keys on the left
     c.save()
@@ -327,28 +331,29 @@ export function usePianorollWidget({
     c.rect(0, -10, NOTE_WIDTH, h + 20)
     c.clip()
 
-    for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
-      const keyIndex = displayMaxMidi - midi
-      const y = keyIndex * keyHeight
-      const isBlack = MIDI_IS_BLACK[midi] === 1
+    // for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
+    //   const keyIndex = displayMaxMidi - midi
+    //   const y = keyIndex * keyHeight
+    //   const isBlack = MIDI_IS_BLACK[midi] === 1
 
-      c.fillStyle = isBlack ? 'rgba(30, 30, 30, 0.5)' : 'rgba(75, 75, 75, 0.3)'
-      c.fillRect(0, y, NOTE_WIDTH, keyHeight)
+    //   c.fillStyle = isBlack ? 'rgba(30, 30, 30, 0.5)' : 'rgba(75, 75, 75, 0.3)'
+    //   c.fillRect(0, y, NOTE_WIDTH, keyHeight)
 
-      // Draw thin horizontal separators similar to the left keys area
-      const isOctave = MIDI_IS_OCTAVE[midi] === 1
-      const isEF = MIDI_IS_EF[midi] === 1
-      const isNarrow = keyHeight < 4
-      const shouldDrawSeparator = isOctave || (isEF && !isNarrow)
-      if (shouldDrawSeparator) {
-        c.strokeStyle = isOctave ? 'rgba(100, 100, 100, 0.4)' : 'rgba(0,0,0, 0.2)'
-        c.lineWidth = 1
-        c.beginPath()
-        c.moveTo(0, y + keyHeight)
-        c.lineTo(NOTE_WIDTH, y + keyHeight)
-        c.stroke()
-      }
-    }
+    //   // Draw thin horizontal separators similar to the left keys area
+    //   const isOctave = MIDI_IS_OCTAVE[midi] === 1
+    //   const isEF = MIDI_IS_EF[midi] === 1
+    //   const isNarrow = keyHeight < 4
+    //   const shouldDrawSeparator = isOctave || (isEF && !isNarrow)
+    //   if (shouldDrawSeparator) {
+    //     c.strokeStyle = isOctave ? 'rgba(100, 100, 100, 0.4)' : 'rgba(0,0,0, 0.2)'
+    //     c.lineWidth = 1
+    //     c.beginPath()
+    //     c.moveTo(0, y + keyHeight)
+    //     c.lineTo(NOTE_WIDTH, y + keyHeight)
+    //     c.stroke()
+    //   }
+    // }
+
     const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
     for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
       const barIndex = Math.floor(barStart / barLengthSeconds)
@@ -401,9 +406,9 @@ export function usePianorollWidget({
         strokeDark = '#cc0f'
       }
       else {
-        fillStyle = '#0aff'
-        strokeBright = '#cfff'
-        strokeDark = '#06cf'
+        fillStyle = theme.colors.argument
+        strokeBright = luminate(theme.colors.argument, .1)
+        strokeDark = luminate(theme.colors.argument, -.1)
       }
       const ex = x + 0.5
       const ew = Math.max(2, eventWidth) - 1

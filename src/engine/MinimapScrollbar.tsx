@@ -50,15 +50,10 @@ export function MinimapScrollbar({
   const theme = useTheme()
   const colors = useMemo(() => {
     return [
-      theme.colors.keyword,
-      theme.colors.string,
       theme.colors.number,
       theme.colors.function,
       theme.colors.parameter,
       theme.colors.argument,
-      theme.colors.comment,
-      theme.colors.operator,
-      theme.colors.punctuation,
     ]
   }, [theme])
 

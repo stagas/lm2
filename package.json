@@ -23,6 +23,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "zustand": "^5.0.9"

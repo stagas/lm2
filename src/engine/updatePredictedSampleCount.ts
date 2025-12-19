@@ -19,7 +19,7 @@ export function updatePredictedSampleCount(
   const rawSampleCount = (Atomics.load(globalSampleCount, 0) >>> 0) as number
   const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
   const latencySamples = latencySeconds * sampleRate
-  const rawPlaybackPosition = rawSampleCount - latencySamples
+  const rawPlaybackPosition = rawSampleCount - (isPlaying ? latencySamples : 0)
 
   const nowSec = performance.now() / 1000
   const lastWall = st.lastWallTimeRef.current ?? nowSec
