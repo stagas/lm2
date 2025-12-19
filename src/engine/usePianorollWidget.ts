@@ -421,28 +421,28 @@ export function usePianorollWidget({
 
       c.fillStyle = fillStyle
       c.fillRect(ex, ey, ew, eh)
-      c.lineCap = 'square'
+      // c.lineCap = 'square'
 
-      c.lineWidth = 0.5
+      // c.lineWidth = 0.5
 
-      c.beginPath()
-      c.moveTo(ex + ew, ey)
-      c.lineTo(ex + ew, ey + eh)
-      c.strokeStyle = strokeDark
-      c.stroke()
+      // c.beginPath()
+      // c.moveTo(ex + ew, ey)
+      // c.lineTo(ex + ew, ey + eh)
+      // c.strokeStyle = strokeDark
+      // c.stroke()
 
-      c.beginPath()
-      c.moveTo(ex, ey + eh)
-      c.lineTo(ex, ey)
-      c.lineTo(ex + ew, ey)
-      c.strokeStyle = strokeBright
-      c.stroke()
+      // c.beginPath()
+      // c.moveTo(ex, ey + eh)
+      // c.lineTo(ex, ey)
+      // c.lineTo(ex + ew, ey)
+      // c.strokeStyle = strokeBright
+      // c.stroke()
 
-      c.beginPath()
-      c.moveTo(ex, ey + eh)
-      c.lineTo(ex + ew, ey + eh)
-      c.strokeStyle = strokeDark
-      c.stroke()
+      // c.beginPath()
+      // c.moveTo(ex, ey + eh)
+      // c.lineTo(ex + ew, ey + eh)
+      // c.strokeStyle = strokeDark
+      // c.stroke()
 
       c.globalAlpha = 1.0
     }
