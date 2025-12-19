@@ -6,6 +6,7 @@ import {
   PAST_SECONDS,
   TIME_WINDOW_SECONDS,
 } from '../../as/assembly/constants.ts'
+import { applySmoothing } from '../engine/util.ts'
 import type { VmHistory } from '../index.ts'
 import { frequencyToMidi } from '../mini/util.ts'
 import type { AnimationManager } from './animation-manager.ts'
@@ -77,7 +78,7 @@ export function createPianorollVisualization(
       smoothedTimeSeconds = targetTimeSeconds
     }
     else {
-      smoothedTimeSeconds += (targetTimeSeconds - smoothedTimeSeconds) * SCROLL_SMOOTHING
+      smoothedTimeSeconds = applySmoothing(smoothedTimeSeconds, targetTimeSeconds)
     }
 
     const displayTimeSeconds = smoothedTimeSeconds

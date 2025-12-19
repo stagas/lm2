@@ -1,4 +1,3 @@
-export const MINI_ARRAY_INDEX = 0
 export const PIANOROLL_KEY_WIDTH = 20
 export const SCROLL_SMOOTHING = 0.17
 export const DEFAULT_SEQUENCES = ['c4 e4 [g4 a4]*2', 'a3 c4 [d4 f4 a4]*2']

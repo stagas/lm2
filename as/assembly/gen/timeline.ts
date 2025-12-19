@@ -31,7 +31,8 @@ class HistoryEntry {
 export class Timeline extends Gen {
   bytecode$: usize = 0
   history$: usize = 0
-  beatDiv: f32 = 1.0
+  // beatsPerBar override. 0 means "use stored beatDiv from bytecode".
+  beatDiv: f32 = 0.0
 
   private lastBytecode$: usize = 0
   private lastHistory$: usize = 0

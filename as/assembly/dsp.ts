@@ -1146,17 +1146,18 @@ export class Dsp {
     }
 
     if (calleeAux === VmBuiltin.Timeline) {
-      // timeline(beatDiv, seq)
-      if (posCount < 2) {
+      // timeline(seq)
+      if (posCount < 1) {
         this.vmPush(VmTag.Undef)
         return
       }
 
-      const beatTag: VmTag = posTags[0] as VmTag
-      const beatNum: f64 = posNums[0]
-      const arrayTag: VmTag = posTags[1] as VmTag
-      const arrayNum: f64 = posNums[1]
-      if (beatTag !== VmTag.Num || arrayTag !== VmTag.Num) {
+      // Backwards compatibility: timeline(beatDiv, seq) is accepted, but beatDiv
+      // is compile-time only (durations are compiled to absolute beats).
+      const seqPos: i32 = posCount >= 2 ? 1 : 0
+      const arrayTag: VmTag = posTags[seqPos] as VmTag
+      const arrayNum: f64 = posNums[seqPos]
+      if (arrayTag !== VmTag.Num) {
         this.vmPush(VmTag.Undef)
         return
       }
@@ -1168,7 +1169,7 @@ export class Dsp {
       const timeline: Timeline = this.program.gensPool.get(Op.Timeline) as Timeline
       timeline.bytecode$ = changetype<usize>(this.program.data.arrays[arrayIndex])
       timeline.history$ = changetype<usize>(this.program.histories[arrayIndex])
-      timeline.beatDiv = beatNum as f32
+      timeline.beatDiv = 0.0
       timeline.process(out$, length)
 
       this.vmPush(VmTag.Audio, 0.0, outIndex)

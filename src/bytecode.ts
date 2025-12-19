@@ -141,13 +141,11 @@ export type MiniSequenceRef = {
 }
 
 export type TimelineSequenceDef = {
-  beat: number
   sequence: string
 }
 
 export type TimelineSequenceRef = {
   seqIndex: number
-  beat: number
   sequence: string
   /** Absolute start index (0-based) of the string content (excluding quotes) in the DSP source. */
   start: number
@@ -384,22 +382,20 @@ function extractTimelineSequencesFromProgramWithRefs(
   const keyToIndex = new Map<string, number>()
   const lineStarts = buildLineStarts(src)
 
-  function ensureIndex(beat: number, sequence: string): number {
-    const key = `${beat}|${sequence}`
-    const prev = keyToIndex.get(key)
+  function ensureIndex(sequence: string): number {
+    const prev = keyToIndex.get(sequence)
     if (prev !== undefined) return prev
     const idx = sequences.length
-    sequences.push({ beat, sequence })
-    keyToIndex.set(key, idx)
+    sequences.push({ sequence })
+    keyToIndex.set(sequence, idx)
     return idx
   }
 
-  function addRef(beat: number, sequence: string, loc: Loc): void {
-    const seqIndex = ensureIndex(beat, sequence)
+  function addRef(sequence: string, loc: Loc): void {
+    const seqIndex = ensureIndex(sequence)
     const quoteStart = locToIndex(lineStarts, loc)
     refs.push({
       seqIndex,
-      beat,
       sequence,
       start: quoteStart + 1,
       end: quoteStart + Math.max(0, loc.length - 1),
@@ -414,16 +410,13 @@ function extractTimelineSequencesFromProgramWithRefs(
       if (expr.callee?.kind === 'ident' && expr.callee?.name === 'timeline') {
         const args = expr.args ?? []
         const posArgs = args.filter((a: any) => a.kind === 'pos')
-        const beatArg = args.find((a: any) => a.kind === 'named' && a.name === 'beat') ?? posArgs[0]
-        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq') ?? posArgs[1]
-
-        const beatExpr = beatArg?.kind === 'pos' || beatArg?.kind === 'named' ? beatArg.value : null
-        const beat = tryEvalConstNumber(beatExpr) ?? 1
+        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq')
+          ?? (posArgs.length >= 2 ? posArgs[1] : posArgs[0])
 
         const seqExpr = seqArg?.kind === 'pos' || seqArg?.kind === 'named' ? seqArg.value : null
         if (seqExpr?.kind === 'string') {
           const sequence = String(seqExpr.value ?? '')
-          addRef(beat, sequence, seqExpr.loc)
+          addRef(sequence, seqExpr.loc)
         }
       }
 
@@ -740,7 +733,7 @@ export function encodeLangToVmOps(
   const sequenceToIndex = new Map<string, number>()
   sequences.forEach((seq, idx) => sequenceToIndex.set(seq, idx))
   const timelineKeyToIndex = new Map<string, number>()
-  timelineExtracted.sequences.forEach((s, idx) => timelineKeyToIndex.set(`${s.beat}|${s.sequence}`, idx))
+  timelineExtracted.sequences.forEach((s, idx) => timelineKeyToIndex.set(s.sequence, idx))
   const miniCount = sequences.length
 
   const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
@@ -789,17 +782,20 @@ export function encodeLangToVmOps(
 
       if (isTimeline) {
         const posArgs = args.filter((a: any) => a.kind === 'pos')
-        const beatArg = args.find((a: any) => a.kind === 'named' && a.name === 'beat') ?? posArgs[0]
-        const beat = tryEvalConstNumber(beatArg?.value) ?? 1
-
-        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq') ?? posArgs[1]
+        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq')
+          ?? (posArgs.length >= 2 ? posArgs[1] : posArgs[0])
         if (seqArg?.kind === 'pos' || seqArg?.kind === 'named') {
           const v = seqArg.value
           if (v?.kind === 'string') {
-            const key = `${beat}|${String(v.value ?? '')}`
+            const key = String(v.value ?? '')
             const idx = timelineKeyToIndex.get(key)
             if (idx !== undefined) {
               seqArg.value = toSeqIndexExpr(v.loc, miniCount + idx)
+              return {
+                ...expr,
+                callee,
+                args: [{ kind: 'pos', value: seqArg.value }],
+              }
             }
           }
         }

@@ -6,6 +6,7 @@ import { useEngineStore } from './store.ts'
 import type { TimelineWindow } from './ui.tsx'
 import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
 import { useSeekToSample } from './useSeekToSample.ts'
+import { applySmoothing } from './util.ts'
 
 export function useTimelineHeader() {
   const {
@@ -81,7 +82,7 @@ export function useTimelineHeader() {
 
         let smoothed = timelineTimeRef.current
         if (smoothed == null) smoothed = nowSeconds
-        else smoothed += (nowSeconds - smoothed) * SCROLL_SMOOTHING
+        else smoothed = applySmoothing(smoothed, nowSeconds)
         timelineTimeRef.current = smoothed
         const timeSeconds = smoothed
 

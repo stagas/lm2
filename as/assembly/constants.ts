@@ -22,11 +22,15 @@ export const CALLBACK_SCOPE_MAX_BINDINGS = 8
 export const MINI_EVENT_SIZE: i32 = 7
 export const MINI_HEADER_SIZE: i32 = 1
 
-// timeline(beat, seq) bytecode format
+// timeline(seq) bytecode format
 // [opLength,
 //  TIMELINE_MAGIC, segmentCount, totalUnits, beatDiv,
 //  [kind, durUnits, startValue, endValue, curve] * segmentCount
 // ]
+//
+// Notes:
+// - `durUnits` and `totalUnits` are compiled as absolute beats.
+// - `beatDiv` is currently always stored as 1.
 //
 // curve encoding:
 // - curve > 0: exponential curve using pow(t, curve)

@@ -13,6 +13,7 @@ import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
+import { applySmoothing } from './util.ts'
 
 const MIDI_IS_BLACK = new Uint8Array(128)
 const MIDI_IS_OCTAVE = new Uint8Array(128)
@@ -121,7 +122,7 @@ export function usePianorollWidget({
         st.timeSeconds = timeSeconds
       }
       else {
-        st.timeSeconds += (timeSeconds - st.timeSeconds) * SCROLL_SMOOTHING
+        st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
       }
 
       const windowStartTime = st.timeSeconds - PAST_SECONDS
@@ -251,7 +252,7 @@ export function usePianorollWidget({
     c.save()
     c.translate(0, widgetY)
     c.beginPath()
-    c.rect(0, 0, w, h)
+    c.rect(0, -10, w, h + 20)
     c.clip()
 
     c.fillStyle = 'rgba(0, 0, 0, 0.35)'
@@ -260,7 +261,7 @@ export function usePianorollWidget({
     // Draw keys on the left
     c.save()
     c.beginPath()
-    c.rect(0, 0, PIANOROLL_KEY_WIDTH, h)
+    c.rect(0, -10, PIANOROLL_KEY_WIDTH, h + 20)
     c.clip()
 
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {
@@ -323,7 +324,7 @@ export function usePianorollWidget({
     c.save()
     c.translate(PIANOROLL_KEY_WIDTH, 0)
     c.beginPath()
-    c.rect(0, 0, NOTE_WIDTH, h)
+    c.rect(0, -10, NOTE_WIDTH, h + 20)
     c.clip()
 
     for (let midi = displayMinMidi; midi <= displayMaxMidi; midi++) {

@@ -6,12 +6,15 @@ import {
   HISTORY_ENTRY_SIZE,
   PAST_SECONDS,
   TIME_WINDOW_SECONDS,
+  TIMELINE_KIND_GLIDE,
 } from '../../as/assembly/constants.ts'
 import type { TimelineSequenceRef } from '../bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
+import { getCurrentTheme } from './theme.ts'
 import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
+import { applySmoothing } from './util.ts'
 
 type TimelineSeg = {
   startSample: number
@@ -101,7 +104,7 @@ export function useTimelineWidget({
 
       st.sampleCount = sampleCount
       if (st.timeSeconds == null) st.timeSeconds = timeSeconds
-      else st.timeSeconds += (timeSeconds - st.timeSeconds) * 0.2
+      else st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
 
       const windowStartTime = st.timeSeconds - PAST_SECONDS
       const windowEndTime = st.timeSeconds + FUTURE_SECONDS
@@ -149,6 +152,48 @@ export function useTimelineWidget({
     }
   }, [showWidgets, program1, audioContext, globalSampleCount, timelineRefs])
 
+  const getValue = (segs: TimelineSeg[], si: number, sample: number): { v: number; si: number } => {
+    while (si < segs.length && sample >= segs[si]!.endSample) si++
+    const s = segs[si]
+    if (!s || sample < s.startSample) return { v: 0, si }
+    if (s.kind !== TIMELINE_KIND_GLIDE || s.endSample <= s.startSample) return { v: s.a, si }
+    const tt = (sample - s.startSample) / (s.endSample - s.startSample)
+    const p = curveValue(tt, s.exp)
+    return { v: s.a + (s.b - s.a) * p, si }
+  }
+
+  // Non-mutating value lookup for specific samples (used for junction markers).
+  const getValueAtSample = (segs: TimelineSeg[], sample: number): number => {
+    // Prefer the segment that contains the sample.
+    for (let k = 0; k < segs.length; k++) {
+      const ss = segs[k]!
+      if (sample >= ss.startSample && sample < ss.endSample) {
+        if (ss.kind !== TIMELINE_KIND_GLIDE || ss.endSample <= ss.startSample) return ss.a
+        const tt = (sample - ss.startSample) / (ss.endSample - ss.startSample)
+        const p = curveValue(tt, ss.exp)
+        return ss.a + (ss.b - ss.a) * p
+      }
+    }
+    // If not inside a segment, check for an exact start sample (use that segment's start value).
+    for (let k = 0; k < segs.length; k++) {
+      const ss = segs[k]!
+      if (ss.startSample === sample) {
+        if (ss.kind !== TIMELINE_KIND_GLIDE || ss.endSample <= ss.startSample) return ss.a
+        const p = curveValue(0, ss.exp)
+        return ss.a + (ss.b - ss.a) * p
+      }
+    }
+    // If still not found, check if any segment ends exactly at the sample (use its end value).
+    for (let k = 0; k < segs.length; k++) {
+      const ss = segs[k]!
+      if (ss.endSample === sample) {
+        if (ss.kind !== TIMELINE_KIND_GLIDE || ss.endSample <= ss.startSample) return ss.a
+        return ss.b
+      }
+    }
+    return 0
+  }
+
   const drawTimeline = useCallback((
     c: CanvasRenderingContext2D,
     seqIndex: number,
@@ -170,17 +215,19 @@ export function useTimelineWidget({
     const windowStartSample = windowStartTime * sampleRate
 
     const bpm = bpmValue[0] || 60
-    const barLengthSeconds = (60) / bpm
-    const cycleLengthSeconds = 60 / bpm
+    const barLengthSeconds = (4 * 60) / bpm
+    const beatLengthSeconds = 60 / bpm
     const currentTimeX = (PAST_SECONDS / TIME_WINDOW_SECONDS) * w
 
     c.save()
+    c.lineCap = 'square'
+    c.lineJoin = 'miter'
     c.translate(x, 0)
 
     c.save()
     c.translate(0, widgetY)
     c.beginPath()
-    c.rect(0, 0, w, h)
+    c.rect(0, -10, w, h + 20)
     c.clip()
 
     c.fillStyle = 'rgba(0, 0, 0, 0.35)'
@@ -194,67 +241,132 @@ export function useTimelineWidget({
     const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
     for (let barStart = firstBarStart; barStart < windowStartTime + TIME_WINDOW_SECONDS; barStart += barLengthSeconds) {
       const barIndex = Math.floor(barStart / barLengthSeconds)
-      // Group bars in sets of 4 and alternate the group's color to match pianoroll
-      const barGroupIndex = Math.floor(barIndex / 4)
-      const isEvenGroup = barGroupIndex % 2 === 0
+      const isEvenBar = barIndex % 2 === 0
       const barX = (barStart - windowStartTime) * pixelsPerSecond
       const barWidth = barLengthSeconds * pixelsPerSecond
-      c.fillStyle = isEvenGroup ? 'rgba(255, 255, 255, 0.09)' : 'rgba(255, 255, 255, 0.12)'
+      c.fillStyle = isEvenBar ? 'rgba(255, 255, 255, 0.09)' : 'rgba(255, 255, 255, 0.12)'
       c.fillRect(barX, 0, barWidth, h)
     }
 
-    // Vertical separators for bar boundaries
-    c.strokeStyle = '#000'
+    // Beat boundaries (like pianoroll)
+    c.strokeStyle = 'rgba(0, 0, 0, 1.0)'
     c.lineWidth = 0.25
-    const firstBar = Math.floor(windowStartTime / barLengthSeconds) - 1
-    const lastBar = Math.floor((windowStartTime + TIME_WINDOW_SECONDS) / barLengthSeconds) + 1
-    for (let bar = firstBar; bar <= lastBar; bar++) {
-      const t = bar * barLengthSeconds
-      const px = (t - windowStartTime) * pixelsPerSecond
+    const firstBeatStart = Math.floor(windowStartTime / beatLengthSeconds) * beatLengthSeconds
+    for (let beatStart = firstBeatStart; beatStart < windowStartTime + TIME_WINDOW_SECONDS;
+      beatStart += beatLengthSeconds)
+    {
+      const px = (beatStart - windowStartTime) * pixelsPerSecond
       c.beginPath()
       c.moveTo(px, 0)
       c.lineTo(px, h)
       c.stroke()
     }
 
-    c.strokeStyle = 'rgba(255, 255, 255, 0.04)'
-    const firstBeat = Math.floor(windowStartTime / cycleLengthSeconds) - 1
-    const lastBeat = Math.floor((windowStartTime + TIME_WINDOW_SECONDS) / cycleLengthSeconds) + 1
-    for (let beat = firstBeat; beat <= lastBeat; beat++) {
-      const t = beat * cycleLengthSeconds
-      const px = (t - windowStartTime) * pixelsPerSecond
-      c.beginPath()
-      c.moveTo(px, 0)
-      c.lineTo(px, h)
-      c.stroke()
-    }
-
-    // Value line
+    // Value line: sample per-pixel but detect exact segment boundaries and draw
+    // vertical jumps at those exact x positions instead of letting the line tilt.
     const segs = st.frameSegs
     let si = 0
 
-    const getValue = (sample: number): number => {
-      while (si < segs.length && sample >= segs[si]!.endSample) si++
-      const s = segs[si]
-      if (!s || sample < s.startSample) return 0
-      if (s.kind !== 1 || s.endSample <= s.startSample) return s.a
-      const tt = (sample - s.startSample) / (s.endSample - s.startSample)
-      const p = curveValue(tt, s.exp)
-      return s.a + (s.b - s.a) * p
-    }
+    c.strokeStyle = getCurrentTheme().colors.function
+    c.lineWidth = 1.35
 
-    c.strokeStyle = 'rgba(0, 255, 255, 0.85)'
-    c.lineWidth = 2
+    // helper to compute pixel X for a sample
+    const sampleToPx = (samp: number) => ((samp - windowStartSample) / (TIME_WINDOW_SECONDS * sampleRate)) * w
+
     c.beginPath()
+    let prevSample = windowStartSample
     for (let px = 0; px <= w; px++) {
       const t = px / w
       const sample = windowStartSample + t * TIME_WINDOW_SECONDS * sampleRate
-      const v = getValue(sample)
+      if (sample < 0) continue
+
+      const r = getValue(segs, si, sample)
+      si = r.si
+      const v = r.v
       const y = (1 - v) * (h - 2) + 1
-      if (px === 0) c.moveTo(px, y)
-      else c.lineTo(px, y)
+
+      if (px === 0) {
+        c.moveTo(px, y)
+        prevSample = sample
+        continue
+      }
+
+      // Detect if any segment boundary (startSample) lies between prevSample and sample.
+      // If so, draw a vertical line at the exact boundary instead of a diagonal.
+      let boundaryFound: number | null = null
+      for (let k = 0; k < segs.length; k++) {
+        const ss = segs[k]!
+        const b = ss.startSample
+        if (b > prevSample && b <= sample) {
+          boundaryFound = b
+          break
+        }
+      }
+
+      if (boundaryFound == null) {
+        // no boundary in this pixel interval; draw normal horizontal step
+        c.lineTo(px, y)
+        prevSample = sample
+      }
+      else {
+        // compute exact x for boundary and y values on each side
+        const boundaryPx = sampleToPx(boundaryFound)
+        // value just before boundary (use sample-1) and at boundary (start value)
+        const beforeVal = getValueAtSample(segs, Math.max(0, boundaryFound - 1))
+        const afterVal = getValueAtSample(segs, boundaryFound)
+        const yBefore = (1 - beforeVal) * (h - 2) + 1
+        const yAfter = (1 - afterVal) * (h - 2) + 1
+
+        // finish current path up to the boundary (using yBefore), stroke that segment
+        c.lineTo(boundaryPx, yBefore)
+        // c.stroke()
+
+        // draw vertical jump at the exact boundary
+        // c.beginPath()
+        c.lineTo(boundaryPx, yBefore)
+        c.lineTo(boundaryPx, yAfter)
+        // c.stroke()
+
+        // start a new main path at the boundary continuation point and draw to current px
+        // c.beginPath()
+        // c.lineTo(boundaryPx, yAfter)
+        c.lineTo(px, y)
+
+        // update trackers
+        prevSample = sample
+      }
     }
+    // stroke any remaining path (in case last segment wasn't stroked inside loop)
     c.stroke()
+
+    // Draw small circles at every segment boundary, including the previous value when it changes
+    c.fillStyle = 'rgba(0, 255, 255, 0.95)'
+    c.strokeStyle = 'rgba(0, 0, 0, 0.6)'
+    c.lineWidth = 0.25
+    const circleRadius = 3
+    for (let j = 0; j < segs.length; j++) {
+      const s = segs[j]!
+      const sample = s.startSample
+      const px = sampleToPx(sample)
+      if (px < 0 || px > w) continue
+
+      const drawCircle = (value: number) => {
+        const y = (1 - value) * (h - 2) + 1
+        c.beginPath()
+        c.arc(px, y, circleRadius, 0, Math.PI * 2)
+        c.fill()
+        c.stroke()
+      }
+
+      const beforeSample = sample > windowStartSample ? Math.max(windowStartSample, sample - 1) : null
+      if (j > 0 && beforeSample != null && beforeSample < sample) {
+        const valueBefore = getValueAtSample(segs, beforeSample)
+        drawCircle(valueBefore)
+      }
+
+      const valueAtBoundary = getValueAtSample(segs, sample)
+      drawCircle(valueAtBoundary)
+    }
 
     // Current time marker
     c.strokeStyle = 'rgba(255, 255, 0, 0.8)'
@@ -280,6 +392,8 @@ export function useTimelineWidget({
         column: 1,
         length: 1,
         height: 40,
+        pointerDown: (x, y, offsetX, offsetY) => {
+        },
         render: (ctx, _x, y, _w, h, vx, vw) => {
           drawTimeline(ctx, ref.seqIndex, y, h, vx, vw)
         },

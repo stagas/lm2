@@ -3,9 +3,10 @@ intro2=mini('scale dorian i*6')
 a=mini('scale dorian <transpose -2 transpose 0>/4 octave -1 [i ii v]$.5/2')
 b=mini('scale dorian <transpose -2 transpose 0>/4 octave 0 [i ii v]*2')
 c=mini('scale dorian <transpose -2 transpose 0>/4 octave 1 [i ii v]\*2;1')
+tl=timeline('1,1 2,.5l10 3,0e5')
 part1=[a,b] part2=[c,a] progr=[part2,part1]
 play(t < 2.0 ? intro : t < 4 ? intro2 : progr[(t/4)%2][(t*3)%2], (trig, velocity, hz) -> {
   env = adsr(attack:.01, decay:.1, sustain:.2, release:.7, trig)
   s=sine(hz*[1,1.5,1/1.5][t%3]+sine(2,trig)*1,trig)
   s * env * velocity * .20
-}) |> analyser($) |> out($)
+}) * tl |> analyser($) |> out($)

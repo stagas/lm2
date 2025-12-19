@@ -1,30 +1,21 @@
 Here we define the notation for a Timeline sequence.
 The Timeline sequence is a progression of values in time that interpolate/glide to one another.
+We define a set of points that will create interpolated glides between
+those points.
+The base division is 1 bar.
 
 ```
-/ -- rise
-\ -- fall
-0..1 -- target value is a real normal 0 to 1
-b<number> -- beats duration to hold/rise/fall
-e<number> -- exponent of curve(used with rise/fall)
+1,1 4,0e3 8,0 8,1 12,0l2
 ```
-
-Examples:
-
-```
-0b3 /b1 1b4 0b4
--- 0 for 3 beats, rise for 1 beat to the next value(1.0), hold for 4 beats, drop to 0 for 4 beats
-
-/b2e5 .5b4 \b2e.5
--- rise for 2 beats with exponent 5 to value 0.5, hold 0.5 for 4 beats, fall for 2 beats with exponent 0.5
-```
-
-The API shall be similar to `mini(seq)` and it will be `timeline(beat,seq)`.
-`beat` is the beat division to use for the beat calculations. e.g 1 (whole) 1/16 (sixteenths) etc.
-For example:
+Translates:
+1,1 -- at bar 1, value 1.
+4,0e3 -- at beat 4, value 0, exponential curve power 3 from the previous value
+8,0 -- at bar 8, value 0.
+8,1 -- at bar 8, value 1 (abrupt change).
+12,0l2 -- at bar 12, value 0, logarithmic curve power 2 from the previous value
 
 ```
-timeline(1,'/b1 1b4 \b1')*voice |> out($)
+timeline('1,1 4,0e3 8,0 8,1 12,0l2')*voice |> out($)
 ```
 
 A dsp gen will be created for it with similar properties as with "mini"

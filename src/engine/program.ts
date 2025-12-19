@@ -67,12 +67,11 @@ function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataV
 }
 
 function updateTimelineSequence(
-  beat: number,
   sequence: string,
   arrayIndex: number,
   data: ProgramDataView,
 ): void {
-  const compiled = compileTimelineNotation(sequence, beat)
+  const compiled = compileTimelineNotation(sequence)
   const target = data.arrays[arrayIndex]
 
   const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE)
@@ -360,7 +359,7 @@ async function createProgram(
               newData.arrays[arrayIndex].raw[3] = oldArray.raw[3]
             }
 
-            updateTimelineSequence(s.beat, s.sequence, arrayIndex, newData)
+            updateTimelineSequence(s.sequence, arrayIndex, newData)
           }
 
           if (setData) {
