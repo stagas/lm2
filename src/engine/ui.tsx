@@ -293,6 +293,8 @@ export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: Rea
     audioContext,
     bpmValue,
     globalSampleCount,
+    program1,
+    timelineRefs,
     pause,
     playbackState,
     start,
@@ -331,6 +333,7 @@ export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: Rea
         audioContext={audioContext}
         bpmValue={bpmValue}
         globalSampleCount={globalSampleCount}
+        timelineRefs={timelineRefs}
         seekToSample={seekToSample}
         timelineWindowRef={timelineWindowRef}
       />

@@ -4,12 +4,20 @@ import {
   useEffect,
   useRef,
 } from 'react'
+import type { TimelineSequenceRef } from '../bytecode.ts'
+import {
+  evalCompiledTimelineAtBeat,
+  parseCompiledTimeline,
+  type CompiledTimeline,
+} from './timeline-history.ts'
+import { compileTimelineNotation } from '../timeline/compiler.ts'
 import type { TimelineWindow } from './ui.tsx'
 
 type MinimapScrollbarProps = {
   audioContext?: AudioContext | null
   bpmValue?: Float32Array
   globalSampleCount?: Int32Array
+  timelineRefs?: TimelineSequenceRef[]
   seekToSample: (targetSampleCount: number) => void
   timelineWindowRef: React.RefObject<TimelineWindow>
 }
@@ -23,11 +31,19 @@ export function MinimapScrollbar({
   audioContext,
   bpmValue,
   globalSampleCount,
+  timelineRefs,
   seekToSample,
   timelineWindowRef,
 }: MinimapScrollbarProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
+  const timelineCacheRef = useRef<Map<number, {
+    sequence: string
+    width: number
+    bpm: number
+    tl: CompiledTimeline | null
+    vByX: Float32Array
+  }>>(new Map())
 
   let currentSample = 0
 
@@ -102,6 +118,77 @@ export function MinimapScrollbar({
     const endRatio = Math.max(0, Math.min(1, windowData.windowEndTime / totalSeconds))
     const viewportWidth = Math.max(0, width * (endRatio - startRatio))
 
+    // Timeline overlays across the whole minimap (0..totalSeconds).
+    // Draw them before the viewport tint so the viewport remains readable.
+    if (timelineRefs && timelineRefs.length > 0 && audioContext) {
+      const chartTop = 14
+      const chartHeight = Math.max(1, height - chartTop - 2)
+      const beatsPerSecond = bpm / 60
+
+      const seenSeqs = new Set<number>()
+      let colorIndex = 0
+
+      for (const ref of timelineRefs) {
+        const seqIndex = ref.seqIndex
+        if (seenSeqs.has(seqIndex)) continue
+        seenSeqs.add(seqIndex)
+
+        const cached = timelineCacheRef.current.get(seqIndex)
+        const canUseCached = cached
+          && cached.sequence === ref.sequence
+          && cached.width === width
+          && cached.bpm === bpm
+
+        let tl = cached?.tl ?? null
+        let vByX = cached?.vByX
+        if (!canUseCached) {
+          const compiled = compileTimelineNotation(ref.sequence)
+          tl = parseCompiledTimeline(compiled.bytecode)
+          vByX = new Float32Array(width + 1)
+
+          if (tl) {
+            for (let px = 0; px <= width; px++) {
+              const tt = width > 0 ? px / width : 0
+              const timeSeconds = tt * totalSeconds
+              const beatAbs = timeSeconds * beatsPerSecond
+              vByX[px] = evalCompiledTimelineAtBeat(tl, beatAbs)
+            }
+          }
+
+          timelineCacheRef.current.set(seqIndex, {
+            sequence: ref.sequence,
+            width,
+            bpm,
+            tl,
+            vByX,
+          })
+        }
+
+        if (!tl || !vByX) continue
+
+        const hue = (colorIndex * 137.508) % 360
+        colorIndex++
+
+        ctx.strokeStyle = `hsla(${hue}, 85%, 65%, 0.85)`
+        ctx.lineWidth = 1
+
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(0, chartTop, width, chartHeight)
+        ctx.clip()
+        ctx.beginPath()
+
+        for (let px = 0; px <= width; px++) {
+          const v = vByX[px]!
+          const y = chartTop + (1 - v) * chartHeight
+          if (px === 0) ctx.moveTo(px, y)
+          else ctx.lineTo(px, y)
+        }
+        ctx.stroke()
+        ctx.restore()
+      }
+    }
+
     if (viewportWidth > 0) {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'
       ctx.fillRect(width * startRatio, 0, viewportWidth, height)
@@ -142,7 +229,7 @@ export function MinimapScrollbar({
 
     ctx.fillStyle = 'rgba(255, 220, 0, 0.2)'
     ctx.fillRect(Math.max(0, playheadX - 1.5), 0, 3, height)
-  }, [audioContext, bpmValue, globalSampleCount, timelineWindowRef])
+  }, [audioContext, bpmValue, globalSampleCount, timelineRefs, timelineWindowRef])
 
   useEffect(() => {
     let frameId: number | null = null

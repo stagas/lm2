@@ -2,40 +2,22 @@ import type { EditorWidget } from 'mini-code'
 import { useCallback, useMemo, useRef } from 'react'
 import {
   FUTURE_SECONDS,
-  HISTORY_DATA_OFFSET,
-  HISTORY_ENTRY_SIZE,
   PAST_SECONDS,
   TIME_WINDOW_SECONDS,
-  TIMELINE_KIND_GLIDE,
 } from '../../as/assembly/constants.ts'
 import type { TimelineSequenceRef } from '../bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { getCurrentTheme } from './theme.ts'
+import {
+  getTimelineValue,
+  getTimelineValueAtSample,
+  readTimelineSegsFromHistory,
+  type TimelineSeg,
+} from './timeline-history.ts'
 import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
 import { applySmoothing } from './util.ts'
-
-type TimelineSeg = {
-  startSample: number
-  endSample: number
-  a: number
-  b: number
-  kind: number
-  exp: number
-}
-
-function curveValue(t: number, curve: number): number {
-  if (curve > 0) return Math.pow(t, curve)
-  if (curve < 0) {
-    const base = -curve
-    if (base > 0) {
-      const den = Math.log(base)
-      if (den !== 0) return Math.log(1 + (base - 1) * t) / den
-    }
-  }
-  return t
-}
 
 type TimelineState = {
   timeSeconds: number | null
@@ -116,34 +98,7 @@ export function useTimelineWidget({
         continue
       }
 
-      const segs: TimelineSeg[] = []
-      const historyRaw = history.raw
-
-      for (let idx = HISTORY_DATA_OFFSET; idx + 5 < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
-        const kind = historyRaw[idx]!
-        const exp = historyRaw[idx + 1]!
-        const a = historyRaw[idx + 2]!
-        const b = historyRaw[idx + 3]!
-        const startSample = historyRaw[idx + 4]!
-        const endSample = historyRaw[idx + 5]!
-
-        if (startSample === 0 && endSample === 0) continue
-
-        const startTimeSeconds = startSample / sampleRate
-        const endTimeSeconds = endSample / sampleRate
-        if (endTimeSeconds < windowStartTime || startTimeSeconds > windowEndTime) continue
-
-        segs.push({
-          startSample,
-          endSample,
-          a,
-          b,
-          kind,
-          exp,
-        })
-      }
-
-      segs.sort((x, y) => x.startSample - y.startSample)
+      const segs = readTimelineSegsFromHistory(history.raw, sampleRate, windowStartTime, windowEndTime)
 
       st.segs = segs
       st.savedSegs = segs
@@ -151,48 +106,6 @@ export function useTimelineWidget({
       stateRef.current.set(seqIndex, st)
     }
   }, [showWidgets, program1, audioContext, globalSampleCount, timelineRefs])
-
-  const getValue = (segs: TimelineSeg[], si: number, sample: number): { v: number; si: number } => {
-    while (si < segs.length && sample >= segs[si]!.endSample) si++
-    const s = segs[si]
-    if (!s || sample < s.startSample) return { v: 0, si }
-    if (s.kind !== TIMELINE_KIND_GLIDE || s.endSample <= s.startSample) return { v: s.a, si }
-    const tt = (sample - s.startSample) / (s.endSample - s.startSample)
-    const p = curveValue(tt, s.exp)
-    return { v: s.a + (s.b - s.a) * p, si }
-  }
-
-  // Non-mutating value lookup for specific samples (used for junction markers).
-  const getValueAtSample = (segs: TimelineSeg[], sample: number): number => {
-    // Prefer the segment that contains the sample.
-    for (let k = 0; k < segs.length; k++) {
-      const ss = segs[k]!
-      if (sample >= ss.startSample && sample < ss.endSample) {
-        if (ss.kind !== TIMELINE_KIND_GLIDE || ss.endSample <= ss.startSample) return ss.a
-        const tt = (sample - ss.startSample) / (ss.endSample - ss.startSample)
-        const p = curveValue(tt, ss.exp)
-        return ss.a + (ss.b - ss.a) * p
-      }
-    }
-    // If not inside a segment, check for an exact start sample (use that segment's start value).
-    for (let k = 0; k < segs.length; k++) {
-      const ss = segs[k]!
-      if (ss.startSample === sample) {
-        if (ss.kind !== TIMELINE_KIND_GLIDE || ss.endSample <= ss.startSample) return ss.a
-        const p = curveValue(0, ss.exp)
-        return ss.a + (ss.b - ss.a) * p
-      }
-    }
-    // If still not found, check if any segment ends exactly at the sample (use its end value).
-    for (let k = 0; k < segs.length; k++) {
-      const ss = segs[k]!
-      if (ss.endSample === sample) {
-        if (ss.kind !== TIMELINE_KIND_GLIDE || ss.endSample <= ss.startSample) return ss.a
-        return ss.b
-      }
-    }
-    return 0
-  }
 
   const drawTimeline = useCallback((
     c: CanvasRenderingContext2D,
@@ -280,7 +193,7 @@ export function useTimelineWidget({
       const sample = windowStartSample + t * TIME_WINDOW_SECONDS * sampleRate
       if (sample < 0) continue
 
-      const r = getValue(segs, si, sample)
+      const r = getTimelineValue(segs, si, sample)
       si = r.si
       const v = r.v
       const y = (1 - v) * (h - 2) + 1
@@ -312,8 +225,8 @@ export function useTimelineWidget({
         // compute exact x for boundary and y values on each side
         const boundaryPx = sampleToPx(boundaryFound)
         // value just before boundary (use sample-1) and at boundary (start value)
-        const beforeVal = getValueAtSample(segs, Math.max(0, boundaryFound - 1))
-        const afterVal = getValueAtSample(segs, boundaryFound)
+        const beforeVal = getTimelineValueAtSample(segs, Math.max(0, boundaryFound - 1))
+        const afterVal = getTimelineValueAtSample(segs, boundaryFound)
         const yBefore = (1 - beforeVal) * (h - 2) + 1
         const yAfter = (1 - afterVal) * (h - 2) + 1
 
@@ -360,11 +273,11 @@ export function useTimelineWidget({
 
       const beforeSample = sample > windowStartSample ? Math.max(windowStartSample, sample - 1) : null
       if (j > 0 && beforeSample != null && beforeSample < sample) {
-        const valueBefore = getValueAtSample(segs, beforeSample)
+        const valueBefore = getTimelineValueAtSample(segs, beforeSample)
         drawCircle(valueBefore)
       }
 
-      const valueAtBoundary = getValueAtSample(segs, sample)
+      const valueAtBoundary = getTimelineValueAtSample(segs, sample)
       drawCircle(valueAtBoundary)
     }
 
