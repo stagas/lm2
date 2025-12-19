@@ -252,14 +252,14 @@ export const themes: Record<string, Omit<Theme, 'font'>> = {
       string: '#cccccc',
       number: '#ffff00',
       function: '#ea580c', // '#55ddff', //
-      parameter: '#dddddd',
+      parameter: '#aaa',
       argument: '#ea580c', // orange-600
       comment: '#666666',
-      operator: '#ffffff',
+      operator: '#bbb',
       punctuation: '#bbbbbb',
       default: '#ffffff',
     },
-    ['#ffffff', '#cccccc', '#888888'],
+    ['#777', '#aaa', '#fff'],
     '#ff0000',
     '#000',
     '#000000',
