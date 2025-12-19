@@ -2,13 +2,25 @@ import { CodeEditor, CodeFile, type EditorHeader, type EditorWidget } from 'mini
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
+import { LITERALS_COUNT, OPS_COUNT } from '../../as/assembly/constants.ts'
+import type {
+  AnalyserRef,
+  ArrayLiteralRef,
+  MiniSequenceRef,
+  NumberWithParamsInfo,
+  TimelineSequenceRef,
+} from '../bytecode.ts'
+import { encodeLangToVmOps } from '../bytecode.ts'
 import { Logo } from '../components/Logo.tsx'
 import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
+import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
+import { compileMiniNotation } from '../mini/compiler.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { useEngine } from './program.ts'
 import { useEngineStore } from './store.ts'
@@ -48,22 +60,37 @@ export type TimelineWindow = {
   timeSeconds: number
 }
 
+type WidgetCompileState = {
+  dspSource: string
+  sequences: string[]
+  miniRefs: MiniSequenceRef[]
+  timelineRefs: TimelineSequenceRef[]
+  miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  analyserRefs: AnalyserRef[]
+  arrayLiterals: ArrayLiteralRef[]
+  numberParams: NumberWithParamsInfo[]
+}
+
 export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHeader }) {
   const {
     dspSource,
     updateDspSource,
     isProgramReady,
     program1,
+    program2,
     audioContext,
     bpmValue,
     globalSampleCount,
     ringPos,
-    miniRefs,
-    timelineRefs,
-    miniSourceMaps,
-    analyserRefs,
-    arrayLiterals,
-    numberParams,
+    uiDspSource,
+    uiSequences,
+    uiMiniRefs,
+    uiTimelineRefs,
+    uiMiniSourceMaps,
+    uiAnalyserRefs,
+    uiArrayLiterals,
+    uiNumberParams,
+    isProgramSwapPending,
   } = useEngineStore()
 
   const { playbackState } = useEngineStore()
@@ -114,6 +141,89 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     || isUpdatingDsp
     || hasLocalErrors
 
+  const previewTargetRef = useRef<{ ops: Int32Array; literals: Float32Array } | null>(null)
+  if (!previewTargetRef.current) {
+    previewTargetRef.current = {
+      ops: new Int32Array(OPS_COUNT),
+      literals: new Float32Array(LITERALS_COUNT),
+    }
+  }
+
+  const widgetCompileState = useMemo((): WidgetCompileState => {
+    if (localSource === uiDspSource) {
+      return {
+        dspSource: uiDspSource,
+        sequences: uiSequences,
+        miniRefs: uiMiniRefs,
+        timelineRefs: uiTimelineRefs,
+        miniSourceMaps: uiMiniSourceMaps,
+        analyserRefs: uiAnalyserRefs,
+        arrayLiterals: uiArrayLiterals,
+        numberParams: uiNumberParams,
+      }
+    }
+
+    const target = previewTargetRef.current
+    if (!target) {
+      return {
+        dspSource: uiDspSource,
+        sequences: uiSequences,
+        miniRefs: uiMiniRefs,
+        timelineRefs: uiTimelineRefs,
+        miniSourceMaps: uiMiniSourceMaps,
+        analyserRefs: uiAnalyserRefs,
+        arrayLiterals: uiArrayLiterals,
+        numberParams: uiNumberParams,
+      }
+    }
+
+    target.ops.fill(0)
+    target.literals.fill(0)
+
+    const result = encodeLangToVmOps(localSource, target)
+    if (result.errors.length) {
+      return {
+        dspSource: uiDspSource,
+        sequences: uiSequences,
+        miniRefs: uiMiniRefs,
+        timelineRefs: uiTimelineRefs,
+        miniSourceMaps: uiMiniSourceMaps,
+        analyserRefs: uiAnalyserRefs,
+        arrayLiterals: uiArrayLiterals,
+        numberParams: uiNumberParams,
+      }
+    }
+
+    const sequences = result.miniSequences ?? []
+    const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map((s) => {
+      const compiled = compileMiniNotation(s)
+      return buildMiniSourceMap(compiled.nodes, compiled.bytecode)
+    })
+
+    return {
+      dspSource: localSource,
+      sequences,
+      miniRefs: result.miniRefs ?? [],
+      timelineRefs: result.timelineRefs ?? [],
+      miniSourceMaps,
+      analyserRefs: result.analyserRefs ?? [],
+      arrayLiterals: result.arrayLiterals ?? [],
+      numberParams: result.numberParams ?? [],
+    }
+  }, [
+    localSource,
+    uiDspSource,
+    uiSequences,
+    uiMiniRefs,
+    uiTimelineRefs,
+    uiMiniSourceMaps,
+    uiAnalyserRefs,
+    uiArrayLiterals,
+    uiNumberParams,
+  ])
+
+  const runtimeProgram = isProgramSwapPending ? program2 : program1
+
   const handleApply = async () => {
     if (!isProgramReady) return
     const requested = localSource
@@ -126,20 +236,20 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     }
   }
 
-  useEffect(() => {
-    handleApply()
+  useLayoutEffect(() => {
+    void handleApply()
   }, [localSource, isProgramReady])
 
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())
 
   const { widgets: sequenceWidgets, onBeforeDraw } = useSequenceWidget({
-    program1,
+    program1: runtimeProgram,
     audioContext,
     globalSampleCount,
-    miniSourceMaps,
-    miniRefs,
-    dspSource,
+    miniSourceMaps: widgetCompileState.miniSourceMaps,
+    miniRefs: widgetCompileState.miniRefs,
+    dspSource: widgetCompileState.dspSource,
     showWidgets,
     frameRef,
     controlStateRef,
@@ -147,56 +257,56 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
   })
 
   const { widgets: pianorollWidgets, onBeforeDraw: onBeforeDrawPianoroll } = usePianorollWidget({
-    program1,
+    program1: runtimeProgram,
     audioContext,
     bpmValue,
     globalSampleCount,
-    miniSourceMaps,
-    miniRefs,
-    dspSource,
+    miniSourceMaps: widgetCompileState.miniSourceMaps,
+    miniRefs: widgetCompileState.miniRefs,
+    dspSource: widgetCompileState.dspSource,
     showWidgets,
   })
 
   const { widgets: timelineWidgets, onBeforeDraw: onBeforeDrawTimeline } = useTimelineWidget({
-    program1,
+    program1: runtimeProgram,
     audioContext,
     bpmValue,
     globalSampleCount,
-    timelineRefs,
-    dspSource,
+    timelineRefs: widgetCompileState.timelineRefs,
+    dspSource: widgetCompileState.dspSource,
     showWidgets,
   })
 
   const { widgets: timelineSequenceWidgets, onBeforeDraw: onBeforeDrawTimelineSequence } = useTimelineSequenceWidget({
-    program1,
+    program1: runtimeProgram,
     audioContext,
     bpmValue,
     globalSampleCount,
-    timelineRefs,
-    dspSource,
+    timelineRefs: widgetCompileState.timelineRefs,
+    dspSource: widgetCompileState.dspSource,
     showWidgets,
   })
 
   const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
-    program1,
+    program1: runtimeProgram,
     ringPos,
-    analyserRefs,
-    dspSource,
+    analyserRefs: widgetCompileState.analyserRefs,
+    dspSource: widgetCompileState.dspSource,
     showWidgets,
     playbackState,
     sampleRate: audioContext?.sampleRate,
   })
 
   const { widgets: arrayAccessWidgets, onBeforeDraw: onBeforeDrawArrayAccess } = useArrayAccessWidget({
-    program1,
-    dspSource,
+    program1: runtimeProgram,
+    dspSource: widgetCompileState.dspSource,
     showWidgets,
-    arrayLiterals,
+    arrayLiterals: widgetCompileState.arrayLiterals,
   })
 
   const { widgets: sliderWidgets } = useSliderWidget({
     showWidgets,
-    numberParams,
+    numberParams: widgetCompileState.numberParams,
     theme,
     codeFileRef,
   })

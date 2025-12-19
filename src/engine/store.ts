@@ -48,6 +48,17 @@ type EngineState = {
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
   dspSource: string
+  // UI-facing compilation results. These are updated as soon as we have a
+  // successful compile, even if the worklet is still crossfading programs.
+  uiSequences: string[]
+  uiMiniRefs: MiniSequenceRef[]
+  uiTimelineRefs: TimelineSequenceRef[]
+  uiMiniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  uiAnalyserRefs: AnalyserRef[]
+  uiArrayLiterals: ArrayLiteralRef[]
+  uiNumberParams: NumberWithParamsInfo[]
+  uiDspSource: string
+  isProgramSwapPending: boolean
   isUpdatingDsp: boolean
   isInitialized: boolean
   isProgramReady: boolean
@@ -155,7 +166,12 @@ export const useEngineStore = create<EngineState>((set, get) => {
     const newNorm = normalizeSourceWithRanges(source, ranges.filter((_, i) => i % 2 === 1))
     if (oldNorm !== newNorm) return undefined
     if (updates.length === 0) {
-      set({ dspSource: source, numberParams: nextNumberParams })
+      set({
+        dspSource: source,
+        numberParams: nextNumberParams,
+        uiDspSource: source,
+        uiNumberParams: nextNumberParams,
+      })
       localStorage.setItem('engine2:dsp-source', source)
       return state.sequences
     }
@@ -164,7 +180,12 @@ export const useEngineStore = create<EngineState>((set, get) => {
       await primaryProgram.program.writeLiteral(u.index, u.value)
     }
 
-    set({ dspSource: source, numberParams: nextNumberParams })
+    set({
+      dspSource: source,
+      numberParams: nextNumberParams,
+      uiDspSource: source,
+      uiNumberParams: nextNumberParams,
+    })
     localStorage.setItem('engine2:dsp-source', source)
     return state.sequences
   }
@@ -213,6 +234,15 @@ export const useEngineStore = create<EngineState>((set, get) => {
           arrayLiterals,
           numberParams,
           lastSuccessfulProgramData: primaryResult.data,
+          uiDspSource: source,
+          uiSequences: sequences,
+          uiMiniRefs: miniRefs,
+          uiTimelineRefs: timelineRefs,
+          uiMiniSourceMaps: miniSourceMaps,
+          uiAnalyserRefs: analyserRefs,
+          uiArrayLiterals: arrayLiterals,
+          uiNumberParams: numberParams,
+          isProgramSwapPending: false,
         })
         localStorage.setItem('engine2:dsp-source', source)
         return sequences
@@ -233,6 +263,20 @@ export const useEngineStore = create<EngineState>((set, get) => {
         throw new Error('Program swap buffers not initialized')
       }
 
+      // Early UI update: we already have the compiled refs/source maps, but the worklet
+      // crossfade swap can take a few chunks to finish.
+      set({
+        uiDspSource: source,
+        uiSequences: sequences,
+        uiMiniRefs: stagingResult.miniRefs,
+        uiTimelineRefs: stagingResult.timelineRefs,
+        uiMiniSourceMaps: stagingResult.miniSourceMaps,
+        uiAnalyserRefs: stagingResult.analyserRefs,
+        uiArrayLiterals: stagingResult.arrayLiterals,
+        uiNumberParams: stagingResult.numberParams,
+        isProgramSwapPending: true,
+      })
+
       swapStatus.fill(0)
       swap.fill(0)
       Atomics.store(swap, 0, primaryProgram.program.ptr$)
@@ -250,6 +294,18 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
       if (swapResult !== 1) {
         console.warn('Program swap failed; will retry against the last-known program on the next update.')
+        const current = get()
+        set({
+          uiDspSource: current.dspSource,
+          uiSequences: current.sequences,
+          uiMiniRefs: current.miniRefs,
+          uiTimelineRefs: current.timelineRefs,
+          uiMiniSourceMaps: current.miniSourceMaps,
+          uiAnalyserRefs: current.analyserRefs,
+          uiArrayLiterals: current.arrayLiterals,
+          uiNumberParams: current.numberParams,
+          isProgramSwapPending: false,
+        })
         return undefined
       }
 
@@ -262,6 +318,15 @@ export const useEngineStore = create<EngineState>((set, get) => {
         analyserRefs: stagingResult.analyserRefs,
         arrayLiterals: stagingResult.arrayLiterals,
         numberParams: stagingResult.numberParams,
+        uiDspSource: source,
+        uiSequences: sequences,
+        uiMiniRefs: stagingResult.miniRefs,
+        uiTimelineRefs: stagingResult.timelineRefs,
+        uiMiniSourceMaps: stagingResult.miniSourceMaps,
+        uiAnalyserRefs: stagingResult.analyserRefs,
+        uiArrayLiterals: stagingResult.arrayLiterals,
+        uiNumberParams: stagingResult.numberParams,
+        isProgramSwapPending: false,
         ...swappedPrograms,
         lastSuccessfulProgramData: stagingProgram.program.data,
       })
@@ -270,6 +335,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       return sequences
     }
     catch (error) {
+      set({ isProgramSwapPending: false })
       console.error('Failed to build program:', error)
       throw error
     }
@@ -325,6 +391,15 @@ export const useEngineStore = create<EngineState>((set, get) => {
     arrayLiterals: [],
     numberParams: [],
     dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
+    uiSequences: [...DEFAULT_SEQUENCES],
+    uiMiniRefs: [],
+    uiTimelineRefs: [],
+    uiMiniSourceMaps: [],
+    uiAnalyserRefs: [],
+    uiArrayLiterals: [],
+    uiNumberParams: [],
+    uiDspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
+    isProgramSwapPending: false,
     isUpdatingDsp: false,
     isInitialized: false,
     isProgramReady: false,
@@ -379,6 +454,15 @@ export const useEngineStore = create<EngineState>((set, get) => {
         analyserRefs: [],
         arrayLiterals: [],
         numberParams: [],
+        uiMiniRefs: [],
+        uiTimelineRefs: [],
+        uiMiniSourceMaps: [],
+        uiAnalyserRefs: [],
+        uiArrayLiterals: [],
+        uiNumberParams: [],
+        uiSequences: [],
+        uiDspSource: '',
+        isProgramSwapPending: false,
         isInitialized: false,
         isProgramReady: false,
         playbackState: 'stopped',
