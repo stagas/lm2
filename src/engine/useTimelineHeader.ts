@@ -1,5 +1,5 @@
 import type { EditorHeader } from 'mini-code'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { FUTURE_SECONDS, PAST_SECONDS, TIME_WINDOW_SECONDS } from '../../as/assembly/constants.ts'
 import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
 import { useEngineStore } from './store.ts'
@@ -13,6 +13,9 @@ export function useTimelineHeader() {
     audioContext,
     bpmValue,
     globalSampleCount,
+    loop,
+    setLoop,
+    clearLoop,
   } = useEngineStore()
 
   const seekToSample = useSeekToSample()
@@ -29,8 +32,30 @@ export function useTimelineHeader() {
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
 
+  const isCtrlDownRef = useRef(false)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control') isCtrlDownRef.current = true
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control') isCtrlDownRef.current = false
+    }
+    const onBlur = () => {
+      isCtrlDownRef.current = false
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
+
   const timelineHeader = useMemo((): EditorHeader => {
-    const handleSeek = (pointerX: number) => {
+    const getPointerTimeSeconds = (pointerX: number) => {
       if (!audioContext) return
 
       const layout = timelineLayoutRef.current
@@ -42,13 +67,54 @@ export function useTimelineHeader() {
       const windowStartTime = timelineWindowRef.current.windowStartTime
       const secondsPerPixel = TIME_WINDOW_SECONDS / timelineWidth
       const targetTimeSeconds = windowStartTime + clampedX * secondsPerPixel
+      return targetTimeSeconds
+    }
+
+    const handleSeek = (pointerX: number) => {
+      const targetTimeSeconds = getPointerTimeSeconds(pointerX)
+      if (targetTimeSeconds == null || !audioContext) return
       const targetSampleCount = Math.max(0, Math.floor(targetTimeSeconds * audioContext.sampleRate))
       seekToSample(targetSampleCount)
+    }
+
+    const handleLoopBar = (pointerX: number) => {
+      const targetTimeSeconds = getPointerTimeSeconds(pointerX)
+      if (targetTimeSeconds == null || !audioContext) return
+
+      const bpm = bpmValue?.[0] || 60
+      const barLengthSeconds = (4 * 60) / bpm
+      const barIndex = Math.max(0, Math.floor(targetTimeSeconds / barLengthSeconds))
+
+      const startSeconds = barIndex * barLengthSeconds
+      const endSeconds = startSeconds + barLengthSeconds
+
+      const startSample = Math.max(0, Math.floor(startSeconds * audioContext.sampleRate))
+      const endSample = Math.max(0, Math.floor(endSeconds * audioContext.sampleRate))
+      if (endSample <= startSample) return
+
+      const isEnabled = loop ? Atomics.load(loop, 0) === 1 : false
+      const currStart = isEnabled && loop ? Atomics.load(loop, 1) : 0
+      const currEnd = isEnabled && loop ? Atomics.load(loop, 2) : 0
+
+      if (isEnabled && currStart === startSample && currEnd === endSample) {
+        clearLoop()
+        return
+      }
+
+      setLoop(startSample, endSample)
+      const currentSample = globalSampleCount ? Math.max(0, Atomics.load(globalSampleCount, 0)) : 0
+      if (currentSample >= endSample) {
+        seekToSample(startSample)
+      }
     }
 
     return {
       height: 32,
       pointerDown: (x) => {
+        if (isCtrlDownRef.current) {
+          handleLoopBar(x)
+          return
+        }
         isTimelineDraggingRef.current = true
         handleSeek(x)
       },
@@ -102,6 +168,28 @@ export function useTimelineHeader() {
         c.fillStyle = 'rgba(0, 0, 0, 0.25)'
         c.fillRect(0, y, viewW, h)
 
+        const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
+        if (isLooping && loop) {
+          const loopStart = Atomics.load(loop, 1)
+          const loopEnd = Atomics.load(loop, 2)
+          if (loopEnd > loopStart) {
+            const startSeconds = loopStart / audioContext.sampleRate
+            const endSeconds = loopEnd / audioContext.sampleRate
+            const loopX1 = (startSeconds - windowStartTime) * pixelsPerSecond
+            const loopX2 = (endSeconds - windowStartTime) * pixelsPerSecond
+            const lx1 = Math.min(timelineW, loopX1)
+            const lx2 = Math.min(timelineW, loopX2)
+            const lw = Math.max(0, lx2 - lx1)
+            if (lw > 0) {
+              c.fillStyle = 'rgba(255, 220, 0, 0.16)'
+              c.fillRect(lx1, y, lw, h)
+              c.strokeStyle = 'rgba(255, 220, 0, 0.35)'
+              c.lineWidth = 1
+              c.strokeRect(lx1 + 0.5, y + 0.5, lw - 1, h - 1)
+            }
+          }
+        }
+
         const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
         for (let barStart = firstBarStart; barStart < windowEndTime + barLengthSeconds; barStart += barLengthSeconds) {
           if (barStart < 0) continue
@@ -145,7 +233,7 @@ export function useTimelineHeader() {
         c.restore()
       },
     }
-  }, [audioContext, bpmValue, globalSampleCount, seekToSample])
+  }, [audioContext, bpmValue, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
 
   return { timelineHeader, timelineWindowRef }
 }

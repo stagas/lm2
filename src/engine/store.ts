@@ -36,6 +36,7 @@ type EngineState = {
   bpmValue?: Float32Array<SharedArrayBuffer>
   globalSampleCount?: Int32Array<SharedArrayBuffer>
   seekSampleCount?: Int32Array<SharedArrayBuffer>
+  loop?: Int32Array<SharedArrayBuffer>
   programSwap?: Uint32Array<SharedArrayBuffer>
   programSwapStatus?: Int32Array<SharedArrayBuffer>
   prepareDsp?: Uint32Array<SharedArrayBuffer>
@@ -72,6 +73,9 @@ type EngineState = {
   start: () => void
   pause: () => void
   stop: () => void
+
+  setLoop: (startSample: number, endSample: number) => void
+  clearLoop: () => void
 }
 
 type PendingDspUpdate = {
@@ -443,6 +447,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         bpmValue: undefined,
         globalSampleCount: undefined,
         seekSampleCount: undefined,
+        loop: undefined,
         programSwap: undefined,
         programSwapStatus: undefined,
         prepareDsp: undefined,
@@ -549,6 +554,25 @@ export const useEngineStore = create<EngineState>((set, get) => {
       Atomics.store(state.control, 0, ControlOp.Stop)
       set({ playbackState: 'stopped' })
     },
+
+    setLoop: (startSample: number, endSample: number) => {
+      const state = get()
+      const loop = state.loop
+      if (!loop) return
+      const start = Math.max(0, Math.floor(startSample))
+      const end = Math.max(0, Math.floor(endSample))
+      if (end <= start) return
+      Atomics.store(loop, 1, start)
+      Atomics.store(loop, 2, end)
+      Atomics.store(loop, 0, 1)
+    },
+
+    clearLoop: () => {
+      const state = get()
+      const loop = state.loop
+      if (!loop) return
+      Atomics.store(loop, 0, 0)
+    },
   }
 })
 
@@ -574,6 +598,10 @@ async function createWorklet() {
   globalSampleCount[0] = 0
   const seekSampleCount = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
   seekSampleCount[0] = 0
+  const loop = new Int32Array(new SharedArrayBuffer(3 * Int32Array.BYTES_PER_ELEMENT))
+  loop[0] = 0
+  loop[1] = 0
+  loop[2] = 0
   const programSwap = new Uint32Array(
     new SharedArrayBuffer(3 * MAX_DSP_INSTANCES * Uint32Array.BYTES_PER_ELEMENT),
   )
@@ -591,6 +619,7 @@ async function createWorklet() {
       bpmValue,
       globalSampleCount,
       seekSample: seekSampleCount,
+      loop,
       programSwap,
       prepareDsp,
       swapStatus: programSwapStatus,
@@ -605,6 +634,7 @@ async function createWorklet() {
     bpmValue,
     globalSampleCount,
     seekSampleCount,
+    loop,
     programSwap,
     prepareDsp,
     prepareDspStatus,

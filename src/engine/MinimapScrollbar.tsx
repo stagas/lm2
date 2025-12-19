@@ -7,6 +7,7 @@ import {
 } from 'react'
 import type { TimelineSequenceRef } from '../bytecode.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
+import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
 import {
   type CompiledTimeline,
@@ -37,6 +38,8 @@ export function MinimapScrollbar({
   seekToSample,
   timelineWindowRef,
 }: MinimapScrollbarProps) {
+  const { loop, setLoop, clearLoop } = useEngineStore()
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
   const timelineCacheRef = useRef<Map<number, {
@@ -79,8 +82,58 @@ export function MinimapScrollbar({
     seekToSample(targetSampleCount)
   }, [audioContext, bpmValue, seekToSample])
 
+  const toggleLoopFromPointer = useCallback((clientX: number) => {
+    const canvas = canvasRef.current
+    if (!canvas || !audioContext) return
+
+    const rect = canvas.getBoundingClientRect()
+    const width = rect.width
+    if (width <= 0) return
+
+    const relativeX = clientX - rect.left
+    const clampedRatio = Math.max(0, Math.min(1, relativeX / width))
+
+    const bpm = bpmValue?.[0] || 60
+    const beatLengthSeconds = (MINIMAP_PHRASE_SECONDS * 60) / bpm
+    const barLengthSeconds = MINIMAP_PHRASE_SECONDS * beatLengthSeconds
+
+    const barIndex = Math.max(0, Math.min(MINIMAP_PHRASE_COUNT - 1, Math.floor(clampedRatio * MINIMAP_PHRASE_COUNT)))
+    const barNumber = barIndex + 1
+    const groupStartNumber = Math.floor((barNumber - 1) / 4) * 4 + 1
+    const groupEndNumber = groupStartNumber + 4
+
+    const startSeconds = (groupStartNumber - 1) * barLengthSeconds
+    const endSeconds = (groupEndNumber - 1) * barLengthSeconds
+
+    const startSample = Math.max(0, Math.floor(startSeconds * audioContext.sampleRate))
+    const endSample = Math.max(0, Math.floor(endSeconds * audioContext.sampleRate))
+    if (endSample <= startSample) return
+
+    const isEnabled = loop ? Atomics.load(loop, 0) === 1 : false
+    const currStart = isEnabled && loop ? Atomics.load(loop, 1) : 0
+    const currEnd = isEnabled && loop ? Atomics.load(loop, 2) : 0
+
+    if (isEnabled && currStart === startSample && currEnd === endSample) {
+      clearLoop()
+      return
+    }
+
+    setLoop(startSample, endSample)
+    const currentSample = globalSampleCount ? Math.max(0, Atomics.load(globalSampleCount, 0)) : 0
+    if (currentSample >= endSample) {
+      currentSampleRef.current = startSample
+      seekToSample(startSample)
+    }
+  }, [audioContext, bpmValue, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
+
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
     event.preventDefault()
+
+    if (event.ctrlKey) {
+      toggleLoopFromPointer(event.clientX)
+      return
+    }
+
     isDraggingRef.current = true
     seekFromPointer(event.clientX)
     const listener = (e: PointerEvent) => {
@@ -91,7 +144,7 @@ export function MinimapScrollbar({
       window.removeEventListener('pointermove', listener)
       isDraggingRef.current = false
     }, { once: true })
-  }, [seekFromPointer])
+  }, [seekFromPointer, toggleLoopFromPointer])
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
     if (!isDraggingRef.current) return
@@ -210,6 +263,27 @@ export function MinimapScrollbar({
       ctx.fillRect(width * startRatio, 0, viewportWidth, height)
     }
 
+    const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
+    if (isLooping && loop) {
+      const loopStartSamples = Atomics.load(loop, 1)
+      const loopEndSamples = Atomics.load(loop, 2)
+      if (loopEndSamples > loopStartSamples) {
+        const loopStartSeconds = loopStartSamples / sampleRate
+        const loopEndSeconds = loopEndSamples / sampleRate
+        const loopStartRatio = Math.max(0, Math.min(1, loopStartSeconds / totalSeconds))
+        const loopEndRatio = Math.max(0, Math.min(1, loopEndSeconds / totalSeconds))
+        const lx = width * loopStartRatio
+        const lw = Math.max(0, width * (loopEndRatio - loopStartRatio))
+        if (lw > 0) {
+          ctx.fillStyle = 'rgba(255, 220, 0, 0.14)'
+          ctx.fillRect(lx, 0, lw, height)
+          ctx.strokeStyle = 'rgba(255, 220, 0, 0.35)'
+          ctx.lineWidth = 1
+          ctx.strokeRect(lx + 0.5, 0.5, lw - 1, height - 1)
+        }
+      }
+    }
+
     for (let phraseIndex = 0; phraseIndex <= MINIMAP_PHRASE_COUNT; phraseIndex += MINIMAP_MINOR_STEP) {
       const x = (phraseIndex / MINIMAP_PHRASE_COUNT) * width
       const isMajor = phraseIndex % MINIMAP_MAJOR_STEP === 0
@@ -245,7 +319,7 @@ export function MinimapScrollbar({
 
     ctx.fillStyle = 'rgba(255, 220, 0, 0.2)'
     ctx.fillRect(Math.max(0, playheadX - 1.5), 0, 3, height)
-  }, [audioContext, bpmValue, globalSampleCount, timelineRefs, timelineWindowRef])
+  }, [audioContext, bpmValue, globalSampleCount, loop, timelineRefs, timelineWindowRef])
 
   useEffect(() => {
     let frameId: number | null = null
