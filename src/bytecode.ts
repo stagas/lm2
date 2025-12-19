@@ -897,7 +897,7 @@ export function encodeLangToVmOps(
 
   const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, parsed.program)
   const timelineExtracted = extractTimelineSequencesFromProgramWithRefs(src, parsed.program)
-  const analyserRefs = extractAnalysersFromProgramWithRefs(parsed.program)
+  let analyserRefs: AnalyserRef[] = []
   const numberParams = extractNumberParamsFromProgram(parsed.program)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
   const sliderKeys = new Set(numberParams.map(p => sliderKeyOf(p)))
@@ -908,6 +908,16 @@ export function encodeLangToVmOps(
   const miniCount = sequences.length
 
   const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
+
+  const usedAnalyserIndices = new Set<number>([0])
+  let nextAnalyserIndex = 1
+  const allocAnalyserIndex = (): number => {
+    while (usedAnalyserIndices.has(nextAnalyserIndex)) nextAnalyserIndex++
+    const idx = nextAnalyserIndex
+    usedAnalyserIndices.add(idx)
+    nextAnalyserIndex++
+    return idx
+  }
 
   const transformExpr = (expr: any): any => {
     if (!expr) return expr
@@ -924,6 +934,25 @@ export function encodeLangToVmOps(
       const isMini = calleeName === 'mini'
       const isPlay = calleeName === 'play'
       const isTimeline = calleeName === 'timeline'
+      const isAnalyser = calleeName === 'analyser'
+
+      if (isAnalyser) {
+        const posArgs = args.filter((a: any) => a.kind === 'pos')
+        const idxArg = posArgs.length >= 2 ? posArgs[1] : null
+        const idxVal = idxArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = Math.max(0, Math.floor(Number(idxVal.value ?? 0)))
+          usedAnalyserIndices.add(idx)
+          idxArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (posArgs.length === 1) {
+          const idx = allocAnalyserIndex()
+          return { ...expr, callee, args: [...args, { kind: 'pos', value: toSeqIndexExpr(expr.loc, idx) }] }
+        }
+      }
 
       if (isMini || isPlay) {
         // Find "seq" argument (positional #0 or named seq:)
@@ -1065,6 +1094,7 @@ export function encodeLangToVmOps(
   }
 
   const transformedProgram = { ...parsed.program, body: parsed.program.body.map(transformStmt) } as any
+  analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
   const compiled = compile(src, transformedProgram)
   errors.push(...compiled.errors)
   if (errors.length) return { errors }
