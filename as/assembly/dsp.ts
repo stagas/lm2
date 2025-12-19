@@ -10,6 +10,7 @@ import {
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Mini } from './gen/mini'
+import { Timeline } from './gen/timeline'
 import { Sine } from './gen/sine'
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from './globals'
 import { Program, ProgramData } from './program'
@@ -359,6 +360,7 @@ enum VmBuiltin {
   Analyser = 6,
   T = 7,
   Play = 8,
+  Timeline = 9,
 }
 
 const VM_FUNC_HEADER: i32 = -2
@@ -546,6 +548,10 @@ export class Dsp {
     }
     if (sym === VmBuiltin.Play) {
       this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Play)
+      return
+    }
+    if (sym === VmBuiltin.Timeline) {
+      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Timeline)
       return
     }
     // Global time scaled to BPM: t = seconds * (bpm / 60)
@@ -1136,6 +1142,36 @@ export class Dsp {
       // Return the input
       if (aTag === VmTag.Audio) this.vmPush(VmTag.Audio, 0.0, aAux)
       else this.vmPush(aTag, aNum, aAux)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Timeline) {
+      // timeline(beatDiv, seq)
+      if (posCount < 2) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      const beatTag: VmTag = posTags[0] as VmTag
+      const beatNum: f64 = posNums[0]
+      const arrayTag: VmTag = posTags[1] as VmTag
+      const arrayNum: f64 = posNums[1]
+      if (beatTag !== VmTag.Num || arrayTag !== VmTag.Num) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      const outIndex: i32 = this.vmAllocOut()
+      const out$: usize = this.program.getOutBuffer(outIndex)
+
+      const arrayIndex: i32 = i32(arrayNum)
+      const timeline: Timeline = this.program.gensPool.get(Op.Timeline) as Timeline
+      timeline.bytecode$ = changetype<usize>(this.program.data.arrays[arrayIndex])
+      timeline.history$ = changetype<usize>(this.program.histories[arrayIndex])
+      timeline.beatDiv = beatNum as f32
+      timeline.process(out$, length)
+
+      this.vmPush(VmTag.Audio, 0.0, outIndex)
       return
     }
 

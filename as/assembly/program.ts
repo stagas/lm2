@@ -16,12 +16,15 @@ import {
   OPS_COUNT,
   RING_BUFFER_SIZE,
   SEQ_VOICES,
+  TIMELINE_MAGIC,
+  OP_CYCLE_END,
 } from './constants'
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
+import { Timeline } from './gen/timeline'
 import { Sine } from './gen/sine'
 import { Smoothed } from './lib/smoothed'
 import { Op } from './shared'
@@ -59,12 +62,14 @@ class GensPool {
   private ads: GenPool<Ad> = new GenPool<Ad>(() => new Ad())
   private adsrs: GenPool<Adsr> = new GenPool<Adsr>(() => new Adsr())
   private minis: GenPool<Mini> = new GenPool<Mini>(() => new Mini())
+  private timelines: GenPool<Timeline> = new GenPool<Timeline>(() => new Timeline())
   private analysers: GenPool<Analyser> = new GenPool<Analyser>(() => new Analyser())
   resetIndices(): void {
     this.sines.resetIndex()
     this.ads.resetIndex()
     this.adsrs.resetIndex()
     this.minis.resetIndex()
+    this.timelines.resetIndex()
     this.analysers.resetIndex()
   }
   resetAllSeqs(voices: boolean): void {
@@ -82,6 +87,8 @@ class GensPool {
         return this.adsrs.get()
       case Op.Mini:
         return this.minis.get()
+      case Op.Timeline:
+        return this.timelines.get()
       case Op.Analyser:
         return this.analysers.get()
     }
@@ -93,6 +100,7 @@ class GensPool {
     this.ads.copyFrom(source.ads)
     this.adsrs.copyFrom(source.adsrs)
     this.minis.copyFrom(source.minis)
+    this.timelines.copyFrom(source.timelines)
     this.analysers.copyFrom(source.analysers)
   }
 }
@@ -170,6 +178,7 @@ export class Program {
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
   outsPool: OutsPool = new OutsPool()
   miniScratch: Mini = new Mini()
+  timelineScratch: Timeline = new Timeline()
 
   // Callback scope stack for remapped buffers and bound inputs
   private callbackDepth: i32 = 0
@@ -282,14 +291,15 @@ export class Program {
   prepare(): void {
     this.arrayAccessHistory[0] = 0.0
 
-    // Populate sequence histories for any bytecode arrays (mini sequences).
-    // Use a scratch Mini instance so we don't mutate the runtime gensPool or other state.
-    const scratch = this.miniScratch
+    // Populate sequence histories for any bytecode arrays (mini + timeline).
+    // Use scratch instances so we don't mutate the runtime gensPool or other state.
+    const miniScratch: Mini = this.miniScratch
+    const timelineScratch: Timeline = this.timelineScratch
 
     // Ensure gens pool indices are reset for deterministic behavior elsewhere
     this.gensPool.resetIndices()
 
-    // Iterate over arrays and generate history for those that look like mini bytecode
+    // Iterate over arrays and generate history for those that look like sequence bytecode
     for (let i = 0; i < this.data.arrays.length; i++) {
       const arr$ = this.data.arrays[i]
       if (arr$ === 0) continue
@@ -297,6 +307,11 @@ export class Program {
       const arr = changetype<StaticArray<f32>>(arr$)
       const opLength = i32(arr[ARRAY_HEADER_SIZE])
       if (opLength <= 0) continue
+
+      const first: i32 = i32(arr[ARRAY_HEADER_SIZE + MINI_HEADER_SIZE])
+      const isMini: bool = first >= 0 && first <= OP_CYCLE_END
+      const isTimeline: bool = first === TIMELINE_MAGIC
+      if (!isMini && !isTimeline) continue
 
       // Ensure a history buffer exists for this array
       let hist$ = this.histories[i]
@@ -306,11 +321,20 @@ export class Program {
         this.histories[i] = hist$
       }
 
-      // Use scratch mini to generate history for this bytecode into the history buffer
-      scratch.reset(true)
-      scratch.bytecode$ = arr$
-      scratch.history$ = hist$
-      scratch.generateHistory()
+      if (isMini) {
+        miniScratch.reset(true)
+        miniScratch.bytecode$ = arr$
+        miniScratch.history$ = hist$
+        miniScratch.generateHistory()
+      }
+      else if (isTimeline) {
+        timelineScratch.reset()
+        timelineScratch.bytecode$ = arr$
+        timelineScratch.history$ = hist$
+        // Prefer stored beatDiv for prepare-time history.
+        timelineScratch.beatDiv = 0.0
+        timelineScratch.generateHistory()
+      }
     }
   }
 

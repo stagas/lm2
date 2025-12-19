@@ -18,10 +18,11 @@ import {
   RING_BUFFER_SIZE,
 } from '../../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from '../assembly.ts'
-import type { AnalyserRef, ArrayLiteralRef, MiniSequenceRef } from '../bytecode.ts'
+import type { AnalyserRef, ArrayLiteralRef, MiniSequenceRef, TimelineSequenceDef, TimelineSequenceRef } from '../bytecode.ts'
 import { encodeLangToVmOps } from '../bytecode.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
+import { compileTimelineNotation } from '../timeline/compiler.ts'
 import { ControlOp } from '../worklet-shared.ts'
 import type { DspProcessor } from '../worklet.ts'
 import { useEngineStore } from './store.ts'
@@ -65,19 +66,47 @@ function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataV
   return buildMiniSourceMap(compiled.nodes, target.raw)
 }
 
+function updateTimelineSequence(
+  beat: number,
+  sequence: string,
+  arrayIndex: number,
+  data: ProgramDataView,
+): void {
+  const compiled = compileTimelineNotation(sequence, beat)
+  const target = data.arrays[arrayIndex]
+
+  const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE)
+  target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE)
+  target.length = maxSize
+
+  const currentVersion = target.raw[3] || 0
+  target.raw[3] = currentVersion + 1
+}
+
 function buildProgram(
   data: ProgramDataView,
   dspSource: string,
-): { sequences: string[]; miniRefs: MiniSequenceRef[]; analyserRefs: AnalyserRef[]; arrayLiterals: ArrayLiteralRef[] } {
-  const { errors, miniSequences, miniRefs, analyserRefs, arrayLiterals } = encodeLangToVmOps(dspSource, { ops: data.ops,
-    literals: data.literals })
+): {
+  sequences: string[]
+  timelineSequences: TimelineSequenceDef[]
+  miniRefs: MiniSequenceRef[]
+  timelineRefs: TimelineSequenceRef[]
+  analyserRefs: AnalyserRef[]
+  arrayLiterals: ArrayLiteralRef[]
+} {
+  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, analyserRefs, arrayLiterals } = encodeLangToVmOps(dspSource, {
+    ops: data.ops,
+    literals: data.literals,
+  })
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
   }
   return {
     sequences: miniSequences ?? [],
+    timelineSequences: timelineSequences ?? [],
     miniRefs: miniRefs ?? [],
+    timelineRefs: timelineRefs ?? [],
     analyserRefs: analyserRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
   }
@@ -100,8 +129,10 @@ export type ProgramBuildDiff = {
 export type ProgramBuildResult = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
+  timelineRefs: TimelineSequenceRef[]
   analyserRefs: AnalyserRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  timelineSequences: TimelineSequenceDef[]
   arrayLiterals: ArrayLiteralRef[]
   data: ProgramDataView
   diff: ProgramBuildDiff
@@ -240,8 +271,8 @@ async function createProgram(
 
   const histories$ = await worklet.createHistories()
   const historyBuffers = new Uint32Array(wasmMemory.buffer, program.histories, HISTORIES_COUNT)
-  const histories = new Array<VmHistory>(ARRAYS_COUNT)
-  for (let i = 0; i < ARRAYS_COUNT; i++) {
+  const histories = new Array<VmHistory>(HISTORIES_COUNT)
+  for (let i = 0; i < HISTORIES_COUNT; i++) {
     const byteOffset = historyBuffers[i] = histories$[i]
     const writePos = new Float32Array(wasmMemory.buffer,
       byteOffset + HISTORY_WRITE_POS_OFFSET * Float32Array.BYTES_PER_ELEMENT, 1)
@@ -298,8 +329,12 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, miniRefs, analyserRefs, arrayLiterals } = buildProgram(newData, source)
+        const { sequences, timelineSequences, miniRefs, timelineRefs, analyserRefs, arrayLiterals } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
+        const totalSeqCount = sequences.length + timelineSequences.length
+        if (totalSeqCount > HISTORIES_COUNT) {
+          throw new Error(`Too many sequences for history pool: ${totalSeqCount} > ${HISTORIES_COUNT}`)
+        }
 
         await this.acquireLock()
         try {
@@ -313,6 +348,19 @@ async function createProgram(
             }
 
             miniSourceMaps[arrayIndex] = updateSequence(sequence, arrayIndex, newData)
+          }
+
+          for (let i = 0; i < timelineSequences.length; i++) {
+            const s = timelineSequences[i]
+            if (!s) continue
+            const arrayIndex = sequences.length + i
+
+            const oldArray = versionSource?.arrays[arrayIndex]
+            if (oldArray) {
+              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3]
+            }
+
+            updateTimelineSequence(s.beat, s.sequence, arrayIndex, newData)
           }
 
           if (setData) {
@@ -332,8 +380,10 @@ async function createProgram(
         return {
           sequences,
           miniRefs,
+          timelineRefs,
           analyserRefs,
           miniSourceMaps,
+          timelineSequences,
           arrayLiterals,
           data: newData,
           diff,

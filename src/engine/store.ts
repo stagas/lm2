@@ -5,7 +5,7 @@ import {
   MAX_DSP_INSTANCES,
 } from '../../as/assembly/constants.ts'
 import { type Dsp, DspStruct } from '../assembly.ts'
-import type { AnalyserRef, ArrayLiteralRef, MiniSequenceRef } from '../bytecode.ts'
+import type { AnalyserRef, ArrayLiteralRef, MiniSequenceRef, TimelineSequenceRef } from '../bytecode.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { ControlOp } from '../worklet-shared.ts'
@@ -36,6 +36,7 @@ type EngineState = {
   prepareDspStatus?: Int32Array<SharedArrayBuffer>
   sequences: string[]
   miniRefs: MiniSequenceRef[]
+  timelineRefs: TimelineSequenceRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
@@ -91,6 +92,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
       const sequences = primaryResult.sequences
       const miniRefs = primaryResult.miniRefs
+      const timelineRefs = primaryResult.timelineRefs
       const miniSourceMaps = primaryResult.miniSourceMaps
       const analyserRefs = primaryResult.analyserRefs
       const arrayLiterals = primaryResult.arrayLiterals
@@ -101,6 +103,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           dspSource: source,
           sequences,
           miniRefs,
+          timelineRefs,
           miniSourceMaps,
           analyserRefs,
           arrayLiterals,
@@ -149,6 +152,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         dspSource: source,
         sequences,
         miniRefs: stagingResult.miniRefs,
+        timelineRefs: stagingResult.timelineRefs,
         miniSourceMaps: stagingResult.miniSourceMaps,
         analyserRefs: stagingResult.analyserRefs,
         arrayLiterals: stagingResult.arrayLiterals,
@@ -209,6 +213,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     wasmDspPtr: 0,
     sequences: [...DEFAULT_SEQUENCES],
     miniRefs: [],
+    timelineRefs: [],
     miniSourceMaps: [],
     analyserRefs: [],
     arrayLiterals: [],
@@ -262,6 +267,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         prepareDspStatus: undefined,
         lastSuccessfulProgramData: undefined,
         miniRefs: [],
+        timelineRefs: [],
         miniSourceMaps: [],
         analyserRefs: [],
         arrayLiterals: [],

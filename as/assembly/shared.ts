@@ -31,6 +31,7 @@ export enum Op {
   Adsr,
   Analyser,
   Mini,
+  Timeline,
 }
 
 export enum SeqOp {

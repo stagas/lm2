@@ -72,6 +72,7 @@ const builtinSyms: Record<string, number> = {
   analyser: 6,
   t: 7,
   play: 8,
+  timeline: 9,
   // Named args for adsr()
   attack: 100,
   decay: 101,
@@ -139,6 +140,23 @@ export type MiniSequenceRef = {
   loc: Loc
 }
 
+export type TimelineSequenceDef = {
+  beat: number
+  sequence: string
+}
+
+export type TimelineSequenceRef = {
+  seqIndex: number
+  beat: number
+  sequence: string
+  /** Absolute start index (0-based) of the string content (excluding quotes) in the DSP source. */
+  start: number
+  /** Absolute end index (0-based, exclusive) of the string content (excluding quotes) in the DSP source. */
+  end: number
+  /** Location of the full string token (including quotes). */
+  loc: Loc
+}
+
 function buildLineStarts(src: string): number[] {
   const starts = [0]
   for (let i = 0; i < src.length; i++) {
@@ -150,6 +168,31 @@ function buildLineStarts(src: string): number[] {
 function locToIndex(lineStarts: number[], loc: Pick<Loc, 'line' | 'column'>): number {
   const lineStart = lineStarts[loc.line - 1] ?? 0
   return lineStart + (loc.column - 1)
+}
+
+function tryEvalConstNumber(expr: any): number | null {
+  if (!expr) return null
+  if (expr.kind === 'number') return Number(expr.value ?? expr.raw ?? 0)
+  if (expr.kind === 'unary') {
+    const v = tryEvalConstNumber(expr.expr)
+    if (v == null) return null
+    if (expr.op === '-') return -v
+    if (expr.op === '+') return v
+    return null
+  }
+  if (expr.kind === 'binary') {
+    const a = tryEvalConstNumber(expr.left)
+    const b = tryEvalConstNumber(expr.right)
+    if (a == null || b == null) return null
+    if (expr.op === '+') return a + b
+    if (expr.op === '-') return a - b
+    if (expr.op === '*') return a * b
+    if (expr.op === '/') return a / b
+    if (expr.op === '%') return a % b
+    if (expr.op === '**') return a ** b
+    return null
+  }
+  return null
 }
 
 function extractMiniSequencesFromProgramWithRefs(
@@ -332,6 +375,189 @@ function extractMiniSequencesFromProgramWithRefs(
   return { sequences, refs }
 }
 
+function extractTimelineSequencesFromProgramWithRefs(
+  src: string,
+  program: Program,
+): { sequences: TimelineSequenceDef[]; refs: TimelineSequenceRef[] } {
+  const sequences: TimelineSequenceDef[] = []
+  const refs: TimelineSequenceRef[] = []
+  const keyToIndex = new Map<string, number>()
+  const lineStarts = buildLineStarts(src)
+
+  function ensureIndex(beat: number, sequence: string): number {
+    const key = `${beat}|${sequence}`
+    const prev = keyToIndex.get(key)
+    if (prev !== undefined) return prev
+    const idx = sequences.length
+    sequences.push({ beat, sequence })
+    keyToIndex.set(key, idx)
+    return idx
+  }
+
+  function addRef(beat: number, sequence: string, loc: Loc): void {
+    const seqIndex = ensureIndex(beat, sequence)
+    const quoteStart = locToIndex(lineStarts, loc)
+    refs.push({
+      seqIndex,
+      beat,
+      sequence,
+      start: quoteStart + 1,
+      end: quoteStart + Math.max(0, loc.length - 1),
+      loc,
+    })
+  }
+
+  function visitExpr(expr: any): void {
+    if (!expr) return
+
+    if (expr.kind === 'call') {
+      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'timeline') {
+        const args = expr.args ?? []
+        const posArgs = args.filter((a: any) => a.kind === 'pos')
+        const beatArg = args.find((a: any) => a.kind === 'named' && a.name === 'beat') ?? posArgs[0]
+        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq') ?? posArgs[1]
+
+        const beatExpr = beatArg?.kind === 'pos' || beatArg?.kind === 'named' ? beatArg.value : null
+        const beat = tryEvalConstNumber(beatExpr) ?? 1
+
+        const seqExpr = seqArg?.kind === 'pos' || seqArg?.kind === 'named' ? seqArg.value : null
+        if (seqExpr?.kind === 'string') {
+          const sequence = String(seqExpr.value ?? '')
+          addRef(beat, sequence, seqExpr.loc)
+        }
+      }
+
+      visitExpr(expr.callee)
+      for (const arg of expr.args ?? []) {
+        if (arg.kind === 'pos' || arg.kind === 'named') visitExpr(arg.value)
+      }
+      return
+    }
+
+    if (expr.kind === 'binary') {
+      visitExpr(expr.left)
+      visitExpr(expr.right)
+      return
+    }
+
+    if (expr.kind === 'assign') {
+      visitExpr(expr.target)
+      visitExpr(expr.value)
+      return
+    }
+
+    if (expr.kind === 'unary' || expr.kind === 'postfix') {
+      visitExpr(expr.expr)
+      return
+    }
+
+    if (expr.kind === 'member') {
+      visitExpr(expr.object)
+      if (expr.computed) visitExpr(expr.index)
+      return
+    }
+
+    if (expr.kind === 'array') {
+      for (const item of expr.items ?? []) visitExpr(item)
+      return
+    }
+
+    if (expr.kind === 'object') {
+      for (const prop of expr.props ?? []) visitExpr(prop.value)
+      return
+    }
+
+    if (expr.kind === 'if') {
+      visitExpr(expr.test)
+      if (expr.then?.kind === 'block') visitStmt(expr.then)
+      else visitExpr(expr.then)
+      if (expr.else) {
+        if (expr.else.kind === 'block') visitStmt(expr.else)
+        else visitExpr(expr.else)
+      }
+      return
+    }
+
+    if (expr.kind === 'func') {
+      if (expr.body?.kind === 'block') visitStmt(expr.body)
+      else visitExpr(expr.body)
+      return
+    }
+  }
+
+  function visitStmt(stmt: any): void {
+    if (!stmt) return
+
+    if (stmt.kind === 'expr_stmt') {
+      visitExpr(stmt.expr)
+      return
+    }
+
+    if (stmt.kind === 'block') {
+      for (const s of stmt.body ?? []) visitStmt(s)
+      return
+    }
+
+    if (stmt.kind === 'for') {
+      if (stmt.head?.kind === 'c_style') {
+        if (stmt.head.init) visitExpr(stmt.head.init)
+        if (stmt.head.test) visitExpr(stmt.head.test)
+        if (stmt.head.update) visitExpr(stmt.head.update)
+      }
+      else {
+        visitExpr(stmt.head?.iterable)
+      }
+      visitStmt(stmt.body)
+      return
+    }
+
+    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+      visitExpr(stmt.test)
+      visitStmt(stmt.body)
+      return
+    }
+
+    if (stmt.kind === 'switch') {
+      visitExpr(stmt.test)
+      for (const c of stmt.cases ?? []) {
+        if (c.test) visitExpr(c.test)
+        for (const s of c.body ?? []) visitStmt(s)
+      }
+      return
+    }
+
+    if (stmt.kind === 'try') {
+      visitStmt(stmt.body)
+      if (stmt.catchBody) visitStmt(stmt.catchBody)
+      if (stmt.finallyBody) visitStmt(stmt.finallyBody)
+      return
+    }
+
+    if (stmt.kind === 'throw') {
+      visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'return') {
+      if (stmt.value) visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'label') {
+      visitStmt(stmt.stmt)
+      return
+    }
+
+    if (stmt.kind === 'destructure') {
+      visitExpr(stmt.value)
+      return
+    }
+  }
+
+  for (const stmt of program.body) visitStmt(stmt)
+  return { sequences, refs }
+}
+
 function extractAnalysersFromProgramWithRefs(program: Program): AnalyserRef[] {
   const refs: AnalyserRef[] = []
 
@@ -498,6 +724,8 @@ export function encodeLangToVmOps(
   errors: LangError[]
   miniSequences?: string[]
   miniRefs?: MiniSequenceRef[]
+  timelineSequences?: TimelineSequenceDef[]
+  timelineRefs?: TimelineSequenceRef[]
   analyserRefs?: AnalyserRef[]
   arrayLiterals?: ArrayLiteralRef[]
 } {
@@ -507,9 +735,13 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
 
   const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, parsed.program)
+  const timelineExtracted = extractTimelineSequencesFromProgramWithRefs(src, parsed.program)
   const analyserRefs = extractAnalysersFromProgramWithRefs(parsed.program)
   const sequenceToIndex = new Map<string, number>()
   sequences.forEach((seq, idx) => sequenceToIndex.set(seq, idx))
+  const timelineKeyToIndex = new Map<string, number>()
+  timelineExtracted.sequences.forEach((s, idx) => timelineKeyToIndex.set(`${s.beat}|${s.sequence}`, idx))
+  const miniCount = sequences.length
 
   const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
 
@@ -527,6 +759,7 @@ export function encodeLangToVmOps(
 
       const isMini = calleeName === 'mini'
       const isPlay = calleeName === 'play'
+      const isTimeline = calleeName === 'timeline'
 
       if (isMini || isPlay) {
         // Find "seq" argument (positional #0 or named seq:)
@@ -551,6 +784,24 @@ export function encodeLangToVmOps(
         // play(seq, cb) is a compile-time alias of mini(seq, cb)
         if (isPlay) {
           return { ...expr, callee: { kind: 'ident', name: 'mini', loc: callee.loc }, args }
+        }
+      }
+
+      if (isTimeline) {
+        const posArgs = args.filter((a: any) => a.kind === 'pos')
+        const beatArg = args.find((a: any) => a.kind === 'named' && a.name === 'beat') ?? posArgs[0]
+        const beat = tryEvalConstNumber(beatArg?.value) ?? 1
+
+        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq') ?? posArgs[1]
+        if (seqArg?.kind === 'pos' || seqArg?.kind === 'named') {
+          const v = seqArg.value
+          if (v?.kind === 'string') {
+            const key = `${beat}|${String(v.value ?? '')}`
+            const idx = timelineKeyToIndex.get(key)
+            if (idx !== undefined) {
+              seqArg.value = toSeqIndexExpr(v.loc, miniCount + idx)
+            }
+          }
         }
       }
 
@@ -954,7 +1205,25 @@ export function encodeLangToVmOps(
 
   target.ops[writePc++] = VmOp.End
 
+  const timelineRefs = timelineExtracted.refs.map(r => ({ ...r, seqIndex: miniCount + r.seqIndex }))
+
   return errors.length
-    ? { errors, miniSequences: sequences, miniRefs: refs, analyserRefs, arrayLiterals }
-    : { errors: [], miniSequences: sequences, miniRefs: refs, analyserRefs, arrayLiterals }
+    ? {
+      errors,
+      miniSequences: sequences,
+      miniRefs: refs,
+      timelineSequences: timelineExtracted.sequences,
+      timelineRefs,
+      analyserRefs,
+      arrayLiterals,
+    }
+    : {
+      errors: [],
+      miniSequences: sequences,
+      miniRefs: refs,
+      timelineSequences: timelineExtracted.sequences,
+      timelineRefs,
+      analyserRefs,
+      arrayLiterals,
+    }
 }

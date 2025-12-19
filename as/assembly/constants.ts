@@ -22,6 +22,17 @@ export const CALLBACK_SCOPE_MAX_BINDINGS = 8
 export const MINI_EVENT_SIZE: i32 = 7
 export const MINI_HEADER_SIZE: i32 = 1
 
+// timeline(beat, seq) bytecode format
+// [opLength,
+//  TIMELINE_MAGIC, segmentCount, totalUnits, beatDiv,
+//  [kind, durUnits, startValue, endValue, exponent] * segmentCount
+// ]
+export const TIMELINE_MAGIC: i32 = 1000
+export const TIMELINE_HEADER_SIZE: i32 = 4 // magic, segmentCount, totalUnits, beatDiv
+export const TIMELINE_SEGMENT_SIZE: i32 = 5 // kind, durUnits, startValue, endValue, exponent
+export const TIMELINE_KIND_HOLD: i32 = 0
+export const TIMELINE_KIND_GLIDE: i32 = 1
+
 // Timeline constants for visualizers
 export const PAST_SECONDS = 4
 export const FUTURE_SECONDS = 16

@@ -4,6 +4,7 @@ import { FUTURE_SECONDS, PAST_SECONDS, TIME_WINDOW_SECONDS } from '../../as/asse
 import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
 import { useEngineStore } from './store.ts'
 import type { TimelineWindow } from './ui.tsx'
+import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
 import { useSeekToSample } from './useSeekToSample.ts'
 
 export function useTimelineHeader() {
@@ -68,49 +69,16 @@ export function useTimelineHeader() {
         const viewW = vw
         const timelineW = Math.max(1, viewW - PIANOROLL_KEY_WIDTH)
 
-        const sampleRate = audioContext.sampleRate
+        // Predict audible sample count (delegated to shared helper)
+        const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
+          predictedSampleCountRef,
+          lastWallTimeRef,
+          isFirstFrameRef,
+        })
+        if (!pred) return
 
-        // Account for audio output latency - what we hear is behind what's generated.
-        const rawSampleCount = (Atomics.load(globalSampleCount, 0) >>> 0) as number
-        const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
-        const latencySamples = latencySeconds * sampleRate
-        const rawPlaybackPosition = rawSampleCount - latencySamples
+        const nowSeconds = pred.timeSeconds
 
-        // Predict audible sample count across animation frames to avoid playhead blinking.
-        const nowSec = performance.now() / 1000
-        const lastWall = lastWallTimeRef.current ?? nowSec
-        const deltaTime = Math.max(0, nowSec - lastWall)
-        lastWallTimeRef.current = nowSec
-
-        let predicted = predictedSampleCountRef.current
-        const isFirstFrame = isFirstFrameRef.current || predicted == null
-
-        if (isFirstFrame) {
-          predicted = rawPlaybackPosition
-          isFirstFrameRef.current = false
-        }
-        else {
-          const drift = rawPlaybackPosition - (predicted ?? 0)
-          if (Math.abs(drift) > sampleRate) {
-            // Hard sync on large jump (seek/restart)
-            predicted = rawPlaybackPosition
-          }
-          else {
-            // Advance predicted by wall time
-            predicted = (predicted ?? 0) + deltaTime * sampleRate
-            // Gentle correction to avoid visible blinking
-            if (Math.abs(drift) > 100) {
-              const correctionSpeed = 0.05
-              predicted += drift * correctionSpeed
-            }
-          }
-        }
-
-        predicted = Math.max(0, predicted ?? 0)
-        predictedSampleCountRef.current = predicted
-
-        const sampleCount = predicted
-        const nowSeconds = sampleCount / sampleRate
         let smoothed = timelineTimeRef.current
         if (smoothed == null) smoothed = nowSeconds
         else smoothed += (nowSeconds - smoothed) * SCROLL_SMOOTHING
@@ -124,13 +92,14 @@ export function useTimelineHeader() {
         timelineWindowRef.current = { windowStartTime, windowEndTime, timeSeconds }
 
         const pixelsPerSecond = timelineW / TIME_WINDOW_SECONDS
-        const playheadX = viewX + PAST_SECONDS * pixelsPerSecond
+        const playheadX = PAST_SECONDS * pixelsPerSecond
 
         c.save()
+        c.translate(viewX, 0)
         c.beginPath()
 
         c.fillStyle = 'rgba(0, 0, 0, 0.25)'
-        c.fillRect(viewX, y, viewW, h)
+        c.fillRect(0, y, viewW, h)
 
         const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
         for (let barStart = firstBarStart; barStart < windowEndTime + barLengthSeconds; barStart += barLengthSeconds) {
@@ -139,7 +108,7 @@ export function useTimelineHeader() {
           const barNumber = barIndex + 1
           const isPhraseStart = ((barNumber - 1) & 3) === 0
 
-          const barX = viewX + (barStart - windowStartTime) * pixelsPerSecond
+          const barX = (barStart - windowStartTime) * pixelsPerSecond
 
           c.strokeStyle = isPhraseStart ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.25)'
           c.lineWidth = isPhraseStart ? 1.5 : 1

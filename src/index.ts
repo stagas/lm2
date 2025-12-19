@@ -532,8 +532,8 @@ async function createProgram(sequence: string) {
 
   const histories$ = await worklet.createHistories()
   const historyBuffers = new Uint32Array(wasmMemory.buffer, program.histories, HISTORIES_COUNT)
-  const histories = new Array<VmHistory>(ARRAYS_COUNT)
-  for (let i = 0; i < ARRAYS_COUNT; i++) {
+  const histories = new Array<VmHistory>(HISTORIES_COUNT)
+  for (let i = 0; i < HISTORIES_COUNT; i++) {
     const byteOffset = historyBuffers[i] = histories$[i]
     const writePos = new Float32Array(wasmMemory.buffer,
       byteOffset + HISTORY_WRITE_POS_OFFSET * Float32Array.BYTES_PER_ELEMENT, 1)
