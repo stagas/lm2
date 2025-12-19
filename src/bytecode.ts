@@ -14,6 +14,7 @@ export enum VmOp {
   End = 0,
   Nop = 1,
   PushNum = 2,
+  PushNumSmoothed = 24,
   PushBool = 3,
   PushNull = 4,
   PushUndef = 5,
@@ -153,6 +154,17 @@ export type TimelineSequenceRef = {
   end: number
   /** Location of the full string token (including quotes). */
   loc: Loc
+}
+
+export type NumberWithParamsInfo = {
+  line: number
+  column: number
+  length: number
+  widgetLength: number
+  value: number
+  min: number
+  max: number
+  literalIndex?: number
 }
 
 function buildLineStarts(src: string): number[] {
@@ -710,6 +722,159 @@ function extractAnalysersFromProgramWithRefs(program: Program): AnalyserRef[] {
   return refs
 }
 
+function extractNumberParamsFromProgram(program: Program): NumberWithParamsInfo[] {
+  const out: NumberWithParamsInfo[] = []
+
+  function visitExpr(expr: any): void {
+    if (!expr) return
+
+    if (expr.kind === 'number' && expr.slider) {
+      const min = Number(expr.slider.min ?? 0)
+      const max = Number(expr.slider.max ?? 0)
+      out.push({
+        line: expr.loc.line,
+        column: expr.loc.column,
+        length: expr.loc.length,
+        widgetLength: Number(expr.slider.widgetLength ?? expr.loc.length),
+        value: Number(expr.value ?? 0),
+        min,
+        max,
+      })
+      return
+    }
+
+    if (expr.kind === 'call') {
+      visitExpr(expr.callee)
+      for (const arg of expr.args ?? []) {
+        if (arg.kind === 'pos' || arg.kind === 'named') visitExpr(arg.value)
+      }
+      return
+    }
+
+    if (expr.kind === 'binary') {
+      visitExpr(expr.left)
+      visitExpr(expr.right)
+      return
+    }
+
+    if (expr.kind === 'assign') {
+      visitExpr(expr.target)
+      visitExpr(expr.value)
+      return
+    }
+
+    if (expr.kind === 'unary' || expr.kind === 'postfix') {
+      visitExpr(expr.expr)
+      return
+    }
+
+    if (expr.kind === 'member') {
+      visitExpr(expr.object)
+      if (expr.computed) visitExpr(expr.index)
+      return
+    }
+
+    if (expr.kind === 'array') {
+      for (const item of expr.items ?? []) visitExpr(item)
+      return
+    }
+
+    if (expr.kind === 'object') {
+      for (const prop of expr.props ?? []) visitExpr(prop.value)
+      return
+    }
+
+    if (expr.kind === 'if') {
+      visitExpr(expr.test)
+      if (expr.then?.kind === 'block') visitStmt(expr.then)
+      else visitExpr(expr.then)
+      if (expr.else) {
+        if (expr.else.kind === 'block') visitStmt(expr.else)
+        else visitExpr(expr.else)
+      }
+      return
+    }
+
+    if (expr.kind === 'func') {
+      if (expr.body?.kind === 'block') visitStmt(expr.body)
+      else visitExpr(expr.body)
+      return
+    }
+  }
+
+  function visitStmt(stmt: any): void {
+    if (!stmt) return
+
+    if (stmt.kind === 'expr_stmt') {
+      visitExpr(stmt.expr)
+      return
+    }
+
+    if (stmt.kind === 'block') {
+      for (const s of stmt.body ?? []) visitStmt(s)
+      return
+    }
+
+    if (stmt.kind === 'for') {
+      if (stmt.head?.kind === 'c_style') {
+        if (stmt.head.init) visitExpr(stmt.head.init)
+        if (stmt.head.test) visitExpr(stmt.head.test)
+        if (stmt.head.update) visitExpr(stmt.head.update)
+      }
+      else {
+        visitExpr(stmt.head?.iterable)
+      }
+      visitStmt(stmt.body)
+      return
+    }
+
+    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+      visitExpr(stmt.test)
+      visitStmt(stmt.body)
+      return
+    }
+
+    if (stmt.kind === 'switch') {
+      visitExpr(stmt.test)
+      for (const c of stmt.cases ?? []) {
+        if (c.test) visitExpr(c.test)
+        for (const s of c.body ?? []) visitStmt(s)
+      }
+      return
+    }
+
+    if (stmt.kind === 'try') {
+      visitStmt(stmt.body)
+      if (stmt.catchBody) visitStmt(stmt.catchBody)
+      if (stmt.finallyBody) visitStmt(stmt.finallyBody)
+      return
+    }
+
+    if (stmt.kind === 'throw') {
+      visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'return') {
+      if (stmt.value) visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'label') {
+      visitStmt(stmt.stmt)
+      return
+    }
+
+    if (stmt.kind === 'destructure') {
+      visitExpr(stmt.value)
+      return
+    }
+  }
+
+  for (const stmt of program.body) visitStmt(stmt)
+  return out
+}
+
 export function encodeLangToVmOps(
   src: string,
   target: VmTarget,
@@ -721,6 +886,7 @@ export function encodeLangToVmOps(
   timelineRefs?: TimelineSequenceRef[]
   analyserRefs?: AnalyserRef[]
   arrayLiterals?: ArrayLiteralRef[]
+  numberParams?: NumberWithParamsInfo[]
 } {
   const lexed = lex(src)
   const parsed = parse(src, lexed.tokens)
@@ -730,6 +896,9 @@ export function encodeLangToVmOps(
   const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, parsed.program)
   const timelineExtracted = extractTimelineSequencesFromProgramWithRefs(src, parsed.program)
   const analyserRefs = extractAnalysersFromProgramWithRefs(parsed.program)
+  const numberParams = extractNumberParamsFromProgram(parsed.program)
+  const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
+  const sliderKeys = new Set(numberParams.map(p => sliderKeyOf(p)))
   const sequenceToIndex = new Map<string, number>()
   sequences.forEach((seq, idx) => sequenceToIndex.set(seq, idx))
   const timelineKeyToIndex = new Map<string, number>()
@@ -912,13 +1081,26 @@ export function encodeLangToVmOps(
     return id
   }
 
-  const litIndex = new Map<number, number>()
   let litCount = 0
-  const litOf = (v: number) => {
-    const prev = litIndex.get(v)
+  const litIndexByValue = new Map<number, number>()
+  const litIndexBySliderKey = new Map<string, number>()
+  const sliderKeyToLiteralIndex = new Map<string, number>()
+
+  const allocLit = () => litCount++
+
+  const litOfValue = (v: number) => {
+    const prev = litIndexByValue.get(v)
     if (prev !== undefined) return prev
-    const idx = litCount++
-    litIndex.set(v, idx)
+    const idx = allocLit()
+    litIndexByValue.set(v, idx)
+    return idx
+  }
+
+  const litOfSliderKey = (key: string) => {
+    const prev = litIndexBySliderKey.get(key)
+    if (prev !== undefined) return prev
+    const idx = allocLit()
+    litIndexBySliderKey.set(key, idx)
     return idx
   }
 
@@ -1029,10 +1211,13 @@ export function encodeLangToVmOps(
         case 'PUSH_CONST': {
           const v = chunk.consts[ins.k]
           if (typeof v === 'number') {
-            const k = litOf(v)
+            const key = ins.loc ? sliderKeyOf(ins.loc) : undefined
+            const isSlider = key !== undefined && sliderKeys.has(key)
+            const k = isSlider ? litOfSliderKey(key!) : litOfValue(v)
             target.literals[k] = v
-            target.ops[w++] = VmOp.PushNum
+            target.ops[w++] = isSlider ? VmOp.PushNumSmoothed : VmOp.PushNum
             target.ops[w++] = k
+            if (isSlider) sliderKeyToLiteralIndex.set(key!, k)
           }
           else if (typeof v === 'string') {
             target.ops[w++] = VmOp.PushSym
@@ -1202,6 +1387,10 @@ export function encodeLangToVmOps(
   target.ops[writePc++] = VmOp.End
 
   const timelineRefs = timelineExtracted.refs.map(r => ({ ...r, seqIndex: miniCount + r.seqIndex }))
+  const numberParamsWithLiteralIndex = numberParams.map(p => ({
+    ...p,
+    literalIndex: sliderKeyToLiteralIndex.get(sliderKeyOf(p)),
+  }))
 
   return errors.length
     ? {
@@ -1212,6 +1401,7 @@ export function encodeLangToVmOps(
       timelineRefs,
       analyserRefs,
       arrayLiterals,
+      numberParams: numberParamsWithLiteralIndex,
     }
     : {
       errors: [],
@@ -1221,5 +1411,6 @@ export function encodeLangToVmOps(
       timelineRefs,
       analyserRefs,
       arrayLiterals,
+      numberParams: numberParamsWithLiteralIndex,
     }
 }

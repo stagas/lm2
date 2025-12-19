@@ -2,8 +2,8 @@ import type { EditorWidget } from 'mini-code'
 import { useCallback, useMemo, useRef } from 'react'
 import { ARRAY_HISTORY_ENTRY_SIZE, ARRAY_HISTORY_SIZE } from '../../as/assembly/constants.ts'
 import type { ArrayLiteralRef } from '../bytecode.ts'
-import type { ProgramInstance } from './program.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
+import type { ProgramInstance } from './program.ts'
 
 type UseArrayAccessWidgetParams = {
   program1: ProgramInstance | undefined
@@ -118,11 +118,11 @@ export function useArrayAccessWidget({
             render: (ctx, x, y, w, h) => {
               const a = frameRef.current.get(key) ?? 0
               if (a <= 0) return
-              ctx.fillStyle = `rgba(0, 160, 255, ${0.22 * a})`
+              ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
               ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
-              ctx.strokeStyle = `rgba(0, 160, 255, ${0.85 * a})`
-              ctx.lineWidth = 1
-              ctx.strokeRect(x - 2, y - 2, w + 4, h - 1)
+              // ctx.strokeStyle = `rgba(255, 255, 255, ${a})`
+              // ctx.lineWidth = 1
+              // ctx.strokeRect(x - 2, y - 2, w + 4, h - 1)
             },
           })
         }
@@ -134,5 +134,3 @@ export function useArrayAccessWidget({
 
   return { widgets, onBeforeDraw }
 }
-
-

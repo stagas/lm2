@@ -18,7 +18,14 @@ import {
   RING_BUFFER_SIZE,
 } from '../../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from '../assembly.ts'
-import type { AnalyserRef, ArrayLiteralRef, MiniSequenceRef, TimelineSequenceDef, TimelineSequenceRef } from '../bytecode.ts'
+import type {
+  AnalyserRef,
+  ArrayLiteralRef,
+  MiniSequenceRef,
+  NumberWithParamsInfo,
+  TimelineSequenceDef,
+  TimelineSequenceRef,
+} from '../bytecode.ts'
 import { encodeLangToVmOps } from '../bytecode.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
@@ -92,11 +99,13 @@ function buildProgram(
   timelineRefs: TimelineSequenceRef[]
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
+  numberParams: NumberWithParamsInfo[]
 } {
-  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, analyserRefs, arrayLiterals } = encodeLangToVmOps(dspSource, {
-    ops: data.ops,
-    literals: data.literals,
-  })
+  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, analyserRefs, arrayLiterals,
+    numberParams } = encodeLangToVmOps(dspSource, {
+      ops: data.ops,
+      literals: data.literals,
+    })
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
@@ -108,6 +117,7 @@ function buildProgram(
     timelineRefs: timelineRefs ?? [],
     analyserRefs: analyserRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
+    numberParams: numberParams ?? [],
   }
 }
 
@@ -133,6 +143,7 @@ export type ProgramBuildResult = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   timelineSequences: TimelineSequenceDef[]
   arrayLiterals: ArrayLiteralRef[]
+  numberParams: NumberWithParamsInfo[]
   data: ProgramDataView
   diff: ProgramBuildDiff
   previousData?: ProgramDataView
@@ -186,7 +197,6 @@ function computeProgramDiff(
 
 function createProgramDataView(data$: number, arrays$: number[], wasmMemory: WebAssembly.Memory) {
   const programData = ProgramDataStruct(wasmMemory.buffer, data$)
-  const lock = new Int32Array(wasmMemory.buffer, programData.lock, 1)
   const ops$ = programData.ops
   const ops = new Int32Array(wasmMemory.buffer, ops$, OPS_COUNT)
 
@@ -215,31 +225,9 @@ function createProgramDataView(data$: number, arrays$: number[], wasmMemory: Web
 
   return {
     ptr$: data$,
-    lock,
     ops,
     arrays,
     literals,
-    async acquireLock() {
-      while (true) {
-        const prev = Atomics.compareExchange(this.lock, 0, 0, 1)
-        if (prev === 0) return
-        await Atomics.waitAsync(this.lock, 0, prev).value
-      }
-    },
-    releaseLock() {
-      Atomics.store(this.lock, 0, 0)
-      Atomics.notify(this.lock, 0)
-    },
-    async withLock(fn: () => void) {
-      await this.acquireLock()
-      fn()
-      this.releaseLock()
-    },
-    writeLiteral(index: number, value: number) {
-      this.withLock(() => {
-        literals[index] = value
-      })
-    },
   }
 }
 
@@ -305,6 +293,7 @@ async function createProgram(
   )
 
   let programData: ProgramDataView | undefined
+
   const out = {
     ptr$: program$,
     lock,
@@ -328,7 +317,8 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, analyserRefs, arrayLiterals } = buildProgram(newData, source)
+        const { sequences, timelineSequences, miniRefs, timelineRefs, analyserRefs, arrayLiterals, numberParams } =
+          buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -384,6 +374,7 @@ async function createProgram(
           miniSourceMaps,
           timelineSequences,
           arrayLiterals,
+          numberParams,
           data: newData,
           diff,
           previousData: referenceData,
@@ -428,6 +419,11 @@ async function createProgram(
     async setData(value: ProgramDataView) {
       await this.withLock(() => {
         this._setData(value)
+      })
+    },
+    async writeLiteral(index: number, value: number) {
+      await this.withLock(() => {
+        if (programData) programData.literals[index] = value
       })
     },
   }

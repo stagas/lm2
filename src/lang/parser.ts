@@ -566,6 +566,27 @@ class Parser {
     let expr = this.parsePrimary()
     for (;;) {
       if (this.match('l_paren')) {
+        if (expr.kind === 'number') {
+          const minTok = this.cur()
+          const maxTok = this.tokens[this.i + 1]
+          const endTok = this.tokens[this.i + 2]
+          if (minTok.kind === 'number' && maxTok?.kind === 'number' && endTok?.kind === 'r_paren') {
+            this.next()
+            this.next()
+            this.next()
+            expr = {
+              ...expr,
+              slider: {
+                min: Number(minTok.value),
+                max: Number(maxTok.value),
+                widgetLength: endTok.line === expr.loc.line
+                  ? (endTok.column + endTok.length - expr.loc.column)
+                  : expr.loc.length,
+              },
+            }
+            continue
+          }
+        }
         const args = this.parseArgs()
         const end = this.expect('r_paren', 'Expected \')\'')
         expr = { kind: 'call', callee: expr, args, loc: locFrom(expr.loc, end) }

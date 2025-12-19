@@ -159,7 +159,13 @@ export type Expr =
   | FuncExpr
   | PostfixExpr
 
-export type NumberExpr = { kind: 'number'; value: number; raw: string; loc: Loc }
+export type NumberExpr = {
+  kind: 'number'
+  value: number
+  raw: string
+  loc: Loc
+  slider?: { min: number; max: number; widgetLength: number }
+}
 export type StringExpr = { kind: 'string'; value: string; raw: string; loc: Loc }
 export type BoolExpr = { kind: 'bool'; value: boolean; loc: Loc }
 export type NullExpr = { kind: 'null'; loc: Loc }

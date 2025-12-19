@@ -154,11 +154,11 @@ export function useTimelineSequenceWidget({
 
                 const color = [255, 255, 255]
 
-                ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${0.22 * a})`
+                ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${0.25 * a})`
                 ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
-                ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${0.9 * a})`
-                ctx.lineWidth = 1
-                ctx.strokeRect(x - 2, y - 2, w + 4, h - 1)
+                // ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${0.9 * a})`
+                // ctx.lineWidth = 1
+                // ctx.strokeRect(x - 2, y - 2, w + 4, h - 1)
               },
             })
           }

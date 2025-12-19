@@ -68,6 +68,7 @@ All values are runtime values tagged with their type.
   * `NaN` behaves like JavaScript.
   * Helper functions such as `isNaN()` and `isFinite()` are provided.
   * When used with bitwise operators, values are cast to 32-bit integers.
+  * Numeric slider suffix: `value (min max)` annotates a numeric literal with a slider range for the editor UI, evaluates to `value`.
 
 * **String**
 

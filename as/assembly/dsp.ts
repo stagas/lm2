@@ -5,13 +5,14 @@ import {
   ARRAY_SIZE,
   CALLBACK_SCOPE_BASE,
   CALLBACK_SCOPE_BUFFERS_PER_VOICE,
+  LITERALS_COUNT,
   SEQ_VOICES,
 } from './constants'
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Mini } from './gen/mini'
-import { Timeline } from './gen/timeline'
 import { Sine } from './gen/sine'
+import { Timeline } from './gen/timeline'
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from './globals'
 import { Program, ProgramData } from './program'
 import { Op } from './shared'
@@ -290,6 +291,7 @@ enum VmOp {
   End = 0,
   Nop = 1,
   PushNum = 2, // literal index (ProgramData.literals)
+  PushNumSmoothed = 24, // literal index (ProgramData.literals), smoothed at audio-rate when needed
   PushBool = 3, // 0/1
   PushNull = 4,
   PushUndef = 5,
@@ -368,6 +370,9 @@ const VM_FUNC_HEADER: i32 = -2
 export class Dsp {
   program: Program = new Program()
   private lastGoodData: ProgramData | null = null
+
+  private smoothedHas: StaticArray<i32> = new StaticArray<i32>(LITERALS_COUNT)
+  private smoothedOut: StaticArray<usize> = new StaticArray<usize>(LITERALS_COUNT)
 
   private vmSp: i32 = 0
   private vmTag: StaticArray<i32> = new StaticArray<i32>(1024)
@@ -612,6 +617,12 @@ export class Dsp {
         this.vmPush(VmTag.Num, v)
         continue
       }
+      if (op === VmOp.PushNumSmoothed) {
+        const k = ops[pc++]
+        const v = this.program.data.literals[k] as f64
+        this.vmPush(VmTag.Num, v, -1 - k)
+        continue
+      }
       if (op === VmOp.PushBool) {
         const v = ops[pc++]
         this.vmPush(VmTag.Bool, v != 0 ? 1.0 : 0.0)
@@ -762,7 +773,23 @@ export class Dsp {
         const idx = this.vmPop()
         const tag = this.vmTag[idx] as VmTag
         const num = this.vmNum[idx]
-        if (code === VmUnary.Neg && tag === VmTag.Num) this.vmPush(VmTag.Num, -num)
+        if (code === VmUnary.Neg && tag === VmTag.Num) {
+          const aux = this.vmAux[idx]
+          if (aux < 0) {
+            const in$ = this.vmToAudioPtr(tag, num, aux, length)
+            const outIndex = this.vmAllocOut()
+            const out$ = this.program.getOutBuffer(outIndex)
+            let p$ = out$
+            for (let i = 0; i < length; i++) {
+              store<f32>(p$, -load<f32>(in$ + (i * 4) as usize))
+              p$ += 4
+            }
+            this.vmPush(VmTag.Audio, 0.0, outIndex)
+          }
+          else {
+            this.vmPush(VmTag.Num, -num)
+          }
+        }
         else if (code === VmUnary.Not) this.vmPush(VmTag.Bool, this.vmTruthy(tag, num) ? 0.0 : 1.0)
         else if (code === VmUnary.BitNot && tag === VmTag.Num) this.vmPush(VmTag.Num, ~i32(num) as f64)
         else this.vmPush(VmTag.Undef)
@@ -875,13 +902,43 @@ export class Dsp {
       return this.program.getOutBuffer(aux)
     }
 
-    const outIndex = this.vmAllocOut()
-    const out$ = this.program.getOutBuffer(outIndex)
-
     if (tag === VmTag.Num) {
+      if (aux < 0) {
+        const k = -1 - aux
+        if (k >= 0 && k < this.smoothedHas.length) {
+          if (this.smoothedHas[k] !== 0) {
+            return this.smoothedOut[k]
+          }
+          const outIndex = this.vmAllocOut()
+          const out$ = this.program.getOutBuffer(outIndex)
+          this.smoothedHas[k] = 1
+          this.smoothedOut[k] = out$
+
+          const s = this.program.literalsSmoothed[k]
+          if (s.value === Infinity && s.target === Infinity) {
+            s.value = num
+            s.target = num
+          }
+          else {
+            s.target = num
+          }
+          let p$ = out$
+          for (let i = 0; i < length; i++) {
+            s.update()
+            store<f32>(p$, s.value as f32)
+            p$ += 4
+          }
+          return out$
+        }
+      }
+      const outIndex = this.vmAllocOut()
+      const out$ = this.program.getOutBuffer(outIndex)
       fillAudio(out$, num as f32, length)
       return out$
     }
+
+    const outIndex = this.vmAllocOut()
+    const out$ = this.program.getOutBuffer(outIndex)
 
     if (tag === VmTag.Bool) {
       fillAudio(out$, (num != 0.0 ? 1.0 : 0.0) as f32, length)
@@ -900,8 +957,44 @@ export class Dsp {
     const bTag = this.vmTag[b] as VmTag
     const aNum = this.vmNum[a]
     const bNum = this.vmNum[b]
+    const aAux = this.vmAux[a]
+    const bAux = this.vmAux[b]
 
     if (aTag !== VmTag.Audio && bTag !== VmTag.Audio) {
+      const aSmoothed = aTag === VmTag.Num && aAux < 0
+      const bSmoothed = bTag === VmTag.Num && bAux < 0
+      const promoteToAudio = (aSmoothed || bSmoothed)
+        && (
+          code === VmBinary.Add || code === VmBinary.Sub || code === VmBinary.Mul || code === VmBinary.Div
+          || code === VmBinary.Mod || code === VmBinary.Pow
+          || code === VmBinary.BitOr || code === VmBinary.BitXor || code === VmBinary.BitAnd
+          || code === VmBinary.Shl || code === VmBinary.Shr || code === VmBinary.Ushr
+        )
+
+      if (promoteToAudio) {
+        const aPtr$ = this.vmToAudioPtr(aTag, aNum, aAux, length)
+        const bPtr$ = this.vmToAudioPtr(bTag, bNum, bAux, length)
+        const outIndex = this.vmAllocOut()
+        const out$ = this.program.getOutBuffer(outIndex)
+
+        if (code === VmBinary.Add) addAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.Sub) subAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.Mul) mulAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.Div) divAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.Mod) modAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.Pow) powAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.BitOr) bitOrAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.BitXor) bitXorAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.BitAnd) bitAndAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.Shl) shlAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.Shr) shrAudio(out$, aPtr$, bPtr$, length)
+        else if (code === VmBinary.Ushr) ushrAudio(out$, aPtr$, bPtr$, length)
+        else clearAudio(out$, length)
+
+        this.vmPush(VmTag.Audio, 0.0, outIndex)
+        return
+      }
+
       if (code === VmBinary.Add && aTag === VmTag.Num && bTag === VmTag.Num) {
         this.vmPush(VmTag.Num, aNum + bNum)
         return
@@ -1397,6 +1490,9 @@ export class Dsp {
       this.scopeDepth = 0
       this.arrCount = 0
       this.arrElemCount = 0
+      for (let i = 0; i < this.smoothedHas.length; i++) {
+        this.smoothedHas[i] = 0
+      }
 
       const leftBlock$ = left$ + (offset * 4) as usize
       const rightBlock$ = right$ + (offset * 4) as usize

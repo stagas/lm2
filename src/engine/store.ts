@@ -5,7 +5,13 @@ import {
   MAX_DSP_INSTANCES,
 } from '../../as/assembly/constants.ts'
 import { type Dsp, DspStruct } from '../assembly.ts'
-import type { AnalyserRef, ArrayLiteralRef, MiniSequenceRef, TimelineSequenceRef } from '../bytecode.ts'
+import type {
+  AnalyserRef,
+  ArrayLiteralRef,
+  MiniSequenceRef,
+  NumberWithParamsInfo,
+  TimelineSequenceRef,
+} from '../bytecode.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { ControlOp } from '../worklet-shared.ts'
@@ -40,6 +46,7 @@ type EngineState = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
+  numberParams: NumberWithParamsInfo[]
   dspSource: string
   isUpdatingDsp: boolean
   isInitialized: boolean
@@ -69,6 +76,99 @@ export const useEngineStore = create<EngineState>((set, get) => {
     requests: [] as PendingDspUpdate[],
   }
 
+  function lineStarts(src: string): number[] {
+    const out = [0]
+    for (let i = 0; i < src.length; i++) {
+      if (src[i] === '\n') out.push(i + 1)
+    }
+    return out
+  }
+
+  function normalizeSourceWithRanges(src: string, ranges: Array<{ start: number; end: number }>): string {
+    if (ranges.length === 0) return src
+    const sorted = [...ranges].sort((a, b) => a.start - b.start)
+    let out = ''
+    let pos = 0
+    for (const r of sorted) {
+      out += src.slice(pos, r.start)
+      out += '#'.repeat(Math.max(0, r.end - r.start))
+      pos = r.end
+    }
+    out += src.slice(pos)
+    return out
+  }
+
+  function readNumberAt(
+    src: string,
+    starts: number[],
+    info: Pick<NumberWithParamsInfo, 'line' | 'column' | 'length'>,
+  ): { value: number; range: { start: number; end: number } } | null {
+    const lineStart = starts[info.line - 1]
+    if (lineStart === undefined) return null
+    const start = lineStart + (info.column - 1)
+    const end = start + Math.max(1, info.length)
+    if (start < 0 || end > src.length) return null
+
+    const token = src.slice(start, end)
+    const match = token.match(/^-?\d*\.?\d*/)
+    const raw = match?.[0] ?? ''
+    if (!raw) return null
+    const value = Number.parseFloat(raw)
+    if (!Number.isFinite(value)) return null
+    return { value, range: { start, end } }
+  }
+
+  async function tryApplyLiteralOnlyUpdate(source: string): Promise<string[] | undefined> {
+    const state = get()
+    const primaryProgram = state.program1
+    if (!primaryProgram) return undefined
+    if (!state.lastSuccessfulProgramData) return undefined
+    if (state.numberParams.length === 0) return undefined
+
+    const oldSource = state.dspSource
+    const oldStarts = lineStarts(oldSource)
+    const newStarts = lineStarts(source)
+    const ranges: Array<{ start: number; end: number }> = []
+
+    const updates: Array<{ index: number; value: number }> = []
+    const nextNumberParams: NumberWithParamsInfo[] = []
+
+    for (const info of state.numberParams) {
+      const index = info.literalIndex
+      if (index === undefined) return undefined
+
+      const oldRead = readNumberAt(oldSource, oldStarts, info)
+      const newRead = readNumberAt(source, newStarts, info)
+      if (!oldRead || !newRead) return undefined
+
+      ranges.push(oldRead.range)
+      ranges.push(newRead.range)
+
+      if (newRead.value !== info.value) {
+        updates.push({ index, value: newRead.value })
+      }
+
+      nextNumberParams.push({ ...info, value: newRead.value })
+    }
+
+    const oldNorm = normalizeSourceWithRanges(oldSource, ranges.filter((_, i) => i % 2 === 0))
+    const newNorm = normalizeSourceWithRanges(source, ranges.filter((_, i) => i % 2 === 1))
+    if (oldNorm !== newNorm) return undefined
+    if (updates.length === 0) {
+      set({ dspSource: source, numberParams: nextNumberParams })
+      localStorage.setItem('engine2:dsp-source', source)
+      return state.sequences
+    }
+
+    for (const u of updates) {
+      await primaryProgram.program.writeLiteral(u.index, u.value)
+    }
+
+    set({ dspSource: source, numberParams: nextNumberParams })
+    localStorage.setItem('engine2:dsp-source', source)
+    return state.sequences
+  }
+
   async function runQueuedDspUpdate(source: string): Promise<string[] | undefined> {
     const state = get()
     if (!state.program1 || !state.program2) return undefined
@@ -78,6 +178,9 @@ export const useEngineStore = create<EngineState>((set, get) => {
     }
 
     try {
+      const literalOnly = await tryApplyLiteralOnlyUpdate(source)
+      if (literalOnly) return literalOnly
+
       const primaryProgram = state.program1
       const stagingProgram = state.program2
 
@@ -96,6 +199,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const miniSourceMaps = primaryResult.miniSourceMaps
       const analyserRefs = primaryResult.analyserRefs
       const arrayLiterals = primaryResult.arrayLiterals
+      const numberParams = primaryResult.numberParams
 
       if (!primaryResult.diff.significantChange) {
         await primaryProgram.program.applyPreparedData(primaryResult.data)
@@ -107,6 +211,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           miniSourceMaps,
           analyserRefs,
           arrayLiterals,
+          numberParams,
           lastSuccessfulProgramData: primaryResult.data,
         })
         localStorage.setItem('engine2:dsp-source', source)
@@ -156,6 +261,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         miniSourceMaps: stagingResult.miniSourceMaps,
         analyserRefs: stagingResult.analyserRefs,
         arrayLiterals: stagingResult.arrayLiterals,
+        numberParams: stagingResult.numberParams,
         ...swappedPrograms,
         lastSuccessfulProgramData: stagingProgram.program.data,
       })
@@ -217,6 +323,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     miniSourceMaps: [],
     analyserRefs: [],
     arrayLiterals: [],
+    numberParams: [],
     dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     isUpdatingDsp: false,
     isInitialized: false,
@@ -271,6 +378,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         miniSourceMaps: [],
         analyserRefs: [],
         arrayLiterals: [],
+        numberParams: [],
         isInitialized: false,
         isProgramReady: false,
         playbackState: 'stopped',
@@ -463,15 +571,15 @@ interface FontState {
 }
 
 export const useFontStore = create<FontState>()(
-  persist(
-    set => ({
-      currentFont: 'IBM Plex Mono',
-      previewFont: null,
-      setFont: (font: string) => set({ currentFont: font }),
-      setPreviewFont: (previewFont: string | null) => set({ previewFont }),
-    }),
-    {
-      name: 'dspscript-font',
-    },
-  ),
+  // persist(
+  set => ({
+    currentFont: 'Space Mono',
+    previewFont: null,
+    setFont: (font: string) => set({ currentFont: font }),
+    setPreviewFont: (previewFont: string | null) => set({ previewFont }),
+  }),
+  // {
+  //   name: 'dspscript-font',
+  // },
+  // ),
 )

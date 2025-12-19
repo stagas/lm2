@@ -251,9 +251,9 @@ export const themes: Record<string, Omit<Theme, 'font'>> = {
       keyword: '#ffffff',
       string: '#cccccc',
       number: '#ffff00',
-      function: '#55ddff', //
-      parameter: '#f97316', // '#dddddd',
-      argument: '#ff44aa',
+      function: '#ea580c', // '#55ddff', //
+      parameter: '#dddddd',
+      argument: '#ea580c', // orange-600
       comment: '#666666',
       operator: '#ffffff',
       punctuation: '#bbbbbb',

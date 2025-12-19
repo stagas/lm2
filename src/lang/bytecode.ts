@@ -20,7 +20,7 @@ import { type LangError, lineText } from './errors.ts'
 export type ConstVal = number | string | boolean | null | undefined
 
 export type Instr =
-  | { op: 'PUSH_CONST'; k: number }
+  | { op: 'PUSH_CONST'; k: number; loc?: Loc }
   | { op: 'ENTER_SCOPE' }
   | { op: 'EXIT_SCOPE' }
   | { op: 'POP' }
@@ -325,19 +325,19 @@ class Compiler {
   private compileExpr(expr: Expr): void {
     switch (expr.kind) {
       case 'number':
-        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value) })
+        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value), loc: expr.loc })
         return
       case 'string':
-        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value) })
+        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value), loc: expr.loc })
         return
       case 'bool':
-        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value) })
+        this.emit({ op: 'PUSH_CONST', k: this.k(expr.value), loc: expr.loc })
         return
       case 'null':
-        this.emit({ op: 'PUSH_CONST', k: this.k(null) })
+        this.emit({ op: 'PUSH_CONST', k: this.k(null), loc: expr.loc })
         return
       case 'undefined':
-        this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+        this.emit({ op: 'PUSH_CONST', k: this.k(undefined), loc: expr.loc })
         return
       case 'ident':
         this.emit({ op: 'LOAD', name: this.nameConst(expr.name) })

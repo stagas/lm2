@@ -397,9 +397,9 @@ export function useSequenceWidget({
                 const [r, g, b] = [255, 255, 255]
                 ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.25 * a})`
                 ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
-                ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${a})`
-                ctx.lineWidth = 1
-                ctx.strokeRect(x - 2, y - 2, w + 4, h - 1)
+                // ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${a})`
+                // ctx.lineWidth = 1
+                // ctx.strokeRect(x - 2, y - 2, w + 4, h - 1)
               },
             })
           }
@@ -422,9 +422,9 @@ export function useSequenceWidget({
               if (a <= 0) return
               ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
               ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
-              ctx.strokeStyle = `rgba(255, 255, 255, ${a})`
-              ctx.lineWidth = 1
-              ctx.strokeRect(x - 2, y - 2, w + 4, h - 1)
+              // ctx.strokeStyle = `rgba(255, 255, 255, ${a})`
+              // ctx.lineWidth = 1
+              // ctx.strokeRect(x - 2, y - 2, w + 4, h - 1)
             },
           })
         }

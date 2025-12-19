@@ -13,19 +13,19 @@ import {
   HISTORY_SIZE,
   LITERALS_COUNT,
   MINI_HEADER_SIZE,
+  OP_CYCLE_END,
   OPS_COUNT,
   RING_BUFFER_SIZE,
   SEQ_VOICES,
   TIMELINE_MAGIC,
-  OP_CYCLE_END,
 } from './constants'
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
-import { Timeline } from './gen/timeline'
 import { Sine } from './gen/sine'
+import { Timeline } from './gen/timeline'
 import { Smoothed } from './lib/smoothed'
 import { Op } from './shared'
 
@@ -130,15 +130,11 @@ class AnalyserOutsPool {
 }
 
 export class ProgramData {
-  lock: i32 = 0
-
   ops: StaticArray<i32> = new StaticArray<i32>(OPS_COUNT)
   arrays: StaticArray<usize> = new StaticArray<usize>(ARRAYS_COUNT)
   literals: StaticArray<f32> = new StaticArray<f32>(LITERALS_COUNT)
 
   copyFrom(source: ProgramData): void {
-    this.lock = source.lock
-
     memory.copy(
       changetype<usize>(this.ops),
       changetype<usize>(source.ops),

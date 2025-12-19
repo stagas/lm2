@@ -1,0 +1,233 @@
+import type { CodeFile, EditorWidget, Theme } from 'mini-code'
+import { useMemo, useRef } from 'react'
+import type React from 'react'
+import type { NumberWithParamsInfo } from '../bytecode.ts'
+
+type DragState = {
+  key: string
+  value: number
+  min: number
+  max: number
+  line: number
+  column: number
+  length: number
+  x: number
+  y: number
+  width: number
+  isDragging: boolean
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n))
+}
+
+function decimalsOf(s: string): number {
+  const i = s.indexOf('.')
+  if (i === -1) return 0
+  return Math.max(0, Math.min(6, s.length - i - 1))
+}
+
+function formatNumberLike(value: number, like: string): string {
+  const decimals = decimalsOf(like)
+  if (!Number.isFinite(value)) return String(value)
+  if (decimals === 0) return String(Math.round(value))
+  return value.toFixed(decimals)
+}
+
+function updateValueWithSpacing(line: string, column: number, oldStr: string, value: number, length: number): string {
+  const start = Math.max(0, column - 1)
+  const padLen = oldStr.length > 0 ? oldStr.length : Math.max(1, length)
+
+  const before = line.slice(0, start)
+  let next = formatNumberLike(value, oldStr || line.slice(start, start + Math.max(1, length)))
+  const extraChars = Math.max(0, next.length - padLen)
+
+  if (next.length < padLen) next = next + ' '.repeat(padLen - next.length)
+
+  let end = start + padLen
+  let consumed = 0
+  while (consumed < extraChars && end < line.length && line[end] === ' ') {
+    end++
+    consumed++
+  }
+
+  const after = line.slice(end)
+  return before + next + after
+}
+
+export class SliderWidget {
+  private sliderKey: string
+  private currentWidth: number
+  private sliderHeight = 20
+  private padding = 0
+  private handleRadius = 7
+
+  constructor(
+    private info: NumberWithParamsInfo,
+    private theme: Theme,
+    private codeFileRef: React.RefObject<CodeFile>,
+    private dragStateRef: React.RefObject<DragState | null>,
+    private rafRef: React.RefObject<number | null>,
+  ) {
+    this.sliderKey = `${info.line}-${info.column}`
+    this.currentWidth = (info.widgetLength || info.length) * 8
+  }
+
+  toEditorWidget(): EditorWidget {
+    return {
+      type: 'below',
+      line: this.info.line,
+      column: this.info.column,
+      length: this.info.widgetLength || this.info.length,
+      height: this.sliderHeight,
+
+      render: (ctx, x, y, width, height) => {
+        y -= 2
+        this.currentWidth = width
+        const drag = this.dragStateRef.current
+
+        let value: number
+        if (drag && drag.isDragging && drag.line === this.info.line && drag.column === this.info.column) {
+          value = drag.value
+          drag.x = x
+          drag.y = y
+          drag.width = width
+          drag.min = this.info.min
+          drag.max = this.info.max
+          drag.key = this.sliderKey
+        }
+        else {
+          value = this.info.value
+        }
+
+        const min = Math.min(this.info.min, this.info.max)
+        const max = Math.max(this.info.min, this.info.max)
+        value = clamp(value, min, max)
+        const range = max - min
+        const normalized = range > 0 ? clamp((value - min) / range, 0, 1) : 0
+
+        ctx.fillStyle = this.theme.colors.function || '#666'
+        ctx.fillRect(x + this.padding, y + height / 2 - 1, width - this.padding * 2, 2)
+
+        const trackWidth = width - this.padding * 2
+        const handleX = x + this.padding + this.handleRadius + normalized * (trackWidth - 2 * this.handleRadius)
+        const handleY = y + height / 2
+
+        ctx.fillStyle = this.theme.background === 'transparent' ? '#000' : this.theme.background
+        ctx.beginPath()
+        ctx.arc(handleX, handleY, this.handleRadius, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.strokeStyle = this.theme.colors.function || '#fff'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      },
+
+      pointerDown: (x, y, offsetX) => {
+        const min = Math.min(this.info.min, this.info.max)
+        const max = Math.max(this.info.min, this.info.max)
+        const trackWidth = this.currentWidth - this.padding * 2
+        const range = max - min
+        const normalized = clamp((offsetX - this.padding - this.handleRadius) / (trackWidth - 2 * this.handleRadius), 0,
+          1)
+        const value = clamp(min + normalized * range, min, max)
+
+        this.dragStateRef.current = {
+          key: this.sliderKey,
+          value,
+          min,
+          max,
+          line: this.info.line,
+          column: this.info.column,
+          length: this.info.length,
+          x,
+          y,
+          width: this.currentWidth,
+          isDragging: true,
+        }
+
+        const codeFile = this.codeFileRef.current
+        if (!codeFile) return
+
+        const lines = codeFile.value.split('\n')
+        const lineIndex = this.info.line - 1
+        if (lineIndex < 0 || lineIndex >= lines.length) return
+
+        const line = lines[lineIndex]!
+        const from = this.info.column - 1
+        const match = line.substring(from).match(/^-?\d*\.?\d*/)
+        const oldStr = match?.[0] || line.slice(from, from + Math.max(1, this.info.length))
+        const newLine = updateValueWithSpacing(line, this.info.column, oldStr, value, this.info.length)
+        codeFile.edit(lineIndex, 0, line.length, newLine)
+      },
+
+      pointerMove: (_x, _y, offsetX) => {
+        const drag = this.dragStateRef.current
+        if (!drag || !drag.isDragging) return
+        if (drag.line !== this.info.line || drag.column !== this.info.column) return
+
+        const trackWidth = drag.width - this.padding * 2
+        const normalized = clamp((offsetX - this.padding - this.handleRadius) / (trackWidth - 2 * this.handleRadius), 0,
+          1)
+        drag.value = clamp(drag.min + normalized * (drag.max - drag.min), drag.min, drag.max)
+
+        if (this.rafRef.current) cancelAnimationFrame(this.rafRef.current)
+        this.rafRef.current = requestAnimationFrame(() => {
+          const currentDrag = this.dragStateRef.current
+          const codeFile = this.codeFileRef.current
+          if (!currentDrag || !codeFile) {
+            this.rafRef.current = null
+            return
+          }
+
+          const lines = codeFile.value.split('\n')
+          const lineIndex = currentDrag.line - 1
+          if (lineIndex >= 0 && lineIndex < lines.length) {
+            const line = lines[lineIndex]!
+            const from = currentDrag.column - 1
+            const match = line.substring(from).match(/^-?\d*\.?\d*/)
+            const oldStr = match?.[0] || line.slice(from, from + Math.max(1, currentDrag.length))
+            const newLine = updateValueWithSpacing(line, currentDrag.column, oldStr, currentDrag.value,
+              currentDrag.length)
+            codeFile.edit(lineIndex, 0, line.length, newLine)
+          }
+          this.rafRef.current = null
+        })
+      },
+
+      pointerUp: () => {
+        const drag = this.dragStateRef.current
+        if (drag) drag.isDragging = false
+        if (this.rafRef.current) {
+          cancelAnimationFrame(this.rafRef.current)
+          this.rafRef.current = null
+        }
+      },
+    }
+  }
+}
+
+type UseSliderWidgetParams = {
+  showWidgets: boolean
+  numberParams: NumberWithParamsInfo[]
+  theme: Theme
+  codeFileRef: React.RefObject<CodeFile>
+}
+
+export function useSliderWidget({
+  showWidgets,
+  numberParams,
+  theme,
+  codeFileRef,
+}: UseSliderWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
+  const dragRef = useRef<DragState | null>(null)
+  const rafIdRef = useRef<number | null>(null)
+
+  const widgets = useMemo((): EditorWidget[] => {
+    if (!showWidgets) return []
+    if (numberParams.length === 0) return []
+    return numberParams.map(info => new SliderWidget(info, theme, codeFileRef, dragRef, rafIdRef).toEditorWidget())
+  }, [showWidgets, numberParams, theme, codeFileRef])
+
+  return { widgets, onBeforeDraw: () => {} }
+}

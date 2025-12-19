@@ -1,4 +1,4 @@
-import { CodeEditor, type EditorHeader, type EditorWidget } from 'mini-code'
+import { CodeEditor, CodeFile, type EditorHeader, type EditorWidget } from 'mini-code'
 import {
   useCallback,
   useEffect,
@@ -19,6 +19,7 @@ import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
 import { useSeekToSample } from './useSeekToSample.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
+import { useSliderWidget } from './useSliderWidget.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
 import { useTimelineSequenceWidget } from './useTimelineSequenceWidget.ts'
 import { useTimelineWidget } from './useTimelineWidget.ts'
@@ -62,6 +63,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     miniSourceMaps,
     analyserRefs,
     arrayLiterals,
+    numberParams,
   } = useEngineStore()
 
   const { playbackState } = useEngineStore()
@@ -69,6 +71,19 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
   const [error, setError] = useState<string>()
   const { isUpdatingDsp } = useEngineStore()
   const theme = useTheme()
+
+  const codeFileRef = useRef<CodeFile>(new CodeFile(dspSource))
+
+  useEffect(() => {
+    const codeFile = codeFileRef.current
+    const unsub = codeFile.subscribe(() => {
+      const v = codeFile.value
+      setLocalSource(prev => (prev === v ? prev : v))
+    })
+    return () => {
+      unsub()
+    }
+  }, [])
 
   // Keep widgets visible while the store is still processing updates or when
   // the editor has compilation errors so the user can see widgets while fixing.
@@ -179,6 +194,13 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     arrayLiterals,
   })
 
+  const { widgets: sliderWidgets } = useSliderWidget({
+    showWidgets,
+    numberParams,
+    theme,
+    codeFileRef,
+  })
+
   const onBeforeDrawCombined = useCallback(() => {
     onBeforeDraw()
     onBeforeDrawPianoroll()
@@ -204,15 +226,16 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
       ...pianorollWidgets,
       ...sequenceWidgets,
       ...arrayAccessWidgets,
+      ...sliderWidgets,
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets])
+    arrayAccessWidgets, sliderWidgets])
 
   return (
     <div className="flex flex-row gap-2 w-full">
       <div className="bg-gray-900 text-white font-mono text-sm w-full h-[90dvh]">
         <CodeEditor
-          value={localSource}
+          codeFile={codeFileRef.current}
           setValue={(value) => {
             setLocalSource(value)
           }}

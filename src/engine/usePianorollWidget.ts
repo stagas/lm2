@@ -121,7 +121,7 @@ export function usePianorollWidget({
         activeList: [],
       }
 
-      st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount))
+      st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount, 50000))
       if (st.timeSeconds == null) {
         st.timeSeconds = timeSeconds
       }
@@ -477,17 +477,17 @@ export function usePianorollWidget({
     c.lineTo(currentTimeX, h)
     c.stroke()
 
-    c.font = '6pt Inter'
-    c.textAlign = 'right'
-    c.textBaseline = 'middle'
-    for (const n of st.notes) {
-      const x = currentTimeX - 5
-      const y = n.y - 0.35
-      c.fillStyle = `rgba(0,0,0, ${n.fade * 0.5})`
-      c.fillText(n.noteText, x + 1, y + 1)
-      c.fillStyle = `rgba(255, 255, 0, ${n.fade})`
-      c.fillText(n.noteText, x, y)
-    }
+    // c.font = '6pt Inter'
+    // c.textAlign = 'right'
+    // c.textBaseline = 'middle'
+    // for (const n of st.notes) {
+    //   const x = currentTimeX - 15
+    //   const y = n.y - 0.35
+    //   c.fillStyle = `rgba(0,0,0, ${n.fade * 0.5})`
+    //   c.fillText(n.noteText, x + 1, y + 1)
+    //   c.fillStyle = `rgba(255, 255, 0, ${n.fade})`
+    //   c.fillText(n.noteText, x, y)
+    // }
 
     c.restore()
     c.restore()
