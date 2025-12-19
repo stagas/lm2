@@ -1,4 +1,4 @@
-import { CodeEditor, type EditorWidget } from 'mini-code'
+import { CodeEditor, type EditorHeader, type EditorWidget } from 'mini-code'
 import {
   useCallback,
   useEffect,
@@ -8,7 +8,6 @@ import {
 } from 'react'
 import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
-import { ControlOp } from '../worklet-shared.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { useEngine } from './program.ts'
 import { useEngineStore } from './store.ts'
@@ -17,6 +16,7 @@ import { tokenizer } from './tokenizer.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
+import { useSeekToSample } from './useSeekToSample.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
 
@@ -44,7 +44,7 @@ export type TimelineWindow = {
   timeSeconds: number
 }
 
-export function DspSourceEditor() {
+export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHeader }) {
   const {
     dspSource,
     updateDspSource,
@@ -53,8 +53,6 @@ export function DspSourceEditor() {
     audioContext,
     bpmValue,
     globalSampleCount,
-    control,
-    seekSampleCount,
     ringPos,
     miniRefs,
     miniSourceMaps,
@@ -96,15 +94,6 @@ export function DspSourceEditor() {
   const showWidgets = localSource === dspSource
     || isUpdatingDsp
     || hasLocalErrors
-
-  const seekToSample = useCallback((targetSampleCount: number) => {
-    if (!control || !seekSampleCount || !globalSampleCount) return
-    const currentSample = Atomics.load(globalSampleCount, 0)
-    if (currentSample === targetSampleCount) return
-
-    Atomics.store(seekSampleCount, 0, targetSampleCount)
-    Atomics.store(control, 0, ControlOp.Seek)
-  }, [control, globalSampleCount, seekSampleCount])
 
   const handleApply = async () => {
     if (!isProgramReady) return
@@ -178,27 +167,9 @@ export function DspSourceEditor() {
     return [...analyserWidgets, ...pianorollWidgets, ...sequenceWidgets, ...arrayAccessWidgets]
   }, [showWidgets, analyserWidgets, pianorollWidgets, sequenceWidgets, arrayAccessWidgets])
 
-  const { timelineHeader, timelineWindowRef } = useTimelineHeader(seekToSample)
-
   return (
-    <div className="flex flex-col gap-2 w-full">
-      <div className="flex items-center justify-between">
-        <label className="text-white font-bold">DSP Source Code:</label>
-        <button
-          onClick={handleApply}
-          className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
-        >
-          Apply Changes
-        </button>
-      </div>
-      <MinimapScrollbar
-        audioContext={audioContext}
-        bpmValue={bpmValue}
-        globalSampleCount={globalSampleCount}
-        seekToSample={seekToSample}
-        timelineWindowRef={timelineWindowRef}
-      />
-      <div className="bg-gray-900 text-white p-4 rounded-md border border-gray-600 font-mono text-sm w-full h-[550px]">
+    <div className="flex flex-row gap-2 w-full">
+      <div className="bg-gray-900 text-white font-mono text-sm w-full h-[90dvh]">
         <CodeEditor
           value={localSource}
           setValue={(value) => {
@@ -255,7 +226,7 @@ function BytecodeInspector({ source }: BytecodeInspectorProps) {
   }, [source])
 
   return (
-    <div className="flex flex-col gap-2" onClick={e => {
+    <div className="flex flex-col gap-2 min-w-[30dvw] max-w-[30dvw]" onClick={e => {
       navigator.clipboard.writeText((e.target as HTMLElement).textContent || '')
     }}>
       <div className="flex items-center justify-between text-xs text-gray-200">
@@ -271,15 +242,25 @@ function BytecodeInspector({ source }: BytecodeInspectorProps) {
           ))}
         </div>
       )}
-      <div className="bg-gray-900 text-white p-3 rounded-md border border-gray-600 font-mono text-xs w-full h-[35dvh] overflow-auto">
+      <div className="bg-gray-900 text-white p-3 rounded-md border border-gray-600 font-mono text-xs w-full h-[87dvh] overflow-auto">
         <pre className="whitespace-pre-wrap">{analysis.bytecodeText || 'No bytecode available yet.'}</pre>
       </div>
     </div>
   )
 }
 
-export function PlaybackControls() {
-  const { playbackState, start, pause, stop } = useEngineStore()
+export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: React.RefObject<TimelineWindow> }) {
+  const {
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    pause,
+    playbackState,
+    start,
+    stop,
+  } = useEngineStore()
+
+  const seekToSample = useSeekToSample()
 
   return (
     <div className="flex gap-2">
@@ -307,12 +288,20 @@ export function PlaybackControls() {
       <div className="flex items-center px-4 text-white">
         State: <span className="ml-2 font-bold">{playbackState}</span>
       </div>
+      <MinimapScrollbar
+        audioContext={audioContext}
+        bpmValue={bpmValue}
+        globalSampleCount={globalSampleCount}
+        seekToSample={seekToSample}
+        timelineWindowRef={timelineWindowRef}
+      />
     </div>
   )
 }
 
 export function EngineUI() {
   const { isInitialized } = useEngine()
+  const { timelineHeader, timelineWindowRef } = useTimelineHeader()
 
   if (!isInitialized) {
     return (
@@ -323,9 +312,9 @@ export function EngineUI() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 max-w-4xl mx-auto">
-      <PlaybackControls />
-      <DspSourceEditor />
+    <div className="flex flex-col">
+      <PlaybackControls timelineWindowRef={timelineWindowRef} />
+      <DspSourceEditor timelineHeader={timelineHeader} />
     </div>
   )
 }

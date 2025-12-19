@@ -4,13 +4,16 @@ import { FUTURE_SECONDS, PAST_SECONDS, TIME_WINDOW_SECONDS } from '../../as/asse
 import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
 import { useEngineStore } from './store.ts'
 import type { TimelineWindow } from './ui.tsx'
+import { useSeekToSample } from './useSeekToSample.ts'
 
-export function useTimelineHeader(seekToSample: (targetSampleCount: number) => void) {
+export function useTimelineHeader() {
   const {
     audioContext,
     bpmValue,
     globalSampleCount,
   } = useEngineStore()
+
+  const seekToSample = useSeekToSample()
 
   const timelineTimeRef = useRef<number | null>(null)
   const timelineLayoutRef = useRef({ viewX: 0, viewWidth: 0 })
@@ -20,6 +23,9 @@ export function useTimelineHeader(seekToSample: (targetSampleCount: number) => v
     timeSeconds: 0,
   })
   const isTimelineDraggingRef = useRef(false)
+  const predictedSampleCountRef = useRef<number | null>(null)
+  const lastWallTimeRef = useRef<number | null>(null)
+  const isFirstFrameRef = useRef(true)
 
   const timelineHeader = useMemo((): EditorHeader => {
     const handleSeek = (pointerX: number) => {
@@ -63,7 +69,47 @@ export function useTimelineHeader(seekToSample: (targetSampleCount: number) => v
         const timelineW = Math.max(1, viewW - PIANOROLL_KEY_WIDTH)
 
         const sampleRate = audioContext.sampleRate
-        const sampleCount = Math.max(0, Atomics.load(globalSampleCount, 0))
+
+        // Account for audio output latency - what we hear is behind what's generated.
+        const rawSampleCount = (Atomics.load(globalSampleCount, 0) >>> 0) as number
+        const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
+        const latencySamples = latencySeconds * sampleRate
+        const rawPlaybackPosition = rawSampleCount - latencySamples
+
+        // Predict audible sample count across animation frames to avoid playhead blinking.
+        const nowSec = performance.now() / 1000
+        const lastWall = lastWallTimeRef.current ?? nowSec
+        const deltaTime = Math.max(0, nowSec - lastWall)
+        lastWallTimeRef.current = nowSec
+
+        let predicted = predictedSampleCountRef.current
+        const isFirstFrame = isFirstFrameRef.current || predicted == null
+
+        if (isFirstFrame) {
+          predicted = rawPlaybackPosition
+          isFirstFrameRef.current = false
+        }
+        else {
+          const drift = rawPlaybackPosition - (predicted ?? 0)
+          if (Math.abs(drift) > sampleRate) {
+            // Hard sync on large jump (seek/restart)
+            predicted = rawPlaybackPosition
+          }
+          else {
+            // Advance predicted by wall time
+            predicted = (predicted ?? 0) + deltaTime * sampleRate
+            // Gentle correction to avoid visible blinking
+            if (Math.abs(drift) > 100) {
+              const correctionSpeed = 0.05
+              predicted += drift * correctionSpeed
+            }
+          }
+        }
+
+        predicted = Math.max(0, predicted ?? 0)
+        predictedSampleCountRef.current = predicted
+
+        const sampleCount = predicted
         const nowSeconds = sampleCount / sampleRate
         let smoothed = timelineTimeRef.current
         if (smoothed == null) smoothed = nowSeconds

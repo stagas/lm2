@@ -1,0 +1,4 @@
+a=mini('scale dorian [i v]$$.75/2;.15')
+play(a,(trig,velocity,hz)->
+  (sine(hz/2)+sine(hz))*adsr(.02,.4,.4,.6,trig)**3)*.3
+|> analyser($) |> out($)

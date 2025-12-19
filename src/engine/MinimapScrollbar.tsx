@@ -173,11 +173,10 @@ export function MinimapScrollbar({
     <div className="w-full h-[9dvh] border border-gray-600 bg-gray-900 overflow-hidden touch-none flex flex-row">
       <button
         className="p-2 bg-gray-800 text-white"
-        onClick={() => {
+        onPointerDown={() => {
           seekToSample(0)
         }}
       >
-        o
       </button>
       <canvas
         ref={canvasRef}
