@@ -71,13 +71,54 @@ export function usePianorollWidget({
   showWidgets,
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
+  const predictedSampleCountRef = useRef<number | null>(null)
+  const lastWallTimeRef = useRef<number | null>(null)
+  const isFirstFrameRef = useRef(true)
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (!program1?.program?.histories || !audioContext || !globalSampleCount) return
-
     const sampleRate = audioContext.sampleRate
-    const sampleCount = Math.max(0, Atomics.load(globalSampleCount, 0))
+
+    // Account for audio output latency - what we hear is behind what's generated
+    const rawSampleCount = (Atomics.load(globalSampleCount, 0) >>> 0) as number
+    const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
+    const latencySamples = latencySeconds * sampleRate
+    const rawPlaybackPosition = rawSampleCount - latencySamples
+
+    // Predict the audible sample count across animation frames to avoid blinking
+    const nowSec = performance.now() / 1000
+    const lastWall = lastWallTimeRef.current ?? nowSec
+    const deltaTime = Math.max(0, nowSec - lastWall)
+    lastWallTimeRef.current = nowSec
+
+    let predicted = predictedSampleCountRef.current
+    const isFirstFrame = isFirstFrameRef.current || predicted == null
+
+    if (isFirstFrame) {
+      predicted = rawPlaybackPosition
+      isFirstFrameRef.current = false
+    }
+    else {
+      const drift = rawPlaybackPosition - (predicted ?? 0)
+      if (Math.abs(drift) > sampleRate) {
+        // Hard sync on large jump (seek/restart)
+        predicted = rawPlaybackPosition
+      }
+      else {
+        // Advance predicted position based on wall-clock
+        predicted = (predicted ?? 0) + deltaTime * sampleRate
+        // Gently correct moderate drift to avoid blinking
+        if (Math.abs(drift) > 100) {
+          const correctionSpeed = 0.05
+          predicted += drift * correctionSpeed
+        }
+      }
+    }
+
+    predicted = Math.max(0, predicted ?? 0)
+    predictedSampleCountRef.current = predicted
+    const sampleCount = predicted
     const timeSeconds = sampleCount / sampleRate
 
     const prepareStatus = useEngineStore.getState().prepareDspStatus

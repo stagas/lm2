@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import {
   ARRAY_HEADER_SIZE,
   HISTORY_DATA_OFFSET,
@@ -111,13 +111,60 @@ export function useSequenceWidget({
   frameRef,
   controlStateRef,
 }: UseSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
+  const predictedSampleCountRef = useRef<number | null>(null)
+  const lastWallTimeRef = useRef<number | null>(null)
+  const isFirstFrameRef = useRef(true)
+
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (!program1?.program?.data || !audioContext || !globalSampleCount) return
-
     const sampleRate = audioContext.sampleRate
-    const currentSampleCount = Atomics.load(globalSampleCount, 0) >>> 0
     const FADEOUT_SECONDS = 0.3
+
+    // Account for audio output latency - what we hear is behind what's generated
+    const rawSampleCount = (Atomics.load(globalSampleCount, 0) >>> 0) as number
+    const latencySeconds = (audioContext.outputLatency || 0) - (audioContext.baseLatency || 0)
+    const latencySamples = latencySeconds * sampleRate
+
+    // Playback position adjusted for output latency
+    const rawPlaybackPosition = rawSampleCount - latencySamples
+
+    // Predict/track sample count across animation frames to avoid blinking when
+    // audio output latency causes what we hear to lag behind the raw counter.
+    const nowSec = performance.now() / 1000
+    const lastWall = lastWallTimeRef.current ?? nowSec
+    const deltaTime = Math.max(0, nowSec - lastWall)
+    lastWallTimeRef.current = nowSec
+
+    let predicted = predictedSampleCountRef.current
+    const isFirstFrame = isFirstFrameRef.current || predicted == null
+
+    if (isFirstFrame) {
+      // Hard sync on first frame
+      predicted = rawPlaybackPosition
+      isFirstFrameRef.current = false
+    }
+    else {
+      const drift = rawPlaybackPosition - (predicted ?? 0)
+      // If drift is huge (restart/seek), hard sync immediately
+      if (Math.abs(drift) > sampleRate) {
+        predicted = rawPlaybackPosition
+      }
+      else {
+        // Advance predicted position by elapsed wall time
+        predicted = (predicted ?? 0) + deltaTime * sampleRate
+        // Gently correct drift to avoid blinking artifacts
+        if (Math.abs(drift) > 100) {
+          const correctionSpeed = 0.05 // 5% correction per frame
+          predicted += drift * correctionSpeed
+        }
+      }
+    }
+
+    // Ensure sample count never goes negative
+    predicted = Math.max(0, predicted ?? 0)
+    predictedSampleCountRef.current = predicted
+    const currentSampleCount = predicted
 
     const nextFrame: Array<SeqFrame | undefined> = new Array(miniSourceMaps.length)
 
