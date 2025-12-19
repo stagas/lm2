@@ -2,15 +2,17 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
 } from 'react'
 import type { TimelineSequenceRef } from '../bytecode.ts'
+import { compileTimelineNotation } from '../timeline/compiler.ts'
+import { useTheme } from './theme.ts'
 import {
+  type CompiledTimeline,
   evalCompiledTimelineAtBeat,
   parseCompiledTimeline,
-  type CompiledTimeline,
 } from './timeline-history.ts'
-import { compileTimelineNotation } from '../timeline/compiler.ts'
 import type { TimelineWindow } from './ui.tsx'
 
 type MinimapScrollbarProps = {
@@ -45,7 +47,22 @@ export function MinimapScrollbar({
     vByX: Float32Array
   }>>(new Map())
 
-  let currentSample = 0
+  const theme = useTheme()
+  const colors = useMemo(() => {
+    return [
+      theme.colors.keyword,
+      theme.colors.string,
+      theme.colors.number,
+      theme.colors.function,
+      theme.colors.parameter,
+      theme.colors.argument,
+      theme.colors.comment,
+      theme.colors.operator,
+      theme.colors.punctuation,
+    ]
+  }, [theme])
+
+  const currentSampleRef = useRef(0)
 
   const seekFromPointer = useCallback((clientX: number) => {
     const canvas = canvasRef.current
@@ -63,7 +80,8 @@ export function MinimapScrollbar({
     const totalSeconds = phraseLengthSeconds * MINIMAP_PHRASE_COUNT
     const totalSamples = Math.max(1, Math.floor(totalSeconds * audioContext.sampleRate))
     const targetSampleCount = Math.max(0, Math.floor(clampedRatio * totalSamples))
-    seekToSample(currentSample = targetSampleCount)
+    currentSampleRef.current = targetSampleCount
+    seekToSample(targetSampleCount)
   }, [audioContext, bpmValue, seekToSample])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -106,6 +124,9 @@ export function MinimapScrollbar({
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, width, height)
 
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+
     const bpm = bpmValue?.[0] || 60
     const barLengthSeconds = (MINIMAP_PHRASE_SECONDS * 60) / bpm
     const phraseLengthSeconds = MINIMAP_PHRASE_SECONDS * barLengthSeconds
@@ -121,7 +142,7 @@ export function MinimapScrollbar({
     // Timeline overlays across the whole minimap (0..totalSeconds).
     // Draw them before the viewport tint so the viewport remains readable.
     if (timelineRefs && timelineRefs.length > 0 && audioContext) {
-      const chartTop = 14
+      const chartTop = 18
       const chartHeight = Math.max(1, height - chartTop - 2)
       const beatsPerSecond = bpm / 60
 
@@ -166,11 +187,11 @@ export function MinimapScrollbar({
 
         if (!tl || !vByX) continue
 
-        const hue = (colorIndex * 137.508) % 360
+        const color = colors[colorIndex % colors.length]
         colorIndex++
 
-        ctx.strokeStyle = `hsla(${hue}, 85%, 65%, 0.85)`
-        ctx.lineWidth = 1
+        ctx.strokeStyle = color
+        ctx.lineWidth = 1.35
 
         ctx.save()
         ctx.beginPath()
@@ -180,7 +201,7 @@ export function MinimapScrollbar({
 
         for (let px = 0; px <= width; px++) {
           const v = vByX[px]!
-          const y = chartTop + (1 - v) * chartHeight
+          const y = chartTop + (1 - v) * (chartHeight - 2) + 1
           if (px === 0) ctx.moveTo(px, y)
           else ctx.lineTo(px, y)
         }
@@ -215,9 +236,9 @@ export function MinimapScrollbar({
     }
 
     if (!isDraggingRef.current) {
-      currentSample = globalSampleCount ? Math.max(0, Atomics.load(globalSampleCount, 0)) : 0
+      currentSampleRef.current = globalSampleCount ? Math.max(0, Atomics.load(globalSampleCount, 0)) : 0
     }
-    const currentRatio = currentSample / totalSamples
+    const currentRatio = currentSampleRef.current / totalSamples
     const playheadX = currentRatio * width + 1
 
     ctx.strokeStyle = 'rgba(255, 220, 0, 0.95)'

@@ -371,7 +371,7 @@ async function fetchWasmBinary() {
 }
 
 async function createWorklet() {
-  const audioContext = new AudioContext({ latencyHint: 1 })
+  const audioContext = new AudioContext({ latencyHint: 0.05 })
   await audioContext.audioWorklet.addModule(workletUrl)
   const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
   const ringPos = new Uint8Array(new SharedArrayBuffer(1 * Uint8Array.BYTES_PER_ELEMENT))
