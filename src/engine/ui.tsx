@@ -19,6 +19,7 @@ import { usePianorollWidget } from './usePianorollWidget.ts'
 import { useSeekToSample } from './useSeekToSample.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
+import { useTimelineSequenceWidget } from './useTimelineSequenceWidget.ts'
 import { useTimelineWidget } from './useTimelineWidget.ts'
 
 type SequenceInputProps = {
@@ -150,6 +151,16 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     showWidgets,
   })
 
+  const { widgets: timelineSequenceWidgets, onBeforeDraw: onBeforeDrawTimelineSequence } = useTimelineSequenceWidget({
+    program1,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    timelineRefs,
+    dspSource,
+    showWidgets,
+  })
+
   const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
     program1,
     ringPos,
@@ -171,14 +182,29 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     onBeforeDraw()
     onBeforeDrawPianoroll()
     onBeforeDrawTimeline()
+    onBeforeDrawTimelineSequence()
     onBeforeDrawAnalyser()
     onBeforeDrawArrayAccess()
-  }, [onBeforeDraw, onBeforeDrawPianoroll, onBeforeDrawTimeline, onBeforeDrawAnalyser, onBeforeDrawArrayAccess])
+  }, [
+    onBeforeDraw,
+    onBeforeDrawPianoroll,
+    onBeforeDrawTimeline,
+    onBeforeDrawTimelineSequence,
+    onBeforeDrawAnalyser,
+    onBeforeDrawArrayAccess,
+  ])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
-    return [...analyserWidgets, ...timelineWidgets, ...pianorollWidgets, ...sequenceWidgets, ...arrayAccessWidgets]
-  }, [showWidgets, analyserWidgets, timelineWidgets, pianorollWidgets, sequenceWidgets, arrayAccessWidgets])
+    return [
+      ...analyserWidgets,
+      ...timelineWidgets,
+      ...timelineSequenceWidgets,
+      ...pianorollWidgets,
+      ...sequenceWidgets,
+      ...arrayAccessWidgets,
+    ]
+  }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets, arrayAccessWidgets])
 
   return (
     <div className="flex flex-row gap-2 w-full">

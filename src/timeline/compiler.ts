@@ -12,23 +12,55 @@ type TimelineSegment = {
   startValue: number
   endValue: number
   exp: number
+  fromTokenIndex: number
+  fromTokenStart: number
+  fromTokenLength: number
+  toTokenIndex: number
+  toTokenStart: number
+  toTokenLength: number
 }
 
 const numRe = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)'
 const pointTokenRe = new RegExp(`^(${numRe}),(${numRe})(?:([el])(${numRe})?)?$`)
 
+type TimelineToken = {
+  index: number
+  start: number
+  length: number
+  text: string
+}
+
 type TimelinePoint = {
   bar: number
   value: number
   exp: number | null
+  tokenIndex: number
+  tokenStart: number
+  tokenLength: number
+}
+
+function tokenizeTimelineNotation(input: string): TimelineToken[] {
+  const tokens: TimelineToken[] = []
+  let index = 0
+  let i = 0
+  while (i < input.length) {
+    while (i < input.length && /\s/.test(input[i]!)) i++
+    if (i >= input.length) break
+    const start = i
+    while (i < input.length && !/\s/.test(input[i]!)) i++
+    const end = i
+    tokens.push({ index, start, length: end - start, text: input.slice(start, end) })
+    index++
+  }
+  return tokens
 }
 
 function parseTimelineNotation(input: string): TimelinePoint[] {
-  const tokens = input.trim().split(/\s+/).filter(Boolean)
+  const tokens = tokenizeTimelineNotation(input)
   const points: TimelinePoint[] = []
 
   for (const t of tokens) {
-    const m = pointTokenRe.exec(t)
+    const m = pointTokenRe.exec(t.text)
     if (!m) continue
 
     const bar = Number(m[1] ?? 0)
@@ -42,7 +74,14 @@ function parseTimelineNotation(input: string): TimelinePoint[] {
       : null
 
     if (!Number.isFinite(bar) || !Number.isFinite(value)) continue
-    points.push({ bar, value, exp })
+    points.push({
+      bar,
+      value,
+      exp,
+      tokenIndex: t.index,
+      tokenStart: t.start,
+      tokenLength: t.length,
+    })
   }
 
   return points
@@ -66,6 +105,9 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
   let i = 0
   let t = pts[0]!.bar
   let v = pts[0]!.value
+  let activeTokenIndex = pts[0]!.tokenIndex
+  let activeTokenStart = pts[0]!.tokenStart
+  let activeTokenLength = pts[0]!.tokenLength
 
   // Establish initial value at t=0 (same-bar jumps at the start are allowed).
   if (t > 0) {
@@ -75,6 +117,12 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
       startValue: 0,
       endValue: 0,
       exp: 1,
+      fromTokenIndex: activeTokenIndex,
+      fromTokenStart: activeTokenStart,
+      fromTokenLength: activeTokenLength,
+      toTokenIndex: activeTokenIndex,
+      toTokenStart: activeTokenStart,
+      toTokenLength: activeTokenLength,
     })
   }
   else {
@@ -84,6 +132,9 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
   // Consume all points at the initial time to set the starting value.
   while (i < pts.length && pts[i]!.bar === t) {
     v = pts[i]!.value
+    activeTokenIndex = pts[i]!.tokenIndex
+    activeTokenStart = pts[i]!.tokenStart
+    activeTokenLength = pts[i]!.tokenLength
     i++
   }
 
@@ -98,6 +149,9 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
       // Same-bar point: abrupt jump.
       t = nextT
       v = nextV
+      activeTokenIndex = p.tokenIndex
+      activeTokenStart = p.tokenStart
+      activeTokenLength = p.tokenLength
       continue
     }
 
@@ -109,10 +163,19 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
       startValue: v,
       endValue: nextV,
       exp,
+      fromTokenIndex: activeTokenIndex,
+      fromTokenStart: activeTokenStart,
+      fromTokenLength: activeTokenLength,
+      toTokenIndex: p.tokenIndex,
+      toTokenStart: p.tokenStart,
+      toTokenLength: p.tokenLength,
     })
 
     t = nextT
     v = nextV
+    activeTokenIndex = p.tokenIndex
+    activeTokenStart = p.tokenStart
+    activeTokenLength = p.tokenLength
   }
 
   let totalBars = t
@@ -124,6 +187,12 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
       startValue: v,
       endValue: v,
       exp: 1,
+      fromTokenIndex: activeTokenIndex,
+      fromTokenStart: activeTokenStart,
+      fromTokenLength: activeTokenLength,
+      toTokenIndex: activeTokenIndex,
+      toTokenStart: activeTokenStart,
+      toTokenLength: activeTokenLength,
     })
   }
 
@@ -155,5 +224,14 @@ export function compileTimelineNotation(input: string, initialBeatDiv: number = 
     bytecode[o++] = s.exp
   }
 
-  return { bytecode }
+  const tokens = segments.map(s => ({
+    fromTokenIndex: s.fromTokenIndex,
+    fromTokenStart: s.fromTokenStart,
+    fromTokenLength: s.fromTokenLength,
+    toTokenIndex: s.toTokenIndex,
+    toTokenStart: s.toTokenStart,
+    toTokenLength: s.toTokenLength,
+  }))
+
+  return { bytecode, tokens }
 }
