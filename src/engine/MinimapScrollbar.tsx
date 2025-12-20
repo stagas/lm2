@@ -291,14 +291,14 @@ export function MinimapScrollbar({
       const isMajor = phraseIndex % MINIMAP_MAJOR_STEP === 0
       // Draw a small phrase number above the major marker
       ctx.fillStyle = isMajor ? '#fff' : 'rgba(255, 255, 255, 0.35)'
-      ctx.font = isMajor ? '8pt Inter' : '6pt Inter'
+      ctx.font = isMajor ? 'bold 6pt Inter' : '6pt Inter'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
       const phraseNumber = String(phraseIndex + 1)
       // place label a few pixels from the top-left of the marker
-      ctx.fillText(phraseNumber, x + 5, 10)
+      ctx.fillText(phraseNumber, x + 2.25, 10)
       if (phraseIndex >= MINIMAP_PHRASE_COUNT - 4) continue
-      ctx.strokeStyle = isMajor ? '#fff' : 'rgba(255, 255, 255, 0.35)'
+      ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.35)'
       ctx.lineWidth = isMajor ? 2 : 1
       ctx.beginPath()
       ctx.moveTo(x, 0)
