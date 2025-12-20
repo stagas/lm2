@@ -1,7 +1,8 @@
 import type { EditorHeader } from 'mini-code'
 import { useEffect, useMemo, useRef } from 'react'
+import { MouseButton } from 'utils/mouse-buttons'
 import { FUTURE_SECONDS, PAST_SECONDS, TIME_WINDOW_SECONDS } from '../../as/assembly/constants.ts'
-import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
+import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import { useEngineStore } from './store.ts'
 import type { TimelineWindow } from './ui.tsx'
 import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
@@ -33,28 +34,6 @@ export function useTimelineHeader() {
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
-
-  const isCtrlDownRef = useRef(false)
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Control') isCtrlDownRef.current = true
-    }
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control') isCtrlDownRef.current = false
-    }
-    const onBlur = () => {
-      isCtrlDownRef.current = false
-    }
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
-    window.addEventListener('blur', onBlur)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
-      window.removeEventListener('blur', onBlur)
-    }
-  }, [])
 
   const timelineHeader = useMemo((): EditorHeader => {
     const activeLabels = (uiTimelineLabels?.length ?? 0) > 0 ? uiTimelineLabels : timelineLabels
@@ -116,8 +95,8 @@ export function useTimelineHeader() {
 
     return {
       height: 40,
-      pointerDown: (x) => {
-        if (isCtrlDownRef.current) {
+      pointerDown: (e, x) => {
+        if (e.buttons & MouseButton.Right) {
           handleLoopBar(x)
           return
         }

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
 } from 'react'
+import { MouseButton } from 'utils/mouse-buttons'
 import type { TimelineLabel, TimelineSequenceRef } from '../bytecode.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
 import { useEngineStore } from './store.ts'
@@ -131,7 +132,7 @@ export function MinimapScrollbar({
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
     event.preventDefault()
 
-    if (event.ctrlKey) {
+    if (event.buttons & MouseButton.Right) {
       toggleLoopFromPointer(event.clientX)
       return
     }
@@ -329,8 +330,8 @@ export function MinimapScrollbar({
     const currentRatio = currentSampleRef.current / totalSamples
     const playheadX = currentRatio * width + 1
 
-    ctx.strokeStyle = 'rgba(255, 220, 0, 0.9)'
-    ctx.lineWidth = 2
+    ctx.strokeStyle = '#fff'
+    ctx.lineWidth = 2.5
     ctx.beginPath()
     ctx.moveTo(playheadX, 0)
     ctx.lineTo(playheadX, height)
@@ -384,7 +385,8 @@ export function MinimapScrollbar({
       </button>
       <canvas
         ref={canvasRef}
-        className="w-full h-full cursor-crosshair"
+        className="w-full h-full"
+        onContextMenu={e => e.preventDefault()}
         onPointerDown={handlePointerDown}
       />
     </div>
