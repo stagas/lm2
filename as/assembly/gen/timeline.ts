@@ -1,12 +1,12 @@
 import {
   ARRAY_HEADER_SIZE,
-  FUTURE_SECONDS,
+  FUTURE_BARS,
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
   HISTORY_SIZE,
   HISTORY_WRITE_POS_OFFSET,
-  PAST_SECONDS,
+  PAST_BARS,
   TIMELINE_HEADER_SIZE,
   TIMELINE_KIND_GLIDE,
   TIMELINE_MAGIC,
@@ -115,7 +115,8 @@ export class Timeline extends Gen {
     }
 
     const windowStartSample: i32 = globalSampleCount
-    const pastStart: i32 = windowStartSample - i32((PAST_SECONDS as f32) * sampleRate)
+    const barLengthSeconds: f32 = 60.0 * 4.0 / bpm
+    const pastStart: i32 = windowStartSample - i32((PAST_BARS as f32) * barLengthSeconds * sampleRate)
     const startSample: i32 = pastStart > 0 ? pastStart : 0
 
     // First fill: begin from slightly before the visible past.
@@ -124,7 +125,7 @@ export class Timeline extends Gen {
       this.historyGeneratedUntilCycle = startCycle0 > 0 ? startCycle0 - 1 : -1
     }
 
-    const lookAheadSamples: i32 = i32((FUTURE_SECONDS as f32) * sampleRate)
+    const lookAheadSamples: i32 = i32((FUTURE_BARS as f32) * barLengthSeconds * sampleRate)
     const desiredEndSample: i32 = windowStartSample + lookAheadSamples
     const targetEndSample: i32 = desiredEndSample + i32(cycleSamplesF)
     const targetEndCycle: i32 = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamplesF)))

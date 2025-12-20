@@ -1,9 +1,9 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useMemo, useRef } from 'react'
 import {
-  FUTURE_SECONDS,
-  PAST_SECONDS,
-  TIME_WINDOW_SECONDS,
+  FUTURE_BARS,
+  PAST_BARS,
+  TIME_WINDOW_BARS,
 } from '../../as/assembly/constants.ts'
 import type { TimelineLabel, TimelineSequenceRef } from '../bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
@@ -94,8 +94,10 @@ export function useTimelineWidget({
       if (st.timeSeconds == null) st.timeSeconds = timeSeconds
       else st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
 
-      const windowStartTime = st.timeSeconds - PAST_SECONDS
-      const windowEndTime = st.timeSeconds + FUTURE_SECONDS
+      const bpm = bpmValue?.[0] || 60
+      const barLengthSeconds = (4 * 60) / bpm
+      const windowStartTime = st.timeSeconds - PAST_BARS * barLengthSeconds
+      const windowEndTime = st.timeSeconds + FUTURE_BARS * barLengthSeconds
 
       const canUseSaved = isWorkletBusy && st.savedSegs.length > 0
       if (canUseSaved) {
@@ -132,13 +134,14 @@ export function useTimelineWidget({
     const w = Math.max(1, viewWidth - PIANOROLL_KEY_WIDTH)
     const sampleRate = audioContext.sampleRate
 
-    const windowStartTime = st.timeSeconds - PAST_SECONDS
-    const windowStartSample = windowStartTime * sampleRate
-
     const bpm = bpmValue[0] || 60
     const barLengthSeconds = (4 * 60) / bpm
     const beatLengthSeconds = 60 / bpm
-    const currentTimeX = (PAST_SECONDS / TIME_WINDOW_SECONDS) * w
+    const windowStartTime = st.timeSeconds - PAST_BARS * barLengthSeconds
+    const windowStartSample = windowStartTime * sampleRate
+
+    const pixelsPerSecond = w / (TIME_WINDOW_BARS * barLengthSeconds)
+    const currentTimeX = (PAST_BARS * barLengthSeconds / (TIME_WINDOW_BARS * barLengthSeconds)) * w
 
     c.save()
     c.lineCap = 'square'
@@ -158,9 +161,9 @@ export function useTimelineWidget({
     // c.fillRect(0, 0, w, h)
 
     // Grid (alternating bar fills like pianoroll)
-    const pixelsPerSecond = w / TIME_WINDOW_SECONDS
     const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
-    for (let barStart = firstBarStart; barStart < windowStartTime + TIME_WINDOW_SECONDS; barStart += barLengthSeconds) {
+    const windowEndTime = windowStartTime + TIME_WINDOW_BARS * barLengthSeconds
+    for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
       const barIndex = Math.floor(barStart / barLengthSeconds)
       const isEvenBar = barIndex % 2 === 0
       const barX = (barStart - windowStartTime) * pixelsPerSecond
@@ -173,9 +176,7 @@ export function useTimelineWidget({
     c.strokeStyle = 'rgba(0, 0, 0, 1.0)'
     c.lineWidth = 0.25
     const firstBeatStart = Math.floor(windowStartTime / beatLengthSeconds) * beatLengthSeconds
-    for (let beatStart = firstBeatStart; beatStart < windowStartTime + TIME_WINDOW_SECONDS;
-      beatStart += beatLengthSeconds)
-    {
+    for (let beatStart = firstBeatStart; beatStart < windowEndTime; beatStart += beatLengthSeconds) {
       const px = (beatStart - windowStartTime) * pixelsPerSecond
       c.beginPath()
       c.moveTo(px, 0)
@@ -192,13 +193,14 @@ export function useTimelineWidget({
     c.lineWidth = 1.35
 
     // helper to compute pixel X for a sample
-    const sampleToPx = (samp: number) => ((samp - windowStartSample) / (TIME_WINDOW_SECONDS * sampleRate)) * w
+    const timeWindowSeconds = TIME_WINDOW_BARS * barLengthSeconds
+    const sampleToPx = (samp: number) => ((samp - windowStartSample) / (timeWindowSeconds * sampleRate)) * w
 
     c.beginPath()
     let prevSample = windowStartSample
     for (let px = 0; px <= w; px++) {
       const t = px / w
-      const sample = windowStartSample + t * TIME_WINDOW_SECONDS * sampleRate
+      const sample = windowStartSample + t * timeWindowSeconds * sampleRate
       if (sample < 0) continue
 
       const r = getTimelineValue(segs, si, sample)

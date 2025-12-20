@@ -1,10 +1,10 @@
 import {
-  FUTURE_SECONDS,
+  FUTURE_BARS,
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
   HISTORY_SIZE,
-  PAST_SECONDS,
-  TIME_WINDOW_SECONDS,
+  PAST_BARS,
+  TIME_WINDOW_BARS,
 } from '../../as/assembly/constants.ts'
 import { applySmoothing } from '../engine/util.ts'
 import type { VmHistory } from '../index.ts'
@@ -37,8 +37,6 @@ export function createPianorollVisualization(
 
   const KEY_WIDTH = 20
   const NOTE_WIDTH = width - KEY_WIDTH
-
-  const PIXELS_PER_SECOND = NOTE_WIDTH / TIME_WINDOW_SECONDS
 
   let currentHistory = history
   let smoothedTimeSeconds: number | null = null
@@ -93,9 +91,14 @@ export function createPianorollVisualization(
       velocity: number
     }> = []
 
+    const bpm = bpmValue[0]
+    const barLengthSeconds = (4 * 60) / bpm
+    const windowLengthSeconds = TIME_WINDOW_BARS * barLengthSeconds
+    const PIXELS_PER_SECOND = NOTE_WIDTH / windowLengthSeconds
+
     // Calculate visible time window first, based on smoothed time
-    const windowStartTime = displayTimeSeconds - PAST_SECONDS
-    const windowEndTime = displayTimeSeconds + FUTURE_SECONDS
+    const windowStartTime = displayTimeSeconds - PAST_BARS * barLengthSeconds
+    const windowEndTime = displayTimeSeconds + FUTURE_BARS * barLengthSeconds
 
     // Read events from history buffer
     // After defragmentation, preserved events are at slots 0 to writePos-1
@@ -317,7 +320,7 @@ export function createPianorollVisualization(
       }
     }
 
-    const currentTimeX = PAST_SECONDS * PIXELS_PER_SECOND
+    const currentTimeX = PAST_BARS * barLengthSeconds * PIXELS_PER_SECOND
     c.strokeStyle = 'rgba(255, 255, 0, 0.8)'
     c.lineWidth = 2
     c.beginPath()

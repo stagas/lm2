@@ -1,7 +1,7 @@
 import type { EditorHeader } from 'mini-code'
 import { useEffect, useMemo, useRef } from 'react'
 import { MouseButton } from 'utils/mouse-buttons'
-import { FUTURE_SECONDS, PAST_SECONDS, TIME_WINDOW_SECONDS } from '../../as/assembly/constants.ts'
+import { FUTURE_BARS, PAST_BARS, TIME_WINDOW_BARS } from '../../as/assembly/constants.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import { useEngineStore } from './store.ts'
 import type { TimelineWindow } from './ui.tsx'
@@ -49,8 +49,11 @@ export function useTimelineHeader() {
       const relativeX = pointerX - timelineStartX
       const clampedX = Math.max(0, Math.min(timelineWidth, relativeX))
 
+      const bpm = bpmValue?.[0] || 60
+      const barLengthSeconds = (4 * 60) / bpm
+      const timeWindowSeconds = TIME_WINDOW_BARS * barLengthSeconds
       const windowStartTime = timelineWindowRef.current.windowStartTime
-      const secondsPerPixel = TIME_WINDOW_SECONDS / timelineWidth
+      const secondsPerPixel = timeWindowSeconds / timelineWidth
       const targetTimeSeconds = windowStartTime + clampedX * secondsPerPixel
       return targetTimeSeconds
     }
@@ -139,12 +142,13 @@ export function useTimelineHeader() {
 
         const bpm = bpmValue[0] || 60
         const barLengthSeconds = (4 * 60) / bpm
-        const windowStartTime = timeSeconds - PAST_SECONDS
-        const windowEndTime = timeSeconds + FUTURE_SECONDS
+        const windowStartTime = timeSeconds - PAST_BARS * barLengthSeconds
+        const windowEndTime = timeSeconds + FUTURE_BARS * barLengthSeconds
         timelineWindowRef.current = { windowStartTime, windowEndTime, timeSeconds }
 
-        const pixelsPerSecond = timelineW / TIME_WINDOW_SECONDS
-        const playheadX = PAST_SECONDS * pixelsPerSecond
+        const timeWindowSeconds = TIME_WINDOW_BARS * barLengthSeconds
+        const pixelsPerSecond = timelineW / timeWindowSeconds
+        const playheadX = PAST_BARS * barLengthSeconds * pixelsPerSecond
 
         c.save()
         c.translate(viewX, 0)

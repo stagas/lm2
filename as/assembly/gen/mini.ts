@@ -1,7 +1,7 @@
 import {
   ARRAY_HEADER_SIZE,
   ARRAY_SIZE,
-  FUTURE_SECONDS,
+  FUTURE_BARS,
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
@@ -10,7 +10,7 @@ import {
   MAX_EVENT_VALUES,
   MINI_HEADER_SIZE,
   OP_EVENT,
-  PAST_SECONDS,
+  PAST_BARS,
   SEQ_VOICES,
 } from '../constants'
 import { MiniEventBuffer, MiniEvents } from '../mini/events'
@@ -384,7 +384,8 @@ export class Mini extends Gen {
     const cycleSeconds = cycleLength * secondsPerBeat
     const cycleSamples = (cycleSeconds * sampleRate) as f32
     if (cycleSamples <= 0.0) return
-    const lookAheadSamples = i32(<f32> FUTURE_SECONDS * sampleRate)
+    const barLengthSeconds = 60.0 * 4.0 / bpm
+    const lookAheadSamples = i32(<f32> FUTURE_BARS * barLengthSeconds * sampleRate)
 
     const currentVersion = i32(bytecodeArray[3])
     // If the history buffer pointer changes, reset our generation cursor.
@@ -401,7 +402,7 @@ export class Mini extends Gen {
       this.resetVoiceMaps()
       this.defragmentHistory(
         historyArray,
-        windowStart - i32(<f32> PAST_SECONDS * sampleRate),
+        windowStart - i32(<f32> PAST_BARS * barLengthSeconds * sampleRate),
         windowStart,
       )
       // Start generating from a couple cycles before "now" to catch strum/jitter events that start
@@ -412,7 +413,7 @@ export class Mini extends Gen {
 
     // First fill: generate from the visible past (for visualizer).
     if (this.historyGeneratedUntilCycle < 0) {
-      const visualizerStart = windowStart - i32(<f32> PAST_SECONDS * sampleRate)
+      const visualizerStart = windowStart - i32(<f32> PAST_BARS * barLengthSeconds * sampleRate)
       const startSample = visualizerStart > 0 ? visualizerStart : 0
       const startCycle0 = i32(Mathf.floor(f32((startSample as f32) / cycleSamples))) - 2
       this.historyGeneratedUntilCycle = startCycle0 > 0 ? startCycle0 - 1 : -1
@@ -432,7 +433,7 @@ export class Mini extends Gen {
 
     this.defragmentHistory(
       historyArray,
-      windowStart - i32(<f32> PAST_SECONDS * sampleRate),
+      windowStart - i32(<f32> PAST_BARS * barLengthSeconds * sampleRate),
       i32(cycleSamples * ((endCycle + 1) as f32)),
     )
 

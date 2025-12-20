@@ -2,11 +2,11 @@ import type { EditorWidget } from 'mini-code'
 import { useCallback, useMemo, useRef } from 'react'
 import { luminate } from 'utils/rgb'
 import {
-  FUTURE_SECONDS,
+  FUTURE_BARS,
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
-  PAST_SECONDS,
-  TIME_WINDOW_SECONDS,
+  PAST_BARS,
+  TIME_WINDOW_BARS,
 } from '../../as/assembly/constants.ts'
 import type { MiniSequenceRef, TimelineLabel } from '../bytecode.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
@@ -134,8 +134,10 @@ export function usePianorollWidget({
         st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
       }
 
-      const windowStartTime = st.timeSeconds - PAST_SECONDS
-      const windowEndTime = st.timeSeconds + FUTURE_SECONDS
+      const bpm = bpmValue?.[0] || 60
+      const barLengthSeconds = (4 * 60) / bpm
+      const windowStartTime = st.timeSeconds - PAST_BARS * barLengthSeconds
+      const windowEndTime = st.timeSeconds + FUTURE_BARS * barLengthSeconds
 
       const activeMask = st.activeMask
       activeMask.fill(0)
@@ -243,22 +245,23 @@ export function usePianorollWidget({
     c.translate(x, 0)
 
     const NOTE_WIDTH = Math.max(1, w - PIANOROLL_KEY_WIDTH)
-    const PIXELS_PER_SECOND = NOTE_WIDTH / TIME_WINDOW_SECONDS
+    const bpm = bpmValue[0] || 60
+    const barLengthSeconds = (4 * 60) / bpm
+    const windowLengthSeconds = TIME_WINDOW_BARS * barLengthSeconds
+    const PIXELS_PER_SECOND = NOTE_WIDTH / windowLengthSeconds
 
     const sampleRate = audioContext.sampleRate
 
-    const windowStartTime = st.timeSeconds - PAST_SECONDS
-    const windowEndTime = st.timeSeconds + FUTURE_SECONDS
+    const windowStartTime = st.timeSeconds - PAST_BARS * barLengthSeconds
+    const windowEndTime = st.timeSeconds + FUTURE_BARS * barLengthSeconds
     const displayMinMidi = st.isInitial ? 54 : st.lastMinMidi
     const displayMaxMidi = st.isInitial ? 66 : st.lastMaxMidi
 
     const displayRange = displayMaxMidi - displayMinMidi + 1
     const keyHeight = h / displayRange
 
-    const bpm = bpmValue[0] || 60
-    const barLengthSeconds = (4 * 60) / bpm
     const cycleLengthSeconds = 60 / bpm
-    const currentTimeX = PAST_SECONDS * PIXELS_PER_SECOND
+    const currentTimeX = PAST_BARS * barLengthSeconds * PIXELS_PER_SECOND
 
     c.save()
     c.translate(0, widgetY)

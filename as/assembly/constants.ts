@@ -43,9 +43,9 @@ export const TIMELINE_KIND_HOLD: i32 = 0
 export const TIMELINE_KIND_GLIDE: i32 = 1
 
 // Timeline constants for visualizers
-export const PAST_SECONDS = 4
-export const FUTURE_SECONDS = 16
-export const TIME_WINDOW_SECONDS = PAST_SECONDS + FUTURE_SECONDS
+export const PAST_BARS = 1
+export const FUTURE_BARS = 4
+export const TIME_WINDOW_BARS = PAST_BARS + FUTURE_BARS
 
 // Operation types
 export const OP_EVENT: i32 = 0
