@@ -59,6 +59,8 @@ export function MinimapScrollbar({
 
   const currentSampleRef = useRef(0)
   const barCount = Math.max(1, Math.floor(bars ?? DEFAULT_BARS))
+  const canvasDimsRef = useRef({ width: 0, height: 0, pixelRatio: 1 })
+  const isValidRef = useRef(false)
 
   const seekFromPointer = useCallback((clientX: number) => {
     const canvas = canvasRef.current
