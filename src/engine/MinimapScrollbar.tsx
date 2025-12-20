@@ -54,14 +54,6 @@ export function MinimapScrollbar({
   }>>(new Map())
 
   const theme = useTheme()
-  const colors = useMemo(() => {
-    return [
-      theme.colors.number,
-      theme.colors.function,
-      theme.colors.parameter,
-      theme.colors.argument,
-    ]
-  }, [theme])
 
   const currentSampleRef = useRef(0)
 
@@ -190,77 +182,6 @@ export function MinimapScrollbar({
     const endRatio = Math.max(0, Math.min(1, windowData.windowEndTime / totalSeconds))
     const viewportWidth = Math.max(0, width * (endRatio - startRatio))
 
-    // Timeline overlays across the whole minimap (0..totalSeconds).
-    // Draw them before the viewport tint so the viewport remains readable.
-    if (timelineRefs && timelineRefs.length > 0 && audioContext) {
-      const chartTop = 18
-      const chartHeight = Math.max(1, height - chartTop - 2)
-      const beatsPerSecond = bpm / 60
-
-      const seenSeqs = new Set<number>()
-      let colorIndex = 0
-
-      for (const ref of timelineRefs) {
-        const seqIndex = ref.seqIndex
-        if (seenSeqs.has(seqIndex)) continue
-        seenSeqs.add(seqIndex)
-
-        const cached = timelineCacheRef.current.get(seqIndex)
-        const canUseCached = cached
-          && cached.sequence === ref.sequence
-          && cached.width === width
-          && cached.bpm === bpm
-
-        let tl = cached?.tl ?? null
-        let vByX = cached?.vByX
-        if (!canUseCached) {
-          const compiled = compileTimelineNotation(ref.sequence)
-          tl = parseCompiledTimeline(compiled.bytecode)
-          vByX = new Float32Array(width + 1)
-
-          if (tl) {
-            for (let px = 0; px <= width; px++) {
-              const tt = width > 0 ? px / width : 0
-              const timeSeconds = tt * totalSeconds
-              const beatAbs = timeSeconds * beatsPerSecond
-              vByX[px] = evalCompiledTimelineAtBeat(tl, beatAbs)
-            }
-          }
-
-          timelineCacheRef.current.set(seqIndex, {
-            sequence: ref.sequence,
-            width,
-            bpm,
-            tl,
-            vByX,
-          })
-        }
-
-        if (!tl || !vByX) continue
-
-        const color = colors[colorIndex % colors.length]
-        colorIndex++
-
-        ctx.strokeStyle = color
-        ctx.lineWidth = 1.35
-
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(0, chartTop, width, chartHeight)
-        ctx.clip()
-        ctx.beginPath()
-
-        for (let px = 0; px <= width; px++) {
-          const v = vByX[px]!
-          const y = chartTop + (1 - v) * (chartHeight - 2) + 1
-          if (px === 0) ctx.moveTo(px, y)
-          else ctx.lineTo(px, y)
-        }
-        ctx.stroke()
-        ctx.restore()
-      }
-    }
-
     if (viewportWidth > 0) {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
       ctx.fillRect(width * startRatio, 0, viewportWidth, height)
@@ -374,6 +295,77 @@ export function MinimapScrollbar({
           ctx.fillRect(fillX, 0, fillW, height)
           ctx.restore()
         }
+      }
+    }
+
+    // Timeline overlays across the whole minimap (0..totalSeconds).
+    // Draw them before the viewport tint so the viewport remains readable.
+    if (timelineRefs && timelineRefs.length > 0 && audioContext) {
+      const chartTop = 18
+      const chartHeight = Math.max(1, height - chartTop - 2)
+      const beatsPerSecond = bpm / 60
+
+      const seenSeqs = new Set<number>()
+      let colorIndex = 0
+
+      for (const ref of timelineRefs) {
+        const seqIndex = ref.seqIndex
+        if (seenSeqs.has(seqIndex)) continue
+        seenSeqs.add(seqIndex)
+
+        const cached = timelineCacheRef.current.get(seqIndex)
+        const canUseCached = cached
+          && cached.sequence === ref.sequence
+          && cached.width === width
+          && cached.bpm === bpm
+
+        let tl = cached?.tl ?? null
+        let vByX = cached?.vByX
+        if (!canUseCached) {
+          const compiled = compileTimelineNotation(ref.sequence)
+          tl = parseCompiledTimeline(compiled.bytecode)
+          vByX = new Float32Array(width + 1)
+
+          if (tl) {
+            for (let px = 0; px <= width; px++) {
+              const tt = width > 0 ? px / width : 0
+              const timeSeconds = tt * totalSeconds
+              const beatAbs = timeSeconds * beatsPerSecond
+              vByX[px] = evalCompiledTimelineAtBeat(tl, beatAbs)
+            }
+          }
+
+          timelineCacheRef.current.set(seqIndex, {
+            sequence: ref.sequence,
+            width,
+            bpm,
+            tl,
+            vByX,
+          })
+        }
+
+        if (!tl || !vByX) continue
+
+        const color = ref.color || theme.colors.function
+        if (!ref.color) colorIndex++
+
+        ctx.strokeStyle = color
+        ctx.lineWidth = 1.35
+
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(0, chartTop, width, chartHeight)
+        ctx.clip()
+        ctx.beginPath()
+
+        for (let px = 0; px <= width; px++) {
+          const v = vByX[px]!
+          const y = chartTop + (1 - v) * (chartHeight - 2) + 1
+          if (px === 0) ctx.moveTo(px, y)
+          else ctx.lineTo(px, y)
+        }
+        ctx.stroke()
+        ctx.restore()
       }
     }
 

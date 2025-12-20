@@ -404,14 +404,14 @@ export class DspProcessor extends AudioWorkletProcessor {
       // Update globalSampleCount in shared buffer
       Atomics.store(this.options.processorOptions.globalSampleCount, 0, sampleBefore)
 
-      if (this.state === 'stopped') return true
-
       // Update global BPM and adjust globalSampleCount on change
       const bpmValue = this.options.processorOptions.bpmValue[0]
       if (bpmValue !== this.lastBpm) {
         this.core.wasm.updateBpm(this.lastBpm, bpmValue)
         this.lastBpm = bpmValue
       }
+
+      if (this.state === 'stopped') return true
 
       const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
       const begin = ringPos * CHUNK_SIZE

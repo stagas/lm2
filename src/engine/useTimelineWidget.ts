@@ -120,10 +120,12 @@ export function useTimelineWidget({
     widgetHeight: number,
     viewX: number,
     viewWidth: number,
+    seqColor?: string,
   ) => {
     if (!audioContext || !bpmValue) return
     const st = stateRef.current.get(seqIndex)
     if (!st || st.timeSeconds == null) return
+    const baseColor = seqColor ?? theme.colors.argument
 
     const x = viewX + PIANOROLL_KEY_WIDTH
     const h = Math.max(40, widgetHeight)
@@ -186,7 +188,7 @@ export function useTimelineWidget({
     const segs = st.frameSegs
     let si = 0
 
-    c.strokeStyle = theme.colors.argument
+    c.strokeStyle = baseColor
     c.lineWidth = 1.35
 
     // helper to compute pixel X for a sample
@@ -259,7 +261,7 @@ export function useTimelineWidget({
     c.stroke()
 
     // Draw small circles at every segment boundary, including the previous value when it changes
-    c.fillStyle = theme.colors.argument
+    c.fillStyle = baseColor
     c.strokeStyle = 'rgba(0, 0, 0, 0.6)'
     c.lineWidth = 0.25
     const circleRadius = 3
@@ -307,7 +309,7 @@ export function useTimelineWidget({
 
     c.restore()
     c.restore()
-  }, [audioContext, bpmValue, timelineLabels])
+  }, [audioContext, bpmValue, timelineLabels, theme.colors.argument])
 
   const widgets = useMemo(() => {
     if (!showWidgets) return []
@@ -324,7 +326,7 @@ export function useTimelineWidget({
         pointerDown: (x, y, offsetX, offsetY) => {
         },
         render: (ctx, _x, y, _w, h, vx, vw) => {
-          drawTimeline(ctx, ref.seqIndex, y, h, vx, vw)
+          drawTimeline(ctx, ref.seqIndex, y, h, vx, vw, ref.color)
         },
       })
     }

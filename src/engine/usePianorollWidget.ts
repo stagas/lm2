@@ -228,10 +228,12 @@ export function usePianorollWidget({
     widgetHeight: number,
     viewX: number,
     viewWidth: number,
+    seqColor?: string,
   ) => {
     if (!audioContext || !bpmValue) return
     const st = pianorollStateRef.current.get(seqIndex)
     if (!st || st.timeSeconds == null) return
+    const baseColor = seqColor ?? theme.colors.argument
 
     const x = viewX
     const h = Math.max(40, widgetHeight)
@@ -411,9 +413,9 @@ export function usePianorollWidget({
         strokeDark = '#cc0f'
       }
       else {
-        fillStyle = theme.colors.argument
-        strokeBright = luminate(theme.colors.argument, .1)
-        strokeDark = luminate(theme.colors.argument, -.1)
+        fillStyle = baseColor
+        strokeBright = luminate(baseColor, .1)
+        strokeDark = luminate(baseColor, -.1)
       }
       const ex = x + 0.5
       const ew = Math.max(2, eventWidth) - 1
@@ -516,7 +518,7 @@ export function usePianorollWidget({
     c.restore()
     // restore the initial context saved before translating by x
     c.restore()
-  }, [audioContext, bpmValue, timelineLabels])
+  }, [audioContext, bpmValue, timelineLabels, theme.colors.argument])
 
   const widgets = useMemo(() => {
     if (!showWidgets) return []
@@ -535,7 +537,7 @@ export function usePianorollWidget({
         length: 1,
         height: 40,
         render: (ctx, _x, y, _w, h, vx, vw) => {
-          drawPianoroll(ctx, ref.seqIndex, y, h, vx, vw)
+          drawPianoroll(ctx, ref.seqIndex, y, h, vx, vw, ref.color)
         },
       })
     }

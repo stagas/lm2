@@ -10,7 +10,22 @@ let persistedParenDepth: number = 0 // Tracks paren depth across lines
 
 // Check if text looks like mini notation (contains notes, octaves, scales, etc)
 function isMiniNotation(text: string): boolean {
-  return /[a-z0-9<>\[\]]/.test(text)
+  const t = text.trim()
+  if (!t) return false
+
+  // Obvious structural markers used by mini/timeline notations.
+  if (/[,\s;\[\]<>]/.test(t)) return true
+
+  // Single-token notes (e.g. "c4", "f#3", "bb-1")
+  if (/(?:^|[\s\[,<])[a-gA-G][#b]?-?\d+/.test(t)) return true
+
+  // Single-token roman scale degrees (e.g. "i", "v", "IV")
+  if (/^[ivxlcdm]+$/i.test(t)) return true
+
+  // Timeline single-token segments often start with "number,number"
+  if (/^\d+(?:\.\d*)?,\d+/.test(t)) return true
+
+  return false
 }
 
 function getMiniValueTokenType(value: string): string {

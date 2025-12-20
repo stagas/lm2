@@ -133,6 +133,7 @@ function binaryCode(opName: string): VmBinary | null {
 export type MiniSequenceRef = {
   seqIndex: number
   sequence: string
+  color?: string
   /** Absolute start index (0-based) of the string content (excluding quotes) in the DSP source. */
   start: number
   /** Absolute end index (0-based, exclusive) of the string content (excluding quotes) in the DSP source. */
@@ -155,6 +156,7 @@ export type TimelineLabel = {
 export type TimelineSequenceRef = {
   seqIndex: number
   sequence: string
+  color?: string
   /** Absolute start index (0-based) of the string content (excluding quotes) in the DSP source. */
   start: number
   /** Absolute end index (0-based, exclusive) of the string content (excluding quotes) in the DSP source. */
@@ -231,12 +233,13 @@ function extractMiniSequencesFromProgramWithRefs(
     return idx
   }
 
-  function addRef(sequence: string, loc: Loc): void {
+  function addRef(sequence: string, loc: Loc, color?: string): void {
     const seqIndex = ensureIndex(sequence)
     const quoteStart = locToIndex(lineStarts, loc)
     refs.push({
       seqIndex,
       sequence,
+      color: color || undefined,
       start: quoteStart + 1,
       end: quoteStart + Math.max(0, loc.length - 1),
       loc,
@@ -251,11 +254,33 @@ function extractMiniSequencesFromProgramWithRefs(
         expr.callee?.kind === 'ident'
         && (expr.callee?.name === 'mini' || expr.callee?.name === 'play')
       ) {
-        const firstArg = expr.args?.[0]
-        const v = firstArg?.kind === 'pos' ? firstArg.value : null
-        if (v?.kind === 'string') {
-          const sequence = String(v.value ?? '')
-          addRef(sequence, v.loc)
+        const args = expr.args ?? []
+        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq')
+          ?? args.find((a: any) => a.kind === 'pos')
+        const seqExpr = (seqArg?.kind === 'pos' || seqArg?.kind === 'named') ? seqArg.value : null
+
+        if (seqExpr?.kind === 'string') {
+          const sequence = String(seqExpr.value ?? '')
+
+          const namedColor = args.find((a: any) => a.kind === 'named' && a.name === 'color')
+          let color: string | undefined = undefined
+          if (namedColor?.value?.kind === 'string') {
+            color = String(namedColor.value.value ?? '') || undefined
+          }
+          else {
+            // Treat the first additional string positional argument as the compile-time color.
+            for (const a of args) {
+              if (a === seqArg) continue
+              if (a?.kind !== 'pos') continue
+              const v = a.value
+              if (v?.kind === 'string') {
+                color = String(v.value ?? '') || undefined
+                break
+              }
+            }
+          }
+
+          addRef(sequence, seqExpr.loc, color)
         }
       }
 
@@ -411,12 +436,13 @@ function extractTimelineSequencesFromProgramWithRefs(
     return idx
   }
 
-  function addRef(sequence: string, loc: Loc): void {
+  function addRef(sequence: string, loc: Loc, color?: string): void {
     const seqIndex = ensureIndex(sequence)
     const quoteStart = locToIndex(lineStarts, loc)
     refs.push({
       seqIndex,
       sequence,
+      color: color || undefined,
       start: quoteStart + 1,
       end: quoteStart + Math.max(0, loc.length - 1),
       loc,
@@ -430,13 +456,47 @@ function extractTimelineSequencesFromProgramWithRefs(
       if (expr.callee?.kind === 'ident' && expr.callee?.name === 'timeline') {
         const args = expr.args ?? []
         const posArgs = args.filter((a: any) => a.kind === 'pos')
-        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq')
-          ?? (posArgs.length >= 2 ? posArgs[1] : posArgs[0])
+
+        const namedSeqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq')
+        const namedColorArg = args.find((a: any) => a.kind === 'named' && a.name === 'color')
+
+        let seqArg: any | null = namedSeqArg ?? null
+        let seqPosIndex = -1
+
+        if (!seqArg) {
+          for (let i = 0; i < posArgs.length; i++) {
+            const v = posArgs[i]?.value
+            if (v?.kind === 'string') {
+              seqPosIndex = i
+              break
+            }
+          }
+          if (seqPosIndex === -1) seqPosIndex = posArgs.length >= 2 ? 1 : 0
+          seqArg = posArgs[seqPosIndex] ?? null
+        }
 
         const seqExpr = seqArg?.kind === 'pos' || seqArg?.kind === 'named' ? seqArg.value : null
         if (seqExpr?.kind === 'string') {
           const sequence = String(seqExpr.value ?? '')
-          addRef(sequence, seqExpr.loc)
+
+          let colorExpr: any | null = namedColorArg?.value ?? null
+          if (!colorExpr) {
+            if (seqPosIndex >= 0) {
+              colorExpr = posArgs[seqPosIndex + 1]?.value ?? null
+            }
+            else {
+              for (let i = 0; i < posArgs.length; i++) {
+                const v = posArgs[i]?.value
+                if (v?.kind === 'string') {
+                  colorExpr = v
+                  break
+                }
+              }
+            }
+          }
+          const color = colorExpr?.kind === 'string' ? (String(colorExpr.value ?? '') || undefined) : undefined
+
+          addRef(sequence, seqExpr.loc, color)
         }
       }
 
@@ -758,6 +818,59 @@ export function extractTimelineLabelsFromSource(src: string): { labels: Timeline
   return { labels: extractTimelineLabelsFromProgram(parsed.program), errors: [] }
 }
 
+function locError(src: string, loc: Pick<Loc, 'line' | 'column' | 'length'>, message: string): LangError {
+  return {
+    message,
+    line: loc.line,
+    column: loc.column,
+    length: Math.max(1, loc.length),
+    code: lineText(src, loc.line),
+  }
+}
+
+function extractBpmFromProgram(src: string, program: Program, errors: LangError[]): number | undefined {
+  let bpm: number | undefined
+
+  for (const stmt of program.body ?? []) {
+    if (stmt?.kind !== 'expr_stmt') continue
+    const expr: any = (stmt as any).expr
+    if (!expr || expr.kind !== 'assign') continue
+    if (expr.target?.kind !== 'ident' || expr.target?.name !== 'bpm') continue
+
+    if (expr.op !== '=') {
+      errors.push(locError(src, expr.loc ?? stmt.loc, 'Only `bpm=<number>` is supported'))
+      continue
+    }
+
+    const v = expr.value
+    if (!v || v.kind !== 'number') {
+      errors.push(locError(src, expr.loc ?? stmt.loc, '`bpm` must be assigned a number literal'))
+      continue
+    }
+
+    const n = Number(v.value ?? 0)
+    if (!Number.isFinite(n) || n <= 0) {
+      errors.push(locError(src, v.loc ?? expr.loc ?? stmt.loc, '`bpm` must be a positive finite number'))
+      continue
+    }
+
+    bpm = n
+  }
+
+  return bpm
+}
+
+export function extractBpmFromSource(src: string): { bpm?: number; errors: LangError[] } {
+  const lexed = lex(src)
+  const parsed = parse(src, lexed.tokens)
+  const errors: LangError[] = [...lexed.errors, ...parsed.errors]
+  if (errors.length) return { errors }
+
+  const bpm = extractBpmFromProgram(src, parsed.program, errors)
+  if (errors.length) return { errors }
+  return { errors: [], bpm }
+}
+
 function extractAnalysersFromProgramWithRefs(program: Program): AnalyserRef[] {
   const refs: AnalyserRef[] = []
 
@@ -1076,6 +1189,7 @@ export function encodeLangToVmOps(
   target: VmTarget,
 ): {
   errors: LangError[]
+  bpm?: number
   miniSequences?: string[]
   miniRefs?: MiniSequenceRef[]
   timelineSequences?: TimelineSequenceDef[]
@@ -1088,6 +1202,9 @@ export function encodeLangToVmOps(
   const lexed = lex(src)
   const parsed = parse(src, lexed.tokens)
   const errors: LangError[] = [...lexed.errors, ...parsed.errors]
+  if (errors.length) return { errors }
+
+  const bpm = extractBpmFromProgram(src, parsed.program, errors)
   if (errors.length) return { errors }
 
   const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, parsed.program)
@@ -1170,21 +1287,52 @@ export function encodeLangToVmOps(
           }
         }
 
-        // mini(x) is a compile-time identity for sequence refs
-        if (isMini && args.length === 1 && seqArg && (seqArg.kind === 'pos' || seqArg.kind === 'named')) {
-          return seqArg.value
+        // Strip compile-time-only mini(seq, color?) arg so runtime sees mini(seq[, cb]).
+        const argsNoColor = (() => {
+          const namedColor = args.find((a: any) => a.kind === 'named' && a.name === 'color')
+          if (namedColor) return args.filter((a: any) => a !== namedColor)
+
+          const posArgs = args.filter((a: any) => a.kind === 'pos')
+          const secondPos = posArgs[1]
+          const thirdPos = posArgs[2]
+          if (secondPos?.value?.kind === 'string') {
+            return args.filter((a: any) => a !== secondPos)
+          }
+          if (thirdPos?.value?.kind === 'string') {
+            return args.filter((a: any) => a !== thirdPos)
+          }
+          return args
+        })()
+
+        const seqArg2 = argsNoColor.find((a: any) => a.kind === 'named' && a.name === 'seq')
+          ?? argsNoColor.find((a: any) => a.kind === 'pos')
+
+        // mini(x) is a compile-time identity for sequence refs (also mini(x, color?))
+        if (isMini && argsNoColor.length === 1 && seqArg2 && (seqArg2.kind === 'pos' || seqArg2.kind === 'named')) {
+          return seqArg2.value
         }
 
         // play(seq, cb) is a compile-time alias of mini(seq, cb)
         if (isPlay) {
-          return { ...expr, callee: { kind: 'ident', name: 'mini', loc: callee.loc }, args }
+          return { ...expr, callee: { kind: 'ident', name: 'mini', loc: callee.loc }, args: argsNoColor }
         }
+
+        return { ...expr, callee, args: argsNoColor }
       }
 
       if (isTimeline) {
         const posArgs = args.filter((a: any) => a.kind === 'pos')
-        const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq')
-          ?? (posArgs.length >= 2 ? posArgs[1] : posArgs[0])
+        let seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq') ?? null
+        if (!seqArg) {
+          for (let i = 0; i < posArgs.length; i++) {
+            const v = posArgs[i]?.value
+            if (v?.kind === 'string') {
+              seqArg = posArgs[i]
+              break
+            }
+          }
+        }
+        if (!seqArg) seqArg = posArgs.length >= 2 ? posArgs[1] : posArgs[0]
         if (seqArg?.kind === 'pos' || seqArg?.kind === 'named') {
           const v = seqArg.value
           if (v?.kind === 'string') {
@@ -1248,6 +1396,12 @@ export function encodeLangToVmOps(
   const transformStmt = (stmt: any): any => {
     if (!stmt) return stmt
     if (stmt.kind === 'expr_stmt') {
+      const isBpmStmt = !!(
+        stmt.expr?.kind === 'assign'
+        && stmt.expr.target?.kind === 'ident'
+        && stmt.expr.target?.name === 'bpm'
+      )
+      if (isBpmStmt) return null
       const isLabelStmt = !!(
         stmt.expr?.kind === 'call'
         && stmt.expr.callee?.kind === 'ident'
@@ -1636,6 +1790,7 @@ export function encodeLangToVmOps(
   return errors.length
     ? {
       errors,
+      bpm,
       miniSequences: sequences,
       miniRefs: refs,
       timelineSequences: timelineExtracted.sequences,
@@ -1647,6 +1802,7 @@ export function encodeLangToVmOps(
     }
     : {
       errors: [],
+      bpm,
       miniSequences: sequences,
       miniRefs: refs,
       timelineSequences: timelineExtracted.sequences,

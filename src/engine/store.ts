@@ -13,7 +13,7 @@ import type {
   TimelineLabel,
   TimelineSequenceRef,
 } from '../bytecode.ts'
-import { extractTimelineLabelsFromSource } from '../bytecode.ts'
+import { extractBpmFromSource, extractTimelineLabelsFromSource } from '../bytecode.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { ControlOp } from '../worklet-shared.ts'
@@ -177,6 +177,12 @@ export const useEngineStore = create<EngineState>((set, get) => {
     const extracted = extractTimelineLabelsFromSource(source)
     if (extracted.errors.length) return undefined
 
+    const bpmExtracted = extractBpmFromSource(source)
+    if (bpmExtracted.errors.length) return undefined
+    if (bpmExtracted.bpm !== undefined && state.bpmValue) {
+      state.bpmValue[0] = bpmExtracted.bpm
+    }
+
     if (updates.length === 0) {
       set({
         dspSource: source,
@@ -229,6 +235,10 @@ export const useEngineStore = create<EngineState>((set, get) => {
         setData: false,
         compareAgainst: comparisonReference,
       })
+
+      if (primaryResult.bpm !== undefined && state.bpmValue) {
+        state.bpmValue[0] = primaryResult.bpm
+      }
 
       const sequences = primaryResult.sequences
       const miniRefs = primaryResult.miniRefs
