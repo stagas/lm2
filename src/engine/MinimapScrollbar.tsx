@@ -2,7 +2,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
 } from 'react'
 import { MouseButton } from 'utils/mouse-buttons'
@@ -43,7 +42,7 @@ export function MinimapScrollbar({
   seekToSample,
   timelineWindowRef,
 }: MinimapScrollbarProps) {
-  const { loop, setLoop, clearLoop } = useEngineStore()
+  const { loop, setLoop, clearLoop, animationManager } = useEngineStore()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
@@ -390,18 +389,12 @@ export function MinimapScrollbar({
   }, [audioContext, barCount, bpmValue, globalSampleCount, loop, timelineLabels, timelineRefs, timelineWindowRef])
 
   useEffect(() => {
-    let frameId: number | null = null
-    const render = () => {
-      drawMinimap()
-      frameId = requestAnimationFrame(render)
-    }
-    render()
+    if (!animationManager) return
+    animationManager.register(drawMinimap)
     return () => {
-      if (frameId != null) {
-        cancelAnimationFrame(frameId)
-      }
+      animationManager.unregister(drawMinimap)
     }
-  }, [drawMinimap])
+  }, [drawMinimap, animationManager])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
