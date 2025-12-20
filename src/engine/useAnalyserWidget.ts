@@ -72,7 +72,7 @@ function drawWaveform(
 
   c.beginPath()
   c.moveTo(x, mid - floats[0]! * amp)
-  for (let i = 1; i < w0; i++) {
+  for (let i = 1; i < w0; i += 2) {
     const idx = (i * scale) | 0
     c.lineTo(x + i, mid - floats[idx]! * amp)
   }

@@ -105,14 +105,14 @@ export const useEngineStore = create<EngineState>((set, get) => {
     if (bars === undefined) return sorted
 
     const endBar = bars + 1
-    const hasEnd = sorted.some(l => l.bar === endBar && l.text === 'End')
+    const hasEnd = sorted.some(l => l.bar === endBar && l.text === 'end')
     if (hasEnd) return sorted
 
     return [
       ...sorted,
       {
         bar: endBar,
-        text: 'End',
+        text: 'end',
         color: 'rgba(255, 220, 0, 0.85)',
         loc: { line: 1, column: 1, length: 1 },
       },

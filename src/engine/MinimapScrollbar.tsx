@@ -64,12 +64,12 @@ export function MinimapScrollbar({
 
   const seekFromPointer = useCallback((clientX: number) => {
     const canvas = canvasRef.current
-    if (!canvas || !audioContext) return
+    if (!canvas || !audioContext || !isValidRef.current) return
 
-    const rect = canvas.getBoundingClientRect()
-    const width = rect.width
+    const { width } = canvasDimsRef.current
     if (width <= 0) return
 
+    const rect = canvas.getBoundingClientRect()
     const relativeX = clientX - rect.left
     const clampedRatio = Math.max(0, Math.min(1, relativeX / width))
     const bpm = bpmValue?.[0] || 60
@@ -83,12 +83,12 @@ export function MinimapScrollbar({
 
   const toggleLoopFromPointer = useCallback((clientX: number) => {
     const canvas = canvasRef.current
-    if (!canvas || !audioContext) return
+    if (!canvas || !audioContext || !isValidRef.current) return
 
-    const rect = canvas.getBoundingClientRect()
-    const width = rect.width
+    const { width } = canvasDimsRef.current
     if (width <= 0) return
 
+    const rect = canvas.getBoundingClientRect()
     const relativeX = clientX - rect.left
     const clampedRatio = Math.max(0, Math.min(1, relativeX / width))
 
@@ -152,20 +152,13 @@ export function MinimapScrollbar({
 
   const drawMinimap = useCallback(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas || !isValidRef.current) return
 
-    const width = canvas.clientWidth
-    const height = canvas.clientHeight
+    const { width, height } = canvasDimsRef.current
     if (width === 0 || height === 0) return
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-
-    const pixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
-    canvas.width = width * pixelRatio
-    canvas.height = height * pixelRatio
-
-    ctx.scale(pixelRatio, pixelRatio)
 
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, width, height)
@@ -391,14 +384,6 @@ export function MinimapScrollbar({
   }, [audioContext, barCount, bpmValue, globalSampleCount, loop, timelineLabels, timelineRefs, timelineWindowRef])
 
   useEffect(() => {
-    if (!animationManager) return
-    animationManager.register(drawMinimap)
-    return () => {
-      animationManager.unregister(drawMinimap)
-    }
-  }, [drawMinimap, animationManager])
-
-  useEffect(() => {
     if (typeof window === 'undefined') return
     const release = () => {
       isDraggingRef.current = false
@@ -408,6 +393,36 @@ export function MinimapScrollbar({
       window.removeEventListener('pointerup', release)
     }
   }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const pixelRatio = window.devicePixelRatio || 1
+    const observer = new ResizeObserver(() => {
+      const width = canvas.clientWidth
+      const height = canvas.clientHeight
+      if (width > 0 && height > 0) {
+        canvas.width = width * pixelRatio
+        canvas.height = height * pixelRatio
+        const ctx = canvas.getContext('2d')
+        ctx?.scale(pixelRatio, pixelRatio)
+        canvasDimsRef.current = { width, height, pixelRatio }
+        isValidRef.current = true
+      }
+    })
+
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!animationManager) return
+    animationManager.register(drawMinimap)
+    return () => {
+      animationManager.unregister(drawMinimap)
+    }
+  }, [drawMinimap, animationManager])
 
   return (
     <div className="flex flex-row w-full h-full">

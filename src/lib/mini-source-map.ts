@@ -70,7 +70,7 @@ function buildSourceMapFromNodes(
       currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map)
       currentOffset += OP_GROUP_END_SIZE
     }
-    else if (node.type === 'cycle') {
+    else if (node.type === 'on') {
       currentOffset += OP_CYCLE_START_SIZE
       currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map)
       currentOffset += OP_CYCLE_END_SIZE
@@ -85,4 +85,3 @@ export function buildMiniSourceMap(nodes: Node[], bytecode: Float32Array): Map<n
   buildSourceMapFromNodes(nodes, bytecode, OP_GROUP_START_SIZE, map)
   return map
 }
-

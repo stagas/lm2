@@ -1,6 +1,6 @@
 import { midiToFrequency, noteNameToMidi } from './util.ts'
 
-type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale' | 'cycle'
+type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale' | 'on'
 
 export interface Modifiers {
   velocity: number
@@ -556,14 +556,26 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       continue
     }
 
-    if (raw === 'cycle') {
+    if (raw === 'on') {
       const next = tokens[ti + 1]
-      const parsed = parseInt(next?.text ?? '', 10)
-      const period = Number.isFinite(parsed) ? parsed : 0
+      const rawOn = next?.text ?? ''
+      let pos = 0
+      let loop = 0
+      const slash = rawOn.indexOf('/')
+      if (slash >= 0) {
+        const a = parseInt(rawOn.slice(0, slash), 10)
+        const b = parseInt(rawOn.slice(slash + 1), 10)
+        pos = Number.isFinite(a) ? a : 0
+        loop = Number.isFinite(b) ? b : 0
+      }
+      else {
+        const a = parseInt(rawOn, 10)
+        pos = Number.isFinite(a) ? a : 0
+      }
       const bodyStart = ti + 2
       let bodyEnd = tokens.length
       for (let j = bodyStart; j < tokens.length; j++) {
-        if (tokens[j]?.text === 'cycle') {
+        if (tokens[j]?.text === 'on') {
           bodyEnd = j
           break
         }
@@ -572,9 +584,9 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       const children = tokensToNodesInternal(bodyTokens, input)
       const last = tokens[bodyEnd - 1] ?? next ?? token
       nodes.push({
-        type: 'cycle',
+        type: 'on',
         angle: false,
-        values: [period],
+        values: [pos, loop],
         children,
         modifiers: getDefaultMods(),
         source: makeSource(input, token.start, last?.end ?? token.end),

@@ -1,6 +1,7 @@
 import { MINI_HEADER_SIZE } from '../../as/assembly/constants.ts'
 import type { MiniSourceMapEntry } from './bytecode.ts'
-import { allocateBytecode, writeCycleEndOp, writeCycleStartOp, writeEventOp, writeGroupEndOp, writeGroupStartOp, writeOctaveOp, writeRestOp, writeScaleOp, writeTransposeOp } from './bytecode.ts'
+import { allocateBytecode, writeCycleEndOp, writeCycleStartOp, writeEventOp, writeGroupEndOp, writeGroupStartOp,
+  writeOctaveOp, writeRestOp, writeScaleOp, writeTransposeOp } from './bytecode.ts'
 import type { Node } from './tokenizer.ts'
 import { getDefaultMods, tokenize, tokensToNodes } from './tokenizer.ts'
 
@@ -32,8 +33,14 @@ function compileNode(
   else if (node.type === 'scale') {
     return writeScaleOp(bytecode, offset, node.values[0] ?? 0, node.values[1] ?? 0)
   }
-  else if (node.type === 'cycle') {
-    let currentOffset = writeCycleStartOp(bytecode, offset, node.values[0] ?? 0, node.children.length)
+  else if (node.type === 'on') {
+    let currentOffset = writeCycleStartOp(
+      bytecode,
+      offset,
+      node.values[0] ?? 0,
+      node.values[1] ?? 0,
+      node.children.length,
+    )
     for (const child of node.children) {
       currentOffset += compileNode(child, bytecode, offset + currentOffset)
     }

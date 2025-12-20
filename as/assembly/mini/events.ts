@@ -329,9 +329,17 @@ export class MiniEvents {
         const off = childOpsBuffer.get(i)
         if (reader.getOpcode(off) !== OP_CYCLE_START) continue
         const op = reader.getCycle(off)
-        const period: i32 = i32(op.period)
-        if (period > 0 && (cycleIndex1 % period) === 0) {
-          selected = off
+        const pos: i32 = i32(op.pos)
+        const loop: i32 = i32(op.loop)
+        if (loop > 0) {
+          if (pos <= 0 || pos > loop) continue
+          const phase0: i32 = cycleIndex1 % loop
+          const phase: i32 = phase0 === 0 ? loop : phase0
+          if (phase === pos) selected = off
+        }
+        else {
+          const period: i32 = pos
+          if (period > 0 && (cycleIndex1 % period) === 0) selected = off
         }
       }
 

@@ -115,13 +115,15 @@ export function writeGroupEndOp(
 export function writeCycleStartOp(
   buffer: Float32Array,
   offset: number,
-  period: number,
+  pos: number,
+  loop: number,
   childCount: number,
 ): number {
   const base = MINI_HEADER_SIZE + offset
   buffer[base + 0] = OP_CYCLE_START
-  buffer[base + 1] = period
-  buffer[base + 2] = childCount
+  buffer[base + 1] = pos
+  buffer[base + 2] = loop
+  buffer[base + 3] = childCount
   return OP_CYCLE_START_SIZE
 }
 

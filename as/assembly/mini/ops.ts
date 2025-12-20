@@ -81,7 +81,8 @@ export class GroupStartOp {
 @unmanaged
 export class CycleStartOp {
   opcode!: f32
-  period!: f32
+  pos!: f32
+  loop!: f32
   childCount!: f32
 
   static size(): i32 {

@@ -67,6 +67,6 @@ export const OP_OCTAVE_SIZE: i32 = 2 // opcode, deltaOctaves
 export const OP_TRANSPOSE_SIZE: i32 = 2 // opcode, deltaSemitones
 export const MAX_EVENT_VALUES: i32 = 16
 export const OP_SCALE_SIZE: i32 = 3 // opcode, rootMidi, scaleIndex
-export const OP_CYCLE_START_SIZE: i32 = 3 // opcode, periodCycles, childCount
+export const OP_CYCLE_START_SIZE: i32 = 4 // opcode, pos, loop, childCount
 export const OP_CYCLE_END_SIZE: i32 = 1 // opcode
 export const OP_EVENT_BASE_SIZE: i32 = 12 + MAX_EVENT_VALUES // opcode, valueCount, values..., velocity, hold, glide, prob, density

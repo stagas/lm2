@@ -198,7 +198,7 @@ export function useTimelineWidget({
 
     c.beginPath()
     let prevSample = windowStartSample
-    for (let px = 0; px <= w; px++) {
+    for (let px = 0; px <= w; px += 2) {
       const t = px / w
       const sample = windowStartSample + t * timeWindowSeconds * sampleRate
       if (sample < 0) continue
