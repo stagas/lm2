@@ -97,6 +97,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     uiSequences,
     uiMiniRefs,
     uiTimelineRefs,
+    uiTimelineLabels,
     uiMiniSourceMaps,
     uiAnalyserRefs,
     uiArrayLiterals,
@@ -274,6 +275,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     globalSampleCount,
     miniSourceMaps: widgetCompileState.miniSourceMaps,
     miniRefs: widgetCompileState.miniRefs,
+    timelineLabels: uiTimelineLabels,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
   })
@@ -284,6 +286,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     bpmValue,
     globalSampleCount,
     timelineRefs: widgetCompileState.timelineRefs,
+    timelineLabels: uiTimelineLabels,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
   })

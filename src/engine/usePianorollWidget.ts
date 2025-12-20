@@ -8,9 +8,10 @@ import {
   PAST_SECONDS,
   TIME_WINDOW_SECONDS,
 } from '../../as/assembly/constants.ts'
+import type { MiniSequenceRef, TimelineLabel } from '../bytecode.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { frequencyToMidi, midiToNoteName } from '../mini/util.ts'
-import { PIANOROLL_KEY_WIDTH, SCROLL_SMOOTHING } from './constants.ts'
+import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
@@ -58,8 +59,9 @@ type UsePianorollParams = {
   audioContext: AudioContext | undefined
   bpmValue: Float32Array<SharedArrayBuffer> | undefined
   globalSampleCount: Int32Array<SharedArrayBuffer> | undefined
-  miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
-  miniRefs: Array<{ seqIndex: number; loc: { line: number }; start: number }>
+  miniSourceMaps: (Map<number, SourceLocation> | undefined)[]
+  miniRefs: MiniSequenceRef[]
+  timelineLabels: TimelineLabel[]
   dspSource: string
   showWidgets: boolean
 }
@@ -71,6 +73,7 @@ export function usePianorollWidget({
   globalSampleCount,
   miniSourceMaps,
   miniRefs,
+  timelineLabels,
   dspSource,
   showWidgets,
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
@@ -479,6 +482,24 @@ export function usePianorollWidget({
     c.lineTo(currentTimeX, h)
     c.stroke()
 
+    // Find last label before current time
+    let playheadColor = 'rgba(255, 255, 0, 0.8)'
+    if (timelineLabels.length > 0) {
+      for (let i = 0; i < timelineLabels.length; i++) {
+        const label = timelineLabels[i]
+        const labelSeconds = (label.bar - 1) * barLengthSeconds
+        if (labelSeconds <= st.timeSeconds) {
+          playheadColor = label.color || 'rgba(255, 255, 0, 0.8)'
+        }
+      }
+    }
+    c.strokeStyle = playheadColor
+    c.lineWidth = 2
+    c.beginPath()
+    c.moveTo(currentTimeX, 0)
+    c.lineTo(currentTimeX, h)
+    c.stroke()
+
     // c.font = '6pt Inter'
     // c.textAlign = 'right'
     // c.textBaseline = 'middle'
@@ -495,7 +516,7 @@ export function usePianorollWidget({
     c.restore()
     // restore the initial context saved before translating by x
     c.restore()
-  }, [audioContext, bpmValue])
+  }, [audioContext, bpmValue, timelineLabels])
 
   const widgets = useMemo(() => {
     if (!showWidgets) return []

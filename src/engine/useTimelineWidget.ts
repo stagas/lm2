@@ -5,7 +5,7 @@ import {
   PAST_SECONDS,
   TIME_WINDOW_SECONDS,
 } from '../../as/assembly/constants.ts'
-import type { TimelineSequenceRef } from '../bytecode.ts'
+import type { TimelineLabel, TimelineSequenceRef } from '../bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
@@ -33,6 +33,7 @@ type UseTimelineParams = {
   bpmValue: Float32Array<SharedArrayBuffer> | undefined
   globalSampleCount: Int32Array<SharedArrayBuffer> | undefined
   timelineRefs: TimelineSequenceRef[]
+  timelineLabels: TimelineLabel[]
   dspSource: string
   showWidgets: boolean
 }
@@ -43,6 +44,7 @@ export function useTimelineWidget({
   bpmValue,
   globalSampleCount,
   timelineRefs,
+  timelineLabels,
   dspSource,
   showWidgets,
 }: UseTimelineParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
@@ -286,7 +288,17 @@ export function useTimelineWidget({
     }
 
     // Current time marker
-    c.strokeStyle = 'rgba(255, 255, 0, 0.8)'
+    let playheadColor = 'rgba(255, 255, 0, 0.8)'
+    if (timelineLabels.length > 0) {
+      for (let i = 0; i < timelineLabels.length; i++) {
+        const label = timelineLabels[i]
+        const labelSeconds = (label.bar - 1) * barLengthSeconds
+        if (labelSeconds <= st.timeSeconds) {
+          playheadColor = label.color || 'rgba(255, 255, 0, 0.8)'
+        }
+      }
+    }
+    c.strokeStyle = playheadColor
     c.lineWidth = 2
     c.beginPath()
     c.moveTo(currentTimeX, 0)
@@ -295,7 +307,7 @@ export function useTimelineWidget({
 
     c.restore()
     c.restore()
-  }, [audioContext, bpmValue])
+  }, [audioContext, bpmValue, timelineLabels])
 
   const widgets = useMemo(() => {
     if (!showWidgets) return []
