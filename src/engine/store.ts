@@ -250,6 +250,11 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const numberParams = primaryResult.numberParams
 
       if (!primaryResult.diff.significantChange) {
+        if (primaryResult.bpm !== undefined && state.bpmValue) {
+          const oldBpm = state.bpmValue[0]
+          state.bpmValue[0] = primaryResult.bpm
+          state.worklet?.syncBpm(oldBpm, primaryResult.bpm)
+        }
         await primaryProgram.program.applyPreparedData(primaryResult.data)
         set({
           dspSource: source,
@@ -309,6 +314,13 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
       swapStatus.fill(0)
       swap.fill(0)
+
+      if (stagingResult.bpm !== undefined && state.bpmValue) {
+        const oldBpm = state.bpmValue[0]
+        state.bpmValue[0] = stagingResult.bpm
+        state.worklet?.syncBpm(oldBpm, stagingResult.bpm)
+      }
+
       Atomics.store(swap, 0, primaryProgram.program.ptr$)
       Atomics.store(swap, 1, stagingProgram.program.ptr$)
       Atomics.store(swap, 2, dspPtr)
