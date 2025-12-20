@@ -10,8 +10,10 @@ import type {
   ArrayLiteralRef,
   MiniSequenceRef,
   NumberWithParamsInfo,
+  TimelineLabel,
   TimelineSequenceRef,
 } from '../bytecode.ts'
+import { extractTimelineLabelsFromSource } from '../bytecode.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { ControlOp } from '../worklet-shared.ts'
@@ -44,6 +46,7 @@ type EngineState = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
+  timelineLabels: TimelineLabel[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
@@ -54,6 +57,7 @@ type EngineState = {
   uiSequences: string[]
   uiMiniRefs: MiniSequenceRef[]
   uiTimelineRefs: TimelineSequenceRef[]
+  uiTimelineLabels: TimelineLabel[]
   uiMiniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   uiAnalyserRefs: AnalyserRef[]
   uiArrayLiterals: ArrayLiteralRef[]
@@ -169,12 +173,18 @@ export const useEngineStore = create<EngineState>((set, get) => {
     const oldNorm = normalizeSourceWithRanges(oldSource, ranges.filter((_, i) => i % 2 === 0))
     const newNorm = normalizeSourceWithRanges(source, ranges.filter((_, i) => i % 2 === 1))
     if (oldNorm !== newNorm) return undefined
+
+    const extracted = extractTimelineLabelsFromSource(source)
+    if (extracted.errors.length) return undefined
+
     if (updates.length === 0) {
       set({
         dspSource: source,
         numberParams: nextNumberParams,
+        timelineLabels: extracted.labels,
         uiDspSource: source,
         uiNumberParams: nextNumberParams,
+        uiTimelineLabels: extracted.labels,
       })
       localStorage.setItem('engine2:dsp-source', source)
       return state.sequences
@@ -187,8 +197,10 @@ export const useEngineStore = create<EngineState>((set, get) => {
     set({
       dspSource: source,
       numberParams: nextNumberParams,
+      timelineLabels: extracted.labels,
       uiDspSource: source,
       uiNumberParams: nextNumberParams,
+      uiTimelineLabels: extracted.labels,
     })
     localStorage.setItem('engine2:dsp-source', source)
     return state.sequences
@@ -221,6 +233,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const sequences = primaryResult.sequences
       const miniRefs = primaryResult.miniRefs
       const timelineRefs = primaryResult.timelineRefs
+      const timelineLabels = primaryResult.timelineLabels
       const miniSourceMaps = primaryResult.miniSourceMaps
       const analyserRefs = primaryResult.analyserRefs
       const arrayLiterals = primaryResult.arrayLiterals
@@ -233,6 +246,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           sequences,
           miniRefs,
           timelineRefs,
+          timelineLabels,
           miniSourceMaps,
           analyserRefs,
           arrayLiterals,
@@ -242,6 +256,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           uiSequences: sequences,
           uiMiniRefs: miniRefs,
           uiTimelineRefs: timelineRefs,
+          uiTimelineLabels: timelineLabels,
           uiMiniSourceMaps: miniSourceMaps,
           uiAnalyserRefs: analyserRefs,
           uiArrayLiterals: arrayLiterals,
@@ -274,6 +289,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiSequences: sequences,
         uiMiniRefs: stagingResult.miniRefs,
         uiTimelineRefs: stagingResult.timelineRefs,
+        uiTimelineLabels: stagingResult.timelineLabels,
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
@@ -296,6 +312,11 @@ export const useEngineStore = create<EngineState>((set, get) => {
         program2: primaryProgram,
       }
 
+      if (swapResult === 0) {
+        const nextControl = get().playbackState === 'running' ? ControlOp.Start : ControlOp.Pause
+        Atomics.store(control, 0, nextControl)
+      }
+
       if (swapResult !== 1) {
         console.warn('Program swap failed; will retry against the last-known program on the next update.')
         const current = get()
@@ -304,6 +325,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           uiSequences: current.sequences,
           uiMiniRefs: current.miniRefs,
           uiTimelineRefs: current.timelineRefs,
+          uiTimelineLabels: current.timelineLabels,
           uiMiniSourceMaps: current.miniSourceMaps,
           uiAnalyserRefs: current.analyserRefs,
           uiArrayLiterals: current.arrayLiterals,
@@ -318,6 +340,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         sequences,
         miniRefs: stagingResult.miniRefs,
         timelineRefs: stagingResult.timelineRefs,
+        timelineLabels: stagingResult.timelineLabels,
         miniSourceMaps: stagingResult.miniSourceMaps,
         analyserRefs: stagingResult.analyserRefs,
         arrayLiterals: stagingResult.arrayLiterals,
@@ -326,6 +349,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiSequences: sequences,
         uiMiniRefs: stagingResult.miniRefs,
         uiTimelineRefs: stagingResult.timelineRefs,
+        uiTimelineLabels: stagingResult.timelineLabels,
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
@@ -390,6 +414,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     sequences: [...DEFAULT_SEQUENCES],
     miniRefs: [],
     timelineRefs: [],
+    timelineLabels: [],
     miniSourceMaps: [],
     analyserRefs: [],
     arrayLiterals: [],
@@ -398,6 +423,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     uiSequences: [...DEFAULT_SEQUENCES],
     uiMiniRefs: [],
     uiTimelineRefs: [],
+    uiTimelineLabels: [],
     uiMiniSourceMaps: [],
     uiAnalyserRefs: [],
     uiArrayLiterals: [],
@@ -455,12 +481,14 @@ export const useEngineStore = create<EngineState>((set, get) => {
         lastSuccessfulProgramData: undefined,
         miniRefs: [],
         timelineRefs: [],
+        timelineLabels: [],
         miniSourceMaps: [],
         analyserRefs: [],
         arrayLiterals: [],
         numberParams: [],
         uiMiniRefs: [],
         uiTimelineRefs: [],
+        uiTimelineLabels: [],
         uiMiniSourceMaps: [],
         uiAnalyserRefs: [],
         uiArrayLiterals: [],
@@ -588,6 +616,9 @@ async function fetchWasmBinary() {
 
 async function createWorklet() {
   const audioContext = new AudioContext({ latencyHint: 0.05 })
+  window.addEventListener('pointerdown', () => {
+    audioContext.resume()
+  }, { once: true })
   await audioContext.audioWorklet.addModule(workletUrl)
   const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
   const ringPos = new Uint8Array(new SharedArrayBuffer(1 * Uint8Array.BYTES_PER_ELEMENT))
@@ -648,7 +679,7 @@ async function waitForSwapResult(
   status: Int32Array,
   resultIndex: number,
   eventIndex: number,
-  timeoutMs: number = 2000,
+  timeoutMs: number = 500,
 ) {
   const deadline = performance.now() + timeoutMs
   Atomics.store(status, eventIndex, 0)

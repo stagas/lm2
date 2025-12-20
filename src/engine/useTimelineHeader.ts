@@ -16,6 +16,8 @@ export function useTimelineHeader() {
     loop,
     setLoop,
     clearLoop,
+    timelineLabels,
+    uiTimelineLabels,
   } = useEngineStore()
 
   const seekToSample = useSeekToSample()
@@ -55,6 +57,10 @@ export function useTimelineHeader() {
   }, [])
 
   const timelineHeader = useMemo((): EditorHeader => {
+    const activeLabels = (uiTimelineLabels?.length ?? 0) > 0 ? uiTimelineLabels : timelineLabels
+    const labels = [...(activeLabels ?? [])].sort((a, b) => a.bar - b.bar)
+    const defaultLabelColor = 'rgba(255, 220, 0, 0.9)'
+
     const getPointerTimeSeconds = (pointerX: number) => {
       if (!audioContext) return
 
@@ -109,7 +115,7 @@ export function useTimelineHeader() {
     }
 
     return {
-      height: 32,
+      height: 40,
       pointerDown: (x) => {
         if (isCtrlDownRef.current) {
           handleLoopBar(x)
@@ -220,10 +226,88 @@ export function useTimelineHeader() {
           c.font = '7pt Inter'
           c.textBaseline = 'top'
           c.fillStyle = 'rgba(200,200,200,0.6)'
-          c.fillText(timeLabel, barX + 4, y + 18.5)
+          c.fillText(timeLabel, barX + 4, y + 18)
         }
 
-        c.strokeStyle = 'rgba(255, 220, 0, 0.9)'
+        let playheadColor = 'rgba(255, 220, 0, 0.9)'
+
+        if (labels.length > 0) {
+          const beatLengthSeconds = (60 * 4) / bpm
+          c.textAlign = 'left'
+          c.textBaseline = 'bottom'
+          c.font = '800 7.5pt Inter'
+
+          let lastLabelColor: string | undefined
+          for (let i = 0; i < labels.length; i++) {
+            const label = labels[i]
+            const labelSeconds = (label.bar - 1) * beatLengthSeconds
+
+            if (labelSeconds <= timeSeconds) {
+              lastLabelColor = label.color || defaultLabelColor
+            }
+
+            // if (labelSeconds < 0) continue
+            // if (labelSeconds < windowStartTime || labelSeconds > windowEndTime) continue
+
+            let labelX = (labelSeconds - windowStartTime) * pixelsPerSecond
+            let origLabelX = labelX
+            labelX = Math.max(playheadX, labelX)
+
+            // Check if next label would overlap, and if so, constrain this label's position
+            if (i + 1 < labels.length) {
+              const nextLabel = labels[i + 1]
+              const nextLabelSeconds = (nextLabel.bar - 1) * beatLengthSeconds
+              let nextLabelX = (nextLabelSeconds - windowStartTime) * pixelsPerSecond
+              // nextLabelX = Math.max(playheadX, nextLabelX)
+
+              // Measure the width of current label's text
+              const text = label.text
+              if (text) {
+                let textWidth = 0
+                text.split('').forEach((char) => {
+                  textWidth += c.measureText(char).width + 1.5
+                })
+                textWidth -= 1.5 // Adjust for the last character spacing
+
+                // If text would extend past next label, constrain position
+                if (labelX + 8 + textWidth > nextLabelX) {
+                  labelX = Math.min(playheadX, nextLabelX - 8 - textWidth)
+                }
+              }
+            }
+
+            const color = label.color || defaultLabelColor
+
+            c.strokeStyle = color
+            c.lineWidth = 1.5
+
+            if (origLabelX === labelX) {
+              c.beginPath()
+              c.moveTo(labelX, y)
+              c.lineTo(labelX, y + h)
+              c.stroke()
+            }
+
+            const text = label.text
+            if (!text) continue
+
+            const textX = labelX + 4
+            const textY = y + h - 1
+
+            c.fillStyle = color
+            let x = textX
+            text.split('').forEach((char, index) => {
+              c.fillText(char, x, textY)
+              x += c.measureText(char).width + 1.5
+            })
+          }
+
+          if (lastLabelColor) {
+            playheadColor = lastLabelColor
+          }
+        }
+
+        c.strokeStyle = playheadColor
         c.lineWidth = 2
         c.beginPath()
         c.moveTo(playheadX, y)
@@ -233,7 +317,8 @@ export function useTimelineHeader() {
         c.restore()
       },
     }
-  }, [audioContext, bpmValue, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
+  }, [audioContext, bpmValue, clearLoop, globalSampleCount, loop, seekToSample, setLoop, timelineLabels,
+    uiTimelineLabels])
 
   return { timelineHeader, timelineWindowRef }
 }

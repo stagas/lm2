@@ -23,6 +23,7 @@ import type {
   ArrayLiteralRef,
   MiniSequenceRef,
   NumberWithParamsInfo,
+  TimelineLabel,
   TimelineSequenceDef,
   TimelineSequenceRef,
 } from '../bytecode.ts'
@@ -97,11 +98,12 @@ function buildProgram(
   timelineSequences: TimelineSequenceDef[]
   miniRefs: MiniSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
+  timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
 } {
-  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, analyserRefs, arrayLiterals,
+  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
     numberParams } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
@@ -115,6 +117,7 @@ function buildProgram(
     timelineSequences: timelineSequences ?? [],
     miniRefs: miniRefs ?? [],
     timelineRefs: timelineRefs ?? [],
+    timelineLabels: timelineLabels ?? [],
     analyserRefs: analyserRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
     numberParams: numberParams ?? [],
@@ -139,6 +142,7 @@ export type ProgramBuildResult = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
+  timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   timelineSequences: TimelineSequenceDef[]
@@ -317,8 +321,8 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, analyserRefs, arrayLiterals, numberParams } =
-          buildProgram(newData, source)
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
+          numberParams } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -370,6 +374,7 @@ async function createProgram(
           sequences,
           miniRefs,
           timelineRefs,
+          timelineLabels,
           analyserRefs,
           miniSourceMaps,
           timelineSequences,

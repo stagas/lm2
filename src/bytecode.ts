@@ -145,6 +145,13 @@ export type TimelineSequenceDef = {
   sequence: string
 }
 
+export type TimelineLabel = {
+  bar: number
+  text: string
+  color?: string
+  loc: Loc
+}
+
 export type TimelineSequenceRef = {
   seqIndex: number
   sequence: string
@@ -564,6 +571,193 @@ function extractTimelineSequencesFromProgramWithRefs(
   return { sequences, refs }
 }
 
+function extractTimelineLabelsFromProgram(program: Program): TimelineLabel[] {
+  const out: TimelineLabel[] = []
+
+  function getPosArg(call: any, posIndex: number): any | null {
+    let pos = 0
+    for (const arg of call.args ?? []) {
+      if (arg?.kind !== 'pos') continue
+      if (pos === posIndex) return arg.value ?? null
+      pos++
+    }
+    return null
+  }
+
+  function getNamedArg(call: any, name: string): any | null {
+    for (const arg of call.args ?? []) {
+      if (arg?.kind !== 'named') continue
+      if (arg.name === name) return arg.value ?? null
+    }
+    return null
+  }
+
+  function getArg(call: any, posIndex: number, name: string): any | null {
+    return getNamedArg(call, name) ?? getPosArg(call, posIndex)
+  }
+
+  function visitExpr(expr: any): void {
+    if (!expr) return
+
+    if (expr.kind === 'call') {
+      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'label') {
+        const barExpr = getArg(expr, 0, 'bar')
+        const textExpr = getArg(expr, 1, 'text')
+        const colorExpr = getArg(expr, 2, 'color')
+
+        const bar = tryEvalConstNumber(barExpr)
+        const text = textExpr?.kind === 'string' ? String(textExpr.value ?? '') : null
+        const color = colorExpr?.kind === 'string' ? String(colorExpr.value ?? '') : undefined
+
+        if (bar != null && Number.isFinite(bar) && text != null) {
+          out.push({
+            bar,
+            text,
+            color: color || undefined,
+            loc: expr.callee.loc ?? expr.loc,
+          })
+        }
+      }
+
+      visitExpr(expr.callee)
+      for (const arg of expr.args ?? []) {
+        if (arg.kind === 'pos' || arg.kind === 'named') visitExpr(arg.value)
+      }
+      return
+    }
+
+    if (expr.kind === 'binary') {
+      visitExpr(expr.left)
+      visitExpr(expr.right)
+      return
+    }
+
+    if (expr.kind === 'assign') {
+      visitExpr(expr.target)
+      visitExpr(expr.value)
+      return
+    }
+
+    if (expr.kind === 'unary' || expr.kind === 'postfix') {
+      visitExpr(expr.expr)
+      return
+    }
+
+    if (expr.kind === 'member') {
+      visitExpr(expr.object)
+      if (expr.computed) visitExpr(expr.index)
+      return
+    }
+
+    if (expr.kind === 'array') {
+      for (const item of expr.items ?? []) visitExpr(item)
+      return
+    }
+
+    if (expr.kind === 'object') {
+      for (const prop of expr.props ?? []) visitExpr(prop.value)
+      return
+    }
+
+    if (expr.kind === 'if') {
+      visitExpr(expr.test)
+      if (expr.then?.kind === 'block') visitStmt(expr.then)
+      else visitExpr(expr.then)
+      if (expr.else) {
+        if (expr.else.kind === 'block') visitStmt(expr.else)
+        else visitExpr(expr.else)
+      }
+      return
+    }
+
+    if (expr.kind === 'func') {
+      if (expr.body?.kind === 'block') visitStmt(expr.body)
+      else visitExpr(expr.body)
+      return
+    }
+  }
+
+  function visitStmt(stmt: any): void {
+    if (!stmt) return
+
+    if (stmt.kind === 'expr_stmt') {
+      visitExpr(stmt.expr)
+      return
+    }
+
+    if (stmt.kind === 'block') {
+      for (const s of stmt.body ?? []) visitStmt(s)
+      return
+    }
+
+    if (stmt.kind === 'for') {
+      if (stmt.head?.kind === 'c_style') {
+        if (stmt.head.init) visitExpr(stmt.head.init)
+        if (stmt.head.test) visitExpr(stmt.head.test)
+        if (stmt.head.update) visitExpr(stmt.head.update)
+      }
+      else {
+        visitExpr(stmt.head?.iterable)
+      }
+      visitStmt(stmt.body)
+      return
+    }
+
+    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+      visitExpr(stmt.test)
+      visitStmt(stmt.body)
+      return
+    }
+
+    if (stmt.kind === 'switch') {
+      visitExpr(stmt.test)
+      for (const c of stmt.cases ?? []) {
+        if (c.test) visitExpr(c.test)
+        for (const s of c.body ?? []) visitStmt(s)
+      }
+      return
+    }
+
+    if (stmt.kind === 'try') {
+      visitStmt(stmt.body)
+      if (stmt.catchBody) visitStmt(stmt.catchBody)
+      if (stmt.finallyBody) visitStmt(stmt.finallyBody)
+      return
+    }
+
+    if (stmt.kind === 'throw') {
+      visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'return') {
+      if (stmt.value) visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'label') {
+      visitStmt(stmt.stmt)
+      return
+    }
+
+    if (stmt.kind === 'destructure') {
+      visitExpr(stmt.value)
+      return
+    }
+  }
+
+  for (const stmt of program.body) visitStmt(stmt)
+  return out
+}
+
+export function extractTimelineLabelsFromSource(src: string): { labels: TimelineLabel[]; errors: LangError[] } {
+  const lexed = lex(src)
+  const parsed = parse(src, lexed.tokens)
+  const errors: LangError[] = [...lexed.errors, ...parsed.errors]
+  if (errors.length) return { labels: [], errors }
+  return { labels: extractTimelineLabelsFromProgram(parsed.program), errors: [] }
+}
+
 function extractAnalysersFromProgramWithRefs(program: Program): AnalyserRef[] {
   const refs: AnalyserRef[] = []
 
@@ -886,6 +1080,7 @@ export function encodeLangToVmOps(
   miniRefs?: MiniSequenceRef[]
   timelineSequences?: TimelineSequenceDef[]
   timelineRefs?: TimelineSequenceRef[]
+  timelineLabels?: TimelineLabel[]
   analyserRefs?: AnalyserRef[]
   arrayLiterals?: ArrayLiteralRef[]
   numberParams?: NumberWithParamsInfo[]
@@ -897,6 +1092,7 @@ export function encodeLangToVmOps(
 
   const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, parsed.program)
   const timelineExtracted = extractTimelineSequencesFromProgramWithRefs(src, parsed.program)
+  const timelineLabels = extractTimelineLabelsFromProgram(parsed.program)
   let analyserRefs: AnalyserRef[] = []
   const numberParams = extractNumberParamsFromProgram(parsed.program)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
@@ -935,6 +1131,11 @@ export function encodeLangToVmOps(
       const isPlay = calleeName === 'play'
       const isTimeline = calleeName === 'timeline'
       const isAnalyser = calleeName === 'analyser'
+      const isLabel = calleeName === 'label'
+
+      if (isLabel) {
+        return { kind: 'undefined', loc: expr.loc }
+      }
 
       if (isAnalyser) {
         const posArgs = args.filter((a: any) => a.kind === 'pos')
@@ -1046,8 +1247,16 @@ export function encodeLangToVmOps(
 
   const transformStmt = (stmt: any): any => {
     if (!stmt) return stmt
-    if (stmt.kind === 'expr_stmt') return { ...stmt, expr: transformExpr(stmt.expr) }
-    if (stmt.kind === 'block') return { ...stmt, body: (stmt.body ?? []).map(transformStmt) }
+    if (stmt.kind === 'expr_stmt') {
+      const isLabelStmt = !!(
+        stmt.expr?.kind === 'call'
+        && stmt.expr.callee?.kind === 'ident'
+        && stmt.expr.callee?.name === 'label'
+      )
+      if (isLabelStmt) return null
+      return { ...stmt, expr: transformExpr(stmt.expr) }
+    }
+    if (stmt.kind === 'block') return { ...stmt, body: (stmt.body ?? []).map(transformStmt).filter(Boolean) }
     if (stmt.kind === 'for') {
       if (stmt.head?.kind === 'c_style') {
         return {
@@ -1074,7 +1283,7 @@ export function encodeLangToVmOps(
         cases: (stmt.cases ?? []).map((c: any) => ({
           ...c,
           test: c.test ? transformExpr(c.test) : undefined,
-          body: (c.body ?? []).map(transformStmt),
+          body: (c.body ?? []).map(transformStmt).filter(Boolean),
         })),
       }
     }
@@ -1093,7 +1302,7 @@ export function encodeLangToVmOps(
     return stmt
   }
 
-  const transformedProgram = { ...parsed.program, body: parsed.program.body.map(transformStmt) } as any
+  const transformedProgram = { ...parsed.program, body: parsed.program.body.map(transformStmt).filter(Boolean) } as any
   analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
   const compiled = compile(src, transformedProgram)
   errors.push(...compiled.errors)
@@ -1431,6 +1640,7 @@ export function encodeLangToVmOps(
       miniRefs: refs,
       timelineSequences: timelineExtracted.sequences,
       timelineRefs,
+      timelineLabels,
       analyserRefs,
       arrayLiterals,
       numberParams: numberParamsWithLiteralIndex,
@@ -1441,6 +1651,7 @@ export function encodeLangToVmOps(
       miniRefs: refs,
       timelineSequences: timelineExtracted.sequences,
       timelineRefs,
+      timelineLabels,
       analyserRefs,
       arrayLiterals,
       numberParams: numberParamsWithLiteralIndex,

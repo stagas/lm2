@@ -90,6 +90,13 @@ export class DspProcessor extends AudioWorkletProcessor {
   private seekSample?: Int32Array
   private loop?: Int32Array
 
+  private signalSwapResult(value: number) {
+    if (!this.swapStatus) return
+    Atomics.store(this.swapStatus, 0, value)
+    Atomics.store(this.swapStatus, 1, 1)
+    Atomics.notify(this.swapStatus, 1, 1)
+  }
+
   constructor(private options: DspProcessorOptions) {
     super()
     rpc(this.port, this)
@@ -221,7 +228,6 @@ export class DspProcessor extends AudioWorkletProcessor {
     chunkLength: number,
   ) {
     if (!this.core || !this.fadeLeft || !this.fadeRight || !this.scratchLeft || !this.scratchRight) return
-
     const wasm = this.core.wasm
     wasm.globalSampleCount.value = sampleBefore
     wasm.clearVmError()
@@ -303,131 +309,132 @@ export class DspProcessor extends AudioWorkletProcessor {
     outputs: Float32Array[][],
     parameters: Record<string, Float32Array>,
   ) {
-    if (!this.core || !this.scratchLeft || !this.scratchRight) return true
+    try {
+      if (!this.core || !this.scratchLeft || !this.scratchRight) return true
 
-    let control = Atomics.load(this.options.processorOptions.control, 0)
+      let control = Atomics.load(this.options.processorOptions.control, 0)
 
-    if (control === ControlOp.Seek) {
-      const seekSample = this.seekSample
-      if (seekSample) {
-        const targetSample = Math.max(0, Atomics.load(seekSample, 0))
-        this.applySeekSample(targetSample)
-      }
-      control = this.lastControl
-      Atomics.store(this.options.processorOptions.control, 0, control)
-    }
-
-    // Only respond to control changes
-    if (control !== this.lastControl) {
-      if (control === ControlOp.Start && this.state === 'stopped') {
-        const status = this.options.processorOptions.prepareDspStatus
-        Atomics.store(status, 0, 0)
-
-        this.state = 'fade-in'
-        this.shouldReset = false
-      }
-      else if (control === ControlOp.Pause && this.state === 'running') {
-        this.state = 'fade-out'
-        this.shouldReset = false
-      }
-      else if (control === ControlOp.Stop && (this.state === 'running' || this.state === 'stopped')) {
-        if (this.state === 'running') {
-          this.state = 'fade-out'
-          this.shouldReset = true
+      if (control === ControlOp.Seek) {
+        const seekSample = this.seekSample
+        if (seekSample) {
+          const targetSample = Math.max(0, Atomics.load(seekSample, 0))
+          this.applySeekSample(targetSample)
         }
-        else {
-          this.reset()
-          Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
-          return true
-        }
+        control = this.lastControl
+        Atomics.store(this.options.processorOptions.control, 0, control)
       }
-      else if (control === ControlOp.Prepare && this.state === 'stopped') {
-        const dsp$ = Atomics.load(this.options.processorOptions.prepareDsp, 0)
-        if (dsp$) {
-          this.core.wasm.prepareDsp(dsp$)
+
+      // Only respond to control changes
+      if (control !== this.lastControl) {
+        if (control === ControlOp.Start && this.state === 'stopped') {
           const status = this.options.processorOptions.prepareDspStatus
-          Atomics.store(status, 0, 1)
-          Atomics.store(status, 1, 1)
-          Atomics.notify(status, 1)
+          Atomics.store(status, 0, 0)
+
+          this.state = 'fade-in'
+          this.shouldReset = false
         }
-        // Set the control back to its previous value.
-        Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
+        else if (control === ControlOp.Pause && this.state === 'running') {
+          this.state = 'fade-out'
+          this.shouldReset = false
+        }
+        else if (control === ControlOp.Stop && (this.state === 'running' || this.state === 'stopped')) {
+          if (this.state === 'running') {
+            this.state = 'fade-out'
+            this.shouldReset = true
+          }
+          else {
+            this.reset()
+            Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
+            return true
+          }
+        }
+        else if (control === ControlOp.Prepare && this.state === 'stopped') {
+          const dsp$ = Atomics.load(this.options.processorOptions.prepareDsp, 0)
+          if (dsp$) {
+            this.core.wasm.prepareDsp(dsp$)
+            const status = this.options.processorOptions.prepareDspStatus
+            Atomics.store(status, 0, 1)
+            Atomics.store(status, 1, 1)
+            Atomics.notify(status, 1)
+          }
+          // Set the control back to its previous value.
+          Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
+        }
+        else if (control === ControlOp.Swap && this.state === 'stopped') {
+          // Handle swap when stopped
+          const swap = this.options.processorOptions.programSwap
+          for (let i = 0; i < MAX_DSP_INSTANCES; i++) {
+            const base = i * 3
+            const old$ = Atomics.load(swap, base)
+            const new$ = Atomics.load(swap, base + 1)
+            const targetDsp$ = Atomics.load(swap, base + 2)
+            if (old$ && new$ && targetDsp$) {
+              const dsp = this.dsps.find(d => d.dsp$ === targetDsp$)
+              if (dsp) {
+                dsp.view.program = new$
+                this.core.wasm.prepareDsp(dsp.dsp$)
+              }
+            }
+          }
+
+          this.signalSwapResult(1)
+
+          Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
+        }
+        this.lastControl = control
       }
-      else if (control === ControlOp.Swap && this.state === 'stopped') {
-        // Handle swap when stopped
+
+      let sampleBefore = this.core.wasm.globalSampleCount.value
+      let didLoopSeek = false
+
+      const loop = this.loop
+      const loopEnabled = loop ? Atomics.load(loop, 0) === 1 : false
+      const loopStart = loopEnabled ? Atomics.load(loop!, 1) : 0
+      const loopEnd = loopEnabled ? Atomics.load(loop!, 2) : 0
+      const loopLength = loopEnabled ? Math.max(0, loopEnd - loopStart) : 0
+
+      if (loopEnabled && loopLength > 0) {
+        if ((this.state === 'stopped' && sampleBefore < loopStart) || sampleBefore >= loopEnd) {
+          this.applySeekSample(loopStart)
+          sampleBefore = loopStart
+          didLoopSeek = true
+        }
+      }
+
+      // Update globalSampleCount in shared buffer
+      Atomics.store(this.options.processorOptions.globalSampleCount, 0, sampleBefore)
+
+      if (this.state === 'stopped') return true
+
+      // Update global BPM and adjust globalSampleCount on change
+      const bpmValue = this.options.processorOptions.bpmValue[0]
+      if (bpmValue !== this.lastBpm) {
+        this.core.wasm.updateBpm(this.lastBpm, bpmValue)
+        this.lastBpm = bpmValue
+      }
+
+      const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
+      const begin = ringPos * CHUNK_SIZE
+      const length = CHUNK_SIZE
+
+      const L = this.outLeft
+      const R = this.outRight
+      L.fill(0)
+      R.fill(0)
+
+      if (control === ControlOp.Swap && !this.crossfadeState.size) {
         const swap = this.options.processorOptions.programSwap
+        const states = new Map<number, SwapState>()
         for (let i = 0; i < MAX_DSP_INSTANCES; i++) {
           const base = i * 3
           const old$ = Atomics.load(swap, base)
           const new$ = Atomics.load(swap, base + 1)
           const targetDsp$ = Atomics.load(swap, base + 2)
-          if (old$ && new$ && targetDsp$) {
-            const dsp = this.dsps.find(d => d.dsp$ === targetDsp$)
-            if (dsp) {
-              dsp.view.program = new$
-              this.core.wasm.prepareDsp(dsp.dsp$)
-            }
-          }
-        }
+          if (!old$ || !new$ || !targetDsp$) continue
 
-        if (this.swapStatus) {
-          Atomics.store(this.swapStatus, 0, 1)
-          Atomics.store(this.swapStatus, 1, 1)
-          Atomics.notify(this.swapStatus, 1, 1)
-        }
+          const dsp = this.dsps.find(d => d.dsp$ === targetDsp$)
+          if (!dsp?.view.program) continue
 
-        Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
-      }
-      this.lastControl = control
-    }
-
-    let sampleBefore = this.core.wasm.globalSampleCount.value
-    let didLoopSeek = false
-
-    const loop = this.loop
-    const loopEnabled = loop ? Atomics.load(loop, 0) === 1 : false
-    const loopStart = loopEnabled ? Atomics.load(loop!, 1) : 0
-    const loopEnd = loopEnabled ? Atomics.load(loop!, 2) : 0
-    const loopLength = loopEnabled ? Math.max(0, loopEnd - loopStart) : 0
-
-    if (loopEnabled && loopLength > 0) {
-      if ((this.state === 'stopped' && sampleBefore < loopStart) || sampleBefore >= loopEnd) {
-        this.applySeekSample(loopStart)
-        sampleBefore = loopStart
-        didLoopSeek = true
-      }
-    }
-
-    // Update globalSampleCount in shared buffer
-    Atomics.store(this.options.processorOptions.globalSampleCount, 0, sampleBefore)
-
-    if (this.state === 'stopped') return true
-
-    // Update global BPM and adjust globalSampleCount on change
-    const bpmValue = this.options.processorOptions.bpmValue[0]
-    if (bpmValue !== this.lastBpm) {
-      this.core.wasm.updateBpm(this.lastBpm, bpmValue)
-      this.lastBpm = bpmValue
-    }
-
-    const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
-    const begin = ringPos * CHUNK_SIZE
-    const length = CHUNK_SIZE
-
-    const L = this.outLeft
-    const R = this.outRight
-    L.fill(0)
-    R.fill(0)
-
-    if (control === ControlOp.Swap && !this.crossfadeState.size) {
-      const swap = this.options.processorOptions.programSwap
-      const states = new Map<number, SwapState>()
-      for (let i = 0; i < MAX_DSP_INSTANCES; i++) {
-        const base = i * 3
-        const old$ = Atomics.load(swap, base)
-        const new$ = Atomics.load(swap, base + 1)
-        const targetDsp$ = Atomics.load(swap, base + 2)
-        if (old$ && new$ && targetDsp$) {
           states.set(targetDsp$, {
             oldProgram$: old$,
             newProgram$: new$,
@@ -435,148 +442,175 @@ export class DspProcessor extends AudioWorkletProcessor {
             totalChunks: CROSSFADE_CHUNKS,
           })
         }
+
+        if (!states.size) {
+          this.signalSwapResult(-1)
+          Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
+        }
+        else if (this.swapStatus) {
+          Atomics.store(this.swapStatus, 0, 0)
+          Atomics.store(this.swapStatus, 1, 0)
+        }
+
+        if (states.size) {
+          this.crossfadeState = states
+        }
       }
 
-      if (states.size && this.swapStatus) {
-        Atomics.store(this.swapStatus, 0, 0)
-        Atomics.store(this.swapStatus, 1, 0)
+      let playingCount = 0
+
+      const segs: Array<{ sampleStart: number; begin: number; length: number; outOffset: number }> = []
+      if (loopEnabled && loopLength > 0 && sampleBefore + length > loopEnd) {
+        const len1 = Math.max(0, loopEnd - sampleBefore)
+        const len2 = Math.max(0, length - len1)
+        if (len1 > 0) {
+          segs.push({ sampleStart: sampleBefore, begin, length: len1, outOffset: 0 })
+        }
+        if (len2 > 0) {
+          segs.push({ sampleStart: loopStart, begin: begin + len1, length: len2, outOffset: len1 })
+        }
+      }
+      else {
+        segs.push({ sampleStart: sampleBefore, begin, length, outOffset: 0 })
       }
 
-      if (states.size) {
-        this.crossfadeState = states
-      }
-    }
-
-    let playingCount = 0
-
-    const segs: Array<{ sampleStart: number; begin: number; length: number; outOffset: number }> = []
-    if (loopEnabled && loopLength > 0 && sampleBefore + length > loopEnd) {
-      const len1 = Math.max(0, loopEnd - sampleBefore)
-      const len2 = Math.max(0, length - len1)
-      if (len1 > 0) {
-        segs.push({ sampleStart: sampleBefore, begin, length: len1, outOffset: 0 })
-      }
-      if (len2 > 0) {
-        segs.push({ sampleStart: loopStart, begin: begin + len1, length: len2, outOffset: len1 })
-      }
-    }
-    else {
-      segs.push({ sampleStart: sampleBefore, begin, length, outOffset: 0 })
-    }
-
-    const swapToAdvance: Array<{ dsp: DspInstance; state: SwapState }> = []
-
-    for (const dsp of this.dsps) {
-      if (!dsp.view.program) continue
-      playingCount++
-      const swapState = this.crossfadeState.get(dsp.dsp$)
-      if (swapState) swapToAdvance.push({ dsp, state: swapState })
-    }
-
-    for (let segIndex = 0; segIndex < segs.length; segIndex++) {
-      const seg = segs[segIndex]!
-      if (loopEnabled && loopLength > 0 && segIndex === 1 && seg.outOffset > 0) {
-        this.applySeekSample(loopStart)
-        didLoopSeek = true
-      }
+      const swapToAdvance: Array<{ dsp: DspInstance; state: SwapState }> = []
 
       for (const dsp of this.dsps) {
         if (!dsp.view.program) continue
-
+        playingCount++
         const swapState = this.crossfadeState.get(dsp.dsp$)
-        if (swapState && segs.length === 1) {
-          this.core.wasm.globalSampleCount.value = sampleBefore
-          this.renderSwapChunk(dsp, swapState, begin, length, sampleBefore)
-          for (let i = 0; i < CHUNK_SIZE; i++) {
-            L[i] += this.scratchLeft[i]
-            R[i] += this.scratchRight[i]
+        if (swapState) swapToAdvance.push({ dsp, state: swapState })
+      }
+
+      if (control === ControlOp.Swap && this.crossfadeState.size && swapToAdvance.length === 0) {
+        this.crossfadeState.clear()
+        this.signalSwapResult(-1)
+        Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
+      }
+
+      for (let segIndex = 0; segIndex < segs.length; segIndex++) {
+        const seg = segs[segIndex]!
+        if (loopEnabled && loopLength > 0 && segIndex === 1 && seg.outOffset > 0) {
+          this.applySeekSample(loopStart)
+          didLoopSeek = true
+        }
+
+        for (const dsp of this.dsps) {
+          if (!dsp.view.program) continue
+
+          const swapState = this.crossfadeState.get(dsp.dsp$)
+          if (swapState && segs.length === 1) {
+            this.core.wasm.globalSampleCount.value = sampleBefore
+            this.renderSwapChunk(dsp, swapState, begin, length, sampleBefore)
+            for (let i = 0; i < CHUNK_SIZE; i++) {
+              L[i] += this.scratchLeft[i]
+              R[i] += this.scratchRight[i]
+            }
+            continue
           }
-          continue
-        }
 
-        this.core.wasm.globalSampleCount.value = seg.sampleStart
+          this.core.wasm.globalSampleCount.value = seg.sampleStart
 
-        if (swapState) {
-          this.renderSwapSegment(dsp, swapState, seg.begin, seg.length, seg.sampleStart, seg.outOffset, length)
-        }
-        else {
-          this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, seg.begin, seg.length)
-        }
+          if (swapState) {
+            this.renderSwapSegment(dsp, swapState, seg.begin, seg.length, seg.sampleStart, seg.outOffset, length)
+          }
+          else {
+            this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, seg.begin, seg.length)
+          }
 
-        for (let i = 0; i < seg.length; i++) {
-          const j = seg.outOffset + i
-          L[j] += this.scratchLeft[i]
-          R[j] += this.scratchRight[i]
+          for (let i = 0; i < seg.length; i++) {
+            const j = seg.outOffset + i
+            L[j] += this.scratchLeft[i]
+            R[j] += this.scratchRight[i]
+          }
         }
       }
-    }
 
-    if (segs.length > 1) {
-      for (const s of swapToAdvance) {
-        this.advanceSwapState(s.dsp, s.state)
+      if (segs.length > 1) {
+        for (const s of swapToAdvance) {
+          this.advanceSwapState(s.dsp, s.state)
+        }
       }
-    }
 
-    let sampleAfter = sampleBefore + length
-    if (loopEnabled && loopLength > 0 && sampleAfter >= loopEnd) {
-      const over = sampleAfter - loopEnd
-      sampleAfter = loopStart + (over % loopLength)
-    }
-    if (loopEnabled && loopLength > 0 && sampleBefore + length >= loopEnd && !didLoopSeek) {
-      this.applySeekSample(sampleAfter)
-    }
-    else {
-      this.core.wasm.globalSampleCount.value = sampleAfter
-    }
+      let sampleAfter = sampleBefore + length
+      if (loopEnabled && loopLength > 0 && sampleAfter >= loopEnd) {
+        const over = sampleAfter - loopEnd
+        sampleAfter = loopStart + (over % loopLength)
+      }
+      if (loopEnabled && loopLength > 0 && sampleBefore + length >= loopEnd && !didLoopSeek) {
+        this.applySeekSample(sampleAfter)
+      }
+      else {
+        this.core.wasm.globalSampleCount.value = sampleAfter
+      }
 
-    if (playingCount > 1) {
-      this.limiter.process(L, R)
-    }
+      if (playingCount > 1) {
+        this.limiter.process(L, R)
+      }
 
-    Atomics.store(this.options.processorOptions.ringPos, 0, (ringPos + 1) % (RING_BUFFER_SIZE / CHUNK_SIZE))
+      Atomics.store(this.options.processorOptions.ringPos, 0, (ringPos + 1) % (RING_BUFFER_SIZE / CHUNK_SIZE))
 
-    outputs[0][0].set(L)
-    outputs[0][1].set(R)
+      outputs[0][0].set(L)
+      outputs[0][1].set(R)
 
-    if (this.resetRunningDspOnNextChunk) {
-      this.resetRunningDspOnNextChunk = false
-      const status = this.options.processorOptions.prepareDspStatus
-      Atomics.store(status, 0, 1)
-      Atomics.store(status, 1, 1)
-      Atomics.notify(status, 1)
-    }
+      if (this.resetRunningDspOnNextChunk) {
+        this.resetRunningDspOnNextChunk = false
+        const status = this.options.processorOptions.prepareDspStatus
+        Atomics.store(status, 0, 1)
+        Atomics.store(status, 1, 1)
+        Atomics.notify(status, 1)
+      }
 
-    if (this.state === 'fade-in') {
-      if (sampleBefore > 0) {
-        const fadeInLength = CHUNK_SIZE
-        for (let i = 0; i < fadeInLength; i++) {
-          const gain = i / fadeInLength
+      if (this.state === 'fade-in') {
+        if (sampleBefore > 0) {
+          const fadeInLength = CHUNK_SIZE
+          for (let i = 0; i < fadeInLength; i++) {
+            const gain = i / fadeInLength
+            outputs[0][0][i] *= gain
+            outputs[0][1][i] *= gain
+          }
+        }
+        this.state = 'running'
+        const status = this.options.processorOptions.prepareDspStatus
+        Atomics.store(status, 0, 1)
+      }
+      else if (this.state === 'fade-out') {
+        for (let i = 0; i < CHUNK_SIZE; i++) {
+          const gain = 1 - i / CHUNK_SIZE
           outputs[0][0][i] *= gain
           outputs[0][1][i] *= gain
         }
+        this.state = 'stopped'
+        if (this.shouldReset) {
+          this.reset()
+          this.shouldReset = false
+        }
       }
-      this.state = 'running'
-      const status = this.options.processorOptions.prepareDspStatus
-      Atomics.store(status, 0, 1)
-    }
-    else if (this.state === 'fade-out') {
-      for (let i = 0; i < CHUNK_SIZE; i++) {
-        const gain = 1 - i / CHUNK_SIZE
-        outputs[0][0][i] *= gain
-        outputs[0][1][i] *= gain
+      else if (this.state === 'running' && control === ControlOp.Prepare) {
+        this.resetRunningDspOnNextChunk = true
+        Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
       }
-      this.state = 'stopped'
-      if (this.shouldReset) {
-        this.reset()
-        this.shouldReset = false
-      }
-    }
-    else if (this.state === 'running' && control === ControlOp.Prepare) {
-      this.resetRunningDspOnNextChunk = true
-      Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
-    }
 
-    return true
+      return true
+    }
+    catch (error) {
+      this.crossfadeState.clear()
+      this.signalSwapResult(-1)
+
+      const status = this.options.processorOptions.prepareDspStatus
+      if (Atomics.load(status, 0) === 0) {
+        Atomics.store(status, 0, -1)
+        Atomics.store(status, 1, 1)
+        Atomics.notify(status, 1)
+      }
+
+      Atomics.store(this.options.processorOptions.control, 0, ControlOp.Pause)
+      this.lastControl = ControlOp.Pause
+      this.state = 'stopped'
+      console.error('AudioWorklet process error:', error)
+      return true
+    }
   }
 }
 

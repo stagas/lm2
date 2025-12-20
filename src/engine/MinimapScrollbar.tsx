@@ -5,7 +5,7 @@ import {
   useMemo,
   useRef,
 } from 'react'
-import type { TimelineSequenceRef } from '../bytecode.ts'
+import type { TimelineLabel, TimelineSequenceRef } from '../bytecode.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
 import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
@@ -21,11 +21,12 @@ type MinimapScrollbarProps = {
   bpmValue?: Float32Array
   globalSampleCount?: Int32Array
   timelineRefs?: TimelineSequenceRef[]
+  timelineLabels?: TimelineLabel[]
   seekToSample: (targetSampleCount: number) => void
   timelineWindowRef: React.RefObject<TimelineWindow>
 }
 
-const MINIMAP_PHRASE_COUNT = 128
+const MINIMAP_PHRASE_COUNT = 276
 const MINIMAP_PHRASE_SECONDS = 2
 const MINIMAP_MINOR_STEP = 4
 const MINIMAP_MAJOR_STEP = 16
@@ -35,6 +36,7 @@ export function MinimapScrollbar({
   bpmValue,
   globalSampleCount,
   timelineRefs,
+  timelineLabels,
   seekToSample,
   timelineWindowRef,
 }: MinimapScrollbarProps) {
@@ -295,13 +297,30 @@ export function MinimapScrollbar({
       const phraseNumber = String(phraseIndex + 1)
       // place label a few pixels from the top-left of the marker
       ctx.fillText(phraseNumber, x + 5, 10)
-      if (phraseIndex === MINIMAP_PHRASE_COUNT) continue
+      if (phraseIndex >= MINIMAP_PHRASE_COUNT - 4) continue
       ctx.strokeStyle = isMajor ? '#fff' : 'rgba(255, 255, 255, 0.35)'
       ctx.lineWidth = isMajor ? 2 : 1
       ctx.beginPath()
       ctx.moveTo(x, 0)
       ctx.lineTo(x, height)
       ctx.stroke()
+    }
+
+    if (timelineLabels && timelineLabels.length > 0) {
+      const defaultColor = 'rgba(255, 220, 0, 0.85)'
+      const beatLengthSeconds = (60 * 4) / bpm
+      for (const label of timelineLabels) {
+        const labelSeconds = (label.bar - 1) * beatLengthSeconds
+        if (labelSeconds < 0 || labelSeconds > totalSeconds) continue
+        const x = (labelSeconds / totalSeconds) * width + 1
+        const isMajor = labelSeconds % MINIMAP_MAJOR_STEP === 0
+        ctx.strokeStyle = label.color || defaultColor
+        ctx.lineWidth = isMajor ? 2 : 1.5
+        ctx.beginPath()
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, height)
+        ctx.stroke()
+      }
     }
 
     if (!isDraggingRef.current) {
@@ -319,7 +338,7 @@ export function MinimapScrollbar({
 
     ctx.fillStyle = 'rgba(255, 220, 0, 0.2)'
     ctx.fillRect(Math.max(0, playheadX - 1.5), 0, 3, height)
-  }, [audioContext, bpmValue, globalSampleCount, loop, timelineRefs, timelineWindowRef])
+  }, [audioContext, bpmValue, globalSampleCount, loop, timelineLabels, timelineRefs, timelineWindowRef])
 
   useEffect(() => {
     let frameId: number | null = null
@@ -347,11 +366,18 @@ export function MinimapScrollbar({
   }, [])
 
   return (
-    <div className="w-full h-[9dvh] overflow-hidden touch-none flex flex-row">
+    <div className="w-full h-full overflow-hidden touch-none flex flex-row">
       <button
         className="min-w-[17px] bg-neutral-800 text-white"
         onPointerDown={() => {
-          seekToSample(0)
+          const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
+          if (isLooping && loop) {
+            const loopStartSamples = Atomics.load(loop, 1)
+            seekToSample(loopStartSamples)
+          }
+          else {
+            seekToSample(0)
+          }
         }}
       >
         &nbsp;
