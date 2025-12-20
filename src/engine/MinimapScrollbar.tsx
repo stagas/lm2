@@ -259,7 +259,7 @@ export function MinimapScrollbar({
     }
 
     if (viewportWidth > 0) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
       ctx.fillRect(width * startRatio, 0, viewportWidth, height)
     }
 
@@ -272,31 +272,31 @@ export function MinimapScrollbar({
         const loopEndSeconds = loopEndSamples / sampleRate
         const loopStartRatio = Math.max(0, Math.min(1, loopStartSeconds / totalSeconds))
         const loopEndRatio = Math.max(0, Math.min(1, loopEndSeconds / totalSeconds))
-        const lx = width * loopStartRatio
+        const lx = width * loopStartRatio + 1
         const lw = Math.max(0, width * (loopEndRatio - loopStartRatio))
         if (lw > 0) {
-          ctx.fillStyle = 'rgba(255, 220, 0, 0.14)'
+          ctx.fillStyle = '#ea580c88'
           ctx.fillRect(lx, 0, lw, height)
-          ctx.strokeStyle = 'rgba(255, 220, 0, 0.35)'
-          ctx.lineWidth = 1
-          ctx.strokeRect(lx + 0.5, 0.5, lw - 1, height - 1)
+          // ctx.strokeStyle = '#ea580c'
+          // ctx.lineWidth = 2
+          // ctx.strokeRect(lx + 0.5, -2, lw - 1, height + 4)
         }
       }
     }
 
     for (let phraseIndex = 0; phraseIndex <= MINIMAP_PHRASE_COUNT; phraseIndex += MINIMAP_MINOR_STEP) {
-      const x = (phraseIndex / MINIMAP_PHRASE_COUNT) * width
+      const x = (phraseIndex / MINIMAP_PHRASE_COUNT) * width + 1
       const isMajor = phraseIndex % MINIMAP_MAJOR_STEP === 0
       // Draw a small phrase number above the major marker
-      ctx.fillStyle = isMajor ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.35)'
+      ctx.fillStyle = isMajor ? '#fff' : 'rgba(255, 255, 255, 0.35)'
       ctx.font = isMajor ? '8pt Inter' : '6pt Inter'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
       const phraseNumber = String(phraseIndex + 1)
       // place label a few pixels from the top-left of the marker
       ctx.fillText(phraseNumber, x + 5, 10)
-      if (phraseIndex === 0 || phraseIndex === MINIMAP_PHRASE_COUNT) continue
-      ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.35)'
+      if (phraseIndex === MINIMAP_PHRASE_COUNT) continue
+      ctx.strokeStyle = isMajor ? '#fff' : 'rgba(255, 255, 255, 0.35)'
       ctx.lineWidth = isMajor ? 2 : 1
       ctx.beginPath()
       ctx.moveTo(x, 0)
@@ -310,7 +310,7 @@ export function MinimapScrollbar({
     const currentRatio = currentSampleRef.current / totalSamples
     const playheadX = currentRatio * width + 1
 
-    ctx.strokeStyle = 'rgba(255, 220, 0, 0.95)'
+    ctx.strokeStyle = 'rgba(255, 220, 0, 0.9)'
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(playheadX, 0)
@@ -347,13 +347,14 @@ export function MinimapScrollbar({
   }, [])
 
   return (
-    <div className="w-full h-[9dvh] border border-gray-600 bg-gray-900 overflow-hidden touch-none flex flex-row">
+    <div className="w-full h-[9dvh] overflow-hidden touch-none flex flex-row">
       <button
-        className="p-2 bg-gray-800 text-white"
+        className="min-w-[17px] bg-neutral-800 text-white"
         onPointerDown={() => {
           seekToSample(0)
         }}
       >
+        &nbsp;
       </button>
       <canvas
         ref={canvasRef}

@@ -500,7 +500,7 @@ export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: Rea
   const seekToSample = useSeekToSample()
 
   return (
-    <div className="flex items-center justify-center gap-3 pl-3">
+    <div className="flex items-center justify-center gap-3 pl-3 border-b-2 border-orange-600">
       <Logo />
       <div className="flex items-center justify-center">
         <PlaybackButton icon={<PlayIcon />} onClick={start} />

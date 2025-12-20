@@ -181,11 +181,11 @@ export function useTimelineHeader() {
             const lx2 = Math.min(timelineW, loopX2)
             const lw = Math.max(0, lx2 - lx1)
             if (lw > 0) {
-              c.fillStyle = 'rgba(255, 220, 0, 0.16)'
+              c.fillStyle = '#ea580c88'
               c.fillRect(lx1, y, lw, h)
-              c.strokeStyle = 'rgba(255, 220, 0, 0.35)'
-              c.lineWidth = 1
-              c.strokeRect(lx1 + 0.5, y + 0.5, lw - 1, h - 1)
+              // c.strokeStyle = '#fff3'
+              // c.lineWidth = 1
+              // c.strokeRect(lx1 + 0.5, y + 0.5, lw - 1, h - 1)
             }
           }
         }

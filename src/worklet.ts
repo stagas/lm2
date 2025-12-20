@@ -547,10 +547,13 @@ export class DspProcessor extends AudioWorkletProcessor {
     }
 
     if (this.state === 'fade-in') {
-      for (let i = 0; i < CHUNK_SIZE; i++) {
-        const gain = i / CHUNK_SIZE
-        outputs[0][0][i] *= gain
-        outputs[0][1][i] *= gain
+      if (sampleBefore > 0) {
+        const fadeInLength = CHUNK_SIZE
+        for (let i = 0; i < fadeInLength; i++) {
+          const gain = i / fadeInLength
+          outputs[0][0][i] *= gain
+          outputs[0][1][i] *= gain
+        }
       }
       this.state = 'running'
       const status = this.options.processorOptions.prepareDspStatus
