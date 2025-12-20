@@ -287,9 +287,28 @@ export function MinimapScrollbar({
       }
     }
 
+    const labelStarts = timelineLabels && timelineLabels.length > 0
+      ? Array.from(new Set(
+        timelineLabels
+          .map(l => l.bar - 1)
+          .filter(barIndex => barIndex >= 0 && barIndex <= MINIMAP_PHRASE_COUNT),
+      )).sort((a, b) => a - b)
+      : []
+    const hasLabels = labelStarts.length > 0
+    let start = 0
+    let labelStartIndex = 0
+
     for (let phraseIndex = 0; phraseIndex <= MINIMAP_PHRASE_COUNT; phraseIndex += MINIMAP_MINOR_STEP) {
       const x = (phraseIndex / MINIMAP_PHRASE_COUNT) * width + 1
-      const isMajor = phraseIndex % MINIMAP_MAJOR_STEP === 0
+      if (hasLabels) {
+        while (labelStartIndex < labelStarts.length && labelStarts[labelStartIndex]! <= phraseIndex) {
+          start = labelStarts[labelStartIndex]!
+          labelStartIndex++
+        }
+      }
+      const isMajor = hasLabels
+        ? (phraseIndex - start) % MINIMAP_MAJOR_STEP === 0
+        : phraseIndex % MINIMAP_MAJOR_STEP === 0
       // Draw a small phrase number above the major marker
       ctx.fillStyle = isMajor ? '#fff' : 'rgba(255, 255, 255, 0.35)'
       ctx.font = isMajor ? 'bold 6pt Inter' : '6pt Inter'
