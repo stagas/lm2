@@ -299,8 +299,8 @@ export function MinimapScrollbar({
       // place label a few pixels from the top-left of the marker
       ctx.fillText(phraseNumber, x + 2.25, 10)
       if (phraseIndex >= MINIMAP_PHRASE_COUNT - 4) continue
-      ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.35)'
-      ctx.lineWidth = isMajor ? 2 : 1
+      ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.15)'
+      ctx.lineWidth = 1
       ctx.beginPath()
       ctx.moveTo(x, 0)
       ctx.lineTo(x, height)
@@ -310,17 +310,51 @@ export function MinimapScrollbar({
     if (timelineLabels && timelineLabels.length > 0) {
       const defaultColor = 'rgba(255, 220, 0, 0.85)'
       const beatLengthSeconds = (60 * 4) / bpm
+      const labelPositions: { x: number; color: string }[] = []
       for (const label of timelineLabels) {
         const labelSeconds = (label.bar - 1) * beatLengthSeconds
         if (labelSeconds < 0 || labelSeconds > totalSeconds) continue
         const x = (labelSeconds / totalSeconds) * width + 1
         const isMajor = labelSeconds % MINIMAP_MAJOR_STEP === 0
-        ctx.strokeStyle = label.color || defaultColor
+        const color = label.color || defaultColor
+        // draw the vertical marker line
+        ctx.strokeStyle = color
         ctx.lineWidth = isMajor ? 2 : 1.5
         ctx.beginPath()
         ctx.moveTo(x, 0)
         ctx.lineTo(x, height)
         ctx.stroke()
+        // store position for tinting between labels
+        labelPositions.push({ x, color })
+      }
+
+      // Fill (tint) the area between consecutive labels using their color at alpha 0.2
+      if (labelPositions.length >= 2) {
+        for (let i = 0; i < labelPositions.length - 1; i++) {
+          const left = labelPositions[i]
+          const right = labelPositions[i + 1]
+          const fillX = left.x
+          const fillW = Math.max(0, right.x - left.x)
+          if (fillW <= 0) continue
+          ctx.save()
+          ctx.globalAlpha = 0.2
+          ctx.fillStyle = left.color
+          ctx.fillRect(fillX, 0, fillW, height)
+          ctx.restore()
+        }
+      }
+      // If there's a trailing label, fill from it to the end (outro)
+      if (labelPositions.length >= 1) {
+        const last = labelPositions[labelPositions.length - 1]
+        const fillX = last.x
+        const fillW = Math.max(0, width - fillX)
+        if (fillW > 0) {
+          ctx.save()
+          ctx.globalAlpha = 0.2
+          ctx.fillStyle = last.color
+          ctx.fillRect(fillX, 0, fillW, height)
+          ctx.restore()
+        }
       }
     }
 
