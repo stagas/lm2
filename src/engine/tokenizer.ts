@@ -28,6 +28,83 @@ function isMiniNotation(text: string): boolean {
   return false
 }
 
+function isHexColor(value: string): boolean {
+  // Match hex colors: #f41, #ff4411, #fff, #ffffff, etc.
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)
+}
+
+function isRgbaColor(value: string): boolean {
+  // Match rgba/rgb colors like: rgba(255, 100, 50, 0.5), rgb(255, 100, 50)
+  return /^rgba?\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*[\d.]+\s*)?\)$/.test(value)
+}
+
+function createToken(type: string, content: string): Token {
+  const token: Token = { type, content, length: content.length }
+  if (isHexColor(content)) {
+    token.color = content
+  }
+  return token
+}
+
+function tokenizeStringForColors(str: string): Token[] {
+  const tokens: Token[] = []
+  let i = 0
+
+  // Match patterns for hex colors and rgba
+  const hexPattern = /#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})/g
+  const rgbaPattern = /rgba?\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*[\d.]+\s*)?\)/g
+
+  let lastIndex = 0
+  const matches: Array<{ start: number; end: number; value: string; type: 'hex' | 'rgba' }> = []
+
+  // Find all hex colors
+  let match
+  hexPattern.lastIndex = 0
+  while ((match = hexPattern.exec(str)) !== null) {
+    matches.push({ start: match.index, end: match.index + match[0].length, value: match[0], type: 'hex' })
+  }
+
+  // Find all rgba colors
+  rgbaPattern.lastIndex = 0
+  while ((match = rgbaPattern.exec(str)) !== null) {
+    matches.push({ start: match.index, end: match.index + match[0].length, value: match[0], type: 'rgba' })
+  }
+
+  // Sort matches by start position
+  matches.sort((a, b) => a.start - b.start)
+
+  // Merge overlapping matches, keeping the first one
+  const mergedMatches: typeof matches = []
+  for (const m of matches) {
+    if (mergedMatches.length === 0 || mergedMatches[mergedMatches.length - 1]!.end <= m.start) {
+      mergedMatches.push(m)
+    }
+  }
+
+  // Create tokens
+  for (const m of mergedMatches) {
+    if (m.start > lastIndex) {
+      tokens.push({ type: 'string', content: str.slice(lastIndex, m.start), length: m.start - lastIndex })
+    }
+    const token: Token = { type: 'number', content: m.value, length: m.value.length }
+    if (m.type === 'hex') {
+      token.color = m.value
+    }
+    else if (m.type === 'rgba') {
+      token.color = m.value
+    }
+    tokens.push(token)
+    lastIndex = m.end
+  }
+
+  // Add any remaining string content
+  if (lastIndex < str.length) {
+    tokens.push({ type: 'string', content: str.slice(lastIndex), length: str.length - lastIndex })
+  }
+
+  return tokens.length > 0 ? tokens : [{ type: 'string', content: str, length: str.length }]
+}
+
 function getMiniValueTokenType(value: string): string {
   if (!value) return 'default'
   const first = value[0]
@@ -36,6 +113,7 @@ function getMiniValueTokenType(value: string): string {
   if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) return 'number'
   if (/^[0-9]+(?:,[0-9]+)+$/.test(value)) return 'number'
   if (/^[ivxlcdm]+$/i.test(value)) return 'number'
+  if (isHexColor(value)) return 'number'
   if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(value)) return 'parameter'
   return 'parameter'
 }
@@ -241,7 +319,7 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
               mods = ''
             }
             else {
-              tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
+              tokens.push(createToken(getMiniValueTokenType(value), value))
             }
           }
           if (mods) tokens.push(...tokenizeMiniMods(mods))
@@ -284,7 +362,7 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
           mods = ''
         }
         else {
-          tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
+          tokens.push(createToken(getMiniValueTokenType(value), value))
         }
       }
       if (mods) tokens.push(...tokenizeMiniMods(mods))
@@ -355,12 +433,13 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
   if (inMultilineString) {
     const end = findUnescapedChar(line, inMultilineString, i)
     if (end === -1) {
-      tokens.push({ type: 'string', content: line.slice(i), length: line.length - i })
+      tokens.push(...tokenizeStringForColors(line.slice(i)))
       return tokens
     }
 
-    const chunk = line.slice(i, end + 1)
-    tokens.push({ type: 'string', content: chunk, length: chunk.length })
+    const chunk = line.slice(i, end)
+    tokens.push(...tokenizeStringForColors(chunk))
+    tokens.push({ type: 'string', content: inMultilineString, length: 1 })
     i = end + 1
     inMultilineString = null
   }
@@ -429,7 +508,10 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
         }
       }
       else {
-        tokens.push({ type: 'string', content: string, length: string.length })
+        tokens.push({ type: 'string', content: quoteChar, length: 1 })
+        const stringContent = foundClosing ? string.slice(1, -1) : string.slice(1)
+        tokens.push(...tokenizeStringForColors(stringContent))
+        if (foundClosing) tokens.push({ type: 'string', content: quoteChar, length: 1 })
 
         // If we didn't find the closing quote, we're starting a multiline string
         if (!foundClosing) {
@@ -580,6 +662,26 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
       tokens.push({ type: 'punctuation', content: char, length: 1 })
       i++
       continue
+    }
+
+    // Hex colors (#fff, #ffffff, etc.)
+    if (char === '#' && i + 1 < line.length) {
+      let hexColor = '#'
+      let j = i + 1
+      while (j < line.length && /[0-9a-fA-F]/.test(line[j])) {
+        hexColor += line[j]
+        j++
+      }
+      if ((hexColor.length === 4 || hexColor.length === 7) && isHexColor(hexColor)) {
+        tokens.push({
+          type: 'number',
+          content: hexColor,
+          length: hexColor.length,
+          color: hexColor,
+        })
+        i = j
+        continue
+      }
     }
 
     // Identifiers and function names
