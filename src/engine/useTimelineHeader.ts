@@ -114,7 +114,7 @@ export function useTimelineHeader() {
         isTimelineDraggingRef.current = false
       },
       render: (c, x, y, w, h, vx, vw) => {
-        c.fillStyle = '#000'
+        c.fillStyle = '#000b'
         c.fillRect(x, y, w, h)
         timelineLayoutRef.current = { viewX: vx, viewWidth: vw }
 
