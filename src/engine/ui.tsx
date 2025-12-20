@@ -657,16 +657,16 @@ const LoopItem = ({
             isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
         >
-          {loop.isDirty && (
-            <>
-              <LoopItemButton title="Save" icon={<FloppyDiskBackIcon weight="regular" size={16} />} onClick={onSave} />
-              <LoopItemButton title="Save as New" icon={<FilePlusIcon weight="regular" size={16} />}
-                onClick={onSaveAsNew} />
-            </>
-          )}
           <LoopItemButton title="Edit" icon={<PencilIcon weight="regular" size={16} />} onClick={handleEditDetails} />
           {loop.isEditing && (
             <LoopItemButton title="Close" icon={<XIcon weight="regular" size={16} />} onClick={onClose} />
+          )}
+          {loop.isDirty && (
+            <>
+              <LoopItemButton title="Save as New" icon={<FilePlusIcon weight="regular" size={16} />}
+                onClick={onSaveAsNew} />
+              <LoopItemButton title="Save" icon={<FloppyDiskBackIcon weight="regular" size={16} />} onClick={onSave} />
+            </>
           )}
         </div>
       )}
@@ -686,7 +686,8 @@ export function Sidebar() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('loops')
   const [currentLoop, setCurrentLoop] = useState<LoopItem>(edited[2])
-  const [editedLoops, setEditedLoops] = useState<LoopItem[]>(edited)
+  const [savedLoops, setSavedLoops] = useState<LoopItem[]>(loops)
+  const [editingLoops, setEditingLoops] = useState<LoopItem[]>(edited)
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -695,7 +696,7 @@ export function Sidebar() {
   const handleNewLoop = () => {
     let newLoop = 'Untitled'
     let untitledCount = 0
-    for (const loop of editedLoops) {
+    for (const loop of editingLoops) {
       if (loop.name.startsWith('Untitled')) {
         untitledCount = Math.max(untitledCount, parseInt(loop.name.split(' ').pop() || '0') || 1)
       }
@@ -703,24 +704,27 @@ export function Sidebar() {
     if (untitledCount > 0) {
       newLoop = `Untitled ${untitledCount + 1}`
     }
-    setEditedLoops([{ id: `${newLoop}`, name: newLoop, isPublic: false, isEditing: true, isDirty: false },
-      ...editedLoops])
+    setEditingLoops([{ id: `${newLoop}`, name: newLoop, isPublic: false, isEditing: true, isDirty: false },
+      ...editingLoops])
   }
 
   const handleSave = (loop: LoopItem) => {
-    setEditedLoops(editedLoops.map((l) => l === loop ? { ...loop, isDirty: false } : l))
+    setEditingLoops(editingLoops.map((l) => l === loop ? { ...loop, isDirty: false } : l))
   }
   const handleSaveAsNew = (loop: LoopItem) => {
-    setEditedLoops([{ id: `${loop.id}-new`, name: loop.name, isPublic: true, isEditing: true, isDirty: false },
-      ...editedLoops])
+    setEditingLoops([{ id: `${loop.id}-new`, name: loop.name, isPublic: true, isEditing: true, isDirty: false },
+      ...editingLoops])
   }
   const handleClose = (loop: LoopItem) => {
     if (loop.isDirty
       && !confirm('Are you sure you want to close this tab without saving your changes?')) return
-    setEditedLoops(editedLoops.filter((l) => l !== loop))
+    setEditingLoops(editingLoops.filter((l) => l !== loop))
   }
-  const handleEditDetails = (loop: LoopItem, details: Partial<LoopItem>) => {
-    setEditedLoops(editedLoops.map((l) => l === loop ? { ...loop, ...details } : l))
+  const handleEditDetailsEditing = (loop: LoopItem, details: Partial<LoopItem>) => {
+    setEditingLoops(editingLoops.map((l) => l === loop ? { ...loop, ...details } : l))
+  }
+  const handleEditDetailsSaved = (loop: LoopItem, details: Partial<LoopItem>) => {
+    setSavedLoops(savedLoops.map((l) => l === loop ? { ...loop, ...details } : l))
   }
 
   return (
@@ -749,7 +753,7 @@ export function Sidebar() {
                   <LoopItem key="<new>"
                     loop={{ id: '<new>', name: '<new>', isPublic: false, isEditing: false, isDirty: false }}
                     isCurrent={false} onClick={() => handleNewLoop()} />
-                  {editedLoops.map((loop) => (
+                  {editingLoops.map((loop) => (
                     <LoopItem
                       key={loop.id}
                       loop={loop}
@@ -758,18 +762,18 @@ export function Sidebar() {
                       onSave={() => handleSave(loop)}
                       onSaveAsNew={() => handleSaveAsNew(loop)}
                       onClose={() => handleClose(loop)}
-                      onEditDetails={(details) => handleEditDetails(loop, details)}
+                      onEditDetails={(details) => handleEditDetailsEditing(loop, details)}
                     />
                   ))}
                 </div>
                 <div className="flex flex-col w-full h-full">
-                  {loops.sort((a, b) => a.name.localeCompare(b.name)).map((loop) => (
+                  {savedLoops.sort((a, b) => a.name.localeCompare(b.name)).map((loop) => (
                     <LoopItem
                       key={loop.id}
                       loop={loop}
                       isCurrent={currentLoop.id === loop.id}
                       onClick={() => setCurrentLoop(loop)}
-                      onEditDetails={(details) => handleEditDetails(loop, details)}
+                      onEditDetails={(details) => handleEditDetailsSaved(loop, details)}
                     />
                   ))}
                 </div>

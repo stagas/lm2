@@ -96,6 +96,20 @@ export function useTimelineHeader() {
       }
     }
 
+    const drawTint = (c: CanvasRenderingContext2D, viewX: number, tintW: number, y: number, h: number, startX: number,
+      endX: number, color: string) =>
+    {
+      const start = Math.max(-viewX, Math.min(tintW, startX))
+      const end = Math.max(0, Math.min(tintW, endX))
+      const ww = Math.max(0, end - start)
+      if (ww <= 0) return
+      c.save()
+      c.globalAlpha = 0.175
+      c.fillStyle = color
+      c.fillRect(start, y, ww, h)
+      c.restore()
+    }
+
     return {
       height: 40,
       pointerDown: (e, x) => {
@@ -114,7 +128,7 @@ export function useTimelineHeader() {
         isTimelineDraggingRef.current = false
       },
       render: (c, x, y, w, h, vx, vw) => {
-        c.fillStyle = '#000b'
+        c.fillStyle = '#000c'
         c.fillRect(x, y, w, h)
         timelineLayoutRef.current = { viewX: vx, viewWidth: vw }
 
@@ -154,8 +168,55 @@ export function useTimelineHeader() {
         c.translate(viewX, 0)
         c.beginPath()
 
-        c.fillStyle = 'rgba(0, 0, 0, 0.25)'
-        c.fillRect(0, y, viewW, h)
+        // c.fillStyle = 'rgba(0, 0, 0, 0.25)'
+        // c.fillRect(0, y, viewW, h)
+
+        let lastLabelColor: string | undefined
+        if (labels.length > 0) {
+          const beatLengthSeconds = (60 * 4) / bpm
+          const tintW = w
+
+          const labelPositions: { x: number; color: string }[] = []
+          let leftColor: string | undefined
+          let leftX = 0
+
+          for (let i = 0; i < labels.length; i++) {
+            const label = labels[i]
+            const color = label.color || defaultLabelColor
+            const labelSeconds = (label.bar - 1) * beatLengthSeconds
+
+            if (labelSeconds <= timeSeconds) lastLabelColor = color
+
+            if (labelSeconds <= windowStartTime) {
+              leftColor = color
+              leftX = (labelSeconds - windowStartTime) * pixelsPerSecond
+              continue
+            }
+            if (labelSeconds > windowEndTime) break
+            const x = (labelSeconds - windowStartTime) * pixelsPerSecond
+            labelPositions.push({ x, color })
+          }
+
+          // If there's a label starting offscreen-left, treat it as starting at x=0.
+          if (leftColor) {
+            labelPositions.unshift({ x: leftX, color: leftColor })
+          }
+
+          // Fill (tint) the area between consecutive labels
+          if (labelPositions.length >= 2) {
+            for (let i = 0; i < labelPositions.length - 1; i++) {
+              const left = labelPositions[i]!
+              const right = labelPositions[i + 1]!
+              drawTint(c, viewX, tintW, y, h, left.x, right.x, left.color)
+            }
+          }
+
+          // Fill trailing segment from the last label to the right edge
+          if (labelPositions.length >= 1) {
+            const last = labelPositions[labelPositions.length - 1]!
+            drawTint(c, viewX, tintW, y, h, last.x, w, last.color)
+          }
+        }
 
         const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
         if (isLooping && loop) {
@@ -212,26 +273,16 @@ export function useTimelineHeader() {
           c.fillText(timeLabel, barX + 4, y + 18)
         }
 
-        let playheadColor = 'rgba(255, 220, 0, 0.9)'
+        let playheadColor = lastLabelColor || 'rgba(255, 220, 0, 0.9)'
 
         if (labels.length > 0) {
           const beatLengthSeconds = (60 * 4) / bpm
           c.textAlign = 'left'
           c.textBaseline = 'bottom'
           c.font = '800 7.5pt Inter'
-
-          let lastLabelColor: string | undefined
           for (let i = 0; i < labels.length; i++) {
             const label = labels[i]
             const labelSeconds = (label.bar - 1) * beatLengthSeconds
-
-            if (labelSeconds <= timeSeconds) {
-              lastLabelColor = label.color || defaultLabelColor
-            }
-
-            // if (labelSeconds < 0) continue
-            // if (labelSeconds < windowStartTime || labelSeconds > windowEndTime) continue
-
             let labelX = (labelSeconds - windowStartTime) * pixelsPerSecond
             let origLabelX = labelX
             labelX = Math.max(playheadX, labelX)
@@ -241,9 +292,7 @@ export function useTimelineHeader() {
               const nextLabel = labels[i + 1]
               const nextLabelSeconds = (nextLabel.bar - 1) * beatLengthSeconds
               let nextLabelX = (nextLabelSeconds - windowStartTime) * pixelsPerSecond
-              // nextLabelX = Math.max(playheadX, nextLabelX)
 
-              // Measure the width of current label's text
               const text = label.text
               if (text) {
                 let textWidth = 0
@@ -279,14 +328,10 @@ export function useTimelineHeader() {
 
             c.fillStyle = color
             let x = textX
-            text.split('').forEach((char, index) => {
+            text.split('').forEach((char) => {
               c.fillText(char, x, textY)
               x += c.measureText(char).width + 1.5
             })
-          }
-
-          if (lastLabelColor) {
-            playheadColor = lastLabelColor
           }
         }
 
