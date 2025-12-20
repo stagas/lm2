@@ -476,6 +476,7 @@ export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: Rea
     globalSampleCount,
     timelineRefs,
     uiTimelineLabels,
+    uiBars,
     pause,
     start,
     stop,
@@ -497,6 +498,7 @@ export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: Rea
         globalSampleCount={globalSampleCount}
         timelineRefs={timelineRefs}
         timelineLabels={uiTimelineLabels}
+        bars={uiBars}
         seekToSample={seekToSample}
         timelineWindowRef={timelineWindowRef}
       />

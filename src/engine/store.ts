@@ -13,7 +13,7 @@ import type {
   TimelineLabel,
   TimelineSequenceRef,
 } from '../bytecode.ts'
-import { extractBpmFromSource, extractTimelineLabelsFromSource } from '../bytecode.ts'
+import { extractBarsFromSource, extractBpmFromSource, extractTimelineLabelsFromSource } from '../bytecode.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { ControlOp } from '../worklet-shared.ts'
@@ -39,6 +39,10 @@ type EngineState = {
   globalSampleCount?: Int32Array<SharedArrayBuffer>
   seekSampleCount?: Int32Array<SharedArrayBuffer>
   loop?: Int32Array<SharedArrayBuffer>
+  hardLoop?: Int32Array<SharedArrayBuffer>
+  bars?: number
+  uiBars?: number
+  barsLoopEndSample?: number
   programSwap?: Uint32Array<SharedArrayBuffer>
   programSwapStatus?: Int32Array<SharedArrayBuffer>
   prepareDsp?: Uint32Array<SharedArrayBuffer>
@@ -93,6 +97,53 @@ export const useEngineStore = create<EngineState>((set, get) => {
     isProcessing: false,
     pendingSource: undefined as string | undefined,
     requests: [] as PendingDspUpdate[],
+  }
+
+  function buildTimelineLabels(labels: TimelineLabel[], bars: number | undefined): TimelineLabel[] {
+    const sorted = [...labels].sort((a, b) => a.bar - b.bar)
+    if (bars === undefined) return sorted
+
+    const endBar = bars + 1
+    const hasEnd = sorted.some(l => l.bar === endBar && l.text === 'End')
+    if (hasEnd) return sorted
+
+    return [
+      ...sorted,
+      {
+        bar: endBar,
+        text: 'End',
+        color: 'rgba(255, 220, 0, 0.85)',
+        loc: { line: 1, column: 1, length: 1 },
+      },
+    ]
+  }
+
+  function syncBarsHardLoop(bars: number | undefined): void {
+    const state = get()
+    const hardLoop = state.hardLoop
+    const audioContext = state.audioContext
+    if (!hardLoop || !audioContext) return
+
+    const prevEnd = state.barsLoopEndSample
+
+    if (bars === undefined) {
+      Atomics.store(hardLoop, 0, 0)
+      Atomics.store(hardLoop, 1, 0)
+      if (prevEnd !== undefined) set({ barsLoopEndSample: undefined })
+      return
+    }
+
+    const bpm = state.bpmValue?.[0] || 60
+    const barLengthSeconds = (4 * 60) / bpm
+    const totalSeconds = bars * barLengthSeconds
+    const endSample = Math.max(1, Math.floor(totalSeconds * audioContext.sampleRate))
+
+    Atomics.store(hardLoop, 1, endSample)
+    Atomics.store(hardLoop, 0, 1)
+
+    if (prevEnd !== endSample) {
+      set({ barsLoopEndSample: endSample })
+    }
   }
 
   function lineStarts(src: string): number[] {
@@ -183,14 +234,23 @@ export const useEngineStore = create<EngineState>((set, get) => {
       state.bpmValue[0] = bpmExtracted.bpm
     }
 
+    const barsExtracted = extractBarsFromSource(source)
+    if (barsExtracted.errors.length) return undefined
+
+    const bars = barsExtracted.bars
+    const nextTimelineLabels = buildTimelineLabels(extracted.labels, bars)
+    syncBarsHardLoop(bars)
+
     if (updates.length === 0) {
       set({
         dspSource: source,
         numberParams: nextNumberParams,
-        timelineLabels: extracted.labels,
+        timelineLabels: nextTimelineLabels,
+        bars,
         uiDspSource: source,
         uiNumberParams: nextNumberParams,
-        uiTimelineLabels: extracted.labels,
+        uiTimelineLabels: nextTimelineLabels,
+        uiBars: bars,
       })
       localStorage.setItem('engine2:dsp-source', source)
       return state.sequences
@@ -203,10 +263,12 @@ export const useEngineStore = create<EngineState>((set, get) => {
     set({
       dspSource: source,
       numberParams: nextNumberParams,
-      timelineLabels: extracted.labels,
+      timelineLabels: nextTimelineLabels,
+      bars,
       uiDspSource: source,
       uiNumberParams: nextNumberParams,
-      uiTimelineLabels: extracted.labels,
+      uiTimelineLabels: nextTimelineLabels,
+      uiBars: bars,
     })
     localStorage.setItem('engine2:dsp-source', source)
     return state.sequences
@@ -243,7 +305,8 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const sequences = primaryResult.sequences
       const miniRefs = primaryResult.miniRefs
       const timelineRefs = primaryResult.timelineRefs
-      const timelineLabels = primaryResult.timelineLabels
+      const bars = primaryResult.bars
+      const timelineLabels = buildTimelineLabels(primaryResult.timelineLabels, bars)
       const miniSourceMaps = primaryResult.miniSourceMaps
       const analyserRefs = primaryResult.analyserRefs
       const arrayLiterals = primaryResult.arrayLiterals
@@ -262,6 +325,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           miniRefs,
           timelineRefs,
           timelineLabels,
+          bars,
           miniSourceMaps,
           analyserRefs,
           arrayLiterals,
@@ -272,12 +336,14 @@ export const useEngineStore = create<EngineState>((set, get) => {
           uiMiniRefs: miniRefs,
           uiTimelineRefs: timelineRefs,
           uiTimelineLabels: timelineLabels,
+          uiBars: bars,
           uiMiniSourceMaps: miniSourceMaps,
           uiAnalyserRefs: analyserRefs,
           uiArrayLiterals: arrayLiterals,
           uiNumberParams: numberParams,
           isProgramSwapPending: false,
         })
+        syncBarsHardLoop(bars)
         localStorage.setItem('engine2:dsp-source', source)
         return sequences
       }
@@ -299,12 +365,14 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
       // Early UI update: we already have the compiled refs/source maps, but the worklet
       // crossfade swap can take a few chunks to finish.
+      const stagingBars = stagingResult.bars
       set({
         uiDspSource: source,
         uiSequences: sequences,
         uiMiniRefs: stagingResult.miniRefs,
         uiTimelineRefs: stagingResult.timelineRefs,
-        uiTimelineLabels: stagingResult.timelineLabels,
+        uiTimelineLabels: buildTimelineLabels(stagingResult.timelineLabels, stagingBars),
+        uiBars: stagingBars,
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
@@ -348,6 +416,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           uiMiniRefs: current.miniRefs,
           uiTimelineRefs: current.timelineRefs,
           uiTimelineLabels: current.timelineLabels,
+          uiBars: current.bars,
           uiMiniSourceMaps: current.miniSourceMaps,
           uiAnalyserRefs: current.analyserRefs,
           uiArrayLiterals: current.arrayLiterals,
@@ -357,12 +426,15 @@ export const useEngineStore = create<EngineState>((set, get) => {
         return undefined
       }
 
+      const committedBars = stagingResult.bars
+      const committedLabels = buildTimelineLabels(stagingResult.timelineLabels, committedBars)
       set({
         dspSource: source,
         sequences,
         miniRefs: stagingResult.miniRefs,
         timelineRefs: stagingResult.timelineRefs,
-        timelineLabels: stagingResult.timelineLabels,
+        timelineLabels: committedLabels,
+        bars: committedBars,
         miniSourceMaps: stagingResult.miniSourceMaps,
         analyserRefs: stagingResult.analyserRefs,
         arrayLiterals: stagingResult.arrayLiterals,
@@ -371,7 +443,8 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiSequences: sequences,
         uiMiniRefs: stagingResult.miniRefs,
         uiTimelineRefs: stagingResult.timelineRefs,
-        uiTimelineLabels: stagingResult.timelineLabels,
+        uiTimelineLabels: committedLabels,
+        uiBars: committedBars,
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
@@ -381,6 +454,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         lastSuccessfulProgramData: stagingProgram.program.data,
       })
 
+      syncBarsHardLoop(committedBars)
       localStorage.setItem('engine2:dsp-source', source)
       return sequences
     }
@@ -437,6 +511,9 @@ export const useEngineStore = create<EngineState>((set, get) => {
     miniRefs: [],
     timelineRefs: [],
     timelineLabels: [],
+    bars: undefined,
+    uiBars: undefined,
+    barsLoopEndSample: undefined,
     miniSourceMaps: [],
     analyserRefs: [],
     arrayLiterals: [],
@@ -496,6 +573,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         globalSampleCount: undefined,
         seekSampleCount: undefined,
         loop: undefined,
+        hardLoop: undefined,
         programSwap: undefined,
         programSwapStatus: undefined,
         prepareDsp: undefined,
@@ -504,6 +582,9 @@ export const useEngineStore = create<EngineState>((set, get) => {
         miniRefs: [],
         timelineRefs: [],
         timelineLabels: [],
+        bars: undefined,
+        uiBars: undefined,
+        barsLoopEndSample: undefined,
         miniSourceMaps: [],
         analyserRefs: [],
         arrayLiterals: [],
@@ -655,6 +736,9 @@ async function createWorklet() {
   loop[0] = 0
   loop[1] = 0
   loop[2] = 0
+  const hardLoop = new Int32Array(new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT))
+  hardLoop[0] = 0
+  hardLoop[1] = 0
   const programSwap = new Uint32Array(
     new SharedArrayBuffer(3 * MAX_DSP_INSTANCES * Uint32Array.BYTES_PER_ELEMENT),
   )
@@ -673,6 +757,7 @@ async function createWorklet() {
       globalSampleCount,
       seekSample: seekSampleCount,
       loop,
+      hardLoop,
       programSwap,
       prepareDsp,
       swapStatus: programSwapStatus,
@@ -688,6 +773,7 @@ async function createWorklet() {
     globalSampleCount,
     seekSampleCount,
     loop,
+    hardLoop,
     programSwap,
     prepareDsp,
     prepareDspStatus,

@@ -103,9 +103,10 @@ function buildProgram(
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
   bpm?: number
+  bars?: number
 } {
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
-    numberParams, bpm } = encodeLangToVmOps(dspSource, {
+    numberParams, bpm, bars } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
     })
@@ -123,6 +124,7 @@ function buildProgram(
     arrayLiterals: arrayLiterals ?? [],
     numberParams: numberParams ?? [],
     bpm,
+    bars,
   }
 }
 
@@ -151,6 +153,7 @@ export type ProgramBuildResult = {
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
   bpm?: number
+  bars?: number
   data: ProgramDataView
   diff: ProgramBuildDiff
   previousData?: ProgramDataView
@@ -324,7 +327,7 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals, numberParams, bpm } =
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals, numberParams, bpm, bars } =
           buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
@@ -384,6 +387,7 @@ async function createProgram(
           arrayLiterals,
           numberParams,
           bpm,
+          bars,
           data: newData,
           diff,
           previousData: referenceData,

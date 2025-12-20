@@ -59,6 +59,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
     globalSampleCount: Int32Array<SharedArrayBuffer>
     seekSample: Int32Array<SharedArrayBuffer>
     loop: Int32Array<SharedArrayBuffer>
+    hardLoop: Int32Array<SharedArrayBuffer>
     programSwap: Uint32Array<SharedArrayBuffer>
     prepareDsp: Uint32Array<SharedArrayBuffer>
     swapStatus: Int32Array<SharedArrayBuffer>
@@ -89,6 +90,7 @@ export class DspProcessor extends AudioWorkletProcessor {
   private resetRunningDspOnNextChunk = false
   private seekSample?: Int32Array
   private loop?: Int32Array
+  private hardLoop?: Int32Array
 
   private signalSwapResult(value: number) {
     if (!this.swapStatus) return
@@ -103,6 +105,7 @@ export class DspProcessor extends AudioWorkletProcessor {
     this.swapStatus = this.options.processorOptions.swapStatus
     this.seekSample = this.options.processorOptions.seekSample
     this.loop = this.options.processorOptions.loop
+    this.hardLoop = this.options.processorOptions.hardLoop
   }
 
   async setWasmBinary(binary: ArrayBuffer) {
@@ -390,19 +393,44 @@ export class DspProcessor extends AudioWorkletProcessor {
       }
 
       let sampleBefore = this.core.wasm.globalSampleCount.value
-      let didLoopSeek = false
+      let didRangeSeek = false
+
+      const hardLoop = this.hardLoop
+      const hardEnabled = hardLoop ? Atomics.load(hardLoop, 0) === 1 : false
+      const hardStart = 0
+      const hardEnd = hardEnabled ? Atomics.load(hardLoop!, 1) : 0
+      const hardLength = hardEnabled ? Math.max(0, hardEnd - hardStart) : 0
 
       const loop = this.loop
       const loopEnabled = loop ? Atomics.load(loop, 0) === 1 : false
-      const loopStart = loopEnabled ? Atomics.load(loop!, 1) : 0
-      const loopEnd = loopEnabled ? Atomics.load(loop!, 2) : 0
-      const loopLength = loopEnabled ? Math.max(0, loopEnd - loopStart) : 0
+      const loopStartRaw = loopEnabled ? Atomics.load(loop!, 1) : 0
+      const loopEndRaw = loopEnabled ? Atomics.load(loop!, 2) : 0
+      const loopLengthRaw = loopEnabled ? Math.max(0, loopEndRaw - loopStartRaw) : 0
 
-      if (loopEnabled && loopLength > 0) {
-        if ((this.state === 'stopped' && sampleBefore < loopStart) || sampleBefore >= loopEnd) {
-          this.applySeekSample(loopStart)
-          sampleBefore = loopStart
-          didLoopSeek = true
+      let rangeEnabled = loopEnabled && loopLengthRaw > 0
+      let rangeStart = loopStartRaw
+      let rangeEnd = loopEndRaw
+
+      if (hardEnabled && hardLength > 0) {
+        if (!rangeEnabled) {
+          rangeEnabled = true
+          rangeStart = hardStart
+          rangeEnd = hardEnd
+        }
+        else {
+          rangeStart = Math.max(rangeStart, hardStart)
+          rangeEnd = Math.min(rangeEnd, hardEnd)
+          if (rangeEnd <= rangeStart) rangeEnabled = false
+        }
+      }
+
+      const rangeLength = rangeEnabled ? Math.max(0, rangeEnd - rangeStart) : 0
+
+      if (rangeEnabled && rangeLength > 0) {
+        if ((this.state === 'stopped' && sampleBefore < rangeStart) || sampleBefore >= rangeEnd) {
+          this.applySeekSample(rangeStart)
+          sampleBefore = rangeStart
+          didRangeSeek = true
         }
       }
 
@@ -465,14 +493,14 @@ export class DspProcessor extends AudioWorkletProcessor {
       let playingCount = 0
 
       const segs: Array<{ sampleStart: number; begin: number; length: number; outOffset: number }> = []
-      if (loopEnabled && loopLength > 0 && sampleBefore + length > loopEnd) {
-        const len1 = Math.max(0, loopEnd - sampleBefore)
+      if (rangeEnabled && rangeLength > 0 && sampleBefore + length > rangeEnd) {
+        const len1 = Math.max(0, rangeEnd - sampleBefore)
         const len2 = Math.max(0, length - len1)
         if (len1 > 0) {
           segs.push({ sampleStart: sampleBefore, begin, length: len1, outOffset: 0 })
         }
         if (len2 > 0) {
-          segs.push({ sampleStart: loopStart, begin: begin + len1, length: len2, outOffset: len1 })
+          segs.push({ sampleStart: rangeStart, begin: begin + len1, length: len2, outOffset: len1 })
         }
       }
       else {
@@ -496,9 +524,9 @@ export class DspProcessor extends AudioWorkletProcessor {
 
       for (let segIndex = 0; segIndex < segs.length; segIndex++) {
         const seg = segs[segIndex]!
-        if (loopEnabled && loopLength > 0 && segIndex === 1 && seg.outOffset > 0) {
-          this.applySeekSample(loopStart)
-          didLoopSeek = true
+        if (rangeEnabled && rangeLength > 0 && segIndex === 1 && seg.outOffset > 0) {
+          this.applySeekSample(rangeStart)
+          didRangeSeek = true
         }
 
         for (const dsp of this.dsps) {
@@ -539,11 +567,11 @@ export class DspProcessor extends AudioWorkletProcessor {
       }
 
       let sampleAfter = sampleBefore + length
-      if (loopEnabled && loopLength > 0 && sampleAfter >= loopEnd) {
-        const over = sampleAfter - loopEnd
-        sampleAfter = loopStart + (over % loopLength)
+      if (rangeEnabled && rangeLength > 0 && sampleAfter >= rangeEnd) {
+        const over = sampleAfter - rangeEnd
+        sampleAfter = rangeStart + (over % rangeLength)
       }
-      if (loopEnabled && loopLength > 0 && sampleBefore + length >= loopEnd && !didLoopSeek) {
+      if (rangeEnabled && rangeLength > 0 && sampleBefore + length >= rangeEnd && !didRangeSeek) {
         this.applySeekSample(sampleAfter)
       }
       else {
