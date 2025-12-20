@@ -28,7 +28,7 @@ type MinimapScrollbarProps = {
   timelineWindowRef: React.RefObject<TimelineWindow>
 }
 
-const DEFAULT_BARS = 276
+const DEFAULT_BARS = 128
 const MINIMAP_MINOR_STEP = 4
 const MINIMAP_MAJOR_STEP = 16
 const BEATS_PER_BAR = 4

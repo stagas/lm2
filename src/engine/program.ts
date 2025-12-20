@@ -29,6 +29,7 @@ import type {
 } from '../bytecode.ts'
 import { encodeLangToVmOps } from '../bytecode.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
+import { acquireSpinLock, waitForNonZero } from '../lib/atomics.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
 import { ControlOp } from '../worklet-shared.ts'
@@ -410,10 +411,11 @@ async function createProgram(
       await waitForPrepareResult(prepareDspStatus)
     },
     async acquireLock() {
-      while (true) {
-        const prev = Atomics.compareExchange(this.lock, 0, 0, 1)
-        if (prev === 0) break
-        await Atomics.waitAsync(this.lock, 0, prev).value
+      const ok = await acquireSpinLock(this.lock, 2000)
+      if (!ok) {
+        // Break-glass: if we can't acquire within a bounded time, fail fast so
+        // the DSP update queue can recover instead of hanging indefinitely.
+        throw new Error('Timed out acquiring program lock')
       }
     },
     releaseLock() {
@@ -448,22 +450,7 @@ async function waitForPrepareResult(
   status: Int32Array,
   timeoutMs: number = 2000,
 ) {
-  const deadline = performance.now() + timeoutMs
-
-  while (true) {
-    const currentResult = Atomics.load(status, 0)
-    if (currentResult !== 0) {
-      return currentResult
-    }
-    const remaining = deadline - performance.now()
-    if (remaining <= 0) {
-      return 0
-    }
-    const waitResult = await Atomics.waitAsync(status, 1, 0, remaining).value
-    if (waitResult === 'timed-out') {
-      return 0
-    }
-  }
+  return await waitForNonZero(status, 0, 1, timeoutMs, { pollMs: 8 })
 }
 
 export async function createProgramInstance(

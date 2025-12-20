@@ -15,6 +15,7 @@ import type {
 } from '../bytecode.ts'
 import { extractBarsFromSource, extractBpmFromSource, extractTimelineLabelsFromSource } from '../bytecode.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
+import { waitForNonZero } from '../lib/atomics.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { ControlOp } from '../worklet-shared.ts'
 import workletUrl from '../worklet.js?worker&url'
@@ -475,7 +476,13 @@ export const useEngineStore = create<EngineState>((set, get) => {
         dspUpdateQueue.pendingSource = undefined
 
         try {
-          const result = await runQueuedDspUpdate(sourceToBuild)
+          // Bounded so the queue cannot hang forever if a wait primitive gets stuck.
+          const result = await Promise.race([
+            runQueuedDspUpdate(sourceToBuild),
+            new Promise<string[] | undefined>((resolve, reject) => {
+              setTimeout(() => reject(new Error('DSP update timed out')), 6000)
+            }),
+          ])
           batch.forEach(({ resolve }) => resolve(result))
         }
         catch (error) {
@@ -789,22 +796,7 @@ async function waitForSwapResult(
   eventIndex: number,
   timeoutMs: number = 500,
 ) {
-  const deadline = performance.now() + timeoutMs
-  Atomics.store(status, eventIndex, 0)
-  while (true) {
-    const currentResult = Atomics.load(status, resultIndex)
-    if (currentResult !== 0) {
-      return currentResult
-    }
-    const remaining = deadline - performance.now()
-    if (remaining <= 0) {
-      return 0
-    }
-    const waitResult = await Atomics.waitAsync(status, eventIndex, 0, remaining).value
-    if (waitResult === 'timed-out') {
-      return 0
-    }
-  }
+  return await waitForNonZero(status, resultIndex, eventIndex, timeoutMs, { pollMs: 8 })
 }
 
 if (import.meta.hot) {

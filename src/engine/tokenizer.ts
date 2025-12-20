@@ -110,6 +110,50 @@ function tokenizeMiniMods(mods: string): Token[] {
   return tokens
 }
 
+function tokenizeTimelineEntry(entry: string): Token[] {
+  const tokens: Token[] = []
+  let i = 0
+
+  // Match pattern: <bar>,<volume>[e<N>?|l<N>?]?
+  // Example: "33,1e1.5" or "65,0 " or "89,1e2 "
+  const match = entry.match(/^(\d+),([0-9.]+)([el])?([0-9.]*)(.*)$/)
+  if (!match) {
+    // Fallback for malformed entries
+    tokens.push({ type: 'default', content: entry, length: entry.length })
+    return tokens
+  }
+
+  const bar = match[1]!
+  const volume = match[2]!
+  const operator = match[3] // 'e' or 'l'
+  const operatorValue = match[4] // The number after e/l
+  const rest = match[5] // Any trailing modifiers
+
+  // bar is 'number' color
+  tokens.push({ type: 'number', content: bar, length: bar.length })
+  tokens.push({ type: 'default', content: ',', length: 1 })
+
+  // volume is 'string' color
+  tokens.push({ type: 'parameter', content: volume, length: volume.length })
+
+  // e/l are 'operator' color
+  if (operator) {
+    tokens.push({ type: 'comment', content: operator, length: 1 })
+
+    // N after e/l is 'parameter' color
+    if (operatorValue) {
+      tokens.push({ type: 'comment', content: operatorValue, length: operatorValue.length })
+    }
+  }
+
+  // Any remaining trailing content
+  if (rest) {
+    tokens.push({ type: 'default', content: rest, length: rest.length })
+  }
+
+  return tokens
+}
+
 function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
   const tokens: Token[] = []
   const miniTokens = miniTokenize(text)
@@ -191,7 +235,15 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
               mods = (m[2] ?? '') + mods
             }
           }
-          if (value) tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
+          if (value) {
+            if (isTimeline && /^\d+,/.test(value)) {
+              tokens.push(...tokenizeTimelineEntry(value + mods))
+              mods = ''
+            }
+            else {
+              tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
+            }
+          }
           if (mods) tokens.push(...tokenizeMiniMods(mods))
         }
       }
@@ -226,7 +278,15 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
           mods = (m[2] ?? '') + mods
         }
       }
-      if (value) tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
+      if (value) {
+        if (isTimeline && /^\d+,/.test(value)) {
+          tokens.push(...tokenizeTimelineEntry(value + mods))
+          mods = ''
+        }
+        else {
+          tokens.push({ type: getMiniValueTokenType(value), content: value, length: value.length })
+        }
+      }
       if (mods) tokens.push(...tokenizeMiniMods(mods))
     }
 
