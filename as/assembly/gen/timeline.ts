@@ -5,6 +5,7 @@ import {
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
   HISTORY_SIZE,
+  HISTORY_SIZE_MINUS_ONE,
   HISTORY_WRITE_POS_OFFSET,
   PAST_BARS,
   TIMELINE_HEADER_SIZE,
@@ -154,7 +155,7 @@ export class Timeline extends Gen {
 
         segStartF += segDurSamples
 
-        const slot: i32 = historyWritePos % HISTORY_SIZE
+        const slot: i32 = historyWritePos & HISTORY_SIZE_MINUS_ONE
         const historyIdx: i32 = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
         const historyEntry: HistoryEntry = HistoryEntry.at(changetype<usize>(historyArray), historyIdx)
         historyEntry.opIndex = kind as f32
@@ -164,7 +165,7 @@ export class Timeline extends Gen {
         historyEntry.startSample = startSampleAbs as f32
         historyEntry.endSample = endSampleAbs as f32
 
-        historyWritePos = (historyWritePos + 1) % HISTORY_SIZE
+        historyWritePos = (historyWritePos + 1) & HISTORY_SIZE_MINUS_ONE
       }
 
       this.historyGeneratedUntilCycle = cycle

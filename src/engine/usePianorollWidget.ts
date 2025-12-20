@@ -417,8 +417,8 @@ export function usePianorollWidget({
       }
       else {
         fillStyle = baseColor
-        strokeBright = luminate(baseColor, .1)
-        strokeDark = luminate(baseColor, -.1)
+        // strokeBright = luminate(baseColor, .1)
+        // strokeDark = luminate(baseColor, -.1)
       }
       const ex = x + 0.5
       const ew = Math.max(2, eventWidth) - 1

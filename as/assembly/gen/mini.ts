@@ -6,6 +6,7 @@ import {
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
   HISTORY_SIZE,
+  HISTORY_SIZE_MINUS_ONE,
   HISTORY_WRITE_POS_OFFSET,
   MAX_EVENT_VALUES,
   MINI_HEADER_SIZE,
@@ -355,7 +356,7 @@ export class Mini extends Gen {
       scratchHistoryEntry.velocity = historyEntry.velocity
       scratchHistoryEntry.startSample = historyEntry.startSample
       scratchHistoryEntry.endSample = historyEntry.endSample
-      newWritePos = (newWritePos + 1) % HISTORY_SIZE
+      newWritePos = (newWritePos + 1) & HISTORY_SIZE_MINUS_ONE
     }
 
     // Update write position to point after the last valid event (clean position for writing ahead)
@@ -468,7 +469,7 @@ export class Mini extends Gen {
         if (event.opIndex < 0) continue
         if (event.value <= 0) continue
 
-        const slotIndex = historyWritePos % HISTORY_SIZE
+        const slotIndex = historyWritePos & HISTORY_SIZE_MINUS_ONE
         const historyIdx = HISTORY_DATA_OFFSET + slotIndex * HISTORY_ENTRY_SIZE
         const historyEntry = HistoryEntry.at(changetype<usize>(historyArray), historyIdx)
         historyEntry.opIndex = event.opIndex as f32
@@ -478,7 +479,7 @@ export class Mini extends Gen {
         historyEntry.startSample = event.startSample as f32
         historyEntry.endSample = event.endSample as f32
 
-        historyWritePos = (historyWritePos + 1) % HISTORY_SIZE
+        historyWritePos = (historyWritePos + 1) & HISTORY_SIZE_MINUS_ONE
         eventsWritten++
       }
 
