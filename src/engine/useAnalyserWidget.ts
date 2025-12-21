@@ -521,7 +521,7 @@ export function useAnalyserWidget({
         line: ref.loc.line,
         column: 1,
         length: 1,
-        height: 70,
+        height: 40,
         render: (ctx, _x, y, _w, h, vx, vw) => {
           drawAnalyser(ctx, ref.analyserIndex, y, h, vx, vw)
         },

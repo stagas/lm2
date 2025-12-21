@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { type MutableRefObject, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   SAMPLE_NEEDLE_DATA_OFFSET,
   SAMPLE_NEEDLE_ENTRY_SIZE,
@@ -82,7 +82,7 @@ function getWaveContext(canvas: WaveCanvas): Any2DContext | null {
 
 function renderWaveformToCanvas(
   canvas: WaveCanvas,
-  ch0: Float32Array,
+  ch0: Float32Array<ArrayBuffer>,
   w: number,
   h: number,
   dpr: number,
@@ -139,8 +139,8 @@ function drawSample(
   y: number,
   w: number,
   h: number,
-  ch0: Float32Array,
-  waveRef: MutableRefObject<Map<number, WaveCache>>,
+  ch0: Float32Array<ArrayBuffer>,
+  waveRef: React.RefObject<Map<number, WaveCache>>,
   sampleIndex: number,
   needle: NeedleState | undefined,
 ) {
@@ -160,7 +160,9 @@ function drawSample(
 
   const cached = waveRef.current.get(sampleIndex)
   let canvas = cached?.canvas
-  if (!cached || cached.ch0Buffer !== ch0.buffer || cached.pxW !== pxW || cached.pxH !== pxH || cached.dpr !== dpr || cached.bg !== bg || !canvas) {
+  if (!cached || cached.ch0Buffer !== ch0.buffer || cached.pxW !== pxW || cached.pxH !== pxH || cached.dpr !== dpr
+    || cached.bg !== bg || !canvas)
+  {
     canvas = createWaveCanvas(pxW, pxH)
     renderWaveformToCanvas(canvas, ch0, w, h, dpr, bg)
     waveRef.current.set(sampleIndex, { ch0Buffer: ch0.buffer, pxW, pxH, dpr, bg, canvas })
@@ -173,8 +175,8 @@ function drawSample(
     const t = pos / (ch0.length - 1)
     const clamped = t < 0 ? 0 : t > 1 ? 1 : t
     const nx = clamped * w
-    c.strokeStyle = 'rgba(255, 255, 255, 0.9)'
-    c.lineWidth = 1.35
+    c.strokeStyle = '#ff0e'
+    c.lineWidth = 2
     c.beginPath()
     c.moveTo(nx, 0)
     c.lineTo(nx, h)
@@ -209,7 +211,7 @@ export function useSampleWidget({
     const writePos = Math.floor(history.writePos) >>> 0
     if (playbackState !== 'running') {
       lastWritePosRef.current = writePos
-      needleRef.current.clear()
+      // needleRef.current.clear()
       return
     }
     const prevWritePos = lastWritePosRef.current >>> 0
@@ -270,7 +272,7 @@ export function useSampleWidget({
         line: def.loc.line,
         column: 1,
         length: 1,
-        height: 70,
+        height: 40,
         render: (ctx, _x, y, _w, h, vx, vw) => {
           draw(ctx, def.sampleIndex, y, h, vx, vw)
         },
@@ -281,5 +283,3 @@ export function useSampleWidget({
 
   return { widgets, onBeforeDraw }
 }
-
-

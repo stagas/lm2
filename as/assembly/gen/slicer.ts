@@ -17,6 +17,7 @@ export class Slicer extends Gen {
   slice$: usize = 0
   threshold$: usize = 0
   trig$: usize = 0
+  repeat$: usize = 0
   needleHistory$: usize = 0
 
   private lastTrig: f32 = 0.0
@@ -98,6 +99,7 @@ export class Slicer extends Gen {
     let slice$ = this.slice$
     let threshold$ = this.threshold$
     let trig$ = this.trig$
+    let repeat$ = this.repeat$
 
     let lastTrig: f32 = this.lastTrig
     let playing: bool = this.playing
@@ -170,26 +172,29 @@ export class Slicer extends Gen {
       }
       else {
         const sp = load<f32>(speed$)
-        if (sp >= 0.0) {
-          if (pos < (sliceStart as f64) || pos >= (sliceEnd as f64)) {
-            store<f32>(out$, 0.0)
-            playing = false
+        const rep: bool = load<f32>(repeat$) > 0.0
+        const startF: f64 = sliceStart as f64
+        const endF: f64 = sliceEnd as f64
+        if (pos < startF || pos >= endF) {
+          if (rep && sliceEnd > sliceStart) {
+            pos = sp >= 0.0 ? startF : ((sliceEnd - 1) as f64)
           }
           else {
-            store<f32>(out$, this.reader.sampleAt(pos))
-            pos += sp as f64
-          }
-        }
-        else {
-          if (pos < (sliceStart as f64) || pos >= (sliceEnd as f64)) {
             store<f32>(out$, 0.0)
             playing = false
-          }
-          else {
-            store<f32>(out$, this.reader.sampleAt(pos))
-            pos += sp as f64
+            out$ += 4
+            speed$ += 4
+            offset$ += 4
+            slice$ += 4
+            threshold$ += 4
+            trig$ += 4
+            repeat$ += 4
+            continue
           }
         }
+
+        store<f32>(out$, this.reader.sampleAt(pos))
+        pos += sp as f64
       }
 
       out$ += 4
@@ -198,6 +203,7 @@ export class Slicer extends Gen {
       slice$ += 4
       threshold$ += 4
       trig$ += 4
+      repeat$ += 4
     }
 
     this.lastTrig = lastTrig

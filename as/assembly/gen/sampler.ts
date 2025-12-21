@@ -12,11 +12,13 @@ export class Sampler extends Gen {
   speed$: usize = 0
   offset$: usize = 0
   trig$: usize = 0
+  repeat$: usize = 0
   needleHistory$: usize = 0
 
   private lastTrig: f32 = 0.0
   private playing: bool = false
   private pos: f64 = 0.0
+  private startPos: f64 = 0.0
 
   private lastSampleIndex: i32 = -1
   private lastSampleVersion: i32 = 0
@@ -26,6 +28,7 @@ export class Sampler extends Gen {
     this.lastTrig = 0.0
     this.playing = false
     this.pos = 0.0
+    this.startPos = 0.0
     this.lastSampleIndex = -1
     this.lastSampleVersion = 0
   }
@@ -35,6 +38,7 @@ export class Sampler extends Gen {
     this.lastTrig = src.lastTrig
     this.playing = src.playing
     this.pos = src.pos
+    this.startPos = src.startPos
     this.lastSampleIndex = src.lastSampleIndex
     this.lastSampleVersion = src.lastSampleVersion
     this.needleHistory$ = src.needleHistory$
@@ -65,15 +69,18 @@ export class Sampler extends Gen {
       this.lastTrig = 0.0
       this.playing = false
       this.pos = 0.0
+      this.startPos = 0.0
     }
 
     let speed$ = this.speed$
     let offset$ = this.offset$
     let trig$ = this.trig$
+    let repeat$ = this.repeat$
 
     let lastTrig: f32 = this.lastTrig
     let playing: bool = this.playing
     let pos: f64 = this.pos
+    let startPos: f64 = this.startPos
     const wasPlaying: bool = playing
 
     const maxPos: f64 = sampleLen > 0 ? (sampleLen as f64) : 0.0
@@ -88,6 +95,7 @@ export class Sampler extends Gen {
         // Map 0..1 to 0..(len-1) so offset=1 is the last sample, not out-of-range.
         const maxStart: f64 = sampleLen > 1 ? ((sampleLen - 1) as f64) : 0.0
         pos = (off as f64) * maxStart
+        startPos = pos
         playing = true
       }
       lastTrig = trig
@@ -95,13 +103,25 @@ export class Sampler extends Gen {
       if (!playing || sampleLen <= 0) {
         store<f32>(out$, 0.0)
       }
-      else if (pos < 0.0 || pos >= maxPos) {
-        store<f32>(out$, 0.0)
-        playing = false
-      }
       else {
-        const y = this.reader.sampleAt(pos)
-        store<f32>(out$, y)
+        const rep: bool = load<f32>(repeat$) > 0.0
+        if (pos < 0.0 || pos >= maxPos) {
+          if (rep) {
+            pos = startPos
+          }
+          else {
+            store<f32>(out$, 0.0)
+            playing = false
+            out$ += 4
+            speed$ += 4
+            offset$ += 4
+            trig$ += 4
+            repeat$ += 4
+            continue
+          }
+        }
+
+        store<f32>(out$, this.reader.sampleAt(pos))
         const sp = load<f32>(speed$)
         pos += sp as f64
       }
@@ -110,11 +130,13 @@ export class Sampler extends Gen {
       speed$ += 4
       offset$ += 4
       trig$ += 4
+      repeat$ += 4
     }
 
     this.lastTrig = lastTrig
     this.playing = playing
     this.pos = pos
+    this.startPos = startPos
 
     if (sampleLen > 0) {
       if (playing) this.recordNeedle(pos, true)

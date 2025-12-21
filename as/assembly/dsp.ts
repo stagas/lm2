@@ -1479,7 +1479,7 @@ export class Dsp {
     }
 
     if (calleeAux === VmBuiltin.Sampler) {
-      // sampler(sample, speed=1, offset=0, trig=0)
+      // sampler(sample, speed=1, offset=0, trig=0, repeat=false)
       if (posCount < 1 || posTags[0] !== VmTag.Num) {
         this.vmPush(VmTag.Undef)
         return
@@ -1504,9 +1504,15 @@ export class Dsp {
       const trigNum: f64 = trigIsSet ? posNums[3] : 0.0
       const trigAux: i32 = trigIsSet ? posAux[3] : 0
 
+      const repeatIsSet = posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null
+      const repeatTag: VmTag = repeatIsSet ? (posTags[4] as VmTag) : VmTag.Bool
+      const repeatNum: f64 = repeatIsSet ? posNums[4] : 0.0
+      const repeatAux: i32 = repeatIsSet ? posAux[4] : 0
+
       const speed$: usize = this.vmToAudioPtr(speedTag, speedNum, speedAux, length)
       const offset$: usize = this.vmToAudioPtr(offsetTag, offsetNum, offsetAux, length)
       const trig$: usize = this.vmToAudioPtr(trigTag, trigNum, trigAux, length)
+      const repeat$: usize = this.vmToAudioPtr(repeatTag, repeatNum, repeatAux, length)
 
       const outIndex: i32 = this.vmAllocOut()
       const out$: usize = this.program.getOutBuffer(outIndex)
@@ -1516,6 +1522,7 @@ export class Dsp {
       gen.speed$ = speed$
       gen.offset$ = offset$
       gen.trig$ = trig$
+      gen.repeat$ = repeat$
       gen.needleHistory$ = changetype<usize>(this.program.sampleNeedleHistory)
       gen.process(out$, length)
 
@@ -1524,7 +1531,7 @@ export class Dsp {
     }
 
     if (calleeAux === VmBuiltin.Slicer) {
-      // slicer(sample, speed=1, offset=0, slice=0, threshold=0.5, trig=0)
+      // slicer(sample, speed=1, offset=0, slice=0, threshold=0.5, trig=0, repeat=false)
       if (posCount < 1 || posTags[0] !== VmTag.Num) {
         this.vmPush(VmTag.Undef)
         return
@@ -1557,11 +1564,17 @@ export class Dsp {
       const trigNum: f64 = trigIsSet ? posNums[5] : 0.0
       const trigAux: i32 = trigIsSet ? posAux[5] : 0
 
+      const repeatIsSet = posCount >= 7 && posTags[6] !== VmTag.Undef && posTags[6] !== VmTag.Null
+      const repeatTag: VmTag = repeatIsSet ? (posTags[6] as VmTag) : VmTag.Bool
+      const repeatNum: f64 = repeatIsSet ? posNums[6] : 0.0
+      const repeatAux: i32 = repeatIsSet ? posAux[6] : 0
+
       const speed$: usize = this.vmToAudioPtr(speedTag, speedNum, speedAux, length)
       const offset$: usize = this.vmToAudioPtr(offsetTag, offsetNum, offsetAux, length)
       const slice$: usize = this.vmToAudioPtr(sliceTag, sliceNum, sliceAux, length)
       const threshold$: usize = this.vmToAudioPtr(thresholdTag, thresholdNum, thresholdAux, length)
       const trig$: usize = this.vmToAudioPtr(trigTag, trigNum, trigAux, length)
+      const repeat$: usize = this.vmToAudioPtr(repeatTag, repeatNum, repeatAux, length)
 
       const outIndex: i32 = this.vmAllocOut()
       const out$: usize = this.program.getOutBuffer(outIndex)
@@ -1573,6 +1586,7 @@ export class Dsp {
       gen.slice$ = slice$
       gen.threshold$ = threshold$
       gen.trig$ = trig$
+      gen.repeat$ = repeat$
       gen.needleHistory$ = changetype<usize>(this.program.sampleNeedleHistory)
       gen.process(out$, length)
 
