@@ -28,6 +28,7 @@ import { useSessionData } from '../app/hooks/useSessionData.ts'
 import { useAppStore } from '../app/store.ts'
 import { Spinner } from '../components/Spinner.tsx'
 import { Loop } from './loop.ts'
+import { useEngineStore } from './store.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 
 type SidebarTab = 'loops' | 'liked' | 'browse' | 'compiled' | 'settings'
@@ -77,6 +78,7 @@ const LoopItem = ({
   const [isSaving, setIsSaving] = useState(false)
   const [loopTitle, setLoopTitle] = useState(loop.data.title)
   const code = useCodeFileValue(loop.codeFile)
+  const playLoop = useEngineStore(state => state.playLoop)
   const base = useAppStore(state => state.bases[loop.data.id])
   const baseCode = base?.code ?? loop.data.code
   const canCompare = loop.data.code != null || base?.ts != null
@@ -226,7 +228,14 @@ const LoopItem = ({
             <LoopItemButton title="Save" icon={<FloppyDiskBackIcon weight="regular" size={16} />}
               onClick={handleStartSaving} />
           )}
-          <LoopItemButton title="Play" icon={<PlayIconPhosphor weight="regular" size={16} />} onClick={() => {}} />
+          <LoopItemButton
+            title="Play"
+            icon={<PlayIconPhosphor weight="regular" size={16} />}
+            onClick={() => {
+              onClick()
+              void playLoop(loop.data.id, loop.codeFile.value)
+            }}
+          />
         </div>
       )}
     </div>

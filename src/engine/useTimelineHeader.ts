@@ -6,14 +6,13 @@ import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import { useEngineStore } from './store.ts'
 import type { TimelineWindow } from './ui.tsx'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
-import { useSeekToSample } from './useSeekToSample.ts'
 import { applySmoothing } from './util.ts'
+import { useLoopView } from './useLoopView.ts'
 
-export function useTimelineHeader() {
+export function useTimelineHeader(currentLoopId: string | null) {
   const {
     audioContext,
     bpmValue,
-    globalSampleCount,
     loop,
     setLoop,
     clearLoop,
@@ -21,7 +20,12 @@ export function useTimelineHeader() {
     uiTimelineLabels,
   } = useEngineStore()
 
-  const seekToSample = useSeekToSample()
+  const {
+    globalSampleCount,
+    seekToSample,
+    canControlPlayback,
+    isPlaybackRunningForView,
+  } = useLoopView(currentLoopId)
 
   const timelineTimeRef = useRef<number | null>(null)
   const timelineLayoutRef = useRef({ viewX: 0, viewWidth: 0 })
@@ -36,8 +40,7 @@ export function useTimelineHeader() {
   const isFirstFrameRef = useRef(true)
 
   const timelineHeader = useMemo((): EditorHeader => {
-    const activeLabels = (uiTimelineLabels?.length ?? 0) > 0 ? uiTimelineLabels : timelineLabels
-    const labels = [...(activeLabels ?? [])].sort((a, b) => a.bar - b.bar)
+    const labels = [...(uiTimelineLabels ?? timelineLabels ?? [])].sort((a, b) => a.bar - b.bar)
     const defaultLabelColor = 'rgba(255, 220, 0, 0.9)'
 
     const getPointerTimeSeconds = (pointerX: number) => {
@@ -114,7 +117,7 @@ export function useTimelineHeader() {
       height: 40,
       pointerDown: (e, x) => {
         if (e.buttons & MouseButton.Right) {
-          handleLoopBar(x)
+          if (canControlPlayback) handleLoopBar(x)
           return
         }
         isTimelineDraggingRef.current = true
@@ -143,7 +146,7 @@ export function useTimelineHeader() {
           predictedSampleCountRef,
           lastWallTimeRef,
           isFirstFrameRef,
-        })
+        }, { isPlaying: isPlaybackRunningForView })
         if (!pred) return
 
         const nowSeconds = pred.timeSeconds
@@ -219,7 +222,7 @@ export function useTimelineHeader() {
         }
 
         const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
-        if (isLooping && loop) {
+        if (canControlPlayback && isLooping && loop) {
           const loopStart = Atomics.load(loop, 1)
           const loopEnd = Atomics.load(loop, 2)
           if (loopEnd > loopStart) {
@@ -345,8 +348,19 @@ export function useTimelineHeader() {
         c.restore()
       },
     }
-  }, [audioContext, bpmValue, clearLoop, globalSampleCount, loop, seekToSample, setLoop, timelineLabels,
-    uiTimelineLabels])
+  }, [
+    audioContext,
+    bpmValue,
+    canControlPlayback,
+    clearLoop,
+    globalSampleCount,
+    isPlaybackRunningForView,
+    loop,
+    seekToSample,
+    setLoop,
+    timelineLabels,
+    uiTimelineLabels,
+  ])
 
   return { timelineHeader, timelineWindowRef }
 }

@@ -20,6 +20,7 @@ type UseTimelineSequenceParams = {
   timelineRefs: TimelineSequenceRef[]
   dspSource: string
   showWidgets: boolean
+  isPlaying: boolean
 }
 
 function getActiveTimelineSegIndex(
@@ -73,6 +74,7 @@ export function useTimelineSequenceWidget({
   timelineRefs,
   dspSource,
   showWidgets,
+  isPlaying,
 }: UseTimelineSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const activeSegRef = useRef<Map<number, { si: number; tt: number } | null>>(new Map())
   const predictedSampleCountRef = useRef<number | null>(null)
@@ -88,7 +90,7 @@ export function useTimelineSequenceWidget({
       predictedSampleCountRef,
       lastWallTimeRef,
       isFirstFrameRef,
-    })
+    }, { isPlaying })
     if (!pred) return
     const { sampleCount, sampleRate } = pred
 
@@ -104,7 +106,7 @@ export function useTimelineSequenceWidget({
       const st = getActiveTimelineSegIndex(array.raw, sampleCount, sampleRate, bpm)
       activeSegRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, timelineRefs])
+  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, isPlaying, timelineRefs])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []

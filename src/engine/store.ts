@@ -22,11 +22,14 @@ import workletUrl from '../worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
 import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
+import { buildTimelineLabels } from './timeline-labels.ts'
 import { createVisualWasm, type VisualWasm } from './visual-wasm.ts'
 
 type PlaybackState = 'stopped' | 'running' | 'paused'
 
 type EngineState = {
+  playingLoopId: string | null
+  viewSampleCountByLoopId: Record<string, number>
   wasmMemory?: WebAssembly.Memory
   wasmDsp?: Dsp
   wasmDspPtr: number
@@ -75,6 +78,10 @@ type EngineState = {
   playbackState: PlaybackState
   lastSuccessfulProgramData?: ProgramDataView
 
+  playLoop: (loopId: string, source: string) => Promise<void>
+  setPlayingLoopId: (loopId: string | null) => void
+  setViewSampleCount: (loopId: string, sampleCount: number) => void
+
   initialize: () => Promise<void>
   dispose: () => void
   updateDspSource: (source: string) => Promise<string[] | undefined>
@@ -98,25 +105,6 @@ export const useEngineStore = create<EngineState>((set, get) => {
     isProcessing: false,
     pendingSource: undefined as string | undefined,
     requests: [] as PendingDspUpdate[],
-  }
-
-  function buildTimelineLabels(labels: TimelineLabel[], bars: number | undefined): TimelineLabel[] {
-    const sorted = [...labels].sort((a, b) => a.bar - b.bar)
-    if (bars === undefined) return sorted
-
-    const endBar = bars + 1
-    const hasEnd = sorted.some(l => l.bar === endBar && l.text === 'end')
-    if (hasEnd) return sorted
-
-    return [
-      ...sorted,
-      {
-        bar: endBar,
-        text: 'end',
-        color: 'rgba(255, 220, 0, 0.85)',
-        loc: { line: 1, column: 1, length: 1 },
-      },
-    ]
   }
 
   function syncBarsHardLoop(bars: number | undefined): void {
@@ -513,6 +501,8 @@ export const useEngineStore = create<EngineState>((set, get) => {
   }
 
   return {
+    playingLoopId: null,
+    viewSampleCountByLoopId: {},
     wasmDspPtr: 0,
     sequences: [...DEFAULT_SEQUENCES],
     miniRefs: [],
@@ -541,6 +531,65 @@ export const useEngineStore = create<EngineState>((set, get) => {
     isProgramReady: false,
     playbackState: 'stopped',
     lastSuccessfulProgramData: undefined,
+
+    setPlayingLoopId: (loopId: string | null) => {
+      set({ playingLoopId: loopId })
+    },
+
+    setViewSampleCount: (loopId: string, sampleCount: number) => {
+      const next = Math.max(0, Math.floor(sampleCount))
+      set(state => {
+        const prev = state.viewSampleCountByLoopId[loopId]
+        if (prev === next) return state
+        return {
+          ...state,
+          viewSampleCountByLoopId: {
+            ...state.viewSampleCountByLoopId,
+            [loopId]: next,
+          },
+        }
+      })
+    },
+
+    playLoop: async (loopId: string, source: string) => {
+      const state = get()
+      const prevId = state.playingLoopId
+      const startSample = state.viewSampleCountByLoopId[loopId] ?? 0
+
+      // If the requested loop is already the playing loop, avoid reloading or resetting.
+      if (prevId === loopId) {
+        if (state.playbackState !== 'running') {
+          state.start()
+        }
+        return
+      }
+
+      set({ playingLoopId: loopId })
+      await state.updateDspSource(source)
+
+      // Starting a different loop should begin from the editor's current view position.
+      if (state.playbackState === 'running') {
+        const control = state.control
+        const seekSampleCount = state.seekSampleCount
+        if (control && seekSampleCount) {
+          Atomics.store(seekSampleCount, 0, startSample)
+          Atomics.store(control, 0, ControlOp.Seek)
+        }
+        return
+      }
+
+      {
+        const control = state.control
+        const seekSampleCount = state.seekSampleCount
+        if (control && seekSampleCount) {
+          Atomics.store(seekSampleCount, 0, startSample)
+          Atomics.store(control, 0, ControlOp.Seek)
+        }
+      }
+      requestAnimationFrame(() => {
+        get().start()
+      })
+    },
 
     initialize: async () => {
       const state = get()

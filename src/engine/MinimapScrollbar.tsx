@@ -25,6 +25,7 @@ type MinimapScrollbarProps = {
   bars?: number
   seekToSample: (targetSampleCount: number) => void
   timelineWindowRef: React.RefObject<TimelineWindow>
+  canControlPlayback?: boolean
 }
 
 const DEFAULT_BARS = 128
@@ -41,6 +42,7 @@ export function MinimapScrollbar({
   bars,
   seekToSample,
   timelineWindowRef,
+  canControlPlayback = true,
 }: MinimapScrollbarProps) {
   const { loop, setLoop, clearLoop, animationManager } = useEngineStore()
 
@@ -82,6 +84,7 @@ export function MinimapScrollbar({
   }, [audioContext, barCount, bpmValue, seekToSample])
 
   const toggleLoopFromPointer = useCallback((clientX: number) => {
+    if (!canControlPlayback) return
     const canvas = canvasRef.current
     if (!canvas || !audioContext || !isValidRef.current) return
 
@@ -122,13 +125,13 @@ export function MinimapScrollbar({
       currentSampleRef.current = startSample
       seekToSample(startSample)
     }
-  }, [audioContext, barCount, bpmValue, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
+  }, [audioContext, barCount, bpmValue, canControlPlayback, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
     event.preventDefault()
 
     if (event.buttons & MouseButton.Right) {
-      toggleLoopFromPointer(event.clientX)
+      if (canControlPlayback) toggleLoopFromPointer(event.clientX)
       return
     }
 
@@ -142,7 +145,7 @@ export function MinimapScrollbar({
       window.removeEventListener('pointermove', listener)
       isDraggingRef.current = false
     }, { once: true })
-  }, [seekFromPointer, toggleLoopFromPointer])
+  }, [canControlPlayback, seekFromPointer, toggleLoopFromPointer])
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
     if (!isDraggingRef.current) return
@@ -182,7 +185,7 @@ export function MinimapScrollbar({
       ctx.fillRect(width * startRatio, 0, viewportWidth, height)
     }
 
-    const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
+    const isLooping = canControlPlayback && loop ? Atomics.load(loop, 0) === 1 : false
     if (isLooping && loop) {
       const loopStartSamples = Atomics.load(loop, 1)
       const loopEndSamples = Atomics.load(loop, 2)
@@ -381,7 +384,17 @@ export function MinimapScrollbar({
 
     ctx.fillStyle = 'rgba(255, 220, 0, 0.2)'
     ctx.fillRect(Math.max(0, playheadX - 1.5), 0, 3, height)
-  }, [audioContext, barCount, bpmValue, globalSampleCount, loop, timelineLabels, timelineRefs, timelineWindowRef])
+  }, [
+    audioContext,
+    barCount,
+    bpmValue,
+    canControlPlayback,
+    globalSampleCount,
+    loop,
+    timelineLabels,
+    timelineRefs,
+    timelineWindowRef,
+  ])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -429,14 +442,13 @@ export function MinimapScrollbar({
       <button
         className="min-w-[17px] w-[17px] bg-neutral-800 text-white"
         onPointerDown={() => {
-          const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
-          if (isLooping && loop) {
-            const loopStartSamples = Atomics.load(loop, 1)
-            seekToSample(loopStartSamples)
-          }
-          else {
+          if (!canControlPlayback) {
             seekToSample(0)
+            return
           }
+          const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
+          if (isLooping && loop) seekToSample(Atomics.load(loop, 1))
+          else seekToSample(0)
         }}
       >
         &nbsp;

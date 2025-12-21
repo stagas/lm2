@@ -15,7 +15,7 @@ import type {
   NumberWithParamsInfo,
   TimelineSequenceRef,
 } from '../bytecode.ts'
-import { encodeLangToVmOps } from '../bytecode.ts'
+import { encodeLangToVmOps, extractBarsFromSource, extractTimelineLabelsFromSource } from '../bytecode.ts'
 import { Logo } from '../components/Logo.tsx'
 import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
@@ -27,12 +27,13 @@ import { useEngine } from './program.ts'
 import { Sidebar } from './Sidebar.tsx'
 import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
+import { buildTimelineLabels } from './timeline-labels.ts'
 import { tokenizer } from './tokenizer.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
+import { useLoopView } from './useLoopView.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
-import { useSeekToSample } from './useSeekToSample.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
 import { useSliderWidget } from './useSliderWidget.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
@@ -85,7 +86,6 @@ export function DspSourceEditor(
     program2,
     audioContext,
     bpmValue,
-    globalSampleCount,
     ringPos,
     uiDspSource,
     uiSequences,
@@ -103,7 +103,12 @@ export function DspSourceEditor(
   const [error, setError] = useState<string>()
   const { isUpdatingDsp } = useEngineStore()
   const theme = useTheme()
-  const code = useCodeFileValue(currentLoop?.codeFile)
+  // Subscribe for rerenders while editing, but use `codeFile.value` for synchronous reads
+  // to avoid a one-render lag during loop switches.
+  useCodeFileValue(currentLoop?.codeFile)
+  const code = currentLoop?.codeFile.value ?? ''
+  const loopId = currentLoop?.data.id ?? null
+  const { globalSampleCount, isPlayingLoop, isPlaybackRunningForView, viewSampleCount } = useLoopView(loopId)
 
   // useEffect(() => {
   //   if (currentLoop == null) return
@@ -230,6 +235,49 @@ export function DspSourceEditor(
 
   const runtimeProgram = isProgramSwapPending ? program2 : program1
 
+  useEffect(() => {
+    if (!currentLoop) return
+    if (isPlayingLoop) return
+    if (code === uiDspSource) return
+
+    const target = previewTargetRef.current
+    if (!target) return
+
+    target.ops.fill(0)
+    target.literals.fill(0)
+
+    const result = encodeLangToVmOps(code, target)
+    if (result.errors.length) return
+
+    const sequences = result.miniSequences ?? []
+    const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map(s => {
+      const compiled = compileMiniNotation(s)
+      return buildMiniSourceMap(compiled.nodes, compiled.bytecode)
+    })
+
+    const labelsExtracted = extractTimelineLabelsFromSource(code)
+    if (labelsExtracted.errors.length) return
+
+    const barsExtracted = extractBarsFromSource(code)
+    if (barsExtracted.errors.length) return
+
+    const bars = barsExtracted.bars
+    const timelineLabels = buildTimelineLabels(labelsExtracted.labels, bars)
+
+    useEngineStore.setState({
+      uiDspSource: code,
+      uiSequences: sequences,
+      uiMiniRefs: result.miniRefs ?? [],
+      uiTimelineRefs: result.timelineRefs ?? [],
+      uiTimelineLabels: timelineLabels,
+      uiBars: bars,
+      uiMiniSourceMaps: miniSourceMaps,
+      uiAnalyserRefs: result.analyserRefs ?? [],
+      uiArrayLiterals: result.arrayLiterals ?? [],
+      uiNumberParams: result.numberParams ?? [],
+    })
+  }, [code, currentLoop, isPlayingLoop, uiDspSource])
+
   const handleApply = async () => {
     if (!isProgramReady) return
     const requested = code
@@ -244,17 +292,19 @@ export function DspSourceEditor(
 
   useLayoutEffect(() => {
     if (currentLoop && currentLoop.data.code == null && code.length === 0) return
+    if (!isPlayingLoop) return
     void handleApply()
-  }, [currentLoop, isProgramReady])
+  }, [currentLoop, isProgramReady, isPlayingLoop])
 
   useEffect(() => {
     if (!isProgramReady) return
     if (!currentLoop) return
+    if (!isPlayingLoop) return
     if (hasLocalErrors) return
     if (code === dspSource) return
 
     void handleApply()
-  }, [code, currentLoop?.data.id, dspSource, hasLocalErrors, isProgramReady])
+  }, [code, currentLoop?.data.id, dspSource, hasLocalErrors, isProgramReady, isPlayingLoop])
 
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())
@@ -267,6 +317,7 @@ export function DspSourceEditor(
     miniRefs: widgetCompileState.miniRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
+    isPlaying: isPlaybackRunningForView,
     frameRef,
     controlStateRef,
     bpmValue,
@@ -282,6 +333,7 @@ export function DspSourceEditor(
     timelineLabels: uiTimelineLabels,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
+    isPlaying: isPlaybackRunningForView,
   })
 
   const { widgets: timelineWidgets, onBeforeDraw: onBeforeDrawTimeline } = useTimelineWidget({
@@ -293,6 +345,7 @@ export function DspSourceEditor(
     timelineLabels: uiTimelineLabels,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
+    isPlaying: isPlaybackRunningForView,
   })
 
   const { widgets: timelineSequenceWidgets, onBeforeDraw: onBeforeDrawTimelineSequence } = useTimelineSequenceWidget({
@@ -303,6 +356,7 @@ export function DspSourceEditor(
     timelineRefs: widgetCompileState.timelineRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
+    isPlaying: isPlaybackRunningForView,
   })
 
   const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
@@ -310,7 +364,7 @@ export function DspSourceEditor(
     ringPos,
     analyserRefs: widgetCompileState.analyserRefs,
     dspSource: widgetCompileState.dspSource,
-    showWidgets,
+    showWidgets: showWidgets && isPlayingLoop,
     playbackState,
     sampleRate: audioContext?.sampleRate,
   })
@@ -357,8 +411,7 @@ export function DspSourceEditor(
       ...sliderWidgets,
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets, sliderWidgets])
-  console.log('should draw new', currentLoop?.codeFile.value)
+    arrayAccessWidgets, sliderWidgets, viewSampleCount])
   return (
     <div className="flex flex-row gap-2 w-full h-full">
       <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
@@ -470,38 +523,52 @@ const StopIcon = () => (
   <GradientIcon path="M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z" />
 )
 
-export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: React.RefObject<TimelineWindow> }) {
+export function PlaybackControls({
+  timelineWindowRef,
+  currentLoop,
+}: {
+  timelineWindowRef: React.RefObject<TimelineWindow>
+  currentLoop: Loop | null
+}) {
   const {
     audioContext,
     bpmValue,
     globalSampleCount,
-    timelineRefs,
     uiTimelineLabels,
+    uiTimelineRefs,
     uiBars,
     pause,
-    start,
     stop,
+    playLoop,
   } = useEngineStore()
 
-  const seekToSample = useSeekToSample()
+  // Subscribe for rerenders while editing, but read from `codeFile.value` on demand.
+  useCodeFileValue(currentLoop?.codeFile)
+  const { globalSampleCount: viewGlobalSampleCount, seekToSample, canControlPlayback } = useLoopView(
+    currentLoop?.data.id ?? null,
+  )
 
   return (
     <div className="h-[60px] flex items-center justify-center gap-2 pl-3 border-b-2 border-orange-600">
       <Logo />
       <div className="flex items-center justify-center">
-        <PlaybackButton icon={<PlayIcon />} onClick={start} />
+        <PlaybackButton icon={<PlayIcon />} onClick={() => {
+          if (!currentLoop) return
+          void playLoop(currentLoop.data.id, currentLoop.codeFile.value)
+        }} />
         <PlaybackButton icon={<PauseIcon />} onClick={pause} />
         <PlaybackButton icon={<StopIcon />} onClick={stop} />
       </div>
       <MinimapScrollbar
         audioContext={audioContext}
         bpmValue={bpmValue}
-        globalSampleCount={globalSampleCount}
-        timelineRefs={timelineRefs}
+        globalSampleCount={viewGlobalSampleCount ?? globalSampleCount}
+        timelineRefs={uiTimelineRefs}
         timelineLabels={uiTimelineLabels}
         bars={uiBars}
         seekToSample={seekToSample}
         timelineWindowRef={timelineWindowRef}
+        canControlPlayback={canControlPlayback}
       />
     </div>
   )
@@ -509,9 +576,9 @@ export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: Rea
 
 export function EngineUI() {
   const { isInitialized } = useEngine()
-  const { timelineHeader, timelineWindowRef } = useTimelineHeader()
 
   const [currentLoop, setCurrentLoop] = useState<Loop | null>(null)
+  const { timelineHeader, timelineWindowRef } = useTimelineHeader(currentLoop?.data.id ?? null)
 
   const handleLoopChange = (loop: Loop) => {
     setCurrentLoop(loop)
@@ -527,7 +594,7 @@ export function EngineUI() {
 
   return (
     <div className="flex flex-col">
-      <PlaybackControls timelineWindowRef={timelineWindowRef} />
+      <PlaybackControls timelineWindowRef={timelineWindowRef} currentLoop={currentLoop} />
       <div className="flex flex-row h-[calc(100dvh-61px)]">
         <Sidebar onLoopChange={handleLoopChange} />
         <DspSourceEditor timelineHeader={timelineHeader} currentLoop={currentLoop} />

@@ -35,6 +35,7 @@ type UseTimelineParams = {
   timelineLabels: TimelineLabel[]
   dspSource: string
   showWidgets: boolean
+  isPlaying: boolean
 }
 
 export function useTimelineWidget({
@@ -46,6 +47,7 @@ export function useTimelineWidget({
   timelineLabels,
   dspSource,
   showWidgets,
+  isPlaying,
 }: UseTimelineParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const stateRef = useRef<Map<number, TimelineState>>(new Map())
 
@@ -63,7 +65,7 @@ export function useTimelineWidget({
       predictedSampleCountRef,
       lastWallTimeRef,
       isFirstFrameRef,
-    })
+    }, { isPlaying })
     if (!pred) return
     const { sampleRate, sampleCount, timeSeconds } = pred
 
@@ -104,7 +106,7 @@ export function useTimelineWidget({
       st.frameSegs = segs
       stateRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, program1, audioContext, globalSampleCount, timelineRefs])
+  }, [showWidgets, program1, audioContext, globalSampleCount, isPlaying, timelineRefs])
 
   const drawTimeline = useCallback((
     c: CanvasRenderingContext2D,

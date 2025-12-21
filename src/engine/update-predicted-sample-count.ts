@@ -10,9 +10,10 @@ export function updatePredictedSampleCount(
   audioContext: AudioContext | undefined,
   globalSampleCount: Int32Array<SharedArrayBuffer> | undefined,
   state: PredictedSampleCountState,
+  opts?: { isPlaying?: boolean },
 ): { sampleRate: number; sampleCount: number; timeSeconds: number } | null {
   if (!audioContext || !globalSampleCount) return null
-  const isPlaying = useEngineStore.getState().playbackState === 'running'
+  const isPlaying = opts?.isPlaying ?? (useEngineStore.getState().playbackState === 'running')
 
   const sampleRate = audioContext.sampleRate
 

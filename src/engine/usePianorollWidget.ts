@@ -63,6 +63,7 @@ type UsePianorollParams = {
   timelineLabels: TimelineLabel[]
   dspSource: string
   showWidgets: boolean
+  isPlaying: boolean
 }
 
 export function usePianorollWidget({
@@ -74,6 +75,7 @@ export function usePianorollWidget({
   timelineLabels,
   dspSource,
   showWidgets,
+  isPlaying,
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
   const predictedSampleCountRef = useRef<number | null>(null)
@@ -93,7 +95,7 @@ export function usePianorollWidget({
       predictedSampleCountRef,
       lastWallTimeRef,
       isFirstFrameRef,
-    })
+    }, { isPlaying })
     if (!pred) return
     const { sampleRate, sampleCount, timeSeconds } = pred
 
@@ -122,12 +124,8 @@ export function usePianorollWidget({
       }
 
       st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount, 50000))
-      if (st.timeSeconds == null) {
-        st.timeSeconds = timeSeconds
-      }
-      else {
-        st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
-      }
+      if (st.timeSeconds == null) st.timeSeconds = timeSeconds
+      else st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
 
       const bpm = bpmValue?.[0] || 60
       const barLengthSeconds = (4 * 60) / bpm
@@ -202,7 +200,7 @@ export function usePianorollWidget({
 
       pianorollStateRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, audioContext, bpmValue, globalSampleCount, miniRefs, miniSourceMaps])
+  }, [showWidgets, audioContext, bpmValue, globalSampleCount, isPlaying, miniRefs, miniSourceMaps])
 
   const drawPianoroll = useCallback((
     c: CanvasRenderingContext2D,

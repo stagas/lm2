@@ -52,6 +52,7 @@ type UseSequenceParams = {
   miniRefs: Array<{ seqIndex: number; loc: { line: number }; start: number }>
   dspSource: string
   showWidgets: boolean
+  isPlaying: boolean
   frameRef: React.RefObject<Array<SeqFrame | undefined>>
   controlStateRef: React.RefObject<Map<number, SeqControlState>>
 }
@@ -172,6 +173,7 @@ export function useSequenceWidget({
   miniRefs,
   dspSource,
   showWidgets,
+  isPlaying,
   frameRef,
   controlStateRef,
 }: UseSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
@@ -192,7 +194,7 @@ export function useSequenceWidget({
       predictedSampleCountRef,
       lastWallTimeRef,
       isFirstFrameRef,
-    })
+    }, { isPlaying })
     if (!pred) return
     const { sampleRate, sampleCount: currentSampleCount } = pred
 
@@ -340,7 +342,17 @@ export function useSequenceWidget({
     }
 
     frameRef.current = nextFrame
-  }, [showWidgets, audioContext, bpmValue, globalSampleCount, miniSourceMaps, miniRefs, controlStateRef, frameRef])
+  }, [
+    showWidgets,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    isPlaying,
+    miniSourceMaps,
+    miniRefs,
+    controlStateRef,
+    frameRef,
+  ])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
