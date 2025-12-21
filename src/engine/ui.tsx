@@ -1,18 +1,3 @@
-import {
-  ArrowLineLeftIcon,
-  ArrowLineRightIcon,
-  ArticleIcon,
-  CheckIcon,
-  FilePlusIcon,
-  FloppyDiskBackIcon,
-  GearSixIcon,
-  GlobeIcon,
-  HeartIcon,
-  LockIcon,
-  PencilIcon,
-  WaveformIcon,
-  XIcon,
-} from '@phosphor-icons/react'
 import { CodeEditor, CodeFile, type EditorHeader, type EditorWidget } from 'mini-code'
 import {
   useCallback,
@@ -38,6 +23,7 @@ import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.
 import { compileMiniNotation } from '../mini/compiler.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { useEngine } from './program.ts'
+import { Sidebar } from './Sidebar.tsx'
 import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
@@ -62,7 +48,7 @@ export function SequenceInput({ index, value, onChange }: SequenceInputProps) {
     <input
       type="text"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={e => onChange(e.target.value)}
       className="bg-gray-800 text-white p-2 rounded-md border border-gray-600 w-full max-w-md"
       placeholder={`Sequence ${index + 1}`}
     />
@@ -211,7 +197,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     }
 
     const sequences = result.miniSequences ?? []
-    const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map((s) => {
+    const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map(s => {
       const compiled = compileMiniNotation(s)
       return buildMiniSourceMap(compiled.nodes, compiled.bytecode)
     })
@@ -364,7 +350,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
       <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
         <CodeEditor
           codeFile={codeFileRef.current}
-          setValue={(value) => {
+          setValue={value => {
             setLocalSource(value)
           }}
           widgets={widgets}
@@ -506,293 +492,6 @@ export function PlaybackControls({ timelineWindowRef }: { timelineWindowRef: Rea
         seekToSample={seekToSample}
         timelineWindowRef={timelineWindowRef}
       />
-    </div>
-  )
-}
-
-type SidebarTab = 'loops' | 'liked' | 'browse' | 'compiled' | 'settings'
-
-const SidebarTabIcon: Record<SidebarTab, React.ReactNode> = {
-  loops: <WaveformIcon weight="regular" size={16} />,
-  liked: <HeartIcon weight="regular" size={16} />,
-  browse: <GlobeIcon weight="regular" size={16} />,
-  compiled: <ArticleIcon weight="regular" size={16} />,
-  settings: <GearSixIcon weight="regular" size={16} />,
-}
-
-const loops: LoopItem[] = [
-  { id: 'Ostkreuz', name: 'Ostkreuz', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Acid', name: 'Acid', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Phosphorus', name: 'Phosphorus', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'More Acid', name: 'More Acid', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'LSD', name: 'LSD', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Voices', name: 'Voices', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Zeitgeist', name: 'Zeitgeist', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Synesthesia', name: 'Synesthesia', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Blueprint', name: 'Blueprint', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Mirage', name: 'Mirage', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Pulse', name: 'Pulse', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Cosmos', name: 'Cosmos', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Nebula', name: 'Nebula', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Galaxy', name: 'Galaxy', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Universe', name: 'Universe', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Infinity', name: 'Infinity', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Eternity', name: 'Eternity', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Paradise', name: 'Paradise', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Eden', name: 'Eden', isPublic: true, isEditing: false, isDirty: false },
-  { id: 'Garden', name: 'Garden', isPublic: true, isEditing: false, isDirty: false },
-]
-
-const edited: LoopItem[] = [
-  { id: 'edited:LSD', name: 'LSD', isPublic: true, isEditing: true, isDirty: true },
-  { id: 'edited:Voices', name: 'Voices', isPublic: true, isEditing: true, isDirty: true },
-  { id: 'edited:Synesthesia', name: 'Synesthesia', isPublic: true, isEditing: true, isDirty: false },
-  { id: 'edited:Mirage', name: 'Mirage', isPublic: true, isEditing: true, isDirty: false },
-  { id: 'edited:Veils of The Unknown Mysteries of The Universe', name: 'Veils of The Unknown Mysteries of The Universe',
-    isPublic: true, isEditing: true, isDirty: true },
-  { id: 'edited:Nebula', name: 'Nebula', isPublic: true, isEditing: true, isDirty: false },
-  { id: 'edited:Paradise', name: 'Paradise', isPublic: true, isEditing: true, isDirty: false },
-]
-
-const LoopItemButton = (
-  { icon, title, onClick }: { icon: React.ReactNode; title: string; onClick: (() => void) | undefined },
-) => (
-  <button title={title}
-    className="p-1 bg-gradient-to-br from-neutral-300 to-neutral-500 rounded-md text-black hover:from-neutral-200 hover:to-neutral-400"
-    onPointerDown={e => {
-      e.stopPropagation()
-      onClick?.()
-    }}
-  >
-    {icon}
-  </button>
-)
-
-const LoopItem = ({
-  loop,
-  isCurrent,
-  onClick,
-  onSave,
-  onSaveAsNew,
-  onEditDetails,
-  onClose,
-}: {
-  loop: LoopItem
-  isCurrent: boolean
-  onClick: () => void
-  onSave?: () => void
-  onSaveAsNew?: () => void
-  onEditDetails?: (details: Partial<LoopItem>) => void
-  onClose?: () => void
-}) => {
-  const [isEditingDetails, setIsEditingDetails] = useState(false)
-  const [loopName, setLoopName] = useState(loop.name)
-
-  const handleEditDetails = () => {
-    setIsEditingDetails(true)
-  }
-
-  const handleDoneEditingDetails = () => {
-    setIsEditingDetails(false)
-    onEditDetails?.({ name: loopName })
-  }
-
-  const handleTogglePublic = () => {
-    onEditDetails?.({ isPublic: !loop.isPublic })
-  }
-
-  return (
-    <div
-      key={loop.id}
-      className={`
-      select-none cursor-pointer
-      text-sm flex flex-row items-center justify-between gap-2 px-1 w-full flex-shrink-0
-      group
-      bg-gradient-to-b
-      ${
-        isCurrent
-          ? 'from-neutral-500 to-neutral-800'
-          : 'from-black to-neutral-800 hover:from-neutral-700 hover:to-neutral-900'
-      }
-    `}
-      onPointerDown={onClick}
-    >
-      <div className="flex flex-1 min-w-0 w-0 flex-row items-center gap-2 leading-tight overflow-hidden">
-        {isEditingDetails
-          ? (
-            <div className="flex flex-1 pr-2 min-w-0 w-0 flex-row items-center gap-2 leading-tight overflow-hidden">
-              <input
-                ref={el => {
-                  setTimeout(() => {
-                    el?.focus()
-                  })
-                }}
-                className="flex flex-1 bg-gradient-to-b from-black to-neutral-700 outline-none py-1.5 my-0.5 px-2 text-white"
-                type="text"
-                value={loopName}
-                onChange={(e) => setLoopName(e.target.value)}
-              />
-              <LoopItemButton title={loop.isPublic ? 'Public' : 'Private'} icon={loop.isPublic
-                ? <GlobeIcon weight="regular" size={16} />
-                : <LockIcon weight="regular" size={16} />} onClick={handleTogglePublic} />
-              <LoopItemButton title="Done" icon={<CheckIcon weight="regular" size={16} />}
-                onClick={handleDoneEditingDetails} />
-            </div>
-          )
-          : (
-            <div className="py-2 px-2 truncate flex-1 flex items-center gap-2 flex-row min-w-0">
-              {loop.isDirty && (
-                <div
-                  title="Has unsaved changes"
-                  className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0"
-                />
-              )}
-              <div className="truncate">{loop.name}</div>
-            </div>
-          )}
-      </div>
-      {!isEditingDetails && onEditDetails && (
-        <div
-          className={`shrink-0 pr-2 flex flex-row items-center gap-2 ${
-            isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}
-        >
-          <LoopItemButton title="Edit" icon={<PencilIcon weight="regular" size={16} />} onClick={handleEditDetails} />
-          {loop.isEditing && (
-            <LoopItemButton title="Close" icon={<XIcon weight="regular" size={16} />} onClick={onClose} />
-          )}
-          {loop.isDirty && (
-            <>
-              <LoopItemButton title="Save as New" icon={<FilePlusIcon weight="regular" size={16} />}
-                onClick={onSaveAsNew} />
-              <LoopItemButton title="Save" icon={<FloppyDiskBackIcon weight="regular" size={16} />} onClick={onSave} />
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-type LoopItem = {
-  id: string
-  name: string
-  isEditing: boolean
-  isDirty: boolean
-  isPublic: boolean
-}
-
-export function Sidebar() {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('loops')
-  const [currentLoop, setCurrentLoop] = useState<LoopItem>(edited[2])
-  const [savedLoops, setSavedLoops] = useState<LoopItem[]>(loops)
-  const [editingLoops, setEditingLoops] = useState<LoopItem[]>(edited)
-
-  const toggleSidebar = () => {
-    setSidebarOpen(!sidebarOpen)
-  }
-
-  const handleNewLoop = () => {
-    let newLoop = 'Untitled'
-    let untitledCount = 0
-    for (const loop of editingLoops) {
-      if (loop.name.startsWith('Untitled')) {
-        untitledCount = Math.max(untitledCount, parseInt(loop.name.split(' ').pop() || '0') || 1)
-      }
-    }
-    if (untitledCount > 0) {
-      newLoop = `Untitled ${untitledCount + 1}`
-    }
-    setEditingLoops([{ id: `${newLoop}`, name: newLoop, isPublic: false, isEditing: true, isDirty: false },
-      ...editingLoops])
-  }
-
-  const handleSave = (loop: LoopItem) => {
-    setEditingLoops(editingLoops.map((l) => l === loop ? { ...loop, isDirty: false } : l))
-  }
-  const handleSaveAsNew = (loop: LoopItem) => {
-    setEditingLoops([{ id: `${loop.id}-new`, name: loop.name, isPublic: true, isEditing: true, isDirty: false },
-      ...editingLoops])
-  }
-  const handleClose = (loop: LoopItem) => {
-    if (loop.isDirty
-      && !confirm('Are you sure you want to close this tab without saving your changes?')) return
-    setEditingLoops(editingLoops.filter((l) => l !== loop))
-  }
-  const handleEditDetailsEditing = (loop: LoopItem, details: Partial<LoopItem>) => {
-    setEditingLoops(editingLoops.map((l) => l === loop ? { ...loop, ...details } : l))
-  }
-  const handleEditDetailsSaved = (loop: LoopItem, details: Partial<LoopItem>) => {
-    setSavedLoops(savedLoops.map((l) => l === loop ? { ...loop, ...details } : l))
-  }
-
-  return (
-    <div className={`z-10 relative h-full min-w-0 ${sidebarOpen ? 'w-[30dvw]' : 'w-0'}`}>
-      {sidebarOpen && (
-        <div className="flex flex-col w-full h-full">
-          <div className="h-[40px] bg-black flex shrink-0">
-            {Object.entries(SidebarTabIcon).map(([tab, icon]) => (
-              <button
-                key={tab}
-                onPointerDown={() => setSidebarTab(tab as SidebarTab)}
-                className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
-                  sidebarTab === tab
-                    ? 'bg-black text-white'
-                    : 'bg-gradient-to-b from-black to-neutral-800 text-[#888] hover:text-white'
-                }`}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-1 flex-col w-full h-full overflow-y-auto">
-            {sidebarTab === 'loops' && (
-              <>
-                <div className="flex flex-col w-full h-full border-b-2 border-orange-600">
-                  <LoopItem key="<new>"
-                    loop={{ id: '<new>', name: '<new>', isPublic: false, isEditing: false, isDirty: false }}
-                    isCurrent={false} onClick={() => handleNewLoop()} />
-                  {editingLoops.map((loop) => (
-                    <LoopItem
-                      key={loop.id}
-                      loop={loop}
-                      isCurrent={currentLoop.id === loop.id}
-                      onClick={() => setCurrentLoop(loop)}
-                      onSave={() => handleSave(loop)}
-                      onSaveAsNew={() => handleSaveAsNew(loop)}
-                      onClose={() => handleClose(loop)}
-                      onEditDetails={(details) => handleEditDetailsEditing(loop, details)}
-                    />
-                  ))}
-                </div>
-                <div className="flex flex-col w-full h-full">
-                  {savedLoops.sort((a, b) => a.name.localeCompare(b.name)).map((loop) => (
-                    <LoopItem
-                      key={loop.id}
-                      loop={loop}
-                      isCurrent={currentLoop.id === loop.id}
-                      onClick={() => setCurrentLoop(loop)}
-                      onEditDetails={(details) => handleEditDetailsSaved(loop, details)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-      <button
-        onPointerDown={toggleSidebar}
-        className="
-              absolute right-[-37px] top-0 w-[37px] h-[40px] flex items-center justify-center bg-red-500
-              bg-gradient-to-br from-neutral-700 to-black text-[#888] hover:text-white
-            "
-      >
-        {sidebarOpen
-          ? <ArrowLineLeftIcon weight="regular" size={16} />
-          : <ArrowLineRightIcon weight="regular" size={16} />}
-      </button>
     </div>
   )
 }

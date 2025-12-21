@@ -1,4 +1,5 @@
 import {
+  ARRAY_HEADER_SIZE,
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
   TIMELINE_HEADER_SIZE,
@@ -50,6 +51,66 @@ export function readTimelineSegsFromHistory(
     if (endTimeSeconds < windowStartTimeSeconds || startTimeSeconds > windowEndTimeSeconds) continue
 
     segs.push({ startSample, endSample, a, b, kind, exp })
+  }
+
+  segs.sort((x, y) => x.startSample - y.startSample)
+  return segs
+}
+
+export function readTimelineSegsFromCompiledTimeline(
+  arrayRaw: Float32Array,
+  sampleRate: number,
+  bpm: number,
+  windowStartTimeSeconds: number,
+  windowEndTimeSeconds: number,
+): TimelineSeg[] {
+  const beatsPerSecond = bpm / 60
+  if (!(beatsPerSecond > 0) || !Number.isFinite(beatsPerSecond)) return []
+  if (!Number.isFinite(windowStartTimeSeconds) || !Number.isFinite(windowEndTimeSeconds)) return []
+
+  const tl = parseCompiledTimeline(arrayRaw.subarray(ARRAY_HEADER_SIZE))
+  if (!tl) return []
+
+  const cycleBeats = tl.cycleBeats
+  if (!(cycleBeats > 0) || !Number.isFinite(cycleBeats)) return []
+
+  const startBeat = windowStartTimeSeconds * beatsPerSecond
+  const endBeat = windowEndTimeSeconds * beatsPerSecond
+  if (!Number.isFinite(startBeat) || !Number.isFinite(endBeat)) return []
+
+  const firstCycle = Math.floor(startBeat / cycleBeats) - 1
+  const lastCycle = Math.floor(endBeat / cycleBeats) + 1
+
+  const segs: TimelineSeg[] = []
+  for (let cycle = firstCycle; cycle <= lastCycle; cycle++) {
+    const cycleStartBeat = cycle * cycleBeats
+    let accBeats = 0
+    for (let i = 0; i < tl.segs.length; i++) {
+      const s = tl.segs[i]!
+      const durBeats = s.durBars * tl.beatDiv
+      if (!(durBeats > 0) || !Number.isFinite(durBeats)) continue
+
+      const segStartBeat = cycleStartBeat + accBeats
+      const segEndBeat = segStartBeat + durBeats
+      accBeats += durBeats
+
+      const startTimeSeconds = segStartBeat / beatsPerSecond
+      const endTimeSeconds = segEndBeat / beatsPerSecond
+      if (endTimeSeconds < windowStartTimeSeconds || startTimeSeconds > windowEndTimeSeconds) continue
+
+      const startSample = startTimeSeconds * sampleRate
+      const endSample = endTimeSeconds * sampleRate
+      if (!Number.isFinite(startSample) || !Number.isFinite(endSample)) continue
+
+      segs.push({
+        startSample,
+        endSample,
+        a: s.startValue,
+        b: s.endValue,
+        kind: s.kind,
+        exp: s.exp,
+      })
+    }
   }
 
   segs.sort((x, y) => x.startSample - y.startSample)

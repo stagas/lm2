@@ -13,6 +13,7 @@ import { useTheme } from './theme.ts'
 import {
   getTimelineValue,
   getTimelineValueAtSample,
+  readTimelineSegsFromCompiledTimeline,
   readTimelineSegsFromHistory,
   type TimelineSeg,
 } from './timeline-history.ts'
@@ -106,7 +107,13 @@ export function useTimelineWidget({
         continue
       }
 
-      const segs = readTimelineSegsFromHistory(history.raw, sampleRate, windowStartTime, windowEndTime)
+      let segs = readTimelineSegsFromHistory(history.raw, sampleRate, windowStartTime, windowEndTime)
+      if (segs.length === 0) {
+        const array = program1.program.data?.arrays?.[seqIndex]
+        if (array) {
+          segs = readTimelineSegsFromCompiledTimeline(array.raw, sampleRate, bpm, windowStartTime, windowEndTime)
+        }
+      }
 
       st.segs = segs
       st.savedSegs = segs
