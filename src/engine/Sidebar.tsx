@@ -17,6 +17,7 @@ import {
 } from '@phosphor-icons/react'
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -225,6 +226,7 @@ const LoopItem = ({
 }
 
 export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }) {
+  console.log('sidebar rendered')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('loops')
   const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
@@ -233,7 +235,16 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const scrollPosRef = useRef(0)
 
   const { isLoading: isSessionLoading, sessionData } = useSessionData()
-  const { isLoading: isLoopLoading, loopData } = useLoopData(currentLoopId)
+
+  useEffect(() => {
+    if (sessionData) {
+      setLoops(sessionData.loops.map(loop => new Loop(loop)))
+    }
+  }, [sessionData])
+
+  const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
+
+  const { isLoading: isLoopLoading, loopData } = useLoopData(currentLoopId, currentLoop)
 
   useEffect(() => {
     if (loopData) {
@@ -245,18 +256,11 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   }, [loopData])
 
   useEffect(() => {
-    if (sessionData) {
-      setLoops(sessionData.loops.map(loop => new Loop(loop)))
-    }
-  }, [sessionData])
-
-  const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
-
-  useEffect(() => {
     if (currentLoop?.data.code != null) {
+      console.log('onLoopChange')
       onLoopChange(currentLoop)
     }
-  }, [currentLoop, onLoopChange, loops])
+  }, [loops])
 
   const preserveScrollPos = (callback: () => void) => {
     const container = scrollContainerRef.current

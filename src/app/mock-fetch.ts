@@ -45,7 +45,13 @@ const loops: LoopData[] = titles.map(title => ({
   title,
   artist: 'stagas',
   artistId: '1',
-  code: '// some code',
+  code: `
+a=mini('scale dorian [i v]$$.75/2;.15')
+play(a,(trig,velocity,hz)->
+  (sine(hz/2)+sine(hz))*adsr(.02,.4,.4,.6,trig)**3)*.3
+
+|> analyser($) |> out($)
+`,
   likesCount: Math.random() * 10 | 0,
   commentsCount: Math.random() * 5 | 0,
   isPublic: Math.random() < 0.5,
