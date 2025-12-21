@@ -14,7 +14,8 @@ function compileNode(
     return writeEventOp(bytecode, offset, node.values, node.modifiers)
   }
   else if (node.type === 'group') {
-    let currentOffset = writeGroupStartOp(bytecode, offset, node.children.length, node.angle, node.modifiers)
+    const mode = node.parallel ? 2 : node.angle ? 1 : 0
+    let currentOffset = writeGroupStartOp(bytecode, offset, node.children.length, mode, node.modifiers)
     for (const child of node.children) {
       currentOffset += compileNode(child, bytecode, offset + currentOffset)
     }
@@ -63,6 +64,7 @@ export function compileMiniNotation(
     children: nodes,
     modifiers: getDefaultMods(),
     angle: false,
+    parallel: false,
     source: {
       start: 0,
       length: input.length,

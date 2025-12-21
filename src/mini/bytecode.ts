@@ -78,7 +78,7 @@ export function writeGroupStartOp(
   buffer: Float32Array,
   offset: number,
   childCount: number,
-  angle: boolean,
+  mode: number,
   modifiers: Modifiers,
 ): number {
   const base = MINI_HEADER_SIZE + offset
@@ -89,7 +89,7 @@ export function writeGroupStartOp(
   }
   emit(OP_GROUP_START)
   emit(childCount)
-  emit(angle ? 1 : 0)
+  emit(mode === 2 ? 2 : mode === 1 ? 1 : 0)
   emit(modifiers.velocity)
   emit(modifiers.hold)
   emit(modifiers.replicate)

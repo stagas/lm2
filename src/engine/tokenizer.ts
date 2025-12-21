@@ -274,6 +274,11 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
 
     const raw = t.text
     const first = raw[0]
+    if (raw === '.' || raw === ':') {
+      tokens.push({ type: 'punctuation', content: raw, length: raw.length })
+      cursor = t.end
+      continue
+    }
     // If '//' falls inside this mini token, split and emit a comment token.
     if (firstCommentPos !== -1 && firstCommentPos >= t.start && firstCommentPos < t.end) {
       const offsetInRaw = firstCommentPos - t.start

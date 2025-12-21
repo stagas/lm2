@@ -33,6 +33,7 @@ export interface Node {
   children: Node[]
   modifiers: Modifiers
   angle: boolean
+  parallel: boolean
   source: NodeSource
 }
 
@@ -235,6 +236,13 @@ export function tokenize(input: string): Token[] {
     const start = i
     const ch = input[i]!
 
+    // `:` is an operator token (parallel overlay)
+    if (ch === ':') {
+      tokens.push({ text: ':', start, end: i + 1 })
+      i++
+      continue
+    }
+
     // Handle single-line comments starting with "//"
     if (ch === '/' && input[i + 1] === '/') {
       let j = i + 2
@@ -256,7 +264,7 @@ export function tokenize(input: string): Token[] {
       }
       while (i < input.length) {
         const c = input[i]!
-        if (/\s/.test(c) || GROUP_OPEN.has(c) || c === ']' || c === '>' || c === ')') break
+        if (c === ':' || /\s/.test(c) || GROUP_OPEN.has(c) || c === ']' || c === '>' || c === ')') break
         i++
       }
       tokens.push({ text: input.slice(start, i), start, end: i })
@@ -266,7 +274,7 @@ export function tokenize(input: string): Token[] {
     i++
     while (i < input.length) {
       const c = input[i]!
-      if (/\s/.test(c) || GROUP_OPEN.has(c) || c === ']' || c === '>' || c === ')') break
+      if (c === ':' || /\s/.test(c) || GROUP_OPEN.has(c) || c === ']' || c === '>' || c === ')') break
       i++
     }
     tokens.push({ text: input.slice(start, i), start, end: i })
@@ -461,6 +469,15 @@ function makeSource(input: string, start: number, end: number): NodeSource {
   return { start, length: end - start, text: input.slice(start, end) }
 }
 
+function nodesSpan(nodes: Node[]): { start: number; end: number } | null {
+  const first = nodes[0]
+  const last = nodes.at(-1)
+  if (!first || !last) return null
+  const start = first.source.start
+  const end = last.source.start + last.source.length
+  return { start, end }
+}
+
 function parseGroupedTokenText(
   raw: string,
   open: '[' | '<' | '(',
@@ -535,6 +552,111 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       continue
     }
 
+    if (raw === ',') {
+      const left = nodes.slice()
+      const rightTokens = tokens.slice(ti + 1)
+      const right = rightTokens.length > 0 ? tokensToNodesInternal(rightTokens, input) : []
+      if (left.length === 0 && right.length === 0) {
+        return []
+      }
+      if (left.length === 0) {
+        return right
+      }
+      if (right.length === 0) {
+        return left
+      }
+
+      const leftGroup: Node = {
+        type: 'group',
+        angle: false,
+        parallel: false,
+        values: [],
+        children: left,
+        modifiers: getDefaultMods(),
+        source: makeSource(input, left[0]!.source.start, left.at(-1)!.source.start + left.at(-1)!.source.length),
+      }
+      const rightGroup: Node = {
+        type: 'group',
+        angle: false,
+        parallel: false,
+        values: [],
+        children: right,
+        modifiers: getDefaultMods(),
+        source: makeSource(input, right[0]!.source.start, right.at(-1)!.source.start + right.at(-1)!.source.length),
+      }
+      const endToken = rightTokens.at(-1) ?? token
+      const parallelGroup: Node = {
+        type: 'group',
+        angle: false,
+        parallel: true,
+        values: [],
+        children: [leftGroup, rightGroup],
+        modifiers: getDefaultMods(),
+        source: makeSource(input, leftGroup.source.start, endToken.end),
+      }
+      return [parallelGroup]
+    }
+
+    if (raw === '.') {
+      const segments: Node[][] = []
+      if (nodes.length > 0) segments.push(nodes.slice())
+
+      let segStart = ti + 1
+      for (let j = ti + 1; j <= tokens.length; j++) {
+        const isEnd = j === tokens.length
+        const isDot = !isEnd && tokens[j]?.text === '.'
+        if (!isEnd && !isDot) continue
+
+        const partTokens = tokens.slice(segStart, j)
+        const partNodes = partTokens.length > 0 ? tokensToNodesInternal(partTokens, input) : []
+        if (partNodes.length > 0) segments.push(partNodes)
+        segStart = j + 1
+      }
+
+      if (segments.length === 0) return []
+      if (segments.length === 1) return segments[0]!
+
+      const loop = segments.length
+      const onChildren: Node[] = []
+      let groupStart = Infinity
+      let groupEnd = -Infinity
+
+      for (let si = 0; si < segments.length; si++) {
+        const children = segments[si]!
+        const span = nodesSpan(children)
+        const start = span?.start ?? 0
+        const end = span?.end ?? start
+        groupStart = Math.min(groupStart, start)
+        groupEnd = Math.max(groupEnd, end)
+        onChildren.push({
+          type: 'on',
+          angle: false,
+          parallel: false,
+          values: [si + 1, loop],
+          children,
+          modifiers: getDefaultMods(),
+          source: makeSource(input, start, end),
+        })
+      }
+
+      if (!Number.isFinite(groupStart) || !Number.isFinite(groupEnd) || groupStart > groupEnd) {
+        groupStart = 0
+        groupEnd = 0
+      }
+
+      const joined: Node = {
+        type: 'group',
+        angle: false,
+        parallel: false,
+        values: [],
+        children: onChildren,
+        modifiers: getDefaultMods(),
+        source: makeSource(input, groupStart, groupEnd),
+      }
+
+      return [joined]
+    }
+
     if (first === '_') {
       const last = nodes.at(-1)
       if (last) last.modifiers.elongate += 1
@@ -547,6 +669,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       nodes.push({
         type: 'scale',
         angle: false,
+        parallel: false,
         values: [rootMidi, scaleIndex],
         children: [],
         modifiers: getDefaultMods(),
@@ -586,6 +709,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       nodes.push({
         type: 'on',
         angle: false,
+        parallel: false,
         values: [pos, loop],
         children,
         modifiers: getDefaultMods(),
@@ -602,6 +726,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       nodes.push({
         type: raw === 'octave' ? 'octave' : 'transpose',
         angle: false,
+        parallel: false,
         values: [delta],
         children: [],
         modifiers: getDefaultMods(),
@@ -625,6 +750,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       nodes.push({
         type: 'group',
         angle: first === '<',
+        parallel: false,
         values: [],
         children,
         modifiers,
@@ -649,6 +775,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
         const scaleNode: Node = {
           type: 'scale',
           angle: false,
+          parallel: false,
           values: [rootMidi, scaleIndex],
           children: [],
           modifiers: getDefaultMods(),
@@ -659,6 +786,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
         nodes.push({
           type: 'group',
           angle: false,
+          parallel: false,
           values: [],
           children,
           modifiers: parseModifiers(modText),
@@ -670,6 +798,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
         nodes.push({
           type: 'octave',
           angle: false,
+          parallel: false,
           values: [parseOctaveDelta(adjustedInnerTokens)],
           children: [],
           modifiers: getDefaultMods(),
@@ -681,6 +810,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
         nodes.push({
           type: 'transpose',
           angle: false,
+          parallel: false,
           values: [parseDeltaToken(adjustedInnerTokens[1])],
           children: [],
           modifiers: getDefaultMods(),
@@ -694,6 +824,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       nodes.push({
         type: 'group',
         angle: false,
+        parallel: false,
         values: [],
         children,
         modifiers,
@@ -709,6 +840,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       nodes.push({
         type: 'rest',
         angle: false,
+        parallel: false,
         values: [],
         children: [],
         modifiers,
@@ -730,6 +862,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       nodes.push({
         type: 'event',
         angle: false,
+        parallel: false,
         values,
         children: [],
         modifiers,
@@ -746,6 +879,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       nodes.push({
         type: 'event',
         angle: false,
+        parallel: false,
         values,
         children: [],
         modifiers,
@@ -760,6 +894,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
     nodes.push({
       type: 'event',
       angle: false,
+      parallel: false,
       values,
       children: [],
       modifiers,
@@ -782,6 +917,7 @@ export function tokensToNodes(tokens: Token[], input: string): Node[] {
     const defaultScaleNode: Node = {
       type: 'scale',
       angle: false,
+      parallel: false,
       values: [noteNameToMidi('c4'), SCALE_KEY_TO_INDEX.major ?? 0],
       children: [],
       modifiers: getDefaultMods(),

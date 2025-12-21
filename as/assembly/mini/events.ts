@@ -384,9 +384,11 @@ export class MiniEvents {
       return pitch
     }
 
-    const isAngleGroup: bool = group.angle !== 0.0
-    let timedLength: f64 = 0.0
-    if (!isAngleGroup) {
+    const groupMode: i32 = i32(group.angle)
+    const isAngleGroup: bool = groupMode === 1
+    const isParallelGroup: bool = groupMode === 2
+    let timedLength: f64 = isParallelGroup ? 1.0 : 0.0
+    if (!isAngleGroup && !isParallelGroup) {
       for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
         const off = childOpsBuffer.get(i)
         const opcode = reader.getOpcode(off)
@@ -438,6 +440,62 @@ export class MiniEvents {
     const cycleDensity: f64 = roundToDecimals(cycle * density, 6)
     const phaseStart: f64 = fract(cycleDensity)
     const slotDurationScaled: f64 = slotDuration * invDensity
+
+    if (isParallelGroup) {
+      const normalizedPosition: f64 = 0.0
+      let delta: f64 = normalizedPosition - phaseStart
+      if (delta < 0.0) delta += 1.0
+
+      let pass: i32 = 0
+      while (true) {
+        const passF: f64 = pass as f64
+        if (delta + passF >= density) break
+
+        const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
+        const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
+
+        if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
+          const childCycle: f64 = Math.floor(cycle * density + passF)
+          const basePitch: f64 = pitch
+          const baseScaleActive: bool = this.scaleActive
+          const baseScaleRootMidi: i32 = this.scaleRootMidi
+          const baseScaleIndex: i32 = this.scaleIndex
+
+          for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+            const childOpOffset = childOpsBuffer.get(i)
+            this.scaleActive = baseScaleActive
+            this.scaleRootMidi = baseScaleRootMidi
+            this.scaleIndex = baseScaleIndex
+            this.processChild(
+              reader,
+              childOpOffset,
+              groupStartTime,
+              childRelativeTime,
+              slotDurationScaled,
+              childCycle,
+              cycleStartSample,
+              cycleSamples,
+              groupVelocity,
+              groupHoldMul,
+              groupStrumMul,
+              groupJitter,
+              effectiveGlide,
+              basePitch,
+              emitter,
+              depth,
+            )
+          }
+
+          this.scaleActive = baseScaleActive
+          this.scaleRootMidi = baseScaleRootMidi
+          this.scaleIndex = baseScaleIndex
+        }
+
+        pass++
+      }
+
+      return pitch
+    }
 
     if (isAngleGroup) {
       // Angle groups (<...>) pick exactly one child per virtual cycle and play it in the group's slot.
