@@ -39,6 +39,13 @@ export function useTimelineHeader(currentLoopId: string | null) {
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
 
+  useEffect(() => {
+    timelineTimeRef.current = null
+    predictedSampleCountRef.current = null
+    lastWallTimeRef.current = null
+    isFirstFrameRef.current = true
+  }, [currentLoopId])
+
   const timelineHeader = useMemo((): EditorHeader => {
     const labels = [...(uiTimelineLabels ?? timelineLabels ?? [])].sort((a, b) => a.bar - b.bar)
     const defaultLabelColor = 'rgba(255, 220, 0, 0.9)'

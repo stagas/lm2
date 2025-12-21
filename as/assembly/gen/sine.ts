@@ -33,6 +33,11 @@ export class Sine extends Gen {
     initSineTable()
   }
 
+  reset(): void {
+    this.lastTrig = 0
+    this.phase = 0
+  }
+
   copyFrom(other: Gen): void {
     const src = other as Sine
     this.lastTrig = src.lastTrig

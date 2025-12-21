@@ -1,7 +1,15 @@
-import { ARRAY_HEADER_SIZE, ARRAY_SIZE, HISTORY_ENTRY_SIZE, HISTORY_HEADER_SIZE, HISTORY_SIZE,
-  HISTORY_DATA_OFFSET, HISTORY_SIZE_MINUS_ONE, HISTORY_WRITE_POS_OFFSET, OPS_COUNT } from './constants'
+import {
+  ARRAY_HEADER_SIZE,
+  ARRAY_SIZE,
+  HISTORY_DATA_OFFSET,
+  HISTORY_ENTRY_SIZE,
+  HISTORY_HEADER_SIZE,
+  HISTORY_SIZE,
+  HISTORY_SIZE_MINUS_ONE,
+  HISTORY_WRITE_POS_OFFSET,
+  OPS_COUNT,
+} from './constants'
 import { Dsp } from './dsp'
-import { bpm, nyquist, sampleRate } from './globals'
 import { MiniEventBuffer, MiniEvents } from './mini/events'
 import { Program, ProgramData } from './program'
 
@@ -21,10 +29,10 @@ export function createDsp(): usize {
   return changetype<usize>(new Dsp())
 }
 
-export function resetDsp(dsp$: usize, voices: boolean): void {
+export function resetDsp(dsp$: usize): void {
   if (dsp$ === 0) return
   const dsp = changetype<Dsp>(dsp$)
-  dsp.reset(voices)
+  dsp.reset()
 }
 
 export function createProgram(): usize {

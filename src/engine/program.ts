@@ -22,7 +22,9 @@ import type {
   AnalyserRef,
   ArrayLiteralRef,
   MiniSequenceRef,
+  NumberLiteralInfo,
   NumberWithParamsInfo,
+  SampleDef,
   TimelineLabel,
   TimelineSequenceDef,
   TimelineSequenceRef,
@@ -102,11 +104,13 @@ function buildProgram(
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
+  numberLiterals: NumberLiteralInfo[]
+  sampleDefs: SampleDef[]
   bpm?: number
   bars?: number
 } {
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
-    numberParams, bpm, bars } = encodeLangToVmOps(dspSource, {
+    numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
     })
@@ -123,6 +127,8 @@ function buildProgram(
     analyserRefs: analyserRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
     numberParams: numberParams ?? [],
+    numberLiterals: numberLiterals ?? [],
+    sampleDefs: sampleDefs ?? [],
     bpm,
     bars,
   }
@@ -152,6 +158,8 @@ export type ProgramBuildResult = {
   timelineSequences: TimelineSequenceDef[]
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
+  numberLiterals: NumberLiteralInfo[]
+  sampleDefs: SampleDef[]
   bpm?: number
   bars?: number
   data: ProgramDataView
@@ -318,7 +326,7 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals, numberParams, bpm, bars } =
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals, numberParams, numberLiterals, sampleDefs, bpm, bars } =
           buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
@@ -372,6 +380,8 @@ async function createProgram(
           timelineSequences,
           arrayLiterals,
           numberParams,
+          numberLiterals,
+          sampleDefs,
           bpm,
           bars,
           data: newData,

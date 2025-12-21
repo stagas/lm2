@@ -26,6 +26,18 @@ Negative speed will play the sample backwards.
 
 Example implementations to be based (roughly) on:
 
+Implemented shape (current code)
+-------------------------------
+- `freesound(id: <int>)` is compile-time only and is rewritten to a small **sample index** (0..N-1) for the current program.
+- The main thread loads `/freesound?id=<id>`, decodes it with `AudioContext.decodeAudioData`, and uploads channel 0 to the worklet.
+- AssemblyScript streams from JS via these Wasm imports:
+
+  - `host.sampleLen(sampleIndex: i32) -> i32`
+  - `host.sampleRead(sampleIndex: i32, start: i32, length: i32, outPtr: usize) -> i32`
+  - `host.sampleSlices(sampleIndex: i32, threshold: f32, outPtr: usize, max: i32) -> i32`
+
+The code blocks below are historical references only.
+
 SampleBuffer
 ------------
 ```

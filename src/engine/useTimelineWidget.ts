@@ -1,6 +1,7 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
+  ARRAY_HEADER_SIZE,
   FUTURE_BARS,
   PAST_BARS,
   TIME_WINDOW_BARS,
@@ -18,6 +19,7 @@ import {
 } from './timeline-history.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 import { applySmoothing } from './util.ts'
+import { compileTimelineNotation } from '../timeline/compiler.ts'
 
 type TimelineState = {
   timeSeconds: number | null
@@ -36,6 +38,8 @@ type UseTimelineParams = {
   dspSource: string
   showWidgets: boolean
   isPlaying: boolean
+  isLive: boolean
+  resetKey?: string | number | null
 }
 
 export function useTimelineWidget({
@@ -48,8 +52,11 @@ export function useTimelineWidget({
   dspSource,
   showWidgets,
   isPlaying,
+  isLive,
+  resetKey,
 }: UseTimelineParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const stateRef = useRef<Map<number, TimelineState>>(new Map())
+  const compiledCacheRef = useRef<Map<number, { sequence: string; arrayRaw: Float32Array }>>(new Map())
 
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
@@ -57,9 +64,17 @@ export function useTimelineWidget({
 
   const theme = useTheme()
 
+  useEffect(() => {
+    stateRef.current.clear()
+    compiledCacheRef.current.clear()
+    predictedSampleCountRef.current = null
+    lastWallTimeRef.current = null
+    isFirstFrameRef.current = true
+  }, [resetKey])
+
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
-    if (!program1?.program?.histories) return
+    if (isLive && !program1?.program?.histories) return
 
     const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
       predictedSampleCountRef,
@@ -74,9 +89,6 @@ export function useTimelineWidget({
       const seqIndex = ref.seqIndex
       if (seenSeqs.has(seqIndex)) continue
       seenSeqs.add(seqIndex)
-
-      const history = program1.program.histories[seqIndex]
-      if (!history) continue
 
       const st = stateRef.current.get(seqIndex) ?? {
         timeSeconds: null,
@@ -94,19 +106,37 @@ export function useTimelineWidget({
       const windowStartTime = st.timeSeconds - PAST_BARS * barLengthSeconds
       const windowEndTime = st.timeSeconds + FUTURE_BARS * barLengthSeconds
 
-      let segs = readTimelineSegsFromHistory(history.raw, sampleRate, windowStartTime, windowEndTime)
-      if (segs.length === 0) {
-        const array = program1.program.data?.arrays?.[seqIndex]
-        if (array) {
-          segs = readTimelineSegsFromCompiledTimeline(array.raw, sampleRate, bpm, windowStartTime, windowEndTime)
+      let segs: TimelineSeg[] = []
+      if (isLive && program1) {
+        const history = program1.program.histories[seqIndex]
+        if (history) {
+          segs = readTimelineSegsFromHistory(history.raw, sampleRate, windowStartTime, windowEndTime)
         }
+        if (segs.length === 0) {
+          const array = program1.program.data?.arrays?.[seqIndex]
+          if (array) {
+            segs = readTimelineSegsFromCompiledTimeline(array.raw, sampleRate, bpm, windowStartTime, windowEndTime)
+          }
+        }
+      }
+      else {
+        const cached = compiledCacheRef.current.get(seqIndex)
+        let arrayRaw = cached?.arrayRaw
+        if (!cached || cached.sequence !== ref.sequence || !arrayRaw) {
+          const compiled = compileTimelineNotation(ref.sequence)
+          const bytecode = compiled.bytecode
+          arrayRaw = new Float32Array(ARRAY_HEADER_SIZE + bytecode.length)
+          arrayRaw.set(bytecode, ARRAY_HEADER_SIZE)
+          compiledCacheRef.current.set(seqIndex, { sequence: ref.sequence, arrayRaw })
+        }
+        segs = readTimelineSegsFromCompiledTimeline(arrayRaw, sampleRate, bpm, windowStartTime, windowEndTime)
       }
 
       st.segs = segs
       st.frameSegs = segs
       stateRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, program1, audioContext, globalSampleCount, isPlaying, timelineRefs])
+  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, isLive, isPlaying, timelineRefs])
 
   const drawTimeline = useCallback((
     c: CanvasRenderingContext2D,

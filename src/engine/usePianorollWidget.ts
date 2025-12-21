@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { luminate } from 'utils/rgb'
 import {
   FUTURE_BARS,
@@ -58,24 +58,28 @@ type UsePianorollParams = {
   audioContext: AudioContext | undefined
   bpmValue: Float32Array<SharedArrayBuffer> | undefined
   globalSampleCount: Int32Array<SharedArrayBuffer> | undefined
+  sequences: string[]
   miniSourceMaps: (Map<number, SourceLocation> | undefined)[]
   miniRefs: MiniSequenceRef[]
   timelineLabels: TimelineLabel[]
   dspSource: string
   showWidgets: boolean
   isPlaying: boolean
+  resetKey?: string | number | null
 }
 
 export function usePianorollWidget({
   audioContext,
   bpmValue,
   globalSampleCount,
+  sequences,
   miniSourceMaps,
   miniRefs,
   timelineLabels,
   dspSource,
   showWidgets,
   isPlaying,
+  resetKey,
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
   const predictedSampleCountRef = useRef<number | null>(null)
@@ -84,11 +88,17 @@ export function usePianorollWidget({
 
   const theme = useTheme()
 
+  useEffect(() => {
+    pianorollStateRef.current.clear()
+    predictedSampleCountRef.current = null
+    lastWallTimeRef.current = null
+    isFirstFrameRef.current = true
+  }, [resetKey])
+
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     const engineState = useEngineStore.getState()
     const visualWasm = engineState.visualWasm
-    const sequences = engineState.uiSequences
     if (!visualWasm) return
 
     const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
@@ -200,7 +210,7 @@ export function usePianorollWidget({
 
       pianorollStateRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, audioContext, bpmValue, globalSampleCount, isPlaying, miniRefs, miniSourceMaps])
+  }, [showWidgets, audioContext, bpmValue, globalSampleCount, isPlaying, sequences, miniRefs, miniSourceMaps])
 
   const drawPianoroll = useCallback((
     c: CanvasRenderingContext2D,

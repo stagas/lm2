@@ -110,27 +110,25 @@ export class Mini extends Gen {
     this.resetVoiceMaps()
   }
 
-  reset(voices: boolean): void {
+  reset(): void {
     this.lastBytecode$ = 0
     this.lastHistory$ = 0
     this.lastVersion = -1
     this.historyGeneratedUntilCycle = -1
-    if (voices) {
-      this.voiceCursor = 0
-      this.resetVoiceMaps()
-      for (let i = 0; i < SEQ_VOICES; i++) {
-        const voice = this.voices[i]
-        voice.active = false
-        voice.triggerSample = 0
-        voice.holdEndSample = 0
-        voice.value = 0
-        voice.velocity = 0
-        voice.slot = -1
-        voice.glidePower = 0.0
-        voice.glideTarget = 0.0
-        voice.glideEndSample = 0
-        voice.baseValue = 0.0
-      }
+    this.voiceCursor = 0
+    this.resetVoiceMaps()
+    for (let i = 0; i < SEQ_VOICES; i++) {
+      const voice = this.voices[i]
+      voice.active = false
+      voice.triggerSample = 0
+      voice.holdEndSample = 0
+      voice.value = 0
+      voice.velocity = 0
+      voice.slot = -1
+      voice.glidePower = 0.0
+      voice.glideTarget = 0.0
+      voice.glideEndSample = 0
+      voice.baseValue = 0.0
     }
   }
 

@@ -11,7 +11,9 @@ import {
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Mini } from './gen/mini'
+import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
+import { Slicer } from './gen/slicer'
 import { Timeline } from './gen/timeline'
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from './globals'
 import { Program, ProgramData } from './program'
@@ -363,6 +365,8 @@ enum VmBuiltin {
   T = 7,
   Play = 8,
   Timeline = 9,
+  Sampler = 10,
+  Slicer = 11,
 }
 
 const VM_FUNC_HEADER: i32 = -2
@@ -429,8 +433,8 @@ export class Dsp {
     hist[0] = f32((writePos + 1) & 0xfffff)
   }
 
-  reset(voices: boolean): void {
-    this.program.gensPool.resetAllSeqs(voices)
+  reset(): void {
+    this.program.gensPool.reset()
   }
 
   @inline
@@ -553,6 +557,14 @@ export class Dsp {
     }
     if (sym === VmBuiltin.Timeline) {
       this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Timeline)
+      return
+    }
+    if (sym === VmBuiltin.Sampler) {
+      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Sampler)
+      return
+    }
+    if (sym === VmBuiltin.Slicer) {
+      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Slicer)
       return
     }
     // Global time scaled to BPM: t = seconds * (bpm / 60)
@@ -1463,6 +1475,106 @@ export class Dsp {
       }
 
       this.vmPlayMini(i32(arrayNum), cbAux, length, left$, right$)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Sampler) {
+      // sampler(sample, speed=1, offset=0, trig=0)
+      if (posCount < 1 || posTags[0] !== VmTag.Num) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      const sampleIndex: i32 = i32(posNums[0])
+
+      const speedIsSet = posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null
+      const speedTag: VmTag = speedIsSet ? (posTags[1] as VmTag) : VmTag.Num
+      const speedNum: f64 = speedIsSet ? posNums[1] : 1.0
+      const speedAux: i32 = speedIsSet ? posAux[1] : 0
+
+      const offsetIsSet = posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null
+      // If offset is omitted and speed is a constant negative number, default to "end".
+      const defaultOffset: f64 = (!offsetIsSet && speedTag === VmTag.Num && speedNum < 0.0) ? 1.0 : 0.0
+      const offsetTag: VmTag = offsetIsSet ? (posTags[2] as VmTag) : VmTag.Num
+      const offsetNum: f64 = offsetIsSet ? posNums[2] : defaultOffset
+      const offsetAux: i32 = offsetIsSet ? posAux[2] : 0
+
+      const trigIsSet = posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null
+      const trigTag: VmTag = trigIsSet ? (posTags[3] as VmTag) : VmTag.Num
+      const trigNum: f64 = trigIsSet ? posNums[3] : 0.0
+      const trigAux: i32 = trigIsSet ? posAux[3] : 0
+
+      const speed$: usize = this.vmToAudioPtr(speedTag, speedNum, speedAux, length)
+      const offset$: usize = this.vmToAudioPtr(offsetTag, offsetNum, offsetAux, length)
+      const trig$: usize = this.vmToAudioPtr(trigTag, trigNum, trigAux, length)
+
+      const outIndex: i32 = this.vmAllocOut()
+      const out$: usize = this.program.getOutBuffer(outIndex)
+
+      const gen = this.program.gensPool.get(Op.Sampler) as Sampler
+      gen.sampleIndex = sampleIndex
+      gen.speed$ = speed$
+      gen.offset$ = offset$
+      gen.trig$ = trig$
+      gen.process(out$, length)
+
+      this.vmPush(VmTag.Audio, 0.0, outIndex)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Slicer) {
+      // slicer(sample, speed=1, offset=0, slice=0, threshold=0.5, trig=0)
+      if (posCount < 1 || posTags[0] !== VmTag.Num) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      const sampleIndex: i32 = i32(posNums[0])
+
+      const speedIsSet = posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null
+      const speedTag: VmTag = speedIsSet ? (posTags[1] as VmTag) : VmTag.Num
+      const speedNum: f64 = speedIsSet ? posNums[1] : 1.0
+      const speedAux: i32 = speedIsSet ? posAux[1] : 0
+
+      const offsetIsSet = posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null
+      const offsetTag: VmTag = offsetIsSet ? (posTags[2] as VmTag) : VmTag.Num
+      const offsetNum: f64 = offsetIsSet ? posNums[2] : 0.0
+      const offsetAux: i32 = offsetIsSet ? posAux[2] : 0
+
+      const sliceIsSet = posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null
+      const sliceTag: VmTag = sliceIsSet ? (posTags[3] as VmTag) : VmTag.Num
+      const sliceNum: f64 = sliceIsSet ? posNums[3] : 0.0
+      const sliceAux: i32 = sliceIsSet ? posAux[3] : 0
+
+      const thresholdIsSet = posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null
+      const thresholdTag: VmTag = thresholdIsSet ? (posTags[4] as VmTag) : VmTag.Num
+      const thresholdNum: f64 = thresholdIsSet ? posNums[4] : 0.5
+      const thresholdAux: i32 = thresholdIsSet ? posAux[4] : 0
+
+      const trigIsSet = posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null
+      const trigTag: VmTag = trigIsSet ? (posTags[5] as VmTag) : VmTag.Num
+      const trigNum: f64 = trigIsSet ? posNums[5] : 0.0
+      const trigAux: i32 = trigIsSet ? posAux[5] : 0
+
+      const speed$: usize = this.vmToAudioPtr(speedTag, speedNum, speedAux, length)
+      const offset$: usize = this.vmToAudioPtr(offsetTag, offsetNum, offsetAux, length)
+      const slice$: usize = this.vmToAudioPtr(sliceTag, sliceNum, sliceAux, length)
+      const threshold$: usize = this.vmToAudioPtr(thresholdTag, thresholdNum, thresholdAux, length)
+      const trig$: usize = this.vmToAudioPtr(trigTag, trigNum, trigAux, length)
+
+      const outIndex: i32 = this.vmAllocOut()
+      const out$: usize = this.program.getOutBuffer(outIndex)
+
+      const gen = this.program.gensPool.get(Op.Slicer) as Slicer
+      gen.sampleIndex = sampleIndex
+      gen.speed$ = speed$
+      gen.offset$ = offset$
+      gen.slice$ = slice$
+      gen.threshold$ = threshold$
+      gen.trig$ = trig$
+      gen.process(out$, length)
+
+      this.vmPush(VmTag.Audio, 0.0, outIndex)
       return
     }
 

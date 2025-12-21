@@ -21,7 +21,9 @@ import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
+import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
+import { Slicer } from './gen/slicer'
 import { Timeline } from './gen/timeline'
 import { Smoothed } from './lib/smoothed'
 import { Op } from './shared'
@@ -32,6 +34,12 @@ export class GenPool<T extends Gen> {
   constructor(private ctor: () => T) {}
   resetIndex(): void {
     this.index = 0
+  }
+  reset(): void {
+    this.index = 0
+    for (let i = 0; i < this.gens.length; i++) {
+      this.gens[i].reset()
+    }
   }
   get(): T {
     if (this.index >= this.gens.length) {
@@ -61,6 +69,8 @@ class GensPool {
   private minis: GenPool<Mini> = new GenPool<Mini>(() => new Mini())
   private timelines: GenPool<Timeline> = new GenPool<Timeline>(() => new Timeline())
   private analysers: GenPool<Analyser> = new GenPool<Analyser>(() => new Analyser())
+  private samplers: GenPool<Sampler> = new GenPool<Sampler>(() => new Sampler())
+  private slicers: GenPool<Slicer> = new GenPool<Slicer>(() => new Slicer())
   resetIndices(): void {
     this.sines.resetIndex()
     this.ads.resetIndex()
@@ -68,11 +78,18 @@ class GensPool {
     this.minis.resetIndex()
     this.timelines.resetIndex()
     this.analysers.resetIndex()
+    this.samplers.resetIndex()
+    this.slicers.resetIndex()
   }
-  resetAllSeqs(voices: boolean): void {
-    for (let i = 0; i < this.minis.gens.length; i++) {
-      this.minis.gens[i].reset(voices)
-    }
+  reset(): void {
+    this.sines.reset()
+    this.ads.reset()
+    this.adsrs.reset()
+    this.minis.reset()
+    this.timelines.reset()
+    this.analysers.reset()
+    this.samplers.reset()
+    this.slicers.reset()
   }
   get(op: Op): Gen {
     switch (op) {
@@ -88,6 +105,10 @@ class GensPool {
         return this.timelines.get()
       case Op.Analyser:
         return this.analysers.get()
+      case Op.Sampler:
+        return this.samplers.get()
+      case Op.Slicer:
+        return this.slicers.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -99,6 +120,8 @@ class GensPool {
     this.minis.copyFrom(source.minis)
     this.timelines.copyFrom(source.timelines)
     this.analysers.copyFrom(source.analysers)
+    this.samplers.copyFrom(source.samplers)
+    this.slicers.copyFrom(source.slicers)
   }
 }
 

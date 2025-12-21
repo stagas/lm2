@@ -9,7 +9,9 @@ import type {
   AnalyserRef,
   ArrayLiteralRef,
   MiniSequenceRef,
+  NumberLiteralInfo,
   NumberWithParamsInfo,
+  SampleDef,
   TimelineLabel,
   TimelineSequenceRef,
 } from '../bytecode.ts'
@@ -22,6 +24,7 @@ import workletUrl from '../worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
 import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
+import { SampleLoader } from './sample-loader.ts'
 import { buildTimelineLabels } from './timeline-labels.ts'
 import { createVisualWasm, type VisualWasm } from './visual-wasm.ts'
 
@@ -59,6 +62,7 @@ type EngineState = {
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
+  numberLiterals: NumberLiteralInfo[]
   dspSource: string
   // UI-facing compilation results. These are updated as soon as we have a
   // successful compile, even if the worklet is still crossfading programs.
@@ -70,6 +74,7 @@ type EngineState = {
   uiAnalyserRefs: AnalyserRef[]
   uiArrayLiterals: ArrayLiteralRef[]
   uiNumberParams: NumberWithParamsInfo[]
+  uiNumberLiterals: NumberLiteralInfo[]
   uiDspSource: string
   isProgramSwapPending: boolean
   isUpdatingDsp: boolean
@@ -106,6 +111,9 @@ export const useEngineStore = create<EngineState>((set, get) => {
     pendingSource: undefined as string | undefined,
     requests: [] as PendingDspUpdate[],
   }
+
+  let sampleLoader: SampleLoader | undefined
+  let sampleUploadToken = 0
 
   function syncBarsHardLoop(bars: number | undefined): void {
     const state = get()
@@ -182,7 +190,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     const primaryProgram = state.program1
     if (!primaryProgram) return undefined
     if (!state.lastSuccessfulProgramData) return undefined
-    if (state.numberParams.length === 0) return undefined
+    if (state.numberLiterals.length === 0) return undefined
 
     const oldSource = state.dspSource
     const oldStarts = lineStarts(oldSource)
@@ -190,9 +198,10 @@ export const useEngineStore = create<EngineState>((set, get) => {
     const ranges: Array<{ start: number; end: number }> = []
 
     const updates: Array<{ index: number; value: number }> = []
+    const nextNumberLiterals: NumberLiteralInfo[] = []
     const nextNumberParams: NumberWithParamsInfo[] = []
 
-    for (const info of state.numberParams) {
+    for (const info of state.numberLiterals) {
       const index = info.literalIndex
       if (index === undefined) return undefined
 
@@ -207,6 +216,13 @@ export const useEngineStore = create<EngineState>((set, get) => {
         updates.push({ index, value: newRead.value })
       }
 
+      nextNumberLiterals.push({ ...info, value: newRead.value })
+    }
+
+    // Keep slider UI params in sync (subset of number literals).
+    for (const info of state.numberParams) {
+      const newRead = readNumberAt(source, newStarts, info)
+      if (!newRead) return undefined
       nextNumberParams.push({ ...info, value: newRead.value })
     }
 
@@ -233,10 +249,12 @@ export const useEngineStore = create<EngineState>((set, get) => {
     if (updates.length === 0) {
       set({
         dspSource: source,
+        numberLiterals: nextNumberLiterals,
         numberParams: nextNumberParams,
         timelineLabels: nextTimelineLabels,
         bars,
         uiDspSource: source,
+        uiNumberLiterals: nextNumberLiterals,
         uiNumberParams: nextNumberParams,
         uiTimelineLabels: nextTimelineLabels,
         uiBars: bars,
@@ -251,10 +269,12 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
     set({
       dspSource: source,
+      numberLiterals: nextNumberLiterals,
       numberParams: nextNumberParams,
       timelineLabels: nextTimelineLabels,
       bars,
       uiDspSource: source,
+      uiNumberLiterals: nextNumberLiterals,
       uiNumberParams: nextNumberParams,
       uiTimelineLabels: nextTimelineLabels,
       uiBars: bars,
@@ -287,6 +307,21 @@ export const useEngineStore = create<EngineState>((set, get) => {
         compareAgainst: comparisonReference,
       })
 
+      if (state.worklet && state.audioContext) {
+        if (!sampleLoader) sampleLoader = new SampleLoader(state.audioContext)
+        const token = ++sampleUploadToken
+        void (async () => {
+          const defs = primaryResult.sampleDefs
+          if (!defs?.length) return
+          for (const d of defs) {
+            if (token !== sampleUploadToken) return
+            const loaded = await sampleLoader!.load(d.url)
+            if (token !== sampleUploadToken) return
+            await state.worklet!.setSample(d.sampleIndex, loaded.sampleRate, loaded.length, loaded.ch0Buffer)
+          }
+        })()
+      }
+
       if (primaryResult.bpm !== undefined && state.bpmValue) {
         state.bpmValue[0] = primaryResult.bpm
       }
@@ -300,6 +335,8 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const analyserRefs = primaryResult.analyserRefs
       const arrayLiterals = primaryResult.arrayLiterals
       const numberParams = primaryResult.numberParams
+      const numberLiterals = primaryResult.numberLiterals
+      const sampleDefs: SampleDef[] = primaryResult.sampleDefs ?? []
 
       if (!primaryResult.diff.significantChange) {
         if (primaryResult.bpm !== undefined && state.bpmValue) {
@@ -319,6 +356,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           analyserRefs,
           arrayLiterals,
           numberParams,
+          numberLiterals,
           lastSuccessfulProgramData: primaryResult.data,
           uiDspSource: source,
           uiSequences: sequences,
@@ -330,6 +368,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           uiAnalyserRefs: analyserRefs,
           uiArrayLiterals: arrayLiterals,
           uiNumberParams: numberParams,
+          uiNumberLiterals: numberLiterals,
           isProgramSwapPending: false,
         })
         syncBarsHardLoop(bars)
@@ -366,6 +405,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiNumberParams: stagingResult.numberParams,
+        uiNumberLiterals: stagingResult.numberLiterals,
         isProgramSwapPending: true,
       })
 
@@ -410,6 +450,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           uiAnalyserRefs: current.analyserRefs,
           uiArrayLiterals: current.arrayLiterals,
           uiNumberParams: current.numberParams,
+          uiNumberLiterals: current.numberLiterals,
           isProgramSwapPending: false,
         })
         return undefined
@@ -428,6 +469,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         analyserRefs: stagingResult.analyserRefs,
         arrayLiterals: stagingResult.arrayLiterals,
         numberParams: stagingResult.numberParams,
+        numberLiterals: stagingResult.numberLiterals,
         uiDspSource: source,
         uiSequences: sequences,
         uiMiniRefs: stagingResult.miniRefs,
@@ -438,6 +480,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiNumberParams: stagingResult.numberParams,
+        uiNumberLiterals: stagingResult.numberLiterals,
         isProgramSwapPending: false,
         ...swappedPrograms,
         lastSuccessfulProgramData: stagingProgram.program.data,
@@ -515,6 +558,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     analyserRefs: [],
     arrayLiterals: [],
     numberParams: [],
+    numberLiterals: [],
     dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     uiSequences: [...DEFAULT_SEQUENCES],
     uiMiniRefs: [],
@@ -524,6 +568,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     uiAnalyserRefs: [],
     uiArrayLiterals: [],
     uiNumberParams: [],
+    uiNumberLiterals: [],
     uiDspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     isProgramSwapPending: false,
     isUpdatingDsp: false,
@@ -564,28 +609,41 @@ export const useEngineStore = create<EngineState>((set, get) => {
         return
       }
 
-      set({ playingLoopId: loopId })
+      const wasRunning = state.playbackState === 'running'
+      if (wasRunning) {
+        // Ensure we don't briefly run the old program while swapping to the new loop.
+        state.pause()
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      }
+
       await state.updateDspSource(source)
 
-      // Starting a different loop should begin from the editor's current view position.
-      if (state.playbackState === 'running') {
-        const control = state.control
-        const seekSampleCount = state.seekSampleCount
+      // Seek while paused/stopped so the new loop doesn't inherit the previous playhead.
+      {
+        const control = get().control
+        const seekSampleCount = get().seekSampleCount
         if (control && seekSampleCount) {
           Atomics.store(seekSampleCount, 0, startSample)
           Atomics.store(control, 0, ControlOp.Seek)
         }
-        return
       }
 
+      // Wait for the worklet to publish the new playhead before "claiming" the loop as playing.
+      // This avoids a brief UI smooth from the previous loop's playhead under the new loop id.
       {
-        const control = state.control
-        const seekSampleCount = state.seekSampleCount
-        if (control && seekSampleCount) {
-          Atomics.store(seekSampleCount, 0, startSample)
-          Atomics.store(control, 0, ControlOp.Seek)
+        const globalSampleCount = get().globalSampleCount
+        if (globalSampleCount) {
+          for (let i = 0; i < 10; i++) {
+            const curr = Atomics.load(globalSampleCount, 0)
+            if (curr === startSample) break
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+          }
         }
       }
+
+      set({ playingLoopId: loopId })
+
+      // Start after the seek has had a chance to apply in the worklet.
       requestAnimationFrame(() => {
         get().start()
       })
@@ -644,6 +702,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         analyserRefs: [],
         arrayLiterals: [],
         numberParams: [],
+        numberLiterals: [],
         uiMiniRefs: [],
         uiTimelineRefs: [],
         uiTimelineLabels: [],
@@ -651,6 +710,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiAnalyserRefs: [],
         uiArrayLiterals: [],
         uiNumberParams: [],
+        uiNumberLiterals: [],
         uiSequences: [],
         uiDspSource: '',
         isProgramSwapPending: false,
@@ -673,13 +733,14 @@ export const useEngineStore = create<EngineState>((set, get) => {
       if (!state.worklet) throw new Error('Worklet not initialized')
 
       const binary = await fetchWasmBinary()
+      const visualBinary = binary.slice(0)
       const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
       const { memory, dsp$ } = await state.worklet.setWasmBinary(binary)
       const wasmMemory = memory
       const wasmDsp = DspStruct(wasmMemory.buffer, dsp$)
       const wasmDspPtr = dsp$
 
-      const visualWasm = await createVisualWasm(binary, sourcemapUrl)
+      const visualWasm = await createVisualWasm(visualBinary, sourcemapUrl)
 
       state.program1?.cleanup()
       state.program2?.cleanup()

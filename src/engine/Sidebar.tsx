@@ -272,6 +272,14 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   }
 
   useEffect(() => {
+    if (sessionData) {
+      for (const data of sessionData.loops) {
+        const base = data.code
+        if (base != null) {
+          setLoopBase(data.id, base, data.timestamp)
+        }
+      }
+    }
     setLoops(prev => {
       const prevById = new Map(prev.map(loop => [loop.data.id, loop]))
       const next: Loop[] = []
@@ -288,8 +296,6 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
         for (const data of sessionData.loops) {
           const prevLoop = prevById.get(data.id)
           const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, data.code ?? '')
-          const base = data.code ?? prevLoop?.data.code
-          if (base != null) setLoopBase(data.id, base, data.timestamp)
           if (!seen.has(data.id)) {
             next.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
             seen.add(data.id)
@@ -349,22 +355,20 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   useEffect(() => {
     if (loopData) {
       if (currentLoop?.data === loopData) return
+      const serverCode = loopData.code ?? ''
+      if (loopData.code != null) setLoopBase(loopData.id, serverCode, loopData.timestamp)
+      const codeFile = currentLoop?.codeFile
+      if (codeFile) {
+        const hasUserEdits = codeFile.value.length > 0
+        if (!hasUserEdits && serverCode.length > 0) {
+          codeFile.value = serverCode
+        }
+      }
+
       setLoops(prev =>
-        prev.map(loop => {
-          if (loop.data.id !== loopData.id) return loop
-
-          const next = new Loop({ ...loop.data, ...loopData }, loop.codeFile)
-
-          const serverCode = loopData.code ?? ''
-          if (loopData.code != null) setLoopBase(loopData.id, serverCode, loopData.timestamp)
-          const hasUserEdits = loop.codeFile.value.length > 0
-
-          if (!hasUserEdits && serverCode.length > 0) {
-            loop.codeFile.value = serverCode
-          }
-
-          return next
-        })
+        prev.map(loop =>
+          loop.data.id !== loopData.id ? loop : new Loop({ ...loop.data, ...loopData }, loop.codeFile)
+        )
       )
     }
   }, [loopData])

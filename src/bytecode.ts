@@ -74,6 +74,8 @@ const builtinSyms: Record<string, number> = {
   t: 7,
   play: 8,
   timeline: 9,
+  sampler: 10,
+  slicer: 11,
   // Named args for adsr()
   attack: 100,
   decay: 101,
@@ -177,6 +179,22 @@ export type NumberWithParamsInfo = {
   precision: number
 }
 
+export type NumberLiteralInfo = {
+  line: number
+  column: number
+  length: number
+  value: number
+  literalIndex?: number
+}
+
+export type SampleDef = {
+  sampleIndex: number
+  url: string
+  provider: 'freesound'
+  id: number
+  loc: Loc
+}
+
 function buildLineStarts(src: string): number[] {
   const starts = [0]
   for (let i = 0; i < src.length; i++) {
@@ -213,6 +231,180 @@ function tryEvalConstNumber(expr: any): number | null {
     return null
   }
   return null
+}
+
+function extractSamplesFromProgramWithRefs(
+  src: string,
+  program: Program,
+  errors: LangError[],
+): { samples: SampleDef[] } {
+  const samples: SampleDef[] = []
+  const keyToIndex = new Map<string, number>()
+
+  function getPosArg(call: any, posIndex: number): any | null {
+    let pos = 0
+    for (const arg of call.args ?? []) {
+      if (arg?.kind !== 'pos') continue
+      if (pos === posIndex) return arg.value ?? null
+      pos++
+    }
+    return null
+  }
+
+  function getNamedArg(call: any, name: string): any | null {
+    for (const arg of call.args ?? []) {
+      if (arg?.kind !== 'named') continue
+      if (arg.name === name) return arg.value ?? null
+    }
+    return null
+  }
+
+  function getArg(call: any, posIndex: number, name: string): any | null {
+    return getNamedArg(call, name) ?? getPosArg(call, posIndex)
+  }
+
+  function ensureSample(id: number, loc: Loc): number {
+    const key = `freesound:${id}`
+    const prev = keyToIndex.get(key)
+    if (prev !== undefined) return prev
+    const sampleIndex = samples.length
+    samples.push({
+      sampleIndex,
+      provider: 'freesound',
+      id,
+      url: `https://freesound.cowbell.workers.dev/get?id=${id}`,
+      loc,
+    })
+    keyToIndex.set(key, sampleIndex)
+    return sampleIndex
+  }
+
+  function visitExpr(expr: any): void {
+    if (!expr) return
+    if (expr.kind === 'call') {
+      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'freesound') {
+        const idExpr = getArg(expr, 0, 'id')
+        const id = tryEvalConstNumber(idExpr)
+        if (id == null || !Number.isFinite(id) || !Number.isInteger(id) || id < 0) {
+          errors.push(locError(src, idExpr?.loc ?? expr.loc, '`freesound(id:...)` requires an integer id literal'))
+        }
+        else {
+          ensureSample(id, expr.loc)
+        }
+      }
+
+      visitExpr(expr.callee)
+      for (const arg of expr.args ?? []) {
+        if (arg.kind === 'pos' || arg.kind === 'named') visitExpr(arg.value)
+      }
+      return
+    }
+
+    if (expr.kind === 'binary') {
+      visitExpr(expr.left)
+      visitExpr(expr.right)
+      return
+    }
+    if (expr.kind === 'assign') {
+      visitExpr(expr.target)
+      visitExpr(expr.value)
+      return
+    }
+    if (expr.kind === 'unary' || expr.kind === 'postfix') {
+      visitExpr(expr.expr)
+      return
+    }
+    if (expr.kind === 'member') {
+      visitExpr(expr.object)
+      if (expr.computed) visitExpr(expr.index)
+      return
+    }
+    if (expr.kind === 'array') {
+      for (const item of expr.items ?? []) visitExpr(item)
+      return
+    }
+    if (expr.kind === 'object') {
+      for (const prop of expr.props ?? []) visitExpr(prop.value)
+      return
+    }
+    if (expr.kind === 'if') {
+      visitExpr(expr.test)
+      if (expr.then?.kind === 'block') visitStmt(expr.then)
+      else visitExpr(expr.then)
+      if (expr.else) {
+        if (expr.else.kind === 'block') visitStmt(expr.else)
+        else visitExpr(expr.else)
+      }
+      return
+    }
+    if (expr.kind === 'func') {
+      if (expr.body?.kind === 'block') visitStmt(expr.body)
+      else visitExpr(expr.body)
+      return
+    }
+  }
+
+  function visitStmt(stmt: any): void {
+    if (!stmt) return
+    if (stmt.kind === 'expr_stmt') {
+      visitExpr(stmt.expr)
+      return
+    }
+    if (stmt.kind === 'block') {
+      for (const s of stmt.body ?? []) visitStmt(s)
+      return
+    }
+    if (stmt.kind === 'for') {
+      if (stmt.head?.kind === 'c_style') {
+        if (stmt.head.init) visitExpr(stmt.head.init)
+        if (stmt.head.test) visitExpr(stmt.head.test)
+        if (stmt.head.update) visitExpr(stmt.head.update)
+      }
+      else {
+        visitExpr(stmt.head?.iterable)
+      }
+      visitStmt(stmt.body)
+      return
+    }
+    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+      visitExpr(stmt.test)
+      visitStmt(stmt.body)
+      return
+    }
+    if (stmt.kind === 'switch') {
+      visitExpr(stmt.test)
+      for (const c of stmt.cases ?? []) {
+        if (c.test) visitExpr(c.test)
+        for (const s of c.body ?? []) visitStmt(s)
+      }
+      return
+    }
+    if (stmt.kind === 'try') {
+      visitStmt(stmt.body)
+      if (stmt.catchBody) visitStmt(stmt.catchBody)
+      if (stmt.finallyBody) visitStmt(stmt.finallyBody)
+      return
+    }
+    if (stmt.kind === 'throw') {
+      visitExpr(stmt.value)
+      return
+    }
+    if (stmt.kind === 'return') {
+      if (stmt.value) visitExpr(stmt.value)
+      return
+    }
+    if (stmt.kind === 'label') {
+      visitStmt(stmt.stmt)
+      return
+    }
+    if (stmt.kind === 'destructure') {
+      visitExpr(stmt.value)
+      return
+    }
+  }
+
+  for (const stmt of program.body) visitStmt(stmt)
+  return { samples }
 }
 
 function extractMiniSequencesFromProgramWithRefs(
@@ -1231,6 +1423,154 @@ function extractNumberParamsFromProgram(program: Program): NumberWithParamsInfo[
   return out
 }
 
+function extractNumberLiteralsFromProgram(program: Program): NumberLiteralInfo[] {
+  const out: NumberLiteralInfo[] = []
+
+  function visitExpr(expr: any): void {
+    if (!expr) return
+
+    if (expr.kind === 'number') {
+      out.push({
+        line: expr.loc.line,
+        column: expr.loc.column,
+        length: expr.loc.length,
+        value: Number(expr.value ?? 0),
+      })
+      return
+    }
+
+    if (expr.kind === 'call') {
+      visitExpr(expr.callee)
+      for (const arg of expr.args ?? []) {
+        if (arg.kind === 'pos' || arg.kind === 'named') visitExpr(arg.value)
+      }
+      return
+    }
+
+    if (expr.kind === 'binary') {
+      visitExpr(expr.left)
+      visitExpr(expr.right)
+      return
+    }
+
+    if (expr.kind === 'assign') {
+      visitExpr(expr.target)
+      visitExpr(expr.value)
+      return
+    }
+
+    if (expr.kind === 'unary' || expr.kind === 'postfix') {
+      visitExpr(expr.expr)
+      return
+    }
+
+    if (expr.kind === 'member') {
+      visitExpr(expr.object)
+      if (expr.computed) visitExpr(expr.index)
+      return
+    }
+
+    if (expr.kind === 'array') {
+      for (const item of expr.items ?? []) visitExpr(item)
+      return
+    }
+
+    if (expr.kind === 'object') {
+      for (const prop of expr.props ?? []) visitExpr(prop.value)
+      return
+    }
+
+    if (expr.kind === 'if') {
+      visitExpr(expr.test)
+      if (expr.then?.kind === 'block') visitStmt(expr.then)
+      else visitExpr(expr.then)
+      if (expr.else) {
+        if (expr.else.kind === 'block') visitStmt(expr.else)
+        else visitExpr(expr.else)
+      }
+      return
+    }
+
+    if (expr.kind === 'func') {
+      if (expr.body?.kind === 'block') visitStmt(expr.body)
+      else visitExpr(expr.body)
+      return
+    }
+  }
+
+  function visitStmt(stmt: any): void {
+    if (!stmt) return
+
+    if (stmt.kind === 'expr_stmt') {
+      visitExpr(stmt.expr)
+      return
+    }
+
+    if (stmt.kind === 'block') {
+      for (const s of stmt.body ?? []) visitStmt(s)
+      return
+    }
+
+    if (stmt.kind === 'for') {
+      if (stmt.head?.kind === 'c_style') {
+        if (stmt.head.init) visitExpr(stmt.head.init)
+        if (stmt.head.test) visitExpr(stmt.head.test)
+        if (stmt.head.update) visitExpr(stmt.head.update)
+      }
+      else {
+        visitExpr(stmt.head?.iterable)
+      }
+      visitStmt(stmt.body)
+      return
+    }
+
+    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+      visitExpr(stmt.test)
+      visitStmt(stmt.body)
+      return
+    }
+
+    if (stmt.kind === 'switch') {
+      visitExpr(stmt.test)
+      for (const c of stmt.cases ?? []) {
+        if (c.test) visitExpr(c.test)
+        for (const s of c.body ?? []) visitStmt(s)
+      }
+      return
+    }
+
+    if (stmt.kind === 'try') {
+      visitStmt(stmt.body)
+      if (stmt.catchBody) visitStmt(stmt.catchBody)
+      if (stmt.finallyBody) visitStmt(stmt.finallyBody)
+      return
+    }
+
+    if (stmt.kind === 'throw') {
+      visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'return') {
+      if (stmt.value) visitExpr(stmt.value)
+      return
+    }
+
+    if (stmt.kind === 'label') {
+      visitStmt(stmt.stmt)
+      return
+    }
+
+    if (stmt.kind === 'destructure') {
+      visitExpr(stmt.value)
+      return
+    }
+  }
+
+  for (const stmt of program.body) visitStmt(stmt)
+  return out
+}
+
 export function encodeLangToVmOps(
   src: string,
   target: VmTarget,
@@ -1246,6 +1586,8 @@ export function encodeLangToVmOps(
   analyserRefs?: AnalyserRef[]
   arrayLiterals?: ArrayLiteralRef[]
   numberParams?: NumberWithParamsInfo[]
+  numberLiterals?: NumberLiteralInfo[]
+  sampleDefs?: SampleDef[]
 } {
   const lexed = lex(src)
   const parsed = parse(src, lexed.tokens)
@@ -1259,8 +1601,11 @@ export function encodeLangToVmOps(
   const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, parsed.program)
   const timelineExtracted = extractTimelineSequencesFromProgramWithRefs(src, parsed.program)
   const timelineLabels = extractTimelineLabelsFromProgram(parsed.program)
+  const samplesExtracted = extractSamplesFromProgramWithRefs(src, parsed.program, errors)
+  if (errors.length) return { errors }
   let analyserRefs: AnalyserRef[] = []
   const numberParams = extractNumberParamsFromProgram(parsed.program)
+  const numberLiterals = extractNumberLiteralsFromProgram(parsed.program)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
   const sliderKeys = new Set(numberParams.map(p => sliderKeyOf(p)))
   const sequenceToIndex = new Map<string, number>()
@@ -1268,6 +1613,10 @@ export function encodeLangToVmOps(
   const timelineKeyToIndex = new Map<string, number>()
   timelineExtracted.sequences.forEach((s, idx) => timelineKeyToIndex.set(s.sequence, idx))
   const miniCount = sequences.length
+  const sampleKeyToIndex = new Map<string, number>()
+  for (const s of samplesExtracted.samples) {
+    sampleKeyToIndex.set(`freesound:${s.id}`, s.sampleIndex)
+  }
 
   const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
 
@@ -1298,8 +1647,21 @@ export function encodeLangToVmOps(
       const isTimeline = calleeName === 'timeline'
       const isAnalyser = calleeName === 'analyser'
       const isLabel = calleeName === 'label'
+      const isFreesound = calleeName === 'freesound'
 
       if (isLabel) {
+        return { kind: 'undefined', loc: expr.loc }
+      }
+
+      if (isFreesound) {
+        const idArg = args.find((a: any) => a.kind === 'named' && a.name === 'id')
+          ?? args.find((a: any) => a.kind === 'pos')
+        const idExpr = idArg?.kind === 'pos' || idArg?.kind === 'named' ? idArg.value : null
+        const id = tryEvalConstNumber(idExpr)
+        if (id != null && Number.isFinite(id) && Number.isInteger(id) && id >= 0) {
+          const idx = sampleKeyToIndex.get(`freesound:${id}`)
+          if (idx !== undefined) return toSeqIndexExpr(expr.loc, idx)
+        }
         return { kind: 'undefined', loc: expr.loc }
       }
 
@@ -1533,24 +1895,32 @@ export function encodeLangToVmOps(
 
   let litCount = 0
   const litIndexByValue = new Map<number, number>()
-  const litIndexBySliderKey = new Map<string, number>()
-  const sliderKeyToLiteralIndex = new Map<string, number>()
+  const litIndexByLocKey = new Map<string, number>()
+  const locKeyToLiteralIndex = new Map<string, number>()
 
   const allocLit = () => litCount++
 
   const litOfValue = (v: number) => {
     const prev = litIndexByValue.get(v)
     if (prev !== undefined) return prev
+    if (litCount >= target.literals.length) {
+      errors.push(encoderError(src, `Too many number literals (max ${target.literals.length})`))
+      return 0
+    }
     const idx = allocLit()
     litIndexByValue.set(v, idx)
     return idx
   }
 
-  const litOfSliderKey = (key: string) => {
-    const prev = litIndexBySliderKey.get(key)
+  const litOfLocKey = (key: string) => {
+    const prev = litIndexByLocKey.get(key)
     if (prev !== undefined) return prev
+    if (litCount >= target.literals.length) {
+      errors.push(encoderError(src, `Too many number literals (max ${target.literals.length})`))
+      return 0
+    }
     const idx = allocLit()
-    litIndexBySliderKey.set(key, idx)
+    litIndexByLocKey.set(key, idx)
     return idx
   }
 
@@ -1663,11 +2033,11 @@ export function encodeLangToVmOps(
           if (typeof v === 'number') {
             const key = ins.loc ? sliderKeyOf(ins.loc) : undefined
             const isSlider = key !== undefined && sliderKeys.has(key)
-            const k = isSlider ? litOfSliderKey(key!) : litOfValue(v)
+            const k = key !== undefined ? litOfLocKey(key) : litOfValue(v)
             target.literals[k] = v
             target.ops[w++] = isSlider ? VmOp.PushNumSmoothed : VmOp.PushNum
             target.ops[w++] = k
-            if (isSlider) sliderKeyToLiteralIndex.set(key!, k)
+            if (key !== undefined) locKeyToLiteralIndex.set(key, k)
           }
           else if (typeof v === 'string') {
             target.ops[w++] = VmOp.PushSym
@@ -1839,7 +2209,11 @@ export function encodeLangToVmOps(
   const timelineRefs = timelineExtracted.refs.map(r => ({ ...r, seqIndex: miniCount + r.seqIndex }))
   const numberParamsWithLiteralIndex = numberParams.map(p => ({
     ...p,
-    literalIndex: sliderKeyToLiteralIndex.get(sliderKeyOf(p)),
+    literalIndex: locKeyToLiteralIndex.get(sliderKeyOf(p)),
+  }))
+  const numberLiteralsWithLiteralIndex = numberLiterals.map(p => ({
+    ...p,
+    literalIndex: locKeyToLiteralIndex.get(sliderKeyOf(p)),
   }))
 
   return errors.length
@@ -1855,6 +2229,8 @@ export function encodeLangToVmOps(
       analyserRefs,
       arrayLiterals,
       numberParams: numberParamsWithLiteralIndex,
+      numberLiterals: numberLiteralsWithLiteralIndex,
+      sampleDefs: samplesExtracted.samples,
     }
     : {
       errors: [],
@@ -1868,5 +2244,7 @@ export function encodeLangToVmOps(
       analyserRefs,
       arrayLiterals,
       numberParams: numberParamsWithLiteralIndex,
+      numberLiterals: numberLiteralsWithLiteralIndex,
+      sampleDefs: samplesExtracted.samples,
     }
 }

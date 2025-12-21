@@ -540,6 +540,8 @@ class Compiler {
       adsr: ['attack', 'decay', 'sustain', 'release', 'trig'],
       mini: ['seq', 'cb'],
       play: ['seq', 'cb'],
+      sampler: ['sample', 'speed', 'offset', 'trig'],
+      slicer: ['sample', 'speed', 'offset', 'slice', 'threshold', 'trig'],
     }
 
     const calleeName = expr.callee.kind === 'ident' ? expr.callee.name : null

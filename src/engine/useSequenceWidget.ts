@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   FUTURE_BARS,
   HISTORY_DATA_OFFSET,
@@ -48,6 +48,7 @@ type UseSequenceParams = {
   audioContext: AudioContext | undefined
   bpmValue: Float32Array<SharedArrayBuffer> | undefined
   globalSampleCount: Int32Array<SharedArrayBuffer> | undefined
+  sequences: string[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   miniRefs: Array<{ seqIndex: number; loc: { line: number }; start: number }>
   dspSource: string
@@ -55,6 +56,7 @@ type UseSequenceParams = {
   isPlaying: boolean
   frameRef: React.RefObject<Array<SeqFrame | undefined>>
   controlStateRef: React.RefObject<Map<number, SeqControlState>>
+  resetKey?: string | number | null
 }
 
 const CONTROL_REGEX = /\b(octave|transpose|scale)\b/
@@ -169,6 +171,7 @@ export function useSequenceWidget({
   audioContext,
   bpmValue,
   globalSampleCount,
+  sequences,
   miniSourceMaps,
   miniRefs,
   dspSource,
@@ -176,6 +179,7 @@ export function useSequenceWidget({
   isPlaying,
   frameRef,
   controlStateRef,
+  resetKey,
 }: UseSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
@@ -183,11 +187,18 @@ export function useSequenceWidget({
 
   const controls = new Map<number, number>()
 
+  useEffect(() => {
+    predictedSampleCountRef.current = null
+    lastWallTimeRef.current = null
+    isFirstFrameRef.current = true
+    frameRef.current = []
+    controlStateRef.current.clear()
+  }, [resetKey])
+
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     const engineState = useEngineStore.getState()
     const visualWasm = engineState.visualWasm
-    const sequences = engineState.uiSequences
     if (!visualWasm) return
     const FADEOUT_SECONDS = 0.3
     const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
@@ -348,6 +359,7 @@ export function useSequenceWidget({
     bpmValue,
     globalSampleCount,
     isPlaying,
+    sequences,
     miniSourceMaps,
     miniRefs,
     controlStateRef,

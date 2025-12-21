@@ -15,6 +15,12 @@ export class Ad extends Gen {
   private position: f32 = 0
   private lastTrig: f32 = 0
 
+  reset(): void {
+    this.phase = Phase.Idle
+    this.position = 0
+    this.lastTrig = 0
+  }
+
   copyFrom(other: Gen): void {
     const src = other as Ad
     this.phase = src.phase

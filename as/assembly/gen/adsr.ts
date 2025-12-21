@@ -20,6 +20,13 @@ export class Adsr extends Gen {
   private lastTrig: f32 = 0
   private sustainLevel: f32 = 0
 
+  reset(): void {
+    this.phase = Phase.Idle
+    this.position = 0
+    this.lastTrig = 0
+    this.sustainLevel = 0
+  }
+
   copyFrom(other: Gen): void {
     const src = other as Adsr
     this.phase = src.phase

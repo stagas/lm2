@@ -69,6 +69,15 @@ export class DspProcessor extends AudioWorkletProcessor {
   private state: 'stopped' | 'fade-in' | 'running' | 'fade-out' = 'stopped'
   private core: WasmSetup<typeof WasmExports> | undefined
   private dsps: DspInstance[] = []
+  private samples: Map<number,
+    {
+      ver: number
+      sampleRate: number
+      len: number
+      ch0: Float32Array
+      slices?: { k: number; count: number; points: Int32Array }
+    }> =
+      new Map()
   private outLeft = new Float32Array(CHUNK_SIZE)
   private outRight = new Float32Array(CHUNK_SIZE)
   private scratchLeft$ = 0
@@ -110,6 +119,108 @@ export class DspProcessor extends AudioWorkletProcessor {
       binary,
       config,
       sourcemapUrl: this.options.processorOptions.sourcemapUrl,
+      imports: ({ memory }) => {
+        const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+        const detectSlices = (samples: Float32Array, threshold: number, max: number) => {
+          const points = new Int32Array(Math.max(1, max))
+          let count = 0
+          points[count++] = 0
+
+          const hop = 512
+          const minDistance = 1024
+          const len = samples.length | 0
+          if (len <= 0) return { points, count: 0 }
+
+          const mult = 0.5 + clamp(threshold, 0, 1) * 1.5
+          let prevEnergy = 0
+          let lastPeak = 0
+
+          for (let i = hop; i + hop < len && count < max; i += hop) {
+            let energy = 0
+            const end = Math.min(len, i + hop)
+            for (let j = i; j < end; j++) {
+              const v = samples[j] || 0
+              energy += v * v
+            }
+            energy = Math.sqrt(energy / Math.max(1, end - i))
+
+            const diff = energy - prevEnergy
+            const onsetThreshold = prevEnergy * mult * 0.3
+            if (diff > onsetThreshold && diff > 0.01 && i - lastPeak >= minDistance) {
+              points[count++] = i
+              lastPeak = i
+            }
+            prevEnergy = energy
+          }
+
+          if (count <= 0) {
+            points[0] = 0
+            count = 1
+          }
+          return { points, count }
+        }
+
+        return {
+          host: {
+            sampleVersion: (sampleIndex: number) => {
+              const s = this.samples.get(sampleIndex | 0)
+              return s ? (s.ver | 0) : 0
+            },
+            sampleLen: (sampleIndex: number) => {
+              const s = this.samples.get(sampleIndex | 0)
+              return s ? (s.len | 0) : 0
+            },
+            sampleRead: (sampleIndex: number, start: number, length: number, outPtr: number) => {
+              const s = this.samples.get(sampleIndex | 0)
+              const n = length | 0
+              if (!memory?.buffer || outPtr === 0 || n <= 0) return 0
+
+              const out = new Float32Array(memory.buffer, outPtr >>> 0, n)
+              if (!s || !s.ch0 || s.len <= 0) {
+                out.fill(0)
+                return 0
+              }
+
+              const src = s.ch0
+              const len = s.len | 0
+              const a = start | 0
+
+              const from = clamp(a, 0, len)
+              const to = clamp(a + n, 0, len)
+              const take = Math.max(0, to - from)
+
+              if (take > 0) out.set(src.subarray(from, from + take), 0)
+              if (take < n) out.fill(0, take)
+              return take | 0
+            },
+            sampleSlices: (sampleIndex: number, threshold: number, outPtr: number, max: number) => {
+              const s = this.samples.get(sampleIndex | 0)
+              const m = max | 0
+              if (!memory?.buffer || outPtr === 0 || m <= 0) return 0
+              const out = new Int32Array(memory.buffer, outPtr >>> 0, m)
+              if (!s || !s.ch0 || s.len <= 0) {
+                out.fill(0)
+                return 0
+              }
+
+              const key = ((threshold || 0) * 1000) | 0
+              if (!s.slices || s.slices.k !== key) {
+                const res = detectSlices(s.ch0, threshold || 0, m)
+                s.slices = { k: key, count: res.count | 0, points: res.points }
+                out.set(res.points.subarray(0, Math.min(m, res.count)))
+                if (res.count < m) out.fill(0, res.count)
+                return res.count | 0
+              }
+
+              const points = s.slices.points
+              const n = Math.min(m, s.slices.count | 0)
+              out.set(points.subarray(0, n))
+              if (n < m) out.fill(0, n)
+              return n | 0
+            },
+          },
+        }
+      },
     })
     this.dsps = []
     this.addDsp()
@@ -133,6 +244,20 @@ export class DspProcessor extends AudioWorkletProcessor {
       memory: this.core.memory,
       dsp$: this.dsps[0]?.dsp$ ?? 0,
     }
+  }
+
+  async setSample(sampleIndex: number, sampleRate: number, length: number, ch0Buffer: ArrayBuffer) {
+    const index = sampleIndex | 0
+    const len = length | 0
+    const sr = Number(sampleRate) || 0
+    const ch0 = new Float32Array(ch0Buffer)
+    const prev = this.samples.get(index)
+    const ver = ((prev?.ver ?? 0) + 1) | 0
+    this.samples.set(index, { ver, sampleRate: sr, len: Math.min(len, ch0.length | 0), ch0 })
+  }
+
+  async clearSamples() {
+    this.samples.clear()
   }
 
   async createProgram() {
@@ -292,7 +417,7 @@ export class DspProcessor extends AudioWorkletProcessor {
     this.core.wasm.globalSampleCount.value = clamped
     Atomics.store(this.options.processorOptions.globalSampleCount, 0, clamped)
     for (const dsp of this.dsps) {
-      this.core.wasm.resetDsp(dsp.dsp$, true)
+      this.core.wasm.resetDsp(dsp.dsp$)
     }
   }
 
@@ -302,7 +427,7 @@ export class DspProcessor extends AudioWorkletProcessor {
     this.core.wasm.resetGlobalSampleCount()
     Atomics.store(this.options.processorOptions.globalSampleCount, 0, 0)
     for (const dsp of this.dsps) {
-      this.core.wasm.resetDsp(dsp.dsp$, true)
+      this.core.wasm.resetDsp(dsp.dsp$)
     }
     this.state = 'stopped'
   }

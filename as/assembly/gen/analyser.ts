@@ -3,6 +3,10 @@ import { Gen } from './gen'
 export class Analyser extends Gen {
   in$: usize = 0
 
+  reset(): void {
+    // nothing to do
+  }
+
   copyFrom(other: Gen): void {
     const src = other as Analyser
   }

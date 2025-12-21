@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   ARRAY_HEADER_SIZE,
   TIMELINE_HEADER_SIZE,
@@ -21,6 +21,8 @@ type UseTimelineSequenceParams = {
   dspSource: string
   showWidgets: boolean
   isPlaying: boolean
+  isLive: boolean
+  resetKey?: string | number | null
 }
 
 function getActiveTimelineSegIndex(
@@ -75,15 +77,25 @@ export function useTimelineSequenceWidget({
   dspSource,
   showWidgets,
   isPlaying,
+  isLive,
+  resetKey,
 }: UseTimelineSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const activeSegRef = useRef<Map<number, { si: number; tt: number } | null>>(new Map())
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
+  const compiledCacheRef = useRef<Map<number, { sequence: string; arrayRaw: Float32Array }>>(new Map())
+
+  useEffect(() => {
+    activeSegRef.current.clear()
+    compiledCacheRef.current.clear()
+    predictedSampleCountRef.current = null
+    lastWallTimeRef.current = null
+    isFirstFrameRef.current = true
+  }, [resetKey])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
-    if (!program1?.program?.data) return
     if (!audioContext || !bpmValue) return
 
     const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
@@ -101,12 +113,27 @@ export function useTimelineSequenceWidget({
       if (seenSeqs.has(seqIndex)) continue
       seenSeqs.add(seqIndex)
 
-      const array = program1.program.data.arrays[seqIndex]
-      if (!array) continue
-      const st = getActiveTimelineSegIndex(array.raw, sampleCount, sampleRate, bpm)
+      let st: { si: number; tt: number } | null = null
+      if (isLive && program1?.program?.data) {
+        const array = program1.program.data.arrays[seqIndex]
+        if (!array) continue
+        st = getActiveTimelineSegIndex(array.raw, sampleCount, sampleRate, bpm)
+      }
+      else {
+        const cached = compiledCacheRef.current.get(seqIndex)
+        let arrayRaw = cached?.arrayRaw
+        if (!cached || cached.sequence !== ref.sequence || !arrayRaw) {
+          const compiled = compileTimelineNotation(ref.sequence)
+          const bytecode = compiled.bytecode
+          arrayRaw = new Float32Array(ARRAY_HEADER_SIZE + bytecode.length)
+          arrayRaw.set(bytecode, ARRAY_HEADER_SIZE)
+          compiledCacheRef.current.set(seqIndex, { sequence: ref.sequence, arrayRaw })
+        }
+        st = getActiveTimelineSegIndex(arrayRaw, sampleCount, sampleRate, bpm)
+      }
       activeSegRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, isPlaying, timelineRefs])
+  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, isLive, isPlaying, timelineRefs])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []

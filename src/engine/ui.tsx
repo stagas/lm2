@@ -235,7 +235,7 @@ export function DspSourceEditor(
 
   const runtimeProgram = isProgramSwapPending ? program2 : program1
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!currentLoop) return
     if (isPlayingLoop) return
     if (code === uiDspSource) return
@@ -308,16 +308,20 @@ export function DspSourceEditor(
 
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())
+  const playingLoopId = useEngineStore(state => state.playingLoopId)
+  const resetKey = `${currentLoop?.data.id ?? ''}:${playingLoopId ?? ''}`
 
   const { widgets: sequenceWidgets, onBeforeDraw } = useSequenceWidget({
     program1: runtimeProgram,
     audioContext,
     globalSampleCount,
+    sequences: widgetCompileState.sequences,
     miniSourceMaps: widgetCompileState.miniSourceMaps,
     miniRefs: widgetCompileState.miniRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
+    resetKey,
     frameRef,
     controlStateRef,
     bpmValue,
@@ -328,12 +332,14 @@ export function DspSourceEditor(
     audioContext,
     bpmValue,
     globalSampleCount,
+    sequences: widgetCompileState.sequences,
     miniSourceMaps: widgetCompileState.miniSourceMaps,
     miniRefs: widgetCompileState.miniRefs,
     timelineLabels: uiTimelineLabels,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
+    resetKey,
   })
 
   const { widgets: timelineWidgets, onBeforeDraw: onBeforeDrawTimeline } = useTimelineWidget({
@@ -346,6 +352,8 @@ export function DspSourceEditor(
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
+    isLive: isPlayingLoop,
+    resetKey,
   })
 
   const { widgets: timelineSequenceWidgets, onBeforeDraw: onBeforeDrawTimelineSequence } = useTimelineSequenceWidget({
@@ -357,6 +365,8 @@ export function DspSourceEditor(
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
+    isLive: isPlayingLoop,
+    resetKey,
   })
 
   const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
@@ -372,7 +382,7 @@ export function DspSourceEditor(
   const { widgets: arrayAccessWidgets, onBeforeDraw: onBeforeDrawArrayAccess } = useArrayAccessWidget({
     program1: runtimeProgram,
     dspSource: widgetCompileState.dspSource,
-    showWidgets,
+    showWidgets: showWidgets && isPlayingLoop,
     arrayLiterals: widgetCompileState.arrayLiterals,
   })
 

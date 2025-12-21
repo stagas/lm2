@@ -32,6 +32,8 @@ export enum Op {
   Analyser,
   Mini,
   Timeline,
+  Sampler,
+  Slicer,
 }
 
 export enum SeqOp {
