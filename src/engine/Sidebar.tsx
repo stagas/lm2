@@ -23,6 +23,9 @@ import {
   useState,
 } from 'react'
 import type { LoopData } from '../../deno/types.ts'
+import { useServerData } from '../app/hooks/useServerData.ts'
+import { mockFetch } from '../app/mock-fetch.ts'
+import { Spinner } from '../components/Spinner.tsx'
 
 class Loop {
   codeFile: CodeFile
@@ -33,6 +36,7 @@ class Loop {
     return this.data.timestamp === 0
   }
   get isDirty() {
+    if (this.data.code == null) return false
     return this.codeFile.value !== this.data.code
   }
 }
@@ -46,68 +50,6 @@ const SidebarTabIcon: Record<SidebarTab, React.ReactNode> = {
   compiled: <ArticleIcon weight="regular" size={16} />,
   settings: <GearSixIcon weight="regular" size={16} />,
 }
-
-const titles = [
-  'Ostkreuz',
-  'Acid',
-  'Phosphorus',
-  'More Acid',
-  'LSD',
-  'Voices',
-  'Zeitgeist',
-  'Synesthesia',
-  'Blueprint',
-  'Mirage',
-  'Pulse',
-  'Cosmos',
-  'Nebula',
-  'Galaxy',
-  'Universe',
-  'Infinity',
-  'Eternity',
-  'Paradise',
-  'Eden',
-  'Garden',
-  'Hell',
-  'Darkness',
-  'Light',
-  'Shadow',
-  'Ghost',
-  'Specter',
-  'Phantom',
-  'Chaos',
-  'Order',
-  'Balance',
-  'Harmony',
-  'Symmetry',
-  'Asymmetry',
-  'Random',
-  'Pattern',
-  'Noise',
-]
-
-function createDemoLoop(title: string, isNew: boolean = Math.random() < 0.2,
-  isDirty: boolean | null = Math.random() < 0.5)
-{
-  const loop = new Loop({
-    id: title,
-    title,
-    artist: 'stagas',
-    artistId: 'stagas',
-    code: '',
-    likesCount: 0,
-    commentsCount: 0,
-    remixOf: null,
-    isPublic: isNew ? false : Math.random() < 0.8,
-    timestamp: isNew ? 0 : Math.random() * 1000000 | 0,
-  })
-  if ((isNew && isDirty !== null) || isDirty) {
-    loop.codeFile.value = '// make dirty'
-  }
-  return loop
-}
-
-const demoLoops: Loop[] = titles.map(title => createDemoLoop(title))
 
 const LoopItemButton = (
   { icon, title, onClick }: { icon: React.ReactNode; title: string; onClick: (() => void) | undefined },
@@ -299,12 +241,18 @@ const LoopItem = ({
 export function Sidebar() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('loops')
-  const [currentLoopId, setCurrentLoopId] = useState<string>(
-    demoLoops[Math.random() * demoLoops.length | 0]?.data.id ?? demoLoops[0]!.data.id,
-  )
-  const [loops, setLoops] = useState<Loop[]>(demoLoops)
+  const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
+  const [loops, setLoops] = useState<Loop[]>([])
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollPosRef = useRef(0)
+
+  const { isLoading, sessionData } = useServerData(mockFetch)
+
+  useEffect(() => {
+    if (sessionData) {
+      setLoops(sessionData.loops.map(loop => new Loop(loop)))
+    }
+  }, [sessionData])
 
   const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
 
@@ -328,7 +276,7 @@ export function Sidebar() {
   }
 
   const handleNewLoop = () => {
-    let newLoop = 'Untitled'
+    let newLoopTitle = 'Untitled'
     let untitledCount = 0
     for (const loop of loops) {
       if (loop.data.title.startsWith('Untitled')) {
@@ -336,9 +284,19 @@ export function Sidebar() {
       }
     }
     if (untitledCount > 0) {
-      newLoop = `Untitled ${untitledCount + 1}`
+      newLoopTitle = `Untitled ${untitledCount + 1}`
     }
-    setLoops([createDemoLoop(newLoop, true, null), ...loops])
+    setLoops([new Loop({
+      id: newLoopTitle,
+      title: newLoopTitle,
+      artist: 'stagas',
+      artistId: 'stagas',
+      code: '',
+      likesCount: 0,
+      commentsCount: 0,
+      isPublic: false,
+      timestamp: 0,
+    }), ...loops])
   }
 
   const handleSave = (loop: Loop, details: Partial<LoopData>) => {
@@ -352,7 +310,7 @@ export function Sidebar() {
     details.timestamp = Date.now()
 
     // restore the original code on the previous loop
-    loop.codeFile.value = loop.data.code
+    loop.codeFile.value = loop.data.code ?? ''
 
     const newLoop = new Loop({ ...loop.data, ...details })
     newLoop.data.id = `${newLoop.data.title}-${Date.now()}`
@@ -369,7 +327,7 @@ export function Sidebar() {
         setLoops(loops.filter(l => l.data.id !== loop.data.id))
       }
       else {
-        loop.codeFile.value = loop.data.code
+        loop.codeFile.value = loop.data.code ?? ''
         setLoops([...loops])
       }
     })
@@ -421,7 +379,6 @@ export function Sidebar() {
                     code: '',
                     likesCount: 0,
                     commentsCount: 0,
-                    remixOf: null,
                     isPublic: false,
                     timestamp: 0,
                   })} isCurrent={false} onClick={() => handleNewLoop()} />
@@ -439,19 +396,30 @@ export function Sidebar() {
                   ))}
                 </div>
                 <div className="flex flex-col w-full h-full">
-                  {loops.filter(loop => !loop.isNew).sort((a, b) => b.data.timestamp - a.data.timestamp).map(loop => (
-                    <LoopItem
-                      key={loop.data.id}
-                      loop={loop}
-                      isCurrent={currentLoopId === loop.data.id}
-                      onClick={() => setCurrentLoopId(loop.data.id)}
-                      onClose={() => handleClose(loop)}
-                      onDelete={() => handleDelete(loop)}
-                      onEditDetails={details => handleEditDetails(loop, details)}
-                      onSave={details => handleSave(loop, details)}
-                      onSaveAsNew={details => handleSaveAsNew(loop, details)}
-                    />
-                  ))}
+                  {isLoading
+                    ? (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-4 h-4">
+                          <Spinner />
+                        </div>
+                      </div>
+                    )
+                    : loops.filter(loop => !loop.isNew).sort((a, b) =>
+                      (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0)
+                    )
+                      .map(loop => (
+                        <LoopItem
+                          key={loop.data.id}
+                          loop={loop}
+                          isCurrent={currentLoopId === loop.data.id}
+                          onClick={() => setCurrentLoopId(loop.data.id)}
+                          onClose={() => handleClose(loop)}
+                          onDelete={() => handleDelete(loop)}
+                          onEditDetails={details => handleEditDetails(loop, details)}
+                          onSave={details => handleSave(loop, details)}
+                          onSaveAsNew={details => handleSaveAsNew(loop, details)}
+                        />
+                      ))}
                 </div>
               </>
             )}
