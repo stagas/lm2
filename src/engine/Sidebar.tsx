@@ -15,7 +15,6 @@ import {
   WaveformIcon,
   XIcon,
 } from '@phosphor-icons/react'
-import { CodeFile } from 'mini-code'
 import {
   useEffect,
   useMemo,
@@ -23,23 +22,10 @@ import {
   useState,
 } from 'react'
 import type { LoopData } from '../../deno/types.ts'
-import { useServerData } from '../app/hooks/useServerData.ts'
-import { mockFetch } from '../app/mock-fetch.ts'
+import { useLoopData } from '../app/hooks/useLoopData.ts'
+import { useSessionData } from '../app/hooks/useSessionData.ts'
 import { Spinner } from '../components/Spinner.tsx'
-
-class Loop {
-  codeFile: CodeFile
-  constructor(public data: LoopData) {
-    this.codeFile = new CodeFile(data.code)
-  }
-  get isNew() {
-    return this.data.timestamp === 0
-  }
-  get isDirty() {
-    if (this.data.code == null) return false
-    return this.codeFile.value !== this.data.code
-  }
-}
+import { Loop } from './loop.ts'
 
 type SidebarTab = 'loops' | 'liked' | 'browse' | 'compiled' | 'settings'
 
@@ -238,7 +224,7 @@ const LoopItem = ({
   )
 }
 
-export function Sidebar() {
+export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('loops')
   const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
@@ -246,7 +232,17 @@ export function Sidebar() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollPosRef = useRef(0)
 
-  const { isLoading, sessionData } = useServerData(mockFetch)
+  const { isLoading: isSessionLoading, sessionData } = useSessionData()
+  const { isLoading: isLoopLoading, loopData } = useLoopData(currentLoopId)
+
+  useEffect(() => {
+    if (loopData) {
+      const loop = loops.find(loop => loop.data.id === loopData.id)!
+      loop.codeFile.value = loopData.code!
+      loop.data = loopData
+      setLoops([...loops])
+    }
+  }, [loopData])
 
   useEffect(() => {
     if (sessionData) {
@@ -255,6 +251,12 @@ export function Sidebar() {
   }, [sessionData])
 
   const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
+
+  useEffect(() => {
+    if (currentLoop?.data.code != null) {
+      onLoopChange(currentLoop)
+    }
+  }, [currentLoop, onLoopChange, loops])
 
   const preserveScrollPos = (callback: () => void) => {
     const container = scrollContainerRef.current
@@ -396,7 +398,7 @@ export function Sidebar() {
                   ))}
                 </div>
                 <div className="flex flex-col w-full h-full">
-                  {isLoading
+                  {isSessionLoading
                     ? (
                       <div className="w-full h-full flex items-center justify-center">
                         <div className="w-4 h-4">

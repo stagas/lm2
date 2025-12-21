@@ -12,7 +12,7 @@ export class API {
     return json
   }
 
-  async fetchLoop(id: string): Promise<LoopData> {
+  async fetchLoopData(id: string): Promise<LoopData> {
     const res = await this.fetch(`/api/loop/${encodeURIComponent(id)}`)
     const json = await res.json()
     if (!res.ok) {

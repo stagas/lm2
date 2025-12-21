@@ -21,6 +21,7 @@ import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
+import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { useEngine } from './program.ts'
 import { Sidebar } from './Sidebar.tsx'
@@ -72,7 +73,9 @@ type WidgetCompileState = {
   numberParams: NumberWithParamsInfo[]
 }
 
-export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHeader }) {
+export function DspSourceEditor(
+  { timelineHeader, currentLoop }: { timelineHeader: EditorHeader; currentLoop: Loop | null },
+) {
   const {
     dspSource,
     updateDspSource,
@@ -96,29 +99,28 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
   } = useEngineStore()
 
   const { playbackState } = useEngineStore()
-  const [localSource, setLocalSource] = useState(dspSource)
   const [error, setError] = useState<string>()
   const { isUpdatingDsp } = useEngineStore()
   const theme = useTheme()
 
-  const codeFileRef = useRef<CodeFile>(new CodeFile(dspSource))
-
-  useEffect(() => {
-    const codeFile = codeFileRef.current
-    const unsub = codeFile.subscribe(() => {
-      const v = codeFile.value
-      setLocalSource(prev => (prev === v ? prev : v))
-    })
-    return () => {
-      unsub()
-    }
-  }, [])
+  // useEffect(() => {
+  //   if (currentLoop == null) return
+  //   const codeFile = currentLoop.codeFile
+  //   const unsub = codeFile.subscribe(() => {
+  //     const v = codeFile.value
+  //     setLocalSource(prev => (prev === v ? prev : v))
+  //   })
+  //   return () => {
+  //     unsub()
+  //   }
+  // }, [currentLoop])
 
   // Keep widgets visible while the store is still processing updates or when
   // the editor has compilation errors so the user can see widgets while fixing.
   const localAnalysis = useMemo(() => {
+    const source = currentLoop?.data.code ?? ''
     try {
-      return analyze(localSource)
+      return analyze(source)
     }
     catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -135,11 +137,11 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
         tokenCount: 0,
       } as any
     }
-  }, [localSource])
+  }, [currentLoop])
 
   const hasLocalErrors = (localAnalysis?.errors?.length ?? 0) > 0
 
-  const showWidgets = localSource === dspSource
+  const showWidgets = currentLoop?.codeFile.value === dspSource
     || isUpdatingDsp
     || hasLocalErrors
 
@@ -152,7 +154,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
   }
 
   const widgetCompileState = useMemo((): WidgetCompileState => {
-    if (localSource === uiDspSource) {
+    if (currentLoop?.codeFile.value === uiDspSource) {
       return {
         dspSource: uiDspSource,
         sequences: uiSequences,
@@ -182,7 +184,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     target.ops.fill(0)
     target.literals.fill(0)
 
-    const result = encodeLangToVmOps(localSource, target)
+    const result = encodeLangToVmOps(currentLoop?.codeFile.value ?? '', target)
     if (result.errors.length) {
       return {
         dspSource: uiDspSource,
@@ -203,7 +205,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     })
 
     return {
-      dspSource: localSource,
+      dspSource: currentLoop?.codeFile.value ?? '',
       sequences,
       miniRefs: result.miniRefs ?? [],
       timelineRefs: result.timelineRefs ?? [],
@@ -213,7 +215,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
       numberParams: result.numberParams ?? [],
     }
   }, [
-    localSource,
+    currentLoop,
     uiDspSource,
     uiSequences,
     uiMiniRefs,
@@ -228,7 +230,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
 
   const handleApply = async () => {
     if (!isProgramReady) return
-    const requested = localSource
+    const requested = currentLoop?.codeFile.value ?? ''
     try {
       setError(undefined)
       await updateDspSource(requested)
@@ -240,7 +242,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
 
   useLayoutEffect(() => {
     void handleApply()
-  }, [localSource, isProgramReady])
+  }, [currentLoop, isProgramReady])
 
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())
@@ -312,7 +314,7 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     showWidgets,
     numberParams: widgetCompileState.numberParams,
     theme,
-    codeFileRef,
+    codeFile: currentLoop?.codeFile,
   })
 
   const onBeforeDrawCombined = useCallback(() => {
@@ -344,15 +346,12 @@ export function DspSourceEditor({ timelineHeader }: { timelineHeader: EditorHead
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
     arrayAccessWidgets, sliderWidgets])
-
+  console.log('should draw new', currentLoop?.codeFile.value)
   return (
     <div className="flex flex-row gap-2 w-full h-full">
       <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
         <CodeEditor
-          codeFile={codeFileRef.current}
-          setValue={value => {
-            setLocalSource(value)
-          }}
+          codeFile={currentLoop?.codeFile}
           widgets={widgets}
           header={timelineHeader}
           theme={theme}
@@ -500,6 +499,12 @@ export function EngineUI() {
   const { isInitialized } = useEngine()
   const { timelineHeader, timelineWindowRef } = useTimelineHeader()
 
+  const [currentLoop, setCurrentLoop] = useState<Loop | null>(null)
+
+  const handleLoopChange = (loop: Loop) => {
+    setCurrentLoop(loop)
+  }
+
   if (!isInitialized) {
     return (
       <div className="flex items-center justify-center p-4">
@@ -512,8 +517,8 @@ export function EngineUI() {
     <div className="flex flex-col">
       <PlaybackControls timelineWindowRef={timelineWindowRef} />
       <div className="flex flex-row h-[calc(100dvh-61px)]">
-        <Sidebar />
-        <DspSourceEditor timelineHeader={timelineHeader} />
+        <Sidebar onLoopChange={handleLoopChange} />
+        <DspSourceEditor timelineHeader={timelineHeader} currentLoop={currentLoop} />
       </div>
     </div>
   )

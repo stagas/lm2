@@ -1,6 +1,6 @@
 import type { CodeFile, EditorWidget, Theme } from 'mini-code'
-import { useMemo, useRef } from 'react'
 import type React from 'react'
+import { useMemo, useRef } from 'react'
 import type { NumberWithParamsInfo } from '../bytecode.ts'
 import { decimalsOf } from '../utils/number.ts'
 
@@ -72,7 +72,7 @@ export class SliderWidget {
   constructor(
     private info: NumberWithParamsInfo,
     private theme: Theme,
-    private codeFileRef: React.RefObject<CodeFile>,
+    private codeFile: CodeFile,
     private dragStateRef: React.RefObject<DragState | null>,
     private rafRef: React.RefObject<number | null>,
   ) {
@@ -154,7 +154,7 @@ export class SliderWidget {
           isDragging: true,
         }
 
-        const codeFile = this.codeFileRef.current
+        const codeFile = this.codeFile
         if (!codeFile) return
 
         const lines = codeFile.value.split('\n')
@@ -189,7 +189,7 @@ export class SliderWidget {
         if (this.rafRef.current) cancelAnimationFrame(this.rafRef.current)
         this.rafRef.current = requestAnimationFrame(() => {
           const currentDrag = this.dragStateRef.current
-          const codeFile = this.codeFileRef.current
+          const codeFile = this.codeFile
           if (!currentDrag || !codeFile) {
             this.rafRef.current = null
             return
@@ -232,23 +232,24 @@ type UseSliderWidgetParams = {
   showWidgets: boolean
   numberParams: NumberWithParamsInfo[]
   theme: Theme
-  codeFileRef: React.RefObject<CodeFile>
+  codeFile: CodeFile | undefined
 }
 
 export function useSliderWidget({
   showWidgets,
   numberParams,
   theme,
-  codeFileRef,
+  codeFile,
 }: UseSliderWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const dragRef = useRef<DragState | null>(null)
   const rafIdRef = useRef<number | null>(null)
 
   const widgets = useMemo((): EditorWidget[] => {
+    if (!codeFile) return []
     if (!showWidgets) return []
     if (numberParams.length === 0) return []
-    return numberParams.map(info => new SliderWidget(info, theme, codeFileRef, dragRef, rafIdRef).toEditorWidget())
-  }, [showWidgets, numberParams, theme, codeFileRef])
+    return numberParams.map(info => new SliderWidget(info, theme, codeFile, dragRef, rafIdRef).toEditorWidget())
+  }, [showWidgets, numberParams, theme, codeFile])
 
   return { widgets, onBeforeDraw: () => {} }
 }
