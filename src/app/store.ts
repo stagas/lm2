@@ -12,12 +12,14 @@ interface AppState {
   buffers: Record<string, CodeFileState>
   bases: Record<string, { code: string; ts?: number }>
   localLoops: LoopData[]
+  selectedLoopId: string | null
   getCodeFile: (id: string, initialValue: string) => CodeFile
   setLoopBase: (id: string, base: string, ts?: number) => void
   getLoopBase: (id: string, fallback?: string) => string
   addLocalLoop: (loop: LoopData) => void
   updateLocalLoop: (id: string, patch: Partial<LoopData>) => void
   removeLocalLoop: (id: string) => void
+  setSelectedLoopId: (id: string | null) => void
   dropBuffer: (id: string) => void
 }
 
@@ -37,6 +39,7 @@ export const useAppStore = create<AppState>()(
       buffers: {},
       bases: {},
       localLoops: [],
+      selectedLoopId: null,
 
       getCodeFile: (id, initialValue) => {
         const existing = codeFiles.get(id)
@@ -105,6 +108,10 @@ export const useAppStore = create<AppState>()(
         set(state => ({ localLoops: state.localLoops.filter(loop => loop.id !== id) }))
       },
 
+      setSelectedLoopId: (id: string | null) => {
+        set({ selectedLoopId: id })
+      },
+
       dropBuffer: (id: string) => {
         codeFileUnsubs.get(id)?.()
         codeFileUnsubs.delete(id)
@@ -122,8 +129,13 @@ export const useAppStore = create<AppState>()(
     {
       name: 'app',
       storage: createJSONStorage(() => localStorage),
-      partialize: state => ({ buffers: state.buffers, bases: state.bases, localLoops: state.localLoops }),
-      version: 3,
+      partialize: state => ({
+        buffers: state.buffers,
+        bases: state.bases,
+        localLoops: state.localLoops,
+        selectedLoopId: state.selectedLoopId,
+      }),
+      version: 4,
       migrate: (persisted, version) => {
         if (version === 0 || version === 1) {
           const prev = persisted as any
@@ -144,6 +156,7 @@ export const useAppStore = create<AppState>()(
             ...prev,
             bases: nextBases,
             localLoops: [],
+            selectedLoopId: null,
           }
         }
         if (version === 2) {
@@ -151,6 +164,14 @@ export const useAppStore = create<AppState>()(
           return {
             ...prev,
             localLoops: [],
+            selectedLoopId: null,
+          }
+        }
+        if (version === 3) {
+          const prev = persisted as any
+          return {
+            ...prev,
+            selectedLoopId: null,
           }
         }
         return persisted as any

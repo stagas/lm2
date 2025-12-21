@@ -17,14 +17,15 @@ import {
 } from '@phosphor-icons/react'
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
 import type { LoopData } from '../../deno/types.ts'
-import { useAppStore } from '../app/store.ts'
 import { useLoopData } from '../app/hooks/useLoopData.ts'
 import { useSessionData } from '../app/hooks/useSessionData.ts'
+import { useAppStore } from '../app/store.ts'
 import { Spinner } from '../components/Spinner.tsx'
 import { Loop } from './loop.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
@@ -124,6 +125,7 @@ const LoopItem = ({
   return (
     <div
       key={loop.data.id}
+      data-loop-id={loop.data.id}
       className={`
       select-none cursor-pointer
       text-sm flex flex-row items-center justify-between gap-2 px-1 w-full flex-shrink-0
@@ -238,15 +240,20 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const [loops, setLoops] = useState<Loop[]>([])
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollPosRef = useRef(0)
+  const didInitialCenterRef = useRef(false)
 
   const { isLoading: isSessionLoading, sessionData } = useSessionData()
   const getCodeFile = useAppStore(state => state.getCodeFile)
   const dropBuffer = useAppStore(state => state.dropBuffer)
   const setLoopBase = useAppStore(state => state.setLoopBase)
   const localLoops = useAppStore(state => state.localLoops)
+  const buffers = useAppStore(state => state.buffers)
+  const bases = useAppStore(state => state.bases)
   const addLocalLoop = useAppStore(state => state.addLocalLoop)
   const updateLocalLoop = useAppStore(state => state.updateLocalLoop)
   const removeLocalLoop = useAppStore(state => state.removeLocalLoop)
+  const selectedLoopId = useAppStore(state => state.selectedLoopId)
+  const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
 
   const isLocalId = (id: string) => id.startsWith('local:')
 
@@ -259,11 +266,13 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     setLoops(prev => {
       const prevById = new Map(prev.map(loop => [loop.data.id, loop]))
       const next: Loop[] = []
+      const seen = new Set<string>()
 
       for (const data of localLoops) {
         const prevLoop = prevById.get(data.id)
         const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, data.code ?? '')
         next.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
+        seen.add(data.id)
       }
 
       if (sessionData) {
@@ -272,19 +281,57 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
           const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, data.code ?? '')
           const base = data.code ?? prevLoop?.data.code
           if (base != null) setLoopBase(data.id, base, data.timestamp)
-          next.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
+          if (!seen.has(data.id)) {
+            next.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
+            seen.add(data.id)
+          }
         }
+      }
+
+      for (const id of Object.keys(buffers)) {
+        if (seen.has(id)) continue
+        if (selectedLoopId !== id && bases[id]?.ts == null) continue
+        const prevLoop = prevById.get(id)
+        const codeFile = prevLoop?.codeFile ?? getCodeFile(id, buffers[id]?.value ?? '')
+        const title = isLocalId(id) ? (id.split(':')[1] || id) : id
+        next.push(new Loop({
+          id,
+          title,
+          artist: '',
+          artistId: '',
+          likesCount: 0,
+          commentsCount: 0,
+          isPublic: false,
+          timestamp: bases[id]?.ts ?? 1,
+        }, codeFile))
+        seen.add(id)
+      }
+
+      if (selectedLoopId && !seen.has(selectedLoopId)) {
+        const prevLoop = prevById.get(selectedLoopId)
+        const codeFile = prevLoop?.codeFile ?? getCodeFile(selectedLoopId, buffers[selectedLoopId]?.value ?? '')
+        const title = isLocalId(selectedLoopId) ? (selectedLoopId.split(':')[1] || selectedLoopId) : selectedLoopId
+        next.push(new Loop({
+          id: selectedLoopId,
+          title,
+          artist: '',
+          artistId: '',
+          likesCount: 0,
+          commentsCount: 0,
+          isPublic: false,
+          timestamp: bases[selectedLoopId]?.ts ?? 1,
+        }, codeFile))
       }
 
       return next
     })
-  }, [getCodeFile, localLoops, sessionData, setLoopBase])
+  }, [bases, buffers, getCodeFile, localLoops, selectedLoopId, sessionData, setLoopBase])
 
   useEffect(() => {
     if (currentLoopId != null) return
-    const first = localLoops[0]?.id ?? sessionData?.loops[0]?.id
+    const first = selectedLoopId ?? localLoops[0]?.id ?? sessionData?.loops[0]?.id
     if (first) setCurrentLoopId(first)
-  }, [currentLoopId, localLoops, sessionData])
+  }, [currentLoopId, localLoops, selectedLoopId, sessionData])
 
   const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
 
@@ -318,6 +365,12 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     onLoopChange(currentLoop)
   }, [currentLoopId, currentLoop, onLoopChange])
 
+  useEffect(() => {
+    if (currentLoopId == null) return
+    if (selectedLoopId === currentLoopId) return
+    setSelectedLoopId(currentLoopId)
+  }, [currentLoopId, selectedLoopId, setSelectedLoopId])
+
   const preserveScrollPos = (callback: () => void) => {
     const container = scrollContainerRef.current
     if (container) {
@@ -332,6 +385,30 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
       container.scrollTop = scrollPosRef.current
     }
   }, [loops])
+
+  useEffect(() => {
+    if (isSessionLoading) return
+    if (didInitialCenterRef.current) return
+    if (!currentLoopId) return
+    if (loops.length === 0) return
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const nodes = container.querySelectorAll<HTMLElement>('[data-loop-id]')
+    let target: HTMLElement | null = null
+    for (const node of nodes) {
+      if (node.dataset.loopId === currentLoopId) {
+        target = node
+        break
+      }
+    }
+    if (!target) return
+
+    didInitialCenterRef.current = true
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ block: 'center', inline: 'nearest' })
+    })
+  }, [isSessionLoading, currentLoopId, loops])
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -364,6 +441,8 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
 
     addLocalLoop(data)
     setCurrentLoopId(id)
+    setSelectedLoopId(id)
+    didInitialCenterRef.current = false
   }
 
   const handleSave = (loop: Loop, details: Partial<LoopData>) => {
@@ -407,6 +486,8 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     addLocalLoop(newLoopData)
     const newLoop = new Loop({ ...newLoopData, code: state.value }, codeFile)
     setCurrentLoopId(id)
+    setSelectedLoopId(id)
+    didInitialCenterRef.current = false
     setLoops(prev => [...prev, newLoop])
   }
   const handleClose = (loop: Loop) => {
