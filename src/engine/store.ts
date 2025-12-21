@@ -24,7 +24,7 @@ import workletUrl from '../worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
 import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
-import { SampleLoader, type LoadedSample } from './sample-loader.ts'
+import { type LoadedSample, SampleLoader } from './sample-loader.ts'
 import { buildTimelineLabels } from './timeline-labels.ts'
 import { createVisualWasm, type VisualWasm } from './visual-wasm.ts'
 
@@ -860,7 +860,7 @@ async function fetchWasmBinary() {
 }
 
 async function createWorklet() {
-  const audioContext = new AudioContext({ latencyHint: 0.05 })
+  const audioContext = new AudioContext({ latencyHint: 1 })
   window.addEventListener('pointerdown', () => {
     audioContext.resume()
   }, { once: true })

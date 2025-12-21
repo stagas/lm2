@@ -13,9 +13,9 @@ export const ARRAY_HISTORY_ENTRY_SIZE = 6 // opIndex, voiceIndex, value, velocit
 export const ARRAY_HEADER_SIZE = 4 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE // length, historyWritePos, historySize, version, [opIndex,voiceIndex,value,velocity,startSample,endSample]*historySize
 
 // Best-effort sample needle history for UI widgets.
-// entry: sampleIndex, posFrames, playing
+// entry: sampleIndex, posFrames, playing, sampleCountMod
 export const SAMPLE_NEEDLE_HISTORY_SIZE = 512
-export const SAMPLE_NEEDLE_ENTRY_SIZE = 3
+export const SAMPLE_NEEDLE_ENTRY_SIZE = 4
 export const SAMPLE_NEEDLE_WRITE_POS_OFFSET = 0
 export const SAMPLE_NEEDLE_DATA_OFFSET = 1
 export const ARRAYS_COUNT = 1024

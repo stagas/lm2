@@ -58,7 +58,7 @@ export class Slicer extends Gen {
   }
 
   @inline
-  private recordNeedle(posFrames: f64, playing: bool): void {
+  private recordNeedle(posFrames: f64, playing: bool, length: i32): void {
     if (this.needleHistory$ === 0) return
     const hist = changetype<StaticArray<f32>>(this.needleHistory$)
     const writePos = i32(hist[SAMPLE_NEEDLE_WRITE_POS_OFFSET])
@@ -67,6 +67,7 @@ export class Slicer extends Gen {
     hist[base + 0] = this.sampleIndex as f32
     hist[base + 1] = posFrames as f32
     hist[base + 2] = playing ? 1.0 : 0.0
+    hist[base + 3] = f32((globalSampleCount + length) & 0xfffff)
     hist[SAMPLE_NEEDLE_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -215,8 +216,8 @@ export class Slicer extends Gen {
     this.slicesCount = slicesCount
 
     if (sampleLen > 0) {
-      if (playing) this.recordNeedle(pos, true)
-      else if (wasPlaying) this.recordNeedle(pos, false)
+      if (playing) this.recordNeedle(pos, true, length)
+      else if (wasPlaying) this.recordNeedle(pos, false, length)
     }
   }
 }

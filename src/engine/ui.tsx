@@ -398,6 +398,8 @@ export function DspSourceEditor(
 
   const { widgets: sampleWidgets, onBeforeDraw: onBeforeDrawSample } = useSampleWidget({
     program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
     sampleDefs: widgetCompileState.sampleDefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,

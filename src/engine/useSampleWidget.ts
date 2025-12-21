@@ -1,6 +1,7 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
+  CHUNK_SIZE,
   SAMPLE_NEEDLE_DATA_OFFSET,
   SAMPLE_NEEDLE_ENTRY_SIZE,
   SAMPLE_NEEDLE_HISTORY_SIZE,
@@ -9,9 +10,12 @@ import type { SampleDef } from '../bytecode.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { getCurrentTheme } from './theme.ts'
+import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 type UseSampleWidgetParams = {
   program1: ProgramInstance | undefined
+  audioContext: AudioContext | undefined
+  globalSampleCount: Int32Array<SharedArrayBuffer> | undefined
   sampleDefs: SampleDef[]
   dspSource: string
   showWidgets: boolean
@@ -20,6 +24,9 @@ type UseSampleWidgetParams = {
 
 type NeedleState = {
   posFrames: number
+  rawPosFrames: number
+  atSampleCount: number
+  speed: number
   playing: boolean
 }
 
@@ -188,6 +195,8 @@ function drawSample(
 
 export function useSampleWidget({
   program1,
+  audioContext,
+  globalSampleCount,
   sampleDefs,
   dspSource,
   showWidgets,
@@ -196,11 +205,21 @@ export function useSampleWidget({
   const lastWritePosRef = useRef<number>(0)
   const needleRef = useRef<Map<number, NeedleState>>(new Map())
   const waveRef = useRef<Map<number, WaveCache>>(new Map())
+  const predictedSampleCountRef = useRef<number | null>(null)
+  const lastWallTimeRef = useRef<number | null>(null)
+  const isFirstFrameRef = useRef(true)
+  const lastSampleCountRef = useRef<number | null>(null)
+  const latencySamplesRef = useRef<number>(0)
 
   useEffect(() => {
     lastWritePosRef.current = 0
     needleRef.current.clear()
     waveRef.current.clear()
+    predictedSampleCountRef.current = null
+    lastWallTimeRef.current = null
+    isFirstFrameRef.current = true
+    lastSampleCountRef.current = null
+    latencySamplesRef.current = 0
   }, [dspSource])
 
   const onBeforeDraw = useCallback(() => {
@@ -211,35 +230,101 @@ export function useSampleWidget({
     const writePos = Math.floor(history.writePos) >>> 0
     if (playbackState !== 'running') {
       lastWritePosRef.current = writePos
-      // needleRef.current.clear()
+      predictedSampleCountRef.current = null
+      lastWallTimeRef.current = null
+      isFirstFrameRef.current = true
+      lastSampleCountRef.current = null
+      latencySamplesRef.current = 0
       return
     }
+    const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
+      predictedSampleCountRef,
+      lastWallTimeRef,
+      isFirstFrameRef,
+    }, { isPlaying: true })
+    if (!pred) return
+    const { sampleRate, sampleCount } = pred
+    if (!globalSampleCount) return
+
+    const lastSampleCount = lastSampleCountRef.current ?? sampleCount
+    lastSampleCountRef.current = sampleCount
+    const dtSec = Math.max(0, (sampleCount - lastSampleCount) / sampleRate)
+
+    const latencySeconds = (audioContext?.outputLatency || 0) - (audioContext?.baseLatency || 0)
+    const latencySamplesNow = latencySeconds * sampleRate
+    const latencyTau = 0.35
+    const latencyA = 1 - Math.exp(-dtSec / latencyTau)
+    const latencySamples = latencySamplesRef.current + (latencySamplesNow - latencySamplesRef.current) * latencyA
+    latencySamplesRef.current = latencySamples
+    const MOD = 1 << 20
+    const rawNow = (Atomics.load(globalSampleCount, 0) >>> 0) as number
+    const rawNowEnd = rawNow + CHUNK_SIZE
+    const nowMod = rawNowEnd & (MOD - 1)
+
     const prevWritePos = lastWritePosRef.current >>> 0
     lastWritePosRef.current = writePos
 
-    if (writePos === prevWritePos) return
-
-    const raw = history.raw
-    const MOD = 1 << 20
-    const deltaRaw = (writePos - prevWritePos + MOD) % MOD
-    const delta = Math.min(deltaRaw, SAMPLE_NEEDLE_HISTORY_SIZE)
-
     const needles = needleRef.current
-    for (let k = delta; k > 0; k--) {
-      const p = (writePos - k) >>> 0
-      const slot = p % SAMPLE_NEEDLE_HISTORY_SIZE
-      const base = SAMPLE_NEEDLE_DATA_OFFSET + slot * SAMPLE_NEEDLE_ENTRY_SIZE
-      const sampleIndex = Math.floor(raw[base] ?? 0)
-      const posFrames = raw[base + 1] ?? 0
-      const playing = (raw[base + 2] ?? 0) > 0
-      if (sampleIndex < 0) continue
-      if (!playing) {
-        needles.delete(sampleIndex)
+
+    if (writePos !== prevWritePos) {
+      const raw = history.raw
+      const deltaRaw = (writePos - prevWritePos + MOD) % MOD
+      const delta = Math.min(deltaRaw, SAMPLE_NEEDLE_HISTORY_SIZE)
+
+      for (let k = delta; k > 0; k--) {
+        const p = (writePos - k) >>> 0
+        const slot = p % SAMPLE_NEEDLE_HISTORY_SIZE
+        const base = SAMPLE_NEEDLE_DATA_OFFSET + slot * SAMPLE_NEEDLE_ENTRY_SIZE
+        const sampleIndex = Math.floor(raw[base] ?? 0)
+        const posFrames = raw[base + 1] ?? 0
+        const playing = (raw[base + 2] ?? 0) > 0
+        if (sampleIndex < 0) continue
+        if (!playing) {
+          needles.delete(sampleIndex)
+          continue
+        }
+
+        const tsRaw = raw[base + 3] ?? 0
+        const tsMod = Math.floor(tsRaw) >>> 0
+
+        const prev = needles.get(sampleIndex)
+        let speed = prev?.speed ?? 1
+        const deltaSamples = prev ? (tsMod - prev.atSampleCount + MOD) % MOD : 0
+        if (prev && prev.playing && deltaSamples >= CHUNK_SIZE) {
+          speed = (posFrames - prev.rawPosFrames) / deltaSamples
+        }
+
+        const compensated = posFrames - latencySamples * speed
+        const initPos = (!prev || !prev.playing) ? compensated : prev.posFrames
+
+        const jump = prev ? (posFrames - prev.rawPosFrames) : 0
+        const isRetrig = prev && prev.playing && jump < -64
+        const isTeleport = prev && prev.playing && Math.abs(jump) > 200000
+
+        needles.set(sampleIndex, {
+          posFrames: (isRetrig || isTeleport) ? compensated : initPos,
+          rawPosFrames: posFrames,
+          atSampleCount: tsMod,
+          speed,
+          playing: true,
+        })
+      }
+    }
+
+    for (const st of needles.values()) {
+      if (!st.playing) continue
+      const ageSamples = (nowMod - st.atSampleCount + MOD) % MOD
+      const target = st.rawPosFrames + ageSamples * st.speed - latencySamples * st.speed
+      const diff = target - st.posFrames
+      if (Math.abs(diff) > 200000) {
+        st.posFrames = target
         continue
       }
-      needles.set(sampleIndex, { posFrames, playing: true })
+      const tau = latencySeconds / 2
+      const a = 1 - Math.exp(-dtSec / tau)
+      st.posFrames = st.posFrames + diff * a
     }
-  }, [showWidgets, program1, playbackState])
+  }, [showWidgets, program1, audioContext, globalSampleCount, playbackState])
 
   const draw = useCallback((
     c: CanvasRenderingContext2D,
