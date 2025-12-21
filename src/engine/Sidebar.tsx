@@ -243,36 +243,48 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const getCodeFile = useAppStore(state => state.getCodeFile)
   const dropBuffer = useAppStore(state => state.dropBuffer)
   const setLoopBase = useAppStore(state => state.setLoopBase)
+  const localLoops = useAppStore(state => state.localLoops)
+  const addLocalLoop = useAppStore(state => state.addLocalLoop)
+  const updateLocalLoop = useAppStore(state => state.updateLocalLoop)
+  const removeLocalLoop = useAppStore(state => state.removeLocalLoop)
+
+  const isLocalId = (id: string) => id.startsWith('local:')
+
+  const makeLocalId = (title: string) => {
+    const suffix = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
+    return `local:${title}:${Date.now()}:${suffix}`
+  }
 
   useEffect(() => {
-    if (sessionData) {
-      setLoops(prev => {
-        const prevById = new Map(prev.map(loop => [loop.data.id, loop]))
-        const merged: Loop[] = []
+    setLoops(prev => {
+      const prevById = new Map(prev.map(loop => [loop.data.id, loop]))
+      const next: Loop[] = []
 
+      for (const data of localLoops) {
+        const prevLoop = prevById.get(data.id)
+        const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, data.code ?? '')
+        next.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
+      }
+
+      if (sessionData) {
         for (const data of sessionData.loops) {
           const prevLoop = prevById.get(data.id)
           const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, data.code ?? '')
           const base = data.code ?? prevLoop?.data.code
           if (base != null) setLoopBase(data.id, base, data.timestamp)
-          merged.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
+          next.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
         }
+      }
 
-        const localOnly = prev.filter(loop =>
-          loop.isNew && !sessionData.loops.some(s => s.id === loop.data.id)
-        )
-
-        return [...localOnly, ...merged]
-      })
-    }
-  }, [getCodeFile, sessionData, setLoopBase])
+      return next
+    })
+  }, [getCodeFile, localLoops, sessionData, setLoopBase])
 
   useEffect(() => {
-    if (!sessionData) return
     if (currentLoopId != null) return
-    const first = sessionData.loops[0]?.id
+    const first = localLoops[0]?.id ?? sessionData?.loops[0]?.id
     if (first) setCurrentLoopId(first)
-  }, [currentLoopId, sessionData])
+  }, [currentLoopId, localLoops, sessionData])
 
   const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
 
@@ -337,7 +349,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
       newLoopTitle = `Untitled ${untitledCount + 1}`
     }
 
-    const id = newLoopTitle
+    const id = makeLocalId(newLoopTitle)
     const data: LoopData = {
       id,
       title: newLoopTitle,
@@ -350,13 +362,21 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
       timestamp: 0,
     }
 
-    setLoops(prev => [new Loop(data, getCodeFile(id, data.code ?? '')), ...prev])
+    addLocalLoop(data)
+    setCurrentLoopId(id)
   }
 
   const handleSave = (loop: Loop, details: Partial<LoopData>) => {
     preserveScrollPos(() => {
       const timestamp = Date.now()
       setLoopBase(loop.data.id, loop.codeFile.value, timestamp)
+      if (isLocalId(loop.data.id)) {
+        updateLocalLoop(loop.data.id, {
+          ...details,
+          timestamp,
+          code: loop.data.code ?? '',
+        })
+      }
       setLoops(prev =>
         prev.map(l =>
           l.data.id === loop.data.id
@@ -370,21 +390,32 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     const now = Date.now()
     const state = loop.codeFile.getState()
     const title = details.title ?? loop.data.title
-    const id = `${title}-${now}`
+    const id = makeLocalId(title)
     const codeFile = getCodeFile(id, state.value)
     codeFile.setState(state)
 
     loop.codeFile.value = loop.data.code ?? ''
 
-    const newLoop = new Loop({ ...loop.data, ...details, id, timestamp: now, code: state.value }, codeFile)
+    const newLoopData: LoopData = {
+      ...loop.data,
+      ...details,
+      id,
+      timestamp: now,
+      code: '',
+    }
+    setLoopBase(id, state.value, now)
+    addLocalLoop(newLoopData)
+    const newLoop = new Loop({ ...newLoopData, code: state.value }, codeFile)
     setCurrentLoopId(id)
     setLoops(prev => [...prev, newLoop])
   }
   const handleClose = (loop: Loop) => {
-    if (loop.isDirty
-      && !confirm('Are you sure? You will lose all your changes!')) return
+    const base = useAppStore.getState().getLoopBase(loop.data.id, loop.data.code ?? '')
+    const isDirty = loop.codeFile.value !== base
+    if (isDirty && !confirm('Are you sure? You will lose all your changes!')) return
     preserveScrollPos(() => {
       if (loop.isNew) {
+        if (isLocalId(loop.data.id)) removeLocalLoop(loop.data.id)
         dropBuffer(loop.data.id)
         setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
       }
@@ -396,6 +427,9 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   }
   const handleEditDetails = (loop: Loop, details: Partial<LoopData>) => {
     preserveScrollPos(() => {
+      if (isLocalId(loop.data.id)) {
+        updateLocalLoop(loop.data.id, details)
+      }
       setLoops(prev =>
         prev.map(l =>
           l.data.id === loop.data.id
@@ -408,6 +442,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const handleDelete = (loop: Loop) => {
     if (!confirm(`Are you sure you want to delete "${loop.data.title}"?`)) return
     preserveScrollPos(() => {
+      if (isLocalId(loop.data.id)) removeLocalLoop(loop.data.id)
       dropBuffer(loop.data.id)
       setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
     })
