@@ -28,5 +28,6 @@ export const ProgramStruct = Struct({
   histories: 'usize',
   analyserOutsPool: 'usize',
   arrayAccessHistory: 'usize',
+  sampleNeedleHistory: 'usize',
 })
 export type Program = typeof ProgramStruct.type

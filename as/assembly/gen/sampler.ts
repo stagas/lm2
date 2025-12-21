@@ -1,3 +1,9 @@
+import {
+  SAMPLE_NEEDLE_DATA_OFFSET,
+  SAMPLE_NEEDLE_ENTRY_SIZE,
+  SAMPLE_NEEDLE_HISTORY_SIZE,
+  SAMPLE_NEEDLE_WRITE_POS_OFFSET,
+} from '../constants'
 import { Gen } from './gen'
 import { SampleReader } from './sample-reader'
 
@@ -6,6 +12,7 @@ export class Sampler extends Gen {
   speed$: usize = 0
   offset$: usize = 0
   trig$: usize = 0
+  needleHistory$: usize = 0
 
   private lastTrig: f32 = 0.0
   private playing: bool = false
@@ -30,7 +37,21 @@ export class Sampler extends Gen {
     this.pos = src.pos
     this.lastSampleIndex = src.lastSampleIndex
     this.lastSampleVersion = src.lastSampleVersion
+    this.needleHistory$ = src.needleHistory$
     // reader is stateless across copies besides cached sample, which we can rebuild
+  }
+
+  @inline
+  private recordNeedle(posFrames: f64, playing: bool): void {
+    if (this.needleHistory$ === 0) return
+    const hist = changetype<StaticArray<f32>>(this.needleHistory$)
+    const writePos = i32(hist[SAMPLE_NEEDLE_WRITE_POS_OFFSET])
+    const slot = writePos % SAMPLE_NEEDLE_HISTORY_SIZE
+    const base = SAMPLE_NEEDLE_DATA_OFFSET + slot * SAMPLE_NEEDLE_ENTRY_SIZE
+    hist[base + 0] = this.sampleIndex as f32
+    hist[base + 1] = posFrames as f32
+    hist[base + 2] = playing ? 1.0 : 0.0
+    hist[SAMPLE_NEEDLE_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
   process(out$: usize, length: i32): void {
@@ -53,6 +74,7 @@ export class Sampler extends Gen {
     let lastTrig: f32 = this.lastTrig
     let playing: bool = this.playing
     let pos: f64 = this.pos
+    const wasPlaying: bool = playing
 
     const maxPos: f64 = sampleLen > 0 ? (sampleLen as f64) : 0.0
 
@@ -93,5 +115,10 @@ export class Sampler extends Gen {
     this.lastTrig = lastTrig
     this.playing = playing
     this.pos = pos
+
+    if (sampleLen > 0) {
+      if (playing) this.recordNeedle(pos, true)
+      else if (wasPlaying) this.recordNeedle(pos, false)
+    }
   }
 }

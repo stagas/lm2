@@ -16,6 +16,9 @@ import {
   LITERALS_COUNT,
   OPS_COUNT,
   RING_BUFFER_SIZE,
+  SAMPLE_NEEDLE_DATA_OFFSET,
+  SAMPLE_NEEDLE_ENTRY_SIZE,
+  SAMPLE_NEEDLE_HISTORY_SIZE,
 } from '../../as/assembly/constants.ts'
 import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from '../assembly.ts'
 import type {
@@ -49,6 +52,11 @@ export type VmHistory = {
 }
 
 export type VmArrayAccessHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
+export type VmSampleNeedleHistory = {
   writePos: number
   raw: Float32Array
 }
@@ -295,6 +303,23 @@ async function createProgram(
     raw: new Float32Array(wasmMemory.buffer, arrayAccessHistory$, 1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE),
   }
 
+  const sampleNeedleHistory$ = program.sampleNeedleHistory
+  const sampleNeedleWritePos = new Float32Array(
+    wasmMemory.buffer,
+    sampleNeedleHistory$,
+    SAMPLE_NEEDLE_DATA_OFFSET,
+  )
+  const sampleNeedleHistory: VmSampleNeedleHistory = {
+    get writePos() {
+      return sampleNeedleWritePos[0] || 0
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      sampleNeedleHistory$,
+      SAMPLE_NEEDLE_DATA_OFFSET + SAMPLE_NEEDLE_HISTORY_SIZE * SAMPLE_NEEDLE_ENTRY_SIZE,
+    ),
+  }
+
   function nextProgramData() {
     const data = programDataPool[programDataPoolIndex]
     programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length
@@ -315,6 +340,7 @@ async function createProgram(
     analyserOuts,
     histories,
     arrayAccessHistory,
+    sampleNeedleHistory,
     get data() {
       return programData
     },

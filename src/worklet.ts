@@ -69,15 +69,13 @@ export class DspProcessor extends AudioWorkletProcessor {
   private state: 'stopped' | 'fade-in' | 'running' | 'fade-out' = 'stopped'
   private core: WasmSetup<typeof WasmExports> | undefined
   private dsps: DspInstance[] = []
-  private samples: Map<number,
-    {
-      ver: number
-      sampleRate: number
-      len: number
-      ch0: Float32Array
-      slices?: { k: number; count: number; points: Int32Array }
-    }> =
-      new Map()
+  private samples: Map<number, {
+    ver: number
+    sampleRate: number
+    len: number
+    ch0: Float32Array
+    slices?: { k: number; count: number; points: Int32Array }
+  }> = new Map()
   private outLeft = new Float32Array(CHUNK_SIZE)
   private outRight = new Float32Array(CHUNK_SIZE)
   private scratchLeft$ = 0

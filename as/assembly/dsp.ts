@@ -434,7 +434,7 @@ export class Dsp {
   }
 
   reset(): void {
-    this.program.gensPool.reset()
+    this.program.reset()
   }
 
   @inline
@@ -1516,6 +1516,7 @@ export class Dsp {
       gen.speed$ = speed$
       gen.offset$ = offset$
       gen.trig$ = trig$
+      gen.needleHistory$ = changetype<usize>(this.program.sampleNeedleHistory)
       gen.process(out$, length)
 
       this.vmPush(VmTag.Audio, 0.0, outIndex)
@@ -1572,6 +1573,7 @@ export class Dsp {
       gen.slice$ = slice$
       gen.threshold$ = threshold$
       gen.trig$ = trig$
+      gen.needleHistory$ = changetype<usize>(this.program.sampleNeedleHistory)
       gen.process(out$, length)
 
       this.vmPush(VmTag.Audio, 0.0, outIndex)

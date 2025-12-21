@@ -2,6 +2,7 @@ export type LoadedSample = {
   url: string
   sampleRate: number
   length: number
+  ch0: Float32Array
   ch0Buffer: ArrayBuffer
 }
 
@@ -30,6 +31,7 @@ export class SampleLoader {
       url,
       sampleRate: audioBuffer.sampleRate,
       length: copy.length,
+      ch0: copy,
       ch0Buffer: copy.buffer,
     }
   }

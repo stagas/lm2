@@ -24,7 +24,7 @@ import workletUrl from '../worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
 import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
-import { SampleLoader } from './sample-loader.ts'
+import { SampleLoader, type LoadedSample } from './sample-loader.ts'
 import { buildTimelineLabels } from './timeline-labels.ts'
 import { createVisualWasm, type VisualWasm } from './visual-wasm.ts'
 
@@ -63,6 +63,8 @@ type EngineState = {
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
   numberLiterals: NumberLiteralInfo[]
+  sampleDefs: SampleDef[]
+  loadedSamples: Array<LoadedSample | undefined>
   dspSource: string
   // UI-facing compilation results. These are updated as soon as we have a
   // successful compile, even if the worklet is still crossfading programs.
@@ -75,6 +77,7 @@ type EngineState = {
   uiArrayLiterals: ArrayLiteralRef[]
   uiNumberParams: NumberWithParamsInfo[]
   uiNumberLiterals: NumberLiteralInfo[]
+  uiSampleDefs: SampleDef[]
   uiDspSource: string
   isProgramSwapPending: boolean
   isUpdatingDsp: boolean
@@ -114,6 +117,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
   let sampleLoader: SampleLoader | undefined
   let sampleUploadToken = 0
+  const sampleUrlByIndex = new Map<number, string>()
 
   function syncBarsHardLoop(bars: number | undefined): void {
     const state = get()
@@ -315,9 +319,17 @@ export const useEngineStore = create<EngineState>((set, get) => {
           if (!defs?.length) return
           for (const d of defs) {
             if (token !== sampleUploadToken) return
+            const prevUrl = sampleUrlByIndex.get(d.sampleIndex)
+            if (prevUrl === d.url) continue
             const loaded = await sampleLoader!.load(d.url)
             if (token !== sampleUploadToken) return
+            set(prev => {
+              const next = prev.loadedSamples.slice()
+              next[d.sampleIndex] = loaded
+              return { loadedSamples: next }
+            })
             await state.worklet!.setSample(d.sampleIndex, loaded.sampleRate, loaded.length, loaded.ch0Buffer)
+            sampleUrlByIndex.set(d.sampleIndex, d.url)
           }
         })()
       }
@@ -357,6 +369,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           arrayLiterals,
           numberParams,
           numberLiterals,
+          sampleDefs,
           lastSuccessfulProgramData: primaryResult.data,
           uiDspSource: source,
           uiSequences: sequences,
@@ -369,6 +382,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           uiArrayLiterals: arrayLiterals,
           uiNumberParams: numberParams,
           uiNumberLiterals: numberLiterals,
+          uiSampleDefs: sampleDefs,
           isProgramSwapPending: false,
         })
         syncBarsHardLoop(bars)
@@ -406,6 +420,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiNumberParams: stagingResult.numberParams,
         uiNumberLiterals: stagingResult.numberLiterals,
+        uiSampleDefs: stagingResult.sampleDefs ?? [],
         isProgramSwapPending: true,
       })
 
@@ -451,6 +466,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           uiArrayLiterals: current.arrayLiterals,
           uiNumberParams: current.numberParams,
           uiNumberLiterals: current.numberLiterals,
+          uiSampleDefs: current.sampleDefs,
           isProgramSwapPending: false,
         })
         return undefined
@@ -470,6 +486,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         arrayLiterals: stagingResult.arrayLiterals,
         numberParams: stagingResult.numberParams,
         numberLiterals: stagingResult.numberLiterals,
+        sampleDefs: stagingResult.sampleDefs ?? [],
         uiDspSource: source,
         uiSequences: sequences,
         uiMiniRefs: stagingResult.miniRefs,
@@ -481,6 +498,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiNumberParams: stagingResult.numberParams,
         uiNumberLiterals: stagingResult.numberLiterals,
+        uiSampleDefs: stagingResult.sampleDefs ?? [],
         isProgramSwapPending: false,
         ...swappedPrograms,
         lastSuccessfulProgramData: stagingProgram.program.data,
@@ -559,6 +577,8 @@ export const useEngineStore = create<EngineState>((set, get) => {
     arrayLiterals: [],
     numberParams: [],
     numberLiterals: [],
+    sampleDefs: [],
+    loadedSamples: [],
     dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     uiSequences: [...DEFAULT_SEQUENCES],
     uiMiniRefs: [],
@@ -569,6 +589,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     uiArrayLiterals: [],
     uiNumberParams: [],
     uiNumberLiterals: [],
+    uiSampleDefs: [],
     uiDspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     isProgramSwapPending: false,
     isUpdatingDsp: false,
@@ -711,12 +732,15 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiArrayLiterals: [],
         uiNumberParams: [],
         uiNumberLiterals: [],
+        uiSampleDefs: [],
         uiSequences: [],
         uiDspSource: '',
         isProgramSwapPending: false,
         isInitialized: false,
         isProgramReady: false,
         playbackState: 'stopped',
+        sampleDefs: [],
+        loadedSamples: [],
       })
     },
 
@@ -731,6 +755,10 @@ export const useEngineStore = create<EngineState>((set, get) => {
     updateWasmBinary: async () => {
       const state = get()
       if (!state.worklet) throw new Error('Worklet not initialized')
+
+      // Prevent stale in-flight uploads from bumping versions after a reload.
+      sampleUploadToken++
+      sampleUrlByIndex.clear()
 
       const binary = await fetchWasmBinary()
       const visualBinary = binary.slice(0)

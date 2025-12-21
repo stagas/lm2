@@ -1,3 +1,9 @@
+import {
+  SAMPLE_NEEDLE_DATA_OFFSET,
+  SAMPLE_NEEDLE_ENTRY_SIZE,
+  SAMPLE_NEEDLE_HISTORY_SIZE,
+  SAMPLE_NEEDLE_WRITE_POS_OFFSET,
+} from '../constants'
 import { hostSampleSlices } from '../sample-host'
 import { Gen } from './gen'
 import { SampleReader } from './sample-reader'
@@ -11,6 +17,7 @@ export class Slicer extends Gen {
   slice$: usize = 0
   threshold$: usize = 0
   trig$: usize = 0
+  needleHistory$: usize = 0
 
   private lastTrig: f32 = 0.0
   private playing: bool = false
@@ -45,7 +52,21 @@ export class Slicer extends Gen {
     this.lastSampleVersion = src.lastSampleVersion
     this.lastThreshold = src.lastThreshold
     this.slicesCount = src.slicesCount
+    this.needleHistory$ = src.needleHistory$
     // slices content is cheap to refresh; keep empty if needed
+  }
+
+  @inline
+  private recordNeedle(posFrames: f64, playing: bool): void {
+    if (this.needleHistory$ === 0) return
+    const hist = changetype<StaticArray<f32>>(this.needleHistory$)
+    const writePos = i32(hist[SAMPLE_NEEDLE_WRITE_POS_OFFSET])
+    const slot = writePos % SAMPLE_NEEDLE_HISTORY_SIZE
+    const base = SAMPLE_NEEDLE_DATA_OFFSET + slot * SAMPLE_NEEDLE_ENTRY_SIZE
+    hist[base + 0] = this.sampleIndex as f32
+    hist[base + 1] = posFrames as f32
+    hist[base + 2] = playing ? 1.0 : 0.0
+    hist[SAMPLE_NEEDLE_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
   @inline
@@ -81,6 +102,7 @@ export class Slicer extends Gen {
     let lastTrig: f32 = this.lastTrig
     let playing: bool = this.playing
     let pos: f64 = this.pos
+    const wasPlaying: bool = playing
     let sliceStart: i32 = this.sliceStart
     let sliceEnd: i32 = this.sliceEnd
 
@@ -185,5 +207,10 @@ export class Slicer extends Gen {
     this.sliceEnd = sliceEnd
     this.lastThreshold = lastThreshold
     this.slicesCount = slicesCount
+
+    if (sampleLen > 0) {
+      if (playing) this.recordNeedle(pos, true)
+      else if (wasPlaying) this.recordNeedle(pos, false)
+    }
   }
 }

@@ -13,6 +13,7 @@ import type {
   ArrayLiteralRef,
   MiniSequenceRef,
   NumberWithParamsInfo,
+  SampleDef,
   TimelineSequenceRef,
 } from '../bytecode.ts'
 import { encodeLangToVmOps, extractBarsFromSource, extractTimelineLabelsFromSource } from '../bytecode.ts'
@@ -34,6 +35,7 @@ import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useLoopView } from './useLoopView.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
+import { useSampleWidget } from './useSampleWidget.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
 import { useSliderWidget } from './useSliderWidget.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
@@ -73,6 +75,7 @@ type WidgetCompileState = {
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
+  sampleDefs: SampleDef[]
 }
 
 export function DspSourceEditor(
@@ -96,6 +99,7 @@ export function DspSourceEditor(
     uiAnalyserRefs,
     uiArrayLiterals,
     uiNumberParams,
+    uiSampleDefs,
     isProgramSwapPending,
   } = useEngineStore()
 
@@ -171,6 +175,7 @@ export function DspSourceEditor(
         analyserRefs: uiAnalyserRefs,
         arrayLiterals: uiArrayLiterals,
         numberParams: uiNumberParams,
+        sampleDefs: uiSampleDefs,
       }
     }
 
@@ -185,6 +190,7 @@ export function DspSourceEditor(
         analyserRefs: uiAnalyserRefs,
         arrayLiterals: uiArrayLiterals,
         numberParams: uiNumberParams,
+        sampleDefs: uiSampleDefs,
       }
     }
 
@@ -202,6 +208,7 @@ export function DspSourceEditor(
         analyserRefs: uiAnalyserRefs,
         arrayLiterals: uiArrayLiterals,
         numberParams: uiNumberParams,
+        sampleDefs: uiSampleDefs,
       }
     }
 
@@ -220,6 +227,7 @@ export function DspSourceEditor(
       analyserRefs: result.analyserRefs ?? [],
       arrayLiterals: result.arrayLiterals ?? [],
       numberParams: result.numberParams ?? [],
+      sampleDefs: result.sampleDefs ?? [],
     }
   }, [
     code,
@@ -231,6 +239,7 @@ export function DspSourceEditor(
     uiAnalyserRefs,
     uiArrayLiterals,
     uiNumberParams,
+    uiSampleDefs,
   ])
 
   const runtimeProgram = isProgramSwapPending ? program2 : program1
@@ -275,6 +284,7 @@ export function DspSourceEditor(
       uiAnalyserRefs: result.analyserRefs ?? [],
       uiArrayLiterals: result.arrayLiterals ?? [],
       uiNumberParams: result.numberParams ?? [],
+      uiSampleDefs: result.sampleDefs ?? [],
     })
   }, [code, currentLoop, isPlayingLoop, uiDspSource])
 
@@ -386,6 +396,14 @@ export function DspSourceEditor(
     arrayLiterals: widgetCompileState.arrayLiterals,
   })
 
+  const { widgets: sampleWidgets, onBeforeDraw: onBeforeDrawSample } = useSampleWidget({
+    program1: runtimeProgram,
+    sampleDefs: widgetCompileState.sampleDefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    playbackState,
+  })
+
   const { widgets: sliderWidgets } = useSliderWidget({
     showWidgets,
     numberParams: widgetCompileState.numberParams,
@@ -400,6 +418,7 @@ export function DspSourceEditor(
     onBeforeDrawTimelineSequence()
     onBeforeDrawAnalyser()
     onBeforeDrawArrayAccess()
+    onBeforeDrawSample()
   }, [
     onBeforeDraw,
     onBeforeDrawPianoroll,
@@ -407,11 +426,13 @@ export function DspSourceEditor(
     onBeforeDrawTimelineSequence,
     onBeforeDrawAnalyser,
     onBeforeDrawArrayAccess,
+    onBeforeDrawSample,
   ])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
     return [
+      ...sampleWidgets,
       ...analyserWidgets,
       ...timelineWidgets,
       ...timelineSequenceWidgets,
@@ -421,7 +442,7 @@ export function DspSourceEditor(
       ...sliderWidgets,
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets, sliderWidgets, viewSampleCount])
+    arrayAccessWidgets, sliderWidgets, sampleWidgets, viewSampleCount])
   return (
     <div className="flex flex-row gap-2 w-full h-full">
       <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">

@@ -14,6 +14,9 @@ import {
   LITERALS_COUNT,
   OPS_COUNT,
   RING_BUFFER_SIZE,
+  SAMPLE_NEEDLE_DATA_OFFSET,
+  SAMPLE_NEEDLE_ENTRY_SIZE,
+  SAMPLE_NEEDLE_HISTORY_SIZE,
   SEQ_VOICES,
 } from './constants'
 import { Ad } from './gen/ad'
@@ -189,6 +192,9 @@ export class Program {
   histories: StaticArray<usize> = new StaticArray<usize>(HISTORIES_COUNT)
   analyserOutsPool: AnalyserOutsPool = new AnalyserOutsPool()
   arrayAccessHistory: StaticArray<f32> = new StaticArray<f32>(1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE)
+  sampleNeedleHistory: StaticArray<f32> = new StaticArray<f32>(
+    SAMPLE_NEEDLE_DATA_OFFSET + SAMPLE_NEEDLE_HISTORY_SIZE * SAMPLE_NEEDLE_ENTRY_SIZE,
+  )
 
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
@@ -218,6 +224,10 @@ export class Program {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
       this.literalsSmoothed[i] = new Smoothed()
     }
+  }
+
+  reset(): void {
+    this.gensPool.reset()
   }
 
   waitProgramUnlock(): void {
