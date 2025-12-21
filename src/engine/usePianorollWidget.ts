@@ -15,7 +15,7 @@ import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
-import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
+import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 import { applySmoothing } from './util.ts'
 
 const MIDI_IS_BLACK = new Uint8Array(128)

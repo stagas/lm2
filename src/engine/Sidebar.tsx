@@ -22,40 +22,7 @@ import {
   useRef,
   useState,
 } from 'react'
-
-// type Loop = {
-//   id: string
-//   title: string
-//   artist: string
-//   artistId: string
-//   isTab: boolean
-//   isDirty: boolean
-//   isPublic: boolean
-//   timestamp: number
-// }
-
-type RemixOfData = Pick<
-  LoopData,
-  | 'id'
-  | 'title'
-  | 'artist'
-  | 'artistId'
-  | 'likesCount'
-  | 'commentsCount'
->
-
-type LoopData = {
-  id: string
-  title: string
-  artist: string
-  artistId: string
-  code: string
-  likesCount: number
-  commentsCount: number
-  remixOf: RemixOfData | null
-  isPublic: boolean
-  timestamp: number
-}
+import type { LoopData } from '../../deno/types.ts'
 
 class Loop {
   codeFile: CodeFile
@@ -120,7 +87,7 @@ const titles = [
 ]
 
 function createDemoLoop(title: string, isNew: boolean = Math.random() < 0.2,
-  isDirty: boolean | null = Math.random() < 0.2)
+  isDirty: boolean | null = Math.random() < 0.5)
 {
   const loop = new Loop({
     id: title,
@@ -423,7 +390,7 @@ export function Sidebar() {
     })
   }
   return (
-    <div className={`z-10 relative h-full min-w-0 ${sidebarOpen ? 'w-[30dvw]' : 'w-0'}`}>
+    <div className={`z-10 relative h-full min-w-0 ${sidebarOpen ? 'w-[40ch]' : 'w-0'}`}>
       {sidebarOpen && (
         <div className="flex flex-col w-full h-full">
           <div className="h-[40px] bg-black flex shrink-0">

@@ -10,7 +10,7 @@ import type { TimelineSequenceRef } from '../bytecode.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 import type { ProgramInstance } from './program.ts'
-import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
+import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 type UseTimelineSequenceParams = {
   program1: ProgramInstance | undefined

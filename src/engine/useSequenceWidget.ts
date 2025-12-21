@@ -17,7 +17,7 @@ import { splitValueAndModifiers } from '../mini/tokenizer.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
-import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
+import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 export type SeqFrame = {
   events: Map<number, number>

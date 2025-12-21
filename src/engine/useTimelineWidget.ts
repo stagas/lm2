@@ -17,7 +17,7 @@ import {
   readTimelineSegsFromHistory,
   type TimelineSeg,
 } from './timeline-history.ts'
-import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
+import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 import { applySmoothing } from './util.ts'
 
 type TimelineState = {

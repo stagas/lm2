@@ -5,7 +5,7 @@ import { FUTURE_BARS, PAST_BARS, TIME_WINDOW_BARS } from '../../as/assembly/cons
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import { useEngineStore } from './store.ts'
 import type { TimelineWindow } from './ui.tsx'
-import { updatePredictedSampleCount } from './updatePredictedSampleCount.ts'
+import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 import { useSeekToSample } from './useSeekToSample.ts'
 import { applySmoothing } from './util.ts'
 
@@ -120,7 +120,7 @@ export function useTimelineHeader() {
         isTimelineDraggingRef.current = true
         handleSeek(x)
       },
-      pointerMove: (x) => {
+      pointerMove: x => {
         if (!isTimelineDraggingRef.current) return
         handleSeek(x)
       },
@@ -296,7 +296,7 @@ export function useTimelineHeader() {
               const text = label.text
               if (text) {
                 let textWidth = 0
-                text.split('').forEach((char) => {
+                text.split('').forEach(char => {
                   textWidth += c.measureText(char).width + 1.5
                 })
                 textWidth -= 1.5 // Adjust for the last character spacing
@@ -328,7 +328,7 @@ export function useTimelineHeader() {
 
             c.fillStyle = color
             let x = textX
-            text.split('').forEach((char) => {
+            text.split('').forEach(char => {
               c.fillText(char, x, textY)
               x += c.measureText(char).width + 1.5
             })
