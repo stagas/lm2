@@ -12,12 +12,9 @@ import {
   HISTORY_HEADER_SIZE,
   HISTORY_SIZE,
   LITERALS_COUNT,
-  MINI_HEADER_SIZE,
-  OP_CYCLE_END,
   OPS_COUNT,
   RING_BUFFER_SIZE,
   SEQ_VOICES,
-  TIMELINE_MAGIC,
 } from './constants'
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
@@ -173,8 +170,6 @@ export class Program {
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
   outsPool: OutsPool = new OutsPool()
-  miniScratch: Mini = new Mini()
-  timelineScratch: Timeline = new Timeline()
 
   // Callback scope stack for remapped buffers and bound inputs
   private callbackDepth: i32 = 0
@@ -282,56 +277,6 @@ export class Program {
     }
 
     return outsPool.get(index)
-  }
-
-  prepare(): void {
-    this.arrayAccessHistory[0] = 0.0
-
-    // Populate sequence histories for any bytecode arrays (mini + timeline).
-    // Use scratch instances so we don't mutate the runtime gensPool or other state.
-    const miniScratch: Mini = this.miniScratch
-    const timelineScratch: Timeline = this.timelineScratch
-
-    // Ensure gens pool indices are reset for deterministic behavior elsewhere
-    this.gensPool.resetIndices()
-
-    // Iterate over arrays and generate history for those that look like sequence bytecode
-    for (let i = 0; i < this.data.arrays.length; i++) {
-      const arr$ = this.data.arrays[i]
-      if (arr$ === 0) continue
-
-      const arr = changetype<StaticArray<f32>>(arr$)
-      const opLength = i32(arr[ARRAY_HEADER_SIZE])
-      if (opLength <= 0) continue
-
-      const first: i32 = i32(arr[ARRAY_HEADER_SIZE + MINI_HEADER_SIZE])
-      const isMini: bool = first >= 0 && first <= OP_CYCLE_END
-      const isTimeline: bool = first === TIMELINE_MAGIC
-      if (!isMini && !isTimeline) continue
-
-      // Ensure a history buffer exists for this array
-      let hist$ = this.histories[i]
-      if (hist$ === 0) {
-        const newHist = new StaticArray<f32>(HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE)
-        hist$ = changetype<usize>(newHist)
-        this.histories[i] = hist$
-      }
-
-      if (isMini) {
-        miniScratch.reset(true)
-        miniScratch.bytecode$ = arr$
-        miniScratch.history$ = hist$
-        miniScratch.generateHistory()
-      }
-      else if (isTimeline) {
-        timelineScratch.reset()
-        timelineScratch.bytecode$ = arr$
-        timelineScratch.history$ = hist$
-        // Prefer stored beatDiv for prepare-time history.
-        timelineScratch.beatDiv = 0.0
-        timelineScratch.generateHistory()
-      }
-    }
   }
 
   copyFrom(source: Program): void {

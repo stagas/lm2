@@ -3,8 +3,8 @@ import type { LoopData } from '../../deno/types.ts'
 
 export class Loop {
   codeFile: CodeFile
-  constructor(public data: LoopData) {
-    this.codeFile = new CodeFile(data.code)
+  constructor(public data: LoopData, codeFile?: CodeFile) {
+    this.codeFile = codeFile ?? new CodeFile(data.code ?? '')
   }
   get isNew() {
     return this.data.timestamp === 0

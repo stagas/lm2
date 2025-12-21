@@ -433,10 +433,6 @@ export class Dsp {
     this.program.gensPool.resetAllSeqs(voices)
   }
 
-  prepare(): void {
-    this.program.prepare()
-  }
-
   @inline
   private vmPush(tag: VmTag, num: f64 = 0.0, aux: i32 = 0): void {
     const sp = this.vmSp

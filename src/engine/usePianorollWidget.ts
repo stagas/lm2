@@ -48,7 +48,6 @@ type PianorollState = {
   lastMinMidi: number
   lastMaxMidi: number
   ev: number[]
-  savedEv: number[]
   frameEv: number[]
   activeMask: Uint8Array
   activeList: number[]
@@ -67,7 +66,6 @@ type UsePianorollParams = {
 }
 
 export function usePianorollWidget({
-  program1,
   audioContext,
   bpmValue,
   globalSampleCount,
@@ -86,7 +84,10 @@ export function usePianorollWidget({
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
-    if (!program1?.program?.histories) return
+    const engineState = useEngineStore.getState()
+    const visualWasm = engineState.visualWasm
+    const sequences = engineState.uiSequences
+    if (!visualWasm) return
 
     const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
       predictedSampleCountRef,
@@ -96,11 +97,6 @@ export function usePianorollWidget({
     if (!pred) return
     const { sampleRate, sampleCount, timeSeconds } = pred
 
-    const engineState = useEngineStore.getState()
-    const prepareStatus = engineState.prepareDspStatus
-    const isWorkletBusy = engineState.isUpdatingDsp
-      && !!(prepareStatus && Atomics.load(prepareStatus, 0) === 0)
-
     const seenSeqs = new Set<number>()
     for (const ref of miniRefs) {
       const seqIndex = ref.seqIndex
@@ -109,8 +105,8 @@ export function usePianorollWidget({
       const map = miniSourceMaps[seqIndex]
       if (!map) continue
 
-      const history = program1.program.histories[seqIndex]
-      if (!history) continue
+      const seq = sequences[seqIndex]
+      if (!seq) continue
 
       const st = pianorollStateRef.current.get(seqIndex) ?? {
         timeSeconds: null,
@@ -120,7 +116,6 @@ export function usePianorollWidget({
         lastMinMidi: 54,
         lastMaxMidi: 66,
         ev: [],
-        savedEv: [],
         frameEv: [],
         activeMask: new Uint8Array(128),
         activeList: [],
@@ -138,6 +133,17 @@ export function usePianorollWidget({
       const barLengthSeconds = (4 * 60) / bpm
       const windowStartTime = st.timeSeconds - PAST_BARS * barLengthSeconds
       const windowEndTime = st.timeSeconds + FUTURE_BARS * barLengthSeconds
+      const windowStartSample = Math.max(0, Math.floor(windowStartTime * sampleRate))
+      const windowEndSample = Math.max(windowStartSample + 1, Math.floor(windowEndTime * sampleRate))
+
+      const historyRaw = visualWasm.generateMiniHistoryWindow({
+        seqIndex,
+        seq,
+        windowStartSample,
+        windowEndSample,
+        bpm,
+        sampleRate,
+      })
 
       const activeMask = st.activeMask
       activeMask.fill(0)
@@ -147,65 +153,40 @@ export function usePianorollWidget({
       let minMidi = 128
       let maxMidi = -1
 
-      const canUseSaved = isWorkletBusy && st.savedEv.length > 0
-      if (canUseSaved) {
-        const ev = st.savedEv
-        for (let i = 0; i < ev.length; i += 4) {
-          const midi = ev[i + 2]!
-          if (midi < minMidi) minMidi = midi
-          if (midi > maxMidi) maxMidi = midi
+      const ev = st.ev
+      ev.length = 0
 
-          const startSample = ev[i]!
-          const endSample = ev[i + 1]!
-          const isActive = sampleCount >= startSample && (sampleCount <= Math.max(startSample + 5000, endSample))
-          if (isActive && activeMask[midi] === 0) {
-            activeMask[midi] = 1
-            activeList.push(midi)
-          }
+      for (let idx = HISTORY_DATA_OFFSET; idx + 5 < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
+        const voiceIndex = historyRaw[idx + 1]!
+        const noteValue = historyRaw[idx + 2]!
+        const velocity = historyRaw[idx + 3]!
+        const startSample = historyRaw[idx + 4]!
+        const endSample = historyRaw[idx + 5]!
+
+        if (startSample === 0 && endSample === 0) continue
+        if (voiceIndex < 0) continue
+        if (noteValue <= 0) continue
+
+        const startTimeSeconds = startSample / sampleRate
+        const endTimeSeconds = endSample / sampleRate
+        if (endTimeSeconds < windowStartTime || startTimeSeconds > windowEndTime) continue
+
+        const midi = frequencyToMidi(noteValue)
+        if (midi < 0 || midi > 127) continue
+
+        ev.push(startSample, endSample, midi, velocity)
+
+        if (midi < minMidi) minMidi = midi
+        if (midi > maxMidi) maxMidi = midi
+
+        const isActive = sampleCount >= startSample && (sampleCount <= Math.max(startSample + 5000, endSample))
+        if (isActive && activeMask[midi] === 0) {
+          activeMask[midi] = 1
+          activeList.push(midi)
         }
-        st.frameEv = ev
       }
-      else {
-        const historyRaw = history.raw
-        const ev = st.ev
-        ev.length = 0
 
-        for (let idx = HISTORY_DATA_OFFSET; idx + 5 < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
-          const voiceIndex = historyRaw[idx + 1]!
-          const noteValue = historyRaw[idx + 2]!
-          const velocity = historyRaw[idx + 3]!
-          const startSample = historyRaw[idx + 4]!
-          const endSample = historyRaw[idx + 5]!
-
-          if (startSample === 0 && endSample === 0) continue
-          if (voiceIndex < 0) continue
-          if (noteValue <= 0) continue
-
-          const startTimeSeconds = startSample / sampleRate
-          const endTimeSeconds = endSample / sampleRate
-          if (endTimeSeconds < windowStartTime || startTimeSeconds > windowEndTime) continue
-
-          const midi = frequencyToMidi(noteValue)
-          if (midi < 0 || midi > 127) continue
-
-          ev.push(startSample, endSample, midi, velocity)
-
-          if (midi < minMidi) minMidi = midi
-          if (midi > maxMidi) maxMidi = midi
-
-          const isActive = sampleCount >= startSample && (sampleCount <= Math.max(startSample + 5000, endSample))
-          if (isActive && activeMask[midi] === 0) {
-            activeMask[midi] = 1
-            activeList.push(midi)
-          }
-        }
-
-        const savedEv = st.savedEv
-        savedEv.length = ev.length
-        for (let i = 0; i < ev.length; i++) savedEv[i] = ev[i]!
-
-        st.frameEv = ev
-      }
+      st.frameEv = ev
 
       if (maxMidi >= 0) {
         const displayMinMidi = Math.max(0, minMidi)
@@ -221,7 +202,7 @@ export function usePianorollWidget({
 
       pianorollStateRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, program1, audioContext, globalSampleCount, miniRefs, miniSourceMaps])
+  }, [showWidgets, audioContext, bpmValue, globalSampleCount, miniRefs, miniSourceMaps])
 
   const drawPianoroll = useCallback((
     c: CanvasRenderingContext2D,

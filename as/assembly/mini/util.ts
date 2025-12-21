@@ -263,8 +263,8 @@ export class EventEmitter {
 
     if (value <= 0.0) return
 
-    // History generation is incremental; only write events whose startSample falls in the requested window.
-    if (startSample >= this.windowStart && startSample < this.windowEnd) {
+    // Windowed history generation should include any event that intersects the requested window.
+    if (endSample > this.windowStart && startSample < this.windowEnd) {
       this.buffer!.write(
         this.reader.getOpIndex(opOffset),
         voiceIndex,
@@ -291,6 +291,7 @@ export class EventEmitter {
     )
 
     const endSample: i32 = startSample + 1
+    if (startSample < this.windowStart || startSample >= this.windowEnd) return
     const opcode: i32 = this.reader.getOpcode(opOffset)
     this.buffer!.write(
       this.reader.getOpIndex(opOffset),

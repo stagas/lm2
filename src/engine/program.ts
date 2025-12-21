@@ -29,10 +29,9 @@ import type {
 } from '../bytecode.ts'
 import { encodeLangToVmOps } from '../bytecode.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
-import { acquireSpinLock, waitForNonZero } from '../lib/atomics.ts'
+import { acquireSpinLock } from '../lib/atomics.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
-import { ControlOp } from '../worklet-shared.ts'
 import type { DspProcessor } from '../worklet.ts'
 import { useEngineStore } from './store.ts'
 
@@ -252,9 +251,6 @@ async function createProgramData(worklet: ReturnType<typeof rpc<DspProcessor>>, 
 async function createProgram(
   worklet: ReturnType<typeof rpc<DspProcessor>>,
   wasmMemory: WebAssembly.Memory,
-  wasmDspPtr: number,
-  prepareDsp: Uint32Array,
-  prepareDspStatus: Int32Array,
   control: Uint32Array,
 ) {
   const program$ = await worklet.createProgram()
@@ -314,12 +310,6 @@ async function createProgram(
     get data() {
       return programData
     },
-    prepareDsp() {
-      Atomics.store(prepareDspStatus, 0, 0)
-      Atomics.store(prepareDspStatus, 1, 0)
-      Atomics.store(prepareDsp, 0, wasmDspPtr)
-      Atomics.store(control, 0, ControlOp.Prepare)
-    },
     async compileSource(source: string, options: CompileOptions = {}): Promise<ProgramBuildResult> {
       const { apply = true, setData = apply, compareAgainst, copyVersionFrom } = options
       const referenceData = compareAgainst ?? programData
@@ -366,11 +356,6 @@ async function createProgram(
           if (setData) {
             this._setData(newData)
           }
-
-          if (apply) {
-            this.prepareDsp()
-            await waitForPrepareResult(prepareDspStatus)
-          }
         }
         finally {
           this.releaseLock()
@@ -404,11 +389,9 @@ async function createProgram(
       return result.sequences
     },
     async applyPreparedData(value: ProgramDataView) {
-      this.prepareDsp()
       await this.withLock(() => {
         this._setData(value)
       })
-      await waitForPrepareResult(prepareDspStatus)
     },
     async acquireLock() {
       const ok = await acquireSpinLock(this.lock, 2000)
@@ -446,22 +429,12 @@ async function createProgram(
   return out
 }
 
-async function waitForPrepareResult(
-  status: Int32Array,
-  timeoutMs: number = 2000,
-) {
-  return await waitForNonZero(status, 0, 1, timeoutMs, { pollMs: 8 })
-}
-
 export async function createProgramInstance(
   worklet: ReturnType<typeof rpc<DspProcessor>>,
   wasmMemory: WebAssembly.Memory,
-  wasmDspPtr: number,
-  prepareDsp: Uint32Array,
-  prepareDspStatus: Int32Array,
   control: Uint32Array,
 ) {
-  const program = await createProgram(worklet, wasmMemory, wasmDspPtr, prepareDsp, prepareDspStatus, control)
+  const program = await createProgram(worklet, wasmMemory, control)
 
   function cleanup() {
     // Cleanup logic if needed

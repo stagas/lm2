@@ -1,16 +1,13 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useMemo, useRef } from 'react'
 import {
-  ARRAY_HEADER_SIZE,
+  FUTURE_BARS,
   HISTORY_DATA_OFFSET,
   HISTORY_ENTRY_SIZE,
-  HISTORY_SIZE,
-  HISTORY_SIZE_MINUS_ONE,
-  MINI_HEADER_SIZE,
-  OP_EVENT,
   OP_OCTAVE,
   OP_SCALE,
   OP_TRANSPOSE,
+  PAST_BARS,
 } from '../../as/assembly/constants.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { splitValueAndModifiers } from '../mini/tokenizer.ts'
@@ -27,7 +24,6 @@ export type SeqFrame = {
 type ControlHistory = {
   opIndex: number
   startSample: number
-  slot: number
 }
 
 type FadingState = {
@@ -44,7 +40,7 @@ export type SeqControlState = {
   fadingTranspose?: FadingState
   fadingScale?: FadingState
   lastSampleCount: number | null
-  version: number | null
+  seq: string | null
 }
 
 type UseSequenceParams = {
@@ -115,18 +111,12 @@ function getControlDeltaSpan(location: SourceLocation): { start: number; end: nu
 }
 
 function updateControlHistory(
-  newestSlot: number,
   history: ControlHistory | null,
   opIndex: number,
   startSample: number,
-  slot: number,
-  isSlotNewer: (newestSlot: number, slotA: number, slotB: number) => boolean,
 ): ControlHistory {
-  if (!history) return { opIndex, startSample, slot }
-  const dt = startSample - history.startSample
-  if (dt > 0.5 || (Math.abs(dt) <= 0.5 && opIndex !== history.opIndex && isSlotNewer(newestSlot, slot, history.slot))) {
-    return { opIndex, startSample, slot }
-  }
+  if (!history) return { opIndex, startSample }
+  if (startSample > history.startSample) return { opIndex, startSample }
   return history
 }
 
@@ -175,8 +165,8 @@ function applyFadeToControls(
 }
 
 export function useSequenceWidget({
-  program1,
   audioContext,
+  bpmValue,
   globalSampleCount,
   miniSourceMaps,
   miniRefs,
@@ -189,17 +179,14 @@ export function useSequenceWidget({
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
 
-  const isSlotNewer = (newestSlot: number, slotA: number, slotB: number): boolean => {
-    const distA = (newestSlot - slotA + HISTORY_SIZE) & HISTORY_SIZE_MINUS_ONE
-    const distB = (newestSlot - slotB + HISTORY_SIZE) & HISTORY_SIZE_MINUS_ONE
-    return distA < distB
-  }
-
   const controls = new Map<number, number>()
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
-    if (!program1?.program?.data) return
+    const engineState = useEngineStore.getState()
+    const visualWasm = engineState.visualWasm
+    const sequences = engineState.uiSequences
+    if (!visualWasm) return
     const FADEOUT_SECONDS = 0.3
     const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
       predictedSampleCountRef,
@@ -208,6 +195,17 @@ export function useSequenceWidget({
     })
     if (!pred) return
     const { sampleRate, sampleCount: currentSampleCount } = pred
+
+    const bpm = bpmValue?.[0] || 60
+    const barLengthSeconds = (4 * 60) / bpm
+    const windowStartSample = Math.max(
+      0,
+      Math.floor(currentSampleCount - PAST_BARS * barLengthSeconds * sampleRate),
+    )
+    const windowEndSample = Math.max(
+      windowStartSample + 1,
+      Math.floor(currentSampleCount + FUTURE_BARS * barLengthSeconds * sampleRate),
+    )
 
     const nextFrame: Array<SeqFrame | undefined> = new Array(miniSourceMaps.length)
 
@@ -220,16 +218,15 @@ export function useSequenceWidget({
       const map = miniSourceMaps[seqIndex]
       if (!map) continue
 
-      const array = program1.program.data.arrays[seqIndex]
-      const history = program1.program.histories[seqIndex]
-      if (!array || !history) continue
+      const seq = sequences[seqIndex]
+      if (!seq) continue
 
       const st = controlStateRef.current.get(seqIndex) ?? {
         octaveHistory: null,
         transposeHistory: null,
         scaleHistory: null,
         lastSampleCount: null,
-        version: null,
+        seq: null,
       }
 
       // Capture previous active op indices so we can create fading entries when they change.
@@ -237,13 +234,12 @@ export function useSequenceWidget({
       const prevTransposeOp = st.transposeHistory?.opIndex ?? null
       const prevScaleOp = st.scaleHistory?.opIndex ?? null
 
-      const currentVersion = (array.raw[3] ?? 0) as number
       const prevSampleCount = st.lastSampleCount
       const didSeek = prevSampleCount != null && currentSampleCount < prevSampleCount
       const didPause = prevSampleCount != null && currentSampleCount === prevSampleCount
       st.lastSampleCount = currentSampleCount
-      const didEdit = st.version != null && currentVersion !== st.version
-      st.version = currentVersion
+      const didEdit = st.seq != null && st.seq !== seq
+      st.seq = seq
       if (didSeek || didEdit) {
         st.octaveHistory = null
         st.transposeHistory = null
@@ -262,11 +258,15 @@ export function useSequenceWidget({
         }
       }
 
-      const historyRaw = history.raw
       const eventData = new Map<number, { startSample: number; endSample: number; velocity: number }>()
-      const currentBytecodeLength = array.raw[ARRAY_HEADER_SIZE] as number
-      const historyWritePos = Math.floor(history.writePos) & HISTORY_SIZE_MINUS_ONE
-      const newestSlot = (historyWritePos - 1 + HISTORY_SIZE) & HISTORY_SIZE_MINUS_ONE
+      const historyRaw = visualWasm.generateMiniHistoryWindow({
+        seqIndex,
+        seq,
+        windowStartSample,
+        windowEndSample,
+        bpm,
+        sampleRate,
+      })
 
       for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
         const opIndex = Math.floor(historyRaw[idx])
@@ -279,32 +279,24 @@ export function useSequenceWidget({
 
         const toleranceSamples = sampleRate * 0.001
         if (startSample > currentSampleCount + toleranceSamples) continue
-        const slot = ((idx - HISTORY_DATA_OFFSET) / HISTORY_ENTRY_SIZE) | 0
 
         if (voiceIndex < 0) {
           const op = -voiceIndex
 
           if (op === OP_OCTAVE) {
-            st.octaveHistory = updateControlHistory(newestSlot, st.octaveHistory, opIndex, startSample, slot,
-              isSlotNewer)
+            st.octaveHistory = updateControlHistory(st.octaveHistory, opIndex, startSample)
           }
           else if (op === OP_TRANSPOSE) {
-            st.transposeHistory = updateControlHistory(newestSlot, st.transposeHistory, opIndex, startSample, slot,
-              isSlotNewer)
+            st.transposeHistory = updateControlHistory(st.transposeHistory, opIndex, startSample)
           }
           else if (op === OP_SCALE) {
-            st.scaleHistory = updateControlHistory(newestSlot, st.scaleHistory, opIndex, startSample, slot, isSlotNewer)
+            st.scaleHistory = updateControlHistory(st.scaleHistory, opIndex, startSample)
           }
         }
-        else if (opIndex >= 0 && opIndex < currentBytecodeLength) {
-          const pc = ARRAY_HEADER_SIZE + MINI_HEADER_SIZE + opIndex
-          const op = array.raw[pc] as number
-
-          if (op === OP_EVENT) {
-            const existing = eventData.get(opIndex)
-            if (!existing || startSample > existing.startSample) {
-              eventData.set(opIndex, { startSample, endSample, velocity })
-            }
+        else {
+          const existing = eventData.get(opIndex)
+          if (!existing || startSample > existing.startSample) {
+            eventData.set(opIndex, { startSample, endSample, velocity })
           }
         }
       }
@@ -348,8 +340,7 @@ export function useSequenceWidget({
     }
 
     frameRef.current = nextFrame
-  }, [showWidgets, program1, audioContext, globalSampleCount, miniSourceMaps, miniRefs, dspSource, controlStateRef,
-    frameRef])
+  }, [showWidgets, audioContext, bpmValue, globalSampleCount, miniSourceMaps, miniRefs, controlStateRef, frameRef])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []

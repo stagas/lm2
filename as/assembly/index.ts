@@ -1,11 +1,16 @@
 import { ARRAY_HEADER_SIZE, ARRAY_SIZE, HISTORY_ENTRY_SIZE, HISTORY_HEADER_SIZE, HISTORY_SIZE,
-  OPS_COUNT } from './constants'
+  HISTORY_DATA_OFFSET, HISTORY_SIZE_MINUS_ONE, HISTORY_WRITE_POS_OFFSET, OPS_COUNT } from './constants'
 import { Dsp } from './dsp'
+import { bpm, nyquist, sampleRate } from './globals'
+import { MiniEventBuffer, MiniEvents } from './mini/events'
 import { Program, ProgramData } from './program'
 
 export * from './globals'
 
 export { Op, SeqOp } from './shared'
+
+const miniHistoryEvents: MiniEvents = new MiniEvents()
+const miniHistoryBuffer: MiniEventBuffer = new MiniEventBuffer()
 
 export function createFloat32Buffer(size: i32): usize {
   return changetype<usize>(new StaticArray<f32>(size))
@@ -20,11 +25,6 @@ export function resetDsp(dsp$: usize, voices: boolean): void {
   if (dsp$ === 0) return
   const dsp = changetype<Dsp>(dsp$)
   dsp.reset(voices)
-}
-
-export function prepareDsp(dsp$: usize): void {
-  const dsp = changetype<Dsp>(dsp$)
-  dsp.prepare()
 }
 
 export function createProgram(): usize {
@@ -54,6 +54,76 @@ export function createArray(): usize {
 export function createHistoryArray(): usize {
   const array = new StaticArray<f32>(HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE)
   return changetype<usize>(array)
+}
+
+export function generateMiniHistoryWindow(
+  bytecode$: usize,
+  history$: usize,
+  windowStartSample: i32,
+  windowEndSample: i32,
+  bpmValue: f32,
+  sampleRateValue: f32,
+): void {
+  if (history$ === 0) return
+  const history = changetype<StaticArray<f32>>(history$)
+  memory.fill(
+    changetype<usize>(history),
+    0,
+    (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4,
+  )
+
+  if (bytecode$ === 0) return
+  if (windowEndSample <= windowStartSample) return
+  if (bpmValue <= 0.0 || sampleRateValue <= 0.0) return
+
+  sampleRate = sampleRateValue
+  nyquist = sampleRateValue * 0.5
+  bpm = bpmValue
+
+  const cycleLength: f32 = 1.0
+  const secondsPerBeat: f64 = 60.0 / (bpmValue as f64)
+  const cycleSamplesF: f64 = secondsPerBeat * (sampleRateValue as f64)
+  if (cycleSamplesF <= 0.0) return
+  const cycleSamples: f32 = cycleSamplesF as f32
+
+  let startCycle: i32 = i32(Math.floor((windowStartSample as f64) / cycleSamplesF)) - 2
+  if (startCycle < 0) startCycle = 0
+  let endCycle: i32 = i32(Math.ceil((windowEndSample as f64) / cycleSamplesF)) + 2
+  if (endCycle < startCycle) endCycle = startCycle
+
+  let historyWritePos: i32 = 0
+
+  for (let cycle: i32 = startCycle; cycle <= endCycle; cycle++) {
+    const cycleStartSample: i32 = i32((cycle as f64) * cycleSamplesF)
+    miniHistoryBuffer.clear()
+    miniHistoryEvents.emitEvents(
+      bytecode$,
+      miniHistoryBuffer,
+      cycleStartSample,
+      cycleLength,
+      cycleSamples,
+      windowStartSample,
+      windowEndSample,
+    )
+
+    for (let i: i32 = 0; i < miniHistoryBuffer.writePos; i++) {
+      const ev = miniHistoryBuffer.events[i]
+      if (!ev) continue
+
+      const slot: i32 = historyWritePos & HISTORY_SIZE_MINUS_ONE
+      const historyIdx: i32 = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
+      history[historyIdx + 0] = ev.opIndex as f32
+      history[historyIdx + 1] = ev.voiceIndex as f32
+      history[historyIdx + 2] = ev.value
+      history[historyIdx + 3] = ev.velocity
+      history[historyIdx + 4] = ev.startSample as f32
+      history[historyIdx + 5] = ev.endSample as f32
+
+      historyWritePos = (historyWritePos + 1) & HISTORY_SIZE_MINUS_ONE
+    }
+  }
+
+  history[HISTORY_WRITE_POS_OFFSET] = historyWritePos as f32
 }
 
 export function processAudio(dsp$: usize, left$: usize, right$: usize, begin: i32, length: i32): void {

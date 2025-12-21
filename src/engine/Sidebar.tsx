@@ -17,16 +17,17 @@ import {
 } from '@phosphor-icons/react'
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
 import type { LoopData } from '../../deno/types.ts'
+import { useAppStore } from '../app/store.ts'
 import { useLoopData } from '../app/hooks/useLoopData.ts'
 import { useSessionData } from '../app/hooks/useSessionData.ts'
 import { Spinner } from '../components/Spinner.tsx'
 import { Loop } from './loop.ts'
+import { useCodeFileValue } from './useCodeFileValue.ts'
 
 type SidebarTab = 'loops' | 'liked' | 'browse' | 'compiled' | 'settings'
 
@@ -74,6 +75,11 @@ const LoopItem = ({
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [loopTitle, setLoopTitle] = useState(loop.data.title)
+  const code = useCodeFileValue(loop.codeFile)
+  const base = useAppStore(state => state.bases[loop.data.id])
+  const baseCode = base?.code ?? loop.data.code
+  const canCompare = loop.data.code != null || base?.ts != null
+  const isDirty = canCompare && baseCode != null && code !== baseCode
 
   const handleStartEditingDetails = () => {
     setIsEditingDetails(true)
@@ -161,7 +167,7 @@ const LoopItem = ({
                 }}
                 onChange={e => setLoopTitle(e.target.value)}
               />
-              {!loop.isNew && !loop.isDirty && (
+              {!loop.isNew && !isDirty && (
                 <LoopItemButton title="Delete" icon={<TrashIcon weight="regular" size={16} />} onClick={onDelete} />
               )}
               {isSaving
@@ -190,7 +196,7 @@ const LoopItem = ({
                   <LockIcon weight="regular" size={16} />
                 </div>
               )}
-              {loop.isDirty && (
+              {isDirty && (
                 <div
                   title="Has unsaved changes"
                   className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0"
@@ -206,15 +212,15 @@ const LoopItem = ({
             isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
         >
-          {!loop.isDirty && (
+          {!isDirty && (
             <LoopItemButton title="Edit" icon={<PencilIcon weight="regular" size={16} />}
               onClick={handleStartEditingDetails} />
           )}
-          {(loop.isDirty || loop.isNew) && (
+          {(isDirty || loop.isNew) && (
             <LoopItemButton title={!loop.isNew ? 'Discard changes' : 'Close'}
               icon={<XIcon weight="regular" size={16} />} onClick={onClose} />
           )}
-          {loop.isDirty && (
+          {isDirty && (
             <LoopItemButton title="Save" icon={<FloppyDiskBackIcon weight="regular" size={16} />}
               onClick={handleStartSaving} />
           )}
@@ -226,7 +232,6 @@ const LoopItem = ({
 }
 
 export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }) {
-  console.log('sidebar rendered')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('loops')
   const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
@@ -235,12 +240,39 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const scrollPosRef = useRef(0)
 
   const { isLoading: isSessionLoading, sessionData } = useSessionData()
+  const getCodeFile = useAppStore(state => state.getCodeFile)
+  const dropBuffer = useAppStore(state => state.dropBuffer)
+  const setLoopBase = useAppStore(state => state.setLoopBase)
 
   useEffect(() => {
     if (sessionData) {
-      setLoops(sessionData.loops.map(loop => new Loop(loop)))
+      setLoops(prev => {
+        const prevById = new Map(prev.map(loop => [loop.data.id, loop]))
+        const merged: Loop[] = []
+
+        for (const data of sessionData.loops) {
+          const prevLoop = prevById.get(data.id)
+          const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, data.code ?? '')
+          const base = data.code ?? prevLoop?.data.code
+          if (base != null) setLoopBase(data.id, base, data.timestamp)
+          merged.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
+        }
+
+        const localOnly = prev.filter(loop =>
+          loop.isNew && !sessionData.loops.some(s => s.id === loop.data.id)
+        )
+
+        return [...localOnly, ...merged]
+      })
     }
-  }, [sessionData])
+  }, [getCodeFile, sessionData, setLoopBase])
+
+  useEffect(() => {
+    if (!sessionData) return
+    if (currentLoopId != null) return
+    const first = sessionData.loops[0]?.id
+    if (first) setCurrentLoopId(first)
+  }, [currentLoopId, sessionData])
 
   const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
 
@@ -248,19 +280,31 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
 
   useEffect(() => {
     if (loopData) {
-      const loop = loops.find(loop => loop.data.id === loopData.id)!
-      loop.codeFile.value = loopData.code!
-      loop.data = loopData
-      setLoops([...loops])
+      if (currentLoop?.data === loopData) return
+      setLoops(prev =>
+        prev.map(loop => {
+          if (loop.data.id !== loopData.id) return loop
+
+          const next = new Loop({ ...loop.data, ...loopData }, loop.codeFile)
+
+          const serverCode = loopData.code ?? ''
+          if (loopData.code != null) setLoopBase(loopData.id, serverCode, loopData.timestamp)
+          const hasUserEdits = loop.codeFile.value.length > 0
+
+          if (!hasUserEdits && serverCode.length > 0) {
+            loop.codeFile.value = serverCode
+          }
+
+          return next
+        })
+      )
     }
   }, [loopData])
 
   useEffect(() => {
-    if (currentLoop?.data.code != null) {
-      console.log('onLoopChange')
-      onLoopChange(currentLoop)
-    }
-  }, [loops])
+    if (!currentLoop) return
+    onLoopChange(currentLoop)
+  }, [currentLoopId, currentLoop, onLoopChange])
 
   const preserveScrollPos = (callback: () => void) => {
     const container = scrollContainerRef.current
@@ -292,8 +336,10 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     if (untitledCount > 0) {
       newLoopTitle = `Untitled ${untitledCount + 1}`
     }
-    setLoops([new Loop({
-      id: newLoopTitle,
+
+    const id = newLoopTitle
+    const data: LoopData = {
+      id,
       title: newLoopTitle,
       artist: 'stagas',
       artistId: 'stagas',
@@ -302,55 +348,68 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
       commentsCount: 0,
       isPublic: false,
       timestamp: 0,
-    }), ...loops])
+    }
+
+    setLoops(prev => [new Loop(data, getCodeFile(id, data.code ?? '')), ...prev])
   }
 
   const handleSave = (loop: Loop, details: Partial<LoopData>) => {
     preserveScrollPos(() => {
-      details.timestamp = Date.now()
-      setLoops(loops.map(l => l.data.id === loop.data.id ? new Loop({ ...loop.data, ...details }) : l))
+      const timestamp = Date.now()
+      setLoopBase(loop.data.id, loop.codeFile.value, timestamp)
+      setLoops(prev =>
+        prev.map(l =>
+          l.data.id === loop.data.id
+            ? new Loop({ ...loop.data, ...details, timestamp, code: loop.codeFile.value }, loop.codeFile)
+            : l
+        )
+      )
     })
   }
   const handleSaveAsNew = (loop: Loop, details: Partial<LoopData>) => {
-    // preserveScrollPos(() => {
-    details.timestamp = Date.now()
+    const now = Date.now()
+    const state = loop.codeFile.getState()
+    const title = details.title ?? loop.data.title
+    const id = `${title}-${now}`
+    const codeFile = getCodeFile(id, state.value)
+    codeFile.setState(state)
 
-    // restore the original code on the previous loop
     loop.codeFile.value = loop.data.code ?? ''
 
-    const newLoop = new Loop({ ...loop.data, ...details })
-    newLoop.data.id = `${newLoop.data.title}-${Date.now()}`
-    setCurrentLoopId(newLoop.data.id)
-
-    setLoops([...loops, newLoop])
-    // })
+    const newLoop = new Loop({ ...loop.data, ...details, id, timestamp: now, code: state.value }, codeFile)
+    setCurrentLoopId(id)
+    setLoops(prev => [...prev, newLoop])
   }
   const handleClose = (loop: Loop) => {
     if (loop.isDirty
       && !confirm('Are you sure? You will lose all your changes!')) return
     preserveScrollPos(() => {
       if (loop.isNew) {
-        setLoops(loops.filter(l => l.data.id !== loop.data.id))
+        dropBuffer(loop.data.id)
+        setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
       }
       else {
-        loop.codeFile.value = loop.data.code ?? ''
-        setLoops([...loops])
+        loop.codeFile.value = useAppStore.getState().getLoopBase(loop.data.id, loop.data.code ?? '')
+        setLoops(prev => [...prev])
       }
     })
   }
   const handleEditDetails = (loop: Loop, details: Partial<LoopData>) => {
     preserveScrollPos(() => {
-      setLoops(loops.map(l =>
-        l.data.id === loop.data.id
-          ? Object.assign(new Loop({ ...loop.data, ...details }), { codeFile: loop.codeFile })
-          : l
-      ))
+      setLoops(prev =>
+        prev.map(l =>
+          l.data.id === loop.data.id
+            ? new Loop({ ...loop.data, ...details }, loop.codeFile)
+            : l
+        )
+      )
     })
   }
   const handleDelete = (loop: Loop) => {
     if (!confirm(`Are you sure you want to delete "${loop.data.title}"?`)) return
     preserveScrollPos(() => {
-      setLoops(loops.filter(l => l.data.id !== loop.data.id))
+      dropBuffer(loop.data.id)
+      setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
     })
   }
   return (

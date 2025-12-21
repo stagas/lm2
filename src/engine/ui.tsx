@@ -30,6 +30,7 @@ import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
+import { useCodeFileValue } from './useCodeFileValue.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
 import { useSeekToSample } from './useSeekToSample.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
@@ -102,6 +103,7 @@ export function DspSourceEditor(
   const [error, setError] = useState<string>()
   const { isUpdatingDsp } = useEngineStore()
   const theme = useTheme()
+  const code = useCodeFileValue(currentLoop?.codeFile)
 
   // useEffect(() => {
   //   if (currentLoop == null) return
@@ -118,7 +120,7 @@ export function DspSourceEditor(
   // Keep widgets visible while the store is still processing updates or when
   // the editor has compilation errors so the user can see widgets while fixing.
   const localAnalysis = useMemo(() => {
-    const source = currentLoop?.data.code ?? ''
+    const source = code
     try {
       return analyze(source)
     }
@@ -137,11 +139,11 @@ export function DspSourceEditor(
         tokenCount: 0,
       } as any
     }
-  }, [currentLoop])
+  }, [code])
 
   const hasLocalErrors = (localAnalysis?.errors?.length ?? 0) > 0
 
-  const showWidgets = currentLoop?.codeFile.value === dspSource
+  const showWidgets = currentLoop != null && (code.length > 0 || dspSource.length > 0)
     || isUpdatingDsp
     || hasLocalErrors
 
@@ -154,7 +156,7 @@ export function DspSourceEditor(
   }
 
   const widgetCompileState = useMemo((): WidgetCompileState => {
-    if (currentLoop?.codeFile.value === uiDspSource) {
+    if (code === uiDspSource) {
       return {
         dspSource: uiDspSource,
         sequences: uiSequences,
@@ -184,7 +186,7 @@ export function DspSourceEditor(
     target.ops.fill(0)
     target.literals.fill(0)
 
-    const result = encodeLangToVmOps(currentLoop?.codeFile.value ?? '', target)
+    const result = encodeLangToVmOps(code, target)
     if (result.errors.length) {
       return {
         dspSource: uiDspSource,
@@ -205,7 +207,7 @@ export function DspSourceEditor(
     })
 
     return {
-      dspSource: currentLoop?.codeFile.value ?? '',
+      dspSource: code,
       sequences,
       miniRefs: result.miniRefs ?? [],
       timelineRefs: result.timelineRefs ?? [],
@@ -215,7 +217,7 @@ export function DspSourceEditor(
       numberParams: result.numberParams ?? [],
     }
   }, [
-    currentLoop,
+    code,
     uiDspSource,
     uiSequences,
     uiMiniRefs,
@@ -230,7 +232,7 @@ export function DspSourceEditor(
 
   const handleApply = async () => {
     if (!isProgramReady) return
-    const requested = currentLoop?.codeFile.value ?? ''
+    const requested = code
     try {
       setError(undefined)
       await updateDspSource(requested)
@@ -241,8 +243,18 @@ export function DspSourceEditor(
   }
 
   useLayoutEffect(() => {
+    if (currentLoop && currentLoop.data.code == null && code.length === 0) return
     void handleApply()
   }, [currentLoop, isProgramReady])
+
+  useEffect(() => {
+    if (!isProgramReady) return
+    if (!currentLoop) return
+    if (hasLocalErrors) return
+    if (code === dspSource) return
+
+    void handleApply()
+  }, [code, currentLoop?.data.id, dspSource, hasLocalErrors, isProgramReady])
 
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())

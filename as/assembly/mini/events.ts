@@ -32,6 +32,10 @@ export class MiniEvents {
   private reader: BytecodeReader = new BytecodeReader()
   private emitter: EventEmitter = new EventEmitter(this.reader)
   private randomSeed: u32 = 0
+  private lastSeed: u32 = 0
+  private lastSeedBytecode$: usize = 0
+  private lastSeedOpLength: i32 = 0
+  private lastSeedVersion: i32 = -1
   private scaleActive: bool = false
   private scaleRootMidi: i32 = 0
   private scaleIndex: i32 = 0
@@ -62,18 +66,28 @@ export class MiniEvents {
     const opStart = ARRAY_HEADER_SIZE + MINI_HEADER_SIZE
     const opEnd = opStart + opLength
 
-    // Derive a stable base seed from the bytecode contents so that probability
-    // decisions depend only on the actual sequence data. If identical bytecode
-    // is passed again (even at a different pointer), the hash – and therefore
-    // all probability decisions – stay the same.
-    let hash: u32 = 2166136261 // FNV-1a offset basis
-    for (let i = 0; i < opLength; i++) {
-      const v = array[opStart + i]
-      const bits = reinterpret<u32>(v)
-      hash ^= bits
-      hash *= 16777619 // FNV-1a prime
+    // Derive a stable base seed from the bytecode contents so probability decisions depend
+    // only on the actual sequence data. Cache by pointer + version + opLength so per-cycle
+    // history generation doesn't re-hash the entire bytecode repeatedly.
+    const version: i32 = i32(array[3])
+    if (
+      bytecode$ !== this.lastSeedBytecode$
+      || opLength !== this.lastSeedOpLength
+      || version !== this.lastSeedVersion
+    ) {
+      let hash: u32 = 2166136261 // FNV-1a offset basis
+      for (let i = 0; i < opLength; i++) {
+        const v = array[opStart + i]
+        const bits = reinterpret<u32>(v)
+        hash ^= bits
+        hash *= 16777619 // FNV-1a prime
+      }
+      this.lastSeed = hash
+      this.lastSeedBytecode$ = bytecode$
+      this.lastSeedOpLength = opLength
+      this.lastSeedVersion = version
     }
-    this.randomSeed = hash
+    this.randomSeed = this.lastSeed
     this.scaleActive = false
     this.scaleRootMidi = 0
     this.scaleIndex = 0

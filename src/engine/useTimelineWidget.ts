@@ -8,7 +8,6 @@ import {
 import type { TimelineLabel, TimelineSequenceRef } from '../bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
-import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
 import {
   getTimelineValue,
@@ -24,7 +23,6 @@ type TimelineState = {
   timeSeconds: number | null
   sampleCount: number
   segs: TimelineSeg[]
-  savedSegs: TimelineSeg[]
   frameSegs: TimelineSeg[]
 }
 
@@ -69,11 +67,6 @@ export function useTimelineWidget({
     if (!pred) return
     const { sampleRate, sampleCount, timeSeconds } = pred
 
-    const engineState = useEngineStore.getState()
-    const prepareStatus = engineState.prepareDspStatus
-    const isWorkletBusy = engineState.isUpdatingDsp
-      && !!(prepareStatus && Atomics.load(prepareStatus, 0) === 0)
-
     const seenSeqs = new Set<number>()
     for (const ref of timelineRefs) {
       const seqIndex = ref.seqIndex
@@ -87,7 +80,6 @@ export function useTimelineWidget({
         timeSeconds: null,
         sampleCount: 0,
         segs: [],
-        savedSegs: [],
         frameSegs: [],
       }
 
@@ -100,13 +92,6 @@ export function useTimelineWidget({
       const windowStartTime = st.timeSeconds - PAST_BARS * barLengthSeconds
       const windowEndTime = st.timeSeconds + FUTURE_BARS * barLengthSeconds
 
-      const canUseSaved = isWorkletBusy && st.savedSegs.length > 0
-      if (canUseSaved) {
-        st.frameSegs = st.savedSegs
-        stateRef.current.set(seqIndex, st)
-        continue
-      }
-
       let segs = readTimelineSegsFromHistory(history.raw, sampleRate, windowStartTime, windowEndTime)
       if (segs.length === 0) {
         const array = program1.program.data?.arrays?.[seqIndex]
@@ -116,7 +101,6 @@ export function useTimelineWidget({
       }
 
       st.segs = segs
-      st.savedSegs = segs
       st.frameSegs = segs
       stateRef.current.set(seqIndex, st)
     }

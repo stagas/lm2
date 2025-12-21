@@ -22,6 +22,7 @@ import workletUrl from '../worklet.js?worker&url'
 import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
 import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
+import { createVisualWasm, type VisualWasm } from './visual-wasm.ts'
 
 type PlaybackState = 'stopped' | 'running' | 'paused'
 
@@ -29,6 +30,7 @@ type EngineState = {
   wasmMemory?: WebAssembly.Memory
   wasmDsp?: Dsp
   wasmDspPtr: number
+  visualWasm?: VisualWasm
   program1?: ProgramInstance
   program2?: ProgramInstance
   animationManager?: AnimationManager
@@ -46,8 +48,6 @@ type EngineState = {
   barsLoopEndSample?: number
   programSwap?: Uint32Array<SharedArrayBuffer>
   programSwapStatus?: Int32Array<SharedArrayBuffer>
-  prepareDsp?: Uint32Array<SharedArrayBuffer>
-  prepareDspStatus?: Int32Array<SharedArrayBuffer>
   sequences: string[]
   miniRefs: MiniSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
@@ -569,6 +569,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         wasmMemory: undefined,
         wasmDsp: undefined,
         wasmDspPtr: 0,
+        visualWasm: undefined,
         program1: undefined,
         program2: undefined,
         animationManager: undefined,
@@ -583,8 +584,6 @@ export const useEngineStore = create<EngineState>((set, get) => {
         hardLoop: undefined,
         programSwap: undefined,
         programSwapStatus: undefined,
-        prepareDsp: undefined,
-        prepareDspStatus: undefined,
         lastSuccessfulProgramData: undefined,
         miniRefs: [],
         timelineRefs: [],
@@ -625,10 +624,13 @@ export const useEngineStore = create<EngineState>((set, get) => {
       if (!state.worklet) throw new Error('Worklet not initialized')
 
       const binary = await fetchWasmBinary()
+      const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
       const { memory, dsp$ } = await state.worklet.setWasmBinary(binary)
       const wasmMemory = memory
       const wasmDsp = DspStruct(wasmMemory.buffer, dsp$)
       const wasmDspPtr = dsp$
+
+      const visualWasm = await createVisualWasm(binary, sourcemapUrl)
 
       state.program1?.cleanup()
       state.program2?.cleanup()
@@ -638,18 +640,12 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const program1 = await createProgramInstance(
         state.worklet,
         wasmMemory,
-        wasmDspPtr,
-        state.prepareDsp!,
-        state.prepareDspStatus!,
         state.control!,
       )
 
       const program2 = await createProgramInstance(
         state.worklet,
         wasmMemory,
-        wasmDspPtr,
-        state.prepareDsp!,
-        state.prepareDspStatus!,
         state.control!,
       )
 
@@ -659,6 +655,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         wasmMemory,
         wasmDsp,
         wasmDspPtr,
+        visualWasm,
         program1,
         program2,
         isProgramReady: true,
@@ -752,8 +749,6 @@ async function createWorklet() {
   const programSwapStatus = new Int32Array(
     new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT),
   )
-  const prepareDsp = new Uint32Array(new SharedArrayBuffer(1 * Uint32Array.BYTES_PER_ELEMENT))
-  const prepareDspStatus = new Int32Array(new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT))
   const dsp = new AudioWorkletNode(audioContext, 'dsp', {
     outputChannelCount: [2],
     processorOptions: {
@@ -766,9 +761,7 @@ async function createWorklet() {
       loop,
       hardLoop,
       programSwap,
-      prepareDsp,
       swapStatus: programSwapStatus,
-      prepareDspStatus,
     },
   } satisfies DspProcessorOptions)
   dsp.connect(audioContext.destination)
@@ -782,8 +775,6 @@ async function createWorklet() {
     loop,
     hardLoop,
     programSwap,
-    prepareDsp,
-    prepareDspStatus,
     worklet,
     audioContext,
     programSwapStatus,

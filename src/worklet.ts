@@ -61,9 +61,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
     loop: Int32Array<SharedArrayBuffer>
     hardLoop: Int32Array<SharedArrayBuffer>
     programSwap: Uint32Array<SharedArrayBuffer>
-    prepareDsp: Uint32Array<SharedArrayBuffer>
     swapStatus: Int32Array<SharedArrayBuffer>
-    prepareDspStatus: Int32Array<SharedArrayBuffer>
   }
 }
 
@@ -87,7 +85,6 @@ export class DspProcessor extends AudioWorkletProcessor {
   private limiter = new Limiter()
   private swapStatus?: Int32Array
   private crossfadeState: Map<number, SwapState> = new Map()
-  private resetRunningDspOnNextChunk = false
   private seekSample?: Int32Array
   private loop?: Int32Array
   private hardLoop?: Int32Array
@@ -296,7 +293,6 @@ export class DspProcessor extends AudioWorkletProcessor {
     Atomics.store(this.options.processorOptions.globalSampleCount, 0, clamped)
     for (const dsp of this.dsps) {
       this.core.wasm.resetDsp(dsp.dsp$, true)
-      this.core.wasm.prepareDsp(dsp.dsp$)
     }
   }
 
@@ -307,7 +303,6 @@ export class DspProcessor extends AudioWorkletProcessor {
     Atomics.store(this.options.processorOptions.globalSampleCount, 0, 0)
     for (const dsp of this.dsps) {
       this.core.wasm.resetDsp(dsp.dsp$, true)
-      this.core.wasm.prepareDsp(dsp.dsp$)
     }
     this.state = 'stopped'
   }
@@ -335,9 +330,6 @@ export class DspProcessor extends AudioWorkletProcessor {
       // Only respond to control changes
       if (control !== this.lastControl) {
         if (control === ControlOp.Start && this.state === 'stopped') {
-          const status = this.options.processorOptions.prepareDspStatus
-          Atomics.store(status, 0, 0)
-
           this.state = 'fade-in'
           this.shouldReset = false
         }
@@ -356,18 +348,6 @@ export class DspProcessor extends AudioWorkletProcessor {
             return true
           }
         }
-        else if (control === ControlOp.Prepare && this.state === 'stopped') {
-          const dsp$ = Atomics.load(this.options.processorOptions.prepareDsp, 0)
-          if (dsp$) {
-            this.core.wasm.prepareDsp(dsp$)
-            const status = this.options.processorOptions.prepareDspStatus
-            Atomics.store(status, 0, 1)
-            Atomics.store(status, 1, 1)
-            Atomics.notify(status, 1)
-          }
-          // Set the control back to its previous value.
-          Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
-        }
         else if (control === ControlOp.Swap && this.state === 'stopped') {
           // Handle swap when stopped
           const swap = this.options.processorOptions.programSwap
@@ -380,7 +360,6 @@ export class DspProcessor extends AudioWorkletProcessor {
               const dsp = this.dsps.find(d => d.dsp$ === targetDsp$)
               if (dsp) {
                 dsp.view.program = new$
-                this.core.wasm.prepareDsp(dsp.dsp$)
               }
             }
           }
@@ -587,14 +566,6 @@ export class DspProcessor extends AudioWorkletProcessor {
       outputs[0][0].set(L)
       outputs[0][1].set(R)
 
-      if (this.resetRunningDspOnNextChunk) {
-        this.resetRunningDspOnNextChunk = false
-        const status = this.options.processorOptions.prepareDspStatus
-        Atomics.store(status, 0, 1)
-        Atomics.store(status, 1, 1)
-        Atomics.notify(status, 1)
-      }
-
       if (this.state === 'fade-in') {
         if (sampleBefore > 0) {
           const fadeInLength = CHUNK_SIZE
@@ -605,8 +576,6 @@ export class DspProcessor extends AudioWorkletProcessor {
           }
         }
         this.state = 'running'
-        const status = this.options.processorOptions.prepareDspStatus
-        Atomics.store(status, 0, 1)
       }
       else if (this.state === 'fade-out') {
         for (let i = 0; i < CHUNK_SIZE; i++) {
@@ -620,23 +589,12 @@ export class DspProcessor extends AudioWorkletProcessor {
           this.shouldReset = false
         }
       }
-      else if (this.state === 'running' && control === ControlOp.Prepare) {
-        this.resetRunningDspOnNextChunk = true
-        Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
-      }
 
       return true
     }
     catch (error) {
       this.crossfadeState.clear()
       this.signalSwapResult(-1)
-
-      const status = this.options.processorOptions.prepareDspStatus
-      if (Atomics.load(status, 0) === 0) {
-        Atomics.store(status, 0, -1)
-        Atomics.store(status, 1, 1)
-        Atomics.notify(status, 1)
-      }
 
       Atomics.store(this.options.processorOptions.control, 0, ControlOp.Pause)
       this.lastControl = ControlOp.Pause
