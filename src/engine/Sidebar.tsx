@@ -3,6 +3,7 @@ import {
   ArrowLineRightIcon,
   ArticleIcon,
   CheckIcon,
+  CircleNotch,
   FilePlusIcon,
   FloppyDiskBackIcon,
   GearSixIcon,
@@ -11,8 +12,6 @@ import {
   LockIcon,
   PencilIcon,
   PlayIcon as PlayIconPhosphor,
-  SpinnerGapIcon,
-  SpinnerIcon,
   TrashIcon,
   WaveformIcon,
   XIcon,
@@ -94,6 +93,7 @@ const LoopItem = ({
   onDelete,
   onClose,
   hideCloseWhenNotDirty = false,
+  isLoading = false,
 }: {
   loop: Loop
   isCurrent: boolean
@@ -108,6 +108,7 @@ const LoopItem = ({
   onDelete?: () => void
   onClose?: () => void
   hideCloseWhenNotDirty?: boolean
+  isLoading?: boolean
 }) => {
   const restartLoop = useRestartLoop()
   const rootRef = useRef<HTMLDivElement>(null)
@@ -288,6 +289,11 @@ const LoopItem = ({
                   className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0"
                 />
               )}
+              {isLoading && (
+                <div className="text-neutral-400 animate-spin shrink-0">
+                  <CircleNotch weight="regular" size={16} />
+                </div>
+              )}
               <div className="truncate">{loopTitle}</div>
             </div>
           )}
@@ -463,6 +469,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
 
   const { isLoading: isLoopLoading, loopData } = useLoopData(currentLoopId, currentLoop)
+  const loadingLoopId = isLoopLoading ? currentLoopId : null
 
   useEffect(() => {
     if (!loopData) return
@@ -867,6 +874,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                         key={loop.data.id}
                         loop={loop}
                         isCurrent={currentLoopId === loop.data.id}
+                        isLoading={loadingLoopId === loop.data.id}
                         onClick={() => setCurrentLoopId(loop.data.id)}
                         onPlay={() => {
                           setQueuedPlay({ loopId: loop.data.id })
@@ -944,6 +952,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                               onPause={pause}
                               onStop={stop}
                               canSave={sessionData != null}
+                              isLoading={loadingLoopId === loop.data.id}
                               onClose={() => handleClose(loop)}
                               onDelete={() => handleDelete(loop)}
                               onEditDetails={details => handleEditDetails(loop, details)}

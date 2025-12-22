@@ -28,6 +28,8 @@ interface AppState {
   bases: Record<string, { code: string; ts?: number }>
   localLoops: LoopData[]
   selectedLoopId: string | null
+  isLoopLoading: boolean
+  setLoopLoading: (isLoading: boolean) => void
   getCodeFile: (id: string, initialValue: string) => CodeFile
   setLoopBase: (id: string, base: string, ts?: number) => void
   getLoopBase: (id: string, fallback?: string) => string
@@ -93,6 +95,7 @@ export const useAppStore = create<AppState>()(
       bases: {},
       localLoops: [],
       selectedLoopId: null,
+      isLoopLoading: false,
 
       getCodeFile: (id, initialValue) => {
         const existing = codeFiles.get(id)
@@ -208,6 +211,10 @@ export const useAppStore = create<AppState>()(
 
       setSelectedLoopId: (id: string | null) => {
         set({ selectedLoopId: id })
+      },
+
+      setLoopLoading: isLoopLoading => {
+        set({ isLoopLoading })
       },
 
       moveBuffer: (fromId: string, toId: string) => {

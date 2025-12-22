@@ -7,6 +7,7 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   const api = useAppStore(state => state.api)
   const [loopData, setLoopData] = useState<LoopData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const setLoopLoading = useAppStore(state => state.setLoopLoading)
 
   const withLoading = useCallback((fn: () => Promise<void>) => {
     setIsLoading(true)
@@ -21,6 +22,12 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
       setLoopData(data)
     })
   }, [api, withLoading, loopId])
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setLoopLoading(isLoading)
+    })
+  }, [isLoading, setLoopLoading])
 
   if (currentLoop?.data.code != null) return { isLoading: false, loopData: currentLoop.data }
 

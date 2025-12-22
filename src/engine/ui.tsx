@@ -8,7 +8,9 @@ import {
   useState,
 } from 'react'
 import { LITERALS_COUNT, OPS_COUNT } from '../../as/assembly/constants.ts'
+import { useAppStore } from '../app/store.ts'
 import { Logo } from '../components/Logo.tsx'
+import { Spinner } from '../components/Spinner.tsx'
 import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
@@ -109,6 +111,7 @@ export function DspSourceEditor(
   const { playbackState } = useEngineStore()
   const [error, setError] = useState<string>()
   const { isUpdatingDsp } = useEngineStore()
+  const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const theme = useTheme()
   // Subscribe for rerenders while editing, but use `codeFile.value` for synchronous reads
   // to avoid a one-render lag during loop switches.
@@ -461,8 +464,8 @@ export function DspSourceEditor(
   }, [currentLoop?.codeFile])
 
   return (
-    <div className="flex flex-row gap-2 w-full h-full">
-      <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
+    <div className="flex flex-row gap-2 w-full h-full relative">
+      <div className={`bg-gray-900 text-white font-mono text-sm w-full h-full ${isLoopLoading ? 'opacity-0' : ''}`}>
         <CodeEditor
           key={codeEditorKey}
           codeFile={currentLoop?.codeFile}
@@ -475,6 +478,13 @@ export function DspSourceEditor(
           onBeforeDraw={onBeforeDrawCombined}
         />
       </div>
+      {isLoopLoading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80">
+          <div className="w-10 h-10">
+            <Spinner lineWidth={1.35} />
+          </div>
+        </div>
+      )}
       {
         /* {error && (
         <div className="bg-red-900 text-red-200 p-2 rounded-md text-sm">
