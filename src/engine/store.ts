@@ -32,6 +32,13 @@ import type { DspProcessor, DspProcessorOptions } from './worklet.ts'
 
 type PlaybackState = 'stopped' | 'running' | 'paused'
 
+const f32BitsBuf = new ArrayBuffer(4)
+const f32BitsView = new DataView(f32BitsBuf)
+function f32ToU32(v: number): number {
+  f32BitsView.setFloat32(0, v, true)
+  return f32BitsView.getUint32(0, true)
+}
+
 type EngineState = {
   playingLoopId: string | null
   viewSampleCountByLoopId: Record<string, number>
@@ -681,9 +688,107 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
       const wasRunning = state.playbackState === 'running'
       if (wasRunning) {
-        // Ensure we don't briefly run the old program while swapping to the new loop.
-        state.pause()
-        await new Promise<void>(resolve => setTimeout(resolve, 2.5))
+        const control = state.control
+        const swap = state.programSwap
+        const swapStatus = state.programSwapStatus
+        const dspPtr = state.wasmDspPtr
+        const primaryProgram = state.program1
+        const stagingProgram = state.program2
+
+        if (!control || !swap || !swapStatus || !dspPtr || !primaryProgram || !stagingProgram) {
+          return
+        }
+
+        const comparisonReference = state.lastSuccessfulProgramData
+          ?? primaryProgram.program.data
+          ?? stagingProgram.program.data
+
+        const stagingResult = await stagingProgram.program.compileSource(source, {
+          apply: false,
+          setData: true,
+          compareAgainst: comparisonReference,
+          copyVersionFrom: comparisonReference,
+        })
+
+        if (state.worklet && state.audioContext) {
+          scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true })
+        }
+
+        if (stagingResult.bpm !== undefined && state.bpmValue) {
+          state.bpmValue[0] = stagingResult.bpm
+        }
+
+        const sequences = stagingResult.sequences
+        const miniRefs = stagingResult.miniRefs
+        const timelineRefs = stagingResult.timelineRefs
+        const bars = stagingResult.bars
+        const timelineLabels = buildTimelineLabels(stagingResult.timelineLabels, bars)
+        const miniSourceMaps = stagingResult.miniSourceMaps
+        const analyserRefs = stagingResult.analyserRefs
+        const arrayLiterals = stagingResult.arrayLiterals
+        const numberParams = stagingResult.numberParams
+        const numberLiterals = stagingResult.numberLiterals
+        const sampleDefs: SampleDef[] = stagingResult.sampleDefs ?? []
+
+        const newProgram$ = stagingProgram.program.ptr$
+        const bpmBits = f32ToU32(state.bpmValue?.[0] ?? 60)
+
+        const globalSampleCount = state.globalSampleCount
+        if (globalSampleCount) {
+          Atomics.store(globalSampleCount, 0, 0)
+        }
+
+        set(prev => {
+          const prevView = prev.viewSampleCountByLoopId[loopId] ?? 0
+          const viewSampleCountByLoopId = prevView === 0
+            ? prev.viewSampleCountByLoopId
+            : { ...prev.viewSampleCountByLoopId, [loopId]: 0 }
+
+          return {
+            ...prev,
+            playingLoopId: loopId,
+            viewSampleCountByLoopId,
+            dspSource: source,
+            sequences,
+            miniRefs,
+            timelineRefs,
+            timelineLabels,
+            bars,
+            miniSourceMaps,
+            analyserRefs,
+            arrayLiterals,
+            numberParams,
+            numberLiterals,
+            sampleDefs,
+            lastSuccessfulProgramData: stagingResult.data,
+            uiDspSource: source,
+            uiSequences: sequences,
+            uiMiniRefs: miniRefs,
+            uiTimelineRefs: timelineRefs,
+            uiTimelineLabels: timelineLabels,
+            uiBars: bars,
+            uiMiniSourceMaps: miniSourceMaps,
+            uiAnalyserRefs: analyserRefs,
+            uiArrayLiterals: arrayLiterals,
+            uiNumberParams: numberParams,
+            uiNumberLiterals: numberLiterals,
+            uiSampleDefs: sampleDefs,
+            isProgramSwapPending: false,
+            program1: stagingProgram,
+            program2: primaryProgram,
+          }
+        })
+
+        syncBarsHardLoop(bars)
+        localStorage.setItem('lm2:dsp-source', source)
+
+        swapStatus.fill(0)
+        swap.fill(0)
+        Atomics.store(swap, 0, bpmBits)
+        Atomics.store(swap, 1, newProgram$)
+        Atomics.store(swap, 2, dspPtr)
+        Atomics.store(control, 0, ControlOp.RestartWithProgram)
+        return
       }
 
       await state.updateDspSource(source)
