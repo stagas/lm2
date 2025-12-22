@@ -39,7 +39,10 @@ interface AppState {
   dropBuffer: (id: string) => void
 }
 
-const api = new API((input, init) => fetch(input, { ...init, credentials: 'include' }))
+const api = new API(async (input, init) => {
+  await new Promise(resolve => setTimeout(resolve, 3000))
+  return fetch(input, { ...init, credentials: 'include' })
+})
 
 const codeFiles = new Map<string, CodeFile>()
 const codeFileUnsubs = new Map<string, () => void>()
