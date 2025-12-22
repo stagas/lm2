@@ -20,3 +20,22 @@ export function useSeekToSample() {
 
   return seekToSample
 }
+
+export function useSeekToSampleImmediate() {
+  const {
+    globalSampleCount,
+    control,
+    seekSampleCount,
+  } = useEngineStore()
+
+  const seekToSampleImmediate = useCallback((targetSampleCount: number) => {
+    if (!control || !seekSampleCount || !globalSampleCount) return
+    const currentSample = Atomics.load(globalSampleCount, 0)
+    if (currentSample === targetSampleCount) return
+
+    Atomics.store(seekSampleCount, 0, targetSampleCount)
+    Atomics.store(control, 0, ControlOp.SeekImmediate)
+  }, [control, globalSampleCount, seekSampleCount])
+
+  return seekToSampleImmediate
+}

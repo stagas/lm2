@@ -450,6 +450,7 @@ export function DspSourceEditor(
     <div className="flex flex-row gap-2 w-full h-full">
       <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
         <CodeEditor
+          key={currentLoop?.data.id ?? '<none>'}
           codeFile={currentLoop?.codeFile}
           widgets={widgets}
           header={timelineHeader}

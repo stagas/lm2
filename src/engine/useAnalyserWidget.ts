@@ -4,6 +4,7 @@ import type { Ring } from 'utils/ring'
 import WaveFFT from '../../vendor/WaveFFT/WaveFFT.js'
 import { WaveformBuffer } from '../lib/waveform-buffer.ts'
 import type { AnalyserRef } from './bytecode.ts'
+import { createGreyVerticalGradient } from './grey-gradient.ts'
 import type { ProgramInstance } from './program.ts'
 import { getCurrentTheme } from './theme.ts'
 
@@ -348,17 +349,7 @@ function drawAmplitudeScroller(
   const ampBarHeight = Math.max(1, Math.min(st.pxH, peak * st.pxH))
   const ampY = (st.pxH - ampBarHeight) / 2
   if (Number.isFinite(peak) && Number.isFinite(ampBarHeight) && Number.isFinite(ampY)) {
-    const grad = offCtx.createLinearGradient(drawX, ampY, drawX, ampY + ampBarHeight)
-    if (peak > 1) {
-      grad.addColorStop(0, '#999')
-      grad.addColorStop(0.5, '#999')
-      grad.addColorStop(1, '#999')
-    }
-    else {
-      grad.addColorStop(0.2, 'rgba(150, 150, 150, 0.5)')
-      grad.addColorStop(0.5, 'rgba(180, 180, 180, 0.9)')
-      grad.addColorStop(0.8, 'rgba(150, 150, 150, 0.5)')
-    }
+    const grad = createGreyVerticalGradient(offCtx, drawX, ampY, ampY + ampBarHeight, peak > 1)
     offCtx.fillStyle = grad
     offCtx.fillRect(drawX, ampY, 1, ampBarHeight)
   }

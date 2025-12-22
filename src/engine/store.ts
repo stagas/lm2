@@ -1,7 +1,9 @@
 import { rpc } from 'utils/rpc'
 import { create } from 'zustand'
 import {
+  LITERALS_COUNT,
   MAX_DSP_INSTANCES,
+  OPS_COUNT,
 } from '../../as/assembly/constants.ts'
 import { AnimationManager } from '../lib/animation-manager.ts'
 import { waitForNonZero } from '../lib/atomics.ts'
@@ -17,7 +19,8 @@ import type {
   TimelineLabel,
   TimelineSequenceRef,
 } from './bytecode.ts'
-import { extractBarsFromSource, extractBpmFromSource, extractTimelineLabelsFromSource } from './bytecode.ts'
+import { encodeLangToVmOps, extractBarsFromSource, extractBpmFromSource,
+  extractTimelineLabelsFromSource } from './bytecode.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
 import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
 import { type LoadedSample, SampleLoader } from './sample-loader.ts'
@@ -99,6 +102,8 @@ type EngineState = {
 
   setLoop: (startSample: number, endSample: number) => void
   clearLoop: () => void
+
+  preloadSamples: (source: string) => void
 }
 
 type PendingDspUpdate = {
@@ -115,8 +120,72 @@ export const useEngineStore = create<EngineState>((set, get) => {
   }
 
   let sampleLoader: SampleLoader | undefined
+  let sampleDecodeToken = 0
   let sampleUploadToken = 0
+  const samplePreviewTarget = {
+    ops: new Int32Array(OPS_COUNT),
+    literals: new Float32Array(LITERALS_COUNT),
+  }
   const sampleUrlByIndex = new Map<number, string>()
+
+  function scheduleSampleLoad(
+    defs: SampleDef[] | undefined,
+    opts: { uploadToWorklet: boolean },
+  ): void {
+    const state = get()
+    const audioContext = state.audioContext
+    if (!audioContext) return
+    if (!defs?.length) return
+
+    if (!sampleLoader) sampleLoader = new SampleLoader(audioContext)
+    const token = opts.uploadToWorklet ? ++sampleUploadToken : ++sampleDecodeToken
+    const isStale = () => token !== (opts.uploadToWorklet ? sampleUploadToken : sampleDecodeToken)
+
+    // Clear stale waveforms immediately when the same index points at a different URL.
+    {
+      const prev = get().loadedSamples
+      let next: Array<LoadedSample | undefined> | null = null
+      for (const d of defs) {
+        const prevLoaded = prev[d.sampleIndex]
+        if (prevLoaded && prevLoaded.url !== d.url) {
+          if (!next) next = prev.slice()
+          next[d.sampleIndex] = undefined
+        }
+      }
+      if (next) set({ loadedSamples: next })
+    }
+
+    void (async () => {
+      for (const d of defs) {
+        if (isStale()) return
+
+        const alreadyUploaded = sampleUrlByIndex.get(d.sampleIndex) === d.url
+        const alreadyDecoded = get().loadedSamples[d.sampleIndex]?.url === d.url
+        if (alreadyDecoded && (!opts.uploadToWorklet || alreadyUploaded)) continue
+
+        const loaded = alreadyDecoded
+          ? get().loadedSamples[d.sampleIndex]!
+          : await sampleLoader!.load(d.url)
+        if (isStale()) return
+
+        if (!alreadyDecoded) {
+          set(prev => {
+            const next = prev.loadedSamples.slice()
+            next[d.sampleIndex] = loaded
+            return { loadedSamples: next }
+          })
+        }
+
+        if (!opts.uploadToWorklet) continue
+
+        const worklet = get().worklet
+        if (!worklet) continue
+
+        await worklet.setSample(d.sampleIndex, loaded.sampleRate, loaded.length, loaded.ch0Buffer)
+        sampleUrlByIndex.set(d.sampleIndex, d.url)
+      }
+    })()
+  }
 
   function syncBarsHardLoop(bars: number | undefined): void {
     const state = get()
@@ -311,26 +380,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       })
 
       if (state.worklet && state.audioContext) {
-        if (!sampleLoader) sampleLoader = new SampleLoader(state.audioContext)
-        const token = ++sampleUploadToken
-        void (async () => {
-          const defs = primaryResult.sampleDefs
-          if (!defs?.length) return
-          for (const d of defs) {
-            if (token !== sampleUploadToken) return
-            const prevUrl = sampleUrlByIndex.get(d.sampleIndex)
-            if (prevUrl === d.url) continue
-            const loaded = await sampleLoader!.load(d.url)
-            if (token !== sampleUploadToken) return
-            set(prev => {
-              const next = prev.loadedSamples.slice()
-              next[d.sampleIndex] = loaded
-              return { loadedSamples: next }
-            })
-            await state.worklet!.setSample(d.sampleIndex, loaded.sampleRate, loaded.length, loaded.ch0Buffer)
-            sampleUrlByIndex.set(d.sampleIndex, d.url)
-          }
-        })()
+        scheduleSampleLoad(primaryResult.sampleDefs, { uploadToWorklet: true })
       }
 
       if (primaryResult.bpm !== undefined && state.bpmValue) {
@@ -631,9 +681,9 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
       const wasRunning = state.playbackState === 'running'
       if (wasRunning) {
-        // Ensure we don't briefly run the old program while swapping to the new loop.
+        //   // Ensure we don't briefly run the old program while swapping to the new loop.
         state.pause()
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        //   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       }
 
       await state.updateDspSource(source)
@@ -756,6 +806,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       if (!state.worklet) throw new Error('Worklet not initialized')
 
       // Prevent stale in-flight uploads from bumping versions after a reload.
+      sampleDecodeToken++
       sampleUploadToken++
       sampleUrlByIndex.clear()
 
@@ -844,6 +895,19 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const loop = state.loop
       if (!loop) return
       Atomics.store(loop, 0, 0)
+    },
+
+    preloadSamples: (source: string) => {
+      const state = get()
+      if (!state.audioContext) return
+      if (!source) return
+
+      samplePreviewTarget.ops.fill(0)
+      samplePreviewTarget.literals.fill(0)
+      const result = encodeLangToVmOps(source, samplePreviewTarget)
+      if (result.errors.length) return
+
+      scheduleSampleLoad(result.sampleDefs ?? [], { uploadToWorklet: false })
     },
   }
 })

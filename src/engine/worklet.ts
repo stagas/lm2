@@ -489,6 +489,15 @@ export class DspProcessor extends AudioWorkletProcessor {
         control = this.lastControl
         Atomics.store(this.options.processorOptions.control, 0, control)
       }
+      else if (control === ControlOp.SeekImmediate) {
+        const seekSample = this.seekSample
+        if (seekSample) {
+          const targetSample = Math.max(0, Atomics.load(seekSample, 0))
+          this.applySeekSample(targetSample)
+        }
+        control = this.lastControl
+        Atomics.store(this.options.processorOptions.control, 0, control)
+      }
 
       // Only respond to control changes
       if (control !== this.lastControl) {

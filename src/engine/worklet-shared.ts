@@ -4,4 +4,5 @@ export enum ControlOp {
   Stop,
   Seek,
   Swap,
+  SeekImmediate,
 }

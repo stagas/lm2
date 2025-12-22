@@ -7,6 +7,7 @@ import {
   SAMPLE_NEEDLE_HISTORY_SIZE,
 } from '../../as/assembly/constants.ts'
 import type { SampleDef } from './bytecode.ts'
+import { createGreyVerticalGradient } from './grey-gradient.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { getCurrentTheme } from './theme.ts'
@@ -104,40 +105,70 @@ function renderWaveformToCanvas(
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, pxW, pxH)
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
   ctx.fillStyle = bg
-  ctx.fillRect(0, 0, w, h)
+  ctx.fillRect(0, 0, pxW, pxH)
 
   const peaks = computePeaks(ch0, pxW)
-  const mid = h / 2
-  const amp = h * 0.45
+  const mid = pxH / 2
+  const amp = pxH * 0.45
 
-  ctx.strokeStyle = 'rgba(180, 180, 180, 0.9)'
-  ctx.lineWidth = 1.35
+  ctx.lineWidth = 1.35 * dpr
   ctx.lineCap = 'round'
 
-  ctx.beginPath()
   for (let i = 0; i < pxW; i++) {
     const base = i * 2
     const mn = peaks[base] ?? 0
     const mx = peaks[base + 1] ?? 0
-    const xi = (i / pxW) * w
     const y1 = mid - mx * amp
     const y2 = mid - mn * amp
-    ctx.moveTo(xi, y1)
-    ctx.lineTo(xi, y2)
+    const isHot = Math.max(Math.abs(mn), Math.abs(mx)) > 1
+    ctx.strokeStyle = createGreyVerticalGradient(ctx, i + 0.5, y1, y2, isHot)
+    ctx.beginPath()
+    ctx.moveTo(i + 0.5, y1)
+    ctx.lineTo(i + 0.5, y2)
+    ctx.stroke()
   }
-  ctx.stroke()
 
-  ctx.strokeStyle = 'rgba(180, 180, 180, 0.65)'
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(0, mid)
-  ctx.lineTo(w, mid)
-  ctx.stroke()
+  // ctx.strokeStyle = 'rgba(180, 180, 180, 0.65)'
+  // ctx.lineWidth = 1 * dpr
+  // ctx.beginPath()
+  // ctx.moveTo(0, mid + 0.5)
+  // ctx.lineTo(pxW, mid + 0.5)
+  // ctx.stroke()
 
   ctx.restore()
+}
+
+function drawPlaceholder(
+  c: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  if (w <= 1 || h <= 1) return
+
+  const theme = getCurrentTheme()
+  c.save()
+  c.translate(x, y)
+  c.beginPath()
+  c.rect(0, 0, w, h)
+  c.clip()
+
+  c.fillStyle = theme.background
+  c.fillRect(0, 0, w, h)
+
+  const mid = h / 2
+  c.strokeStyle = 'rgba(180, 180, 180, 0.65)'
+  c.lineWidth = 1.35
+  c.lineCap = 'round'
+  c.beginPath()
+  c.moveTo(0, mid)
+  c.lineTo(w, mid)
+  c.stroke()
+
+  c.restore()
 }
 
 function drawSample(
@@ -340,7 +371,10 @@ export function useSampleWidget({
 
     const loaded = useEngineStore.getState().loadedSamples[sampleIndex]
     const ch0 = loaded?.ch0
-    if (!ch0) return
+    if (!ch0) {
+      drawPlaceholder(c, x, widgetY, w, h)
+      return
+    }
 
     const needle = needleRef.current.get(sampleIndex)
     drawSample(c, x, widgetY, w, h, ch0, waveRef, sampleIndex, needle)

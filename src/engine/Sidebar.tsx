@@ -42,15 +42,25 @@ const SidebarTabIcon: Record<SidebarTab, React.ReactNode> = {
 }
 
 const LoopItemButton = (
-  { icon, title, onClick }: { icon: React.ReactNode; title: string; onClick: (() => void) | undefined },
+  {
+    icon,
+    title,
+    onClick,
+    className,
+  }: {
+    icon: React.ReactNode
+    title: string
+    onClick: (() => void) | undefined
+    className?: string
+  },
 ) => (
   <button title={title}
-    className="p-1 bg-gradient-to-br from-neutral-300 to-neutral-500 rounded-md text-black hover:from-neutral-200 hover:to-neutral-400"
-    onPointerDown={e => {
-      e.stopPropagation()
-      onClick?.()
-    }}
-  >
+    className={`p-1 bg-gradient-to-br from-neutral-300 to-neutral-500 rounded-md text-black hover:from-neutral-200 hover:to-neutral-400 ${
+      className ?? ''
+    }`} onPointerDown={e => {
+    e.stopPropagation()
+    onClick?.()
+  }}>
     {icon}
   </button>
 )
@@ -79,10 +89,13 @@ const LoopItem = ({
   const [loopTitle, setLoopTitle] = useState(loop.data.title)
   const code = useCodeFileValue(loop.codeFile)
   const playLoop = useEngineStore(state => state.playLoop)
+  const playingLoopId = useEngineStore(state => state.playingLoopId)
+  const playbackState = useEngineStore(state => state.playbackState)
   const base = useAppStore(state => state.bases[loop.data.id])
   const baseCode = base?.code ?? loop.data.code
   const canCompare = loop.data.code != null || base?.ts != null
   const isDirty = canCompare && baseCode != null && code !== baseCode
+  const isPlaying = playbackState === 'running' && playingLoopId === loop.data.id
 
   const handleStartEditingDetails = () => {
     setIsEditingDetails(true)
@@ -210,27 +223,32 @@ const LoopItem = ({
             </div>
           )}
       </div>
-      {!isEditingDetails && onEditDetails && (
+      {!isEditingDetails && (onEditDetails || isPlaying) && (
         <div
           className={`shrink-0 pr-2 flex flex-row items-center gap-2 ${
-            isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            isPlaying || isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
         >
-          {!isDirty && (
-            <LoopItemButton title="Edit" icon={<PencilIcon weight="regular" size={16} />}
-              onClick={handleStartEditingDetails} />
-          )}
-          {(isDirty || loop.isNew) && (
-            <LoopItemButton title={!loop.isNew ? 'Discard changes' : 'Close'}
-              icon={<XIcon weight="regular" size={16} />} onClick={onClose} />
-          )}
-          {isDirty && (
-            <LoopItemButton title="Save" icon={<FloppyDiskBackIcon weight="regular" size={16} />}
-              onClick={handleStartSaving} />
-          )}
+          <div
+            className={`flex flex-row items-center gap-2 ${isPlaying && !isCurrent ? 'hidden group-hover:flex' : ''}`}
+          >
+            {!isDirty && (
+              <LoopItemButton title="Edit" icon={<PencilIcon weight="regular" size={16} />}
+                onClick={handleStartEditingDetails} />
+            )}
+            {(isDirty || loop.isNew) && (
+              <LoopItemButton title={!loop.isNew ? 'Discard changes' : 'Close'}
+                icon={<XIcon weight="regular" size={16} />} onClick={onClose} />
+            )}
+            {isDirty && (
+              <LoopItemButton title="Save" icon={<FloppyDiskBackIcon weight="regular" size={16} />}
+                onClick={handleStartSaving} />
+            )}
+          </div>
           <LoopItemButton
             title="Play"
-            icon={<PlayIconPhosphor weight="regular" size={16} />}
+            className={isPlaying ? 'text-orange-600' : undefined}
+            icon={<PlayIconPhosphor weight={isPlaying ? 'fill' : 'regular'} size={16} />}
             onClick={() => {
               onClick()
               void playLoop(loop.data.id, loop.codeFile.value)
@@ -263,6 +281,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const removeLocalLoop = useAppStore(state => state.removeLocalLoop)
   const selectedLoopId = useAppStore(state => state.selectedLoopId)
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
+  const preloadSamples = useEngineStore(state => state.preloadSamples)
 
   const isLocalId = (id: string) => id.startsWith('local:')
 
@@ -366,9 +385,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
       }
 
       setLoops(prev =>
-        prev.map(loop =>
-          loop.data.id !== loopData.id ? loop : new Loop({ ...loop.data, ...loopData }, loop.codeFile)
-        )
+        prev.map(loop => loop.data.id !== loopData.id ? loop : new Loop({ ...loop.data, ...loopData }, loop.codeFile))
       )
     }
   }, [loopData])
@@ -376,7 +393,8 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   useLayoutEffect(() => {
     if (!currentLoop) return
     onLoopChange(currentLoop)
-  }, [currentLoopId, currentLoop, onLoopChange])
+    preloadSamples(currentLoop.codeFile.value)
+  }, [currentLoopId, currentLoop, onLoopChange, preloadSamples])
 
   useLayoutEffect(() => {
     if (currentLoopId == null) return
@@ -452,7 +470,11 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
       timestamp: 0,
     }
 
+    const codeFile = getCodeFile(id, data.code ?? '')
+    const loop = new Loop(data, codeFile)
+
     addLocalLoop(data)
+    setLoops(prev => [loop, ...prev])
     setCurrentLoopId(id)
     setSelectedLoopId(id)
     didInitialCenterRef.current = false

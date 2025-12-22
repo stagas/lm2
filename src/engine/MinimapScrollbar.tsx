@@ -15,6 +15,7 @@ import {
   parseCompiledTimeline,
 } from './timeline-history.ts'
 import type { TimelineWindow } from './ui.tsx'
+import { useSeekToSampleImmediate } from './useSeekToSample.ts'
 
 type MinimapScrollbarProps = {
   audioContext?: AudioContext | null
@@ -45,6 +46,7 @@ export function MinimapScrollbar({
   canControlPlayback = true,
 }: MinimapScrollbarProps) {
   const { loop, setLoop, clearLoop, animationManager } = useEngineStore()
+  const seekToSampleImmediate = useSeekToSampleImmediate()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
@@ -443,12 +445,12 @@ export function MinimapScrollbar({
         className="min-w-[17px] w-[17px] bg-neutral-800 text-white"
         onPointerDown={() => {
           if (!canControlPlayback) {
-            seekToSample(0)
+            seekToSampleImmediate(0)
             return
           }
           const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
-          if (isLooping && loop) seekToSample(Atomics.load(loop, 1))
-          else seekToSample(0)
+          if (isLooping && loop) seekToSampleImmediate(Atomics.load(loop, 1))
+          else seekToSampleImmediate(0)
         }}
       >
         &nbsp;
