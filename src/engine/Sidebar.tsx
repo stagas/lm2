@@ -120,8 +120,8 @@ const LoopItem = ({
   const playbackState = useEngineStore(state => state.playbackState)
   const base = useAppStore(state => state.bases[loop.data.id])
   const baseCode = base?.code ?? loop.data.code
-  const canCompare = loop.data.code != null || base?.ts != null
-  const isDirty = canCompare && baseCode != null && code !== baseCode
+  const canCompare = loop.data.code != null && base?.ts != null
+  const isDirty = canCompare && code !== baseCode
   const isPlaying = playbackState === 'running'
   const isLive = isPlaying && playingLoopId === loop.data.id
   const shouldHideClose = hideCloseWhenNotDirty && loop.isNew && !isDirty

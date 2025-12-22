@@ -258,15 +258,12 @@ export function useTimelineHeader(currentLoopId: string | null) {
             const endSeconds = loopEnd / audioContext.sampleRate
             const loopX1 = (startSeconds - windowStartTime) * pixelsPerSecond
             const loopX2 = (endSeconds - windowStartTime) * pixelsPerSecond
-            const lx1 = Math.min(timelineW, loopX1)
-            const lx2 = Math.min(timelineW, loopX2)
+            const lx1 = loopX1
+            const lx2 = loopX2
             const lw = Math.max(0, lx2 - lx1)
             if (lw > 0) {
-              c.fillStyle = '#ea580c88'
+              c.fillStyle = '#ea580c55'
               c.fillRect(lx1, y, lw, h)
-              // c.strokeStyle = '#fff3'
-              // c.lineWidth = 1
-              // c.strokeRect(lx1 + 0.5, y + 0.5, lw - 1, h - 1)
             }
           }
         }
