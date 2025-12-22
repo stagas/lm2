@@ -26,6 +26,7 @@ interface AppState {
   setSessionData: (data: SessionData | null) => void
   buffers: Record<string, CodeFileState>
   bases: Record<string, { code: string; ts?: number }>
+  dirtyById: Record<string, boolean>
   localLoops: LoopData[]
   selectedLoopId: string | null
   isLoopLoading: boolean
@@ -93,6 +94,7 @@ export const useAppStore = create<AppState>()(
 
       buffers: {},
       bases: {},
+      dirtyById: {},
       localLoops: [],
       selectedLoopId: null,
       isLoopLoading: false,
@@ -142,20 +144,44 @@ export const useAppStore = create<AppState>()(
 
               const base = get().bases[id]?.code ?? initialValues.get(id) ?? ''
               const shouldPersist = shouldPersistBuffer(id, snapshot, base)
+              const isDirty = snapshot.value !== base
 
               set(state => {
                 const has = state.buffers[id] != null
+                const wasDirty = state.dirtyById[id] === true
+                const dirtyChanged = isDirty ? !wasDirty : wasDirty
                 if (shouldPersist) {
+                  if (!dirtyChanged && has && state.buffers[id] === snapshot) return state
                   return {
                     buffers: {
                       ...state.buffers,
                       [id]: snapshot,
                     },
+                    dirtyById: isDirty
+                      ? { ...state.dirtyById, [id]: true }
+                      : (() => {
+                        if (!wasDirty) return state.dirtyById
+                        const { [id]: _, ...rest } = state.dirtyById
+                        return rest
+                      })(),
                   }
                 }
-                if (!has) return state
-                const { [id]: _, ...rest } = state.buffers
-                return { buffers: rest }
+                if (!has && !dirtyChanged) return state
+                const next: Partial<AppState> = {}
+                if (has) {
+                  const { [id]: _, ...rest } = state.buffers
+                  next.buffers = rest
+                }
+                if (dirtyChanged) {
+                  if (isDirty) {
+                    next.dirtyById = { ...state.dirtyById, [id]: true }
+                  }
+                  else {
+                    const { [id]: _, ...rest } = state.dirtyById
+                    next.dirtyById = rest
+                  }
+                }
+                return next as AppState
               })
             }, 120),
           )
@@ -179,11 +205,28 @@ export const useAppStore = create<AppState>()(
         if (codeFile) {
           const snapshot = codeFile.getState()
           const shouldPersist = shouldPersistBuffer(id, snapshot, base)
-          if (shouldPersist) return
           set(state => {
-            if (state.buffers[id] == null) return state
-            const { [id]: _, ...rest } = state.buffers
-            return { buffers: rest }
+            const isDirty = snapshot.value !== base
+            const hasDirty = state.dirtyById[id] === true
+            const dirtyChanged = isDirty ? !hasDirty : hasDirty
+            const hasBuffer = state.buffers[id] != null
+            const shouldDropBuffer = !shouldPersist && hasBuffer
+            if (!shouldDropBuffer && !dirtyChanged) return state
+            const next: Partial<AppState> = {}
+            if (shouldDropBuffer) {
+              const { [id]: _, ...rest } = state.buffers
+              next.buffers = rest
+            }
+            if (dirtyChanged) {
+              if (isDirty) {
+                next.dirtyById = { ...state.dirtyById, [id]: true }
+              }
+              else {
+                const { [id]: _, ...rest } = state.dirtyById
+                next.dirtyById = rest
+              }
+            }
+            return next as AppState
           })
         }
       },
@@ -293,6 +336,7 @@ export const useAppStore = create<AppState>()(
         set(state => {
           const buffers = { ...state.buffers }
           const bases = { ...state.bases }
+          const dirtyById = { ...state.dirtyById }
 
           const movedBuffer = buffers[fromId]
           if (movedBuffer) {
@@ -306,8 +350,14 @@ export const useAppStore = create<AppState>()(
             bases[toId] = movedBase
           }
 
+          const movedDirty = dirtyById[fromId]
+          if (movedDirty != null) {
+            delete dirtyById[fromId]
+            dirtyById[toId] = movedDirty
+          }
+
           const selectedLoopId = state.selectedLoopId === fromId ? toId : state.selectedLoopId
-          return { buffers, bases, selectedLoopId }
+          return { buffers, bases, dirtyById, selectedLoopId }
         })
       },
 
@@ -326,7 +376,8 @@ export const useAppStore = create<AppState>()(
         set(state => {
           const { [id]: _, ...rest } = state.buffers
           const { [id]: __, ...bases } = state.bases
-          return { buffers: rest, bases }
+          const { [id]: ___, ...dirtyById } = state.dirtyById
+          return { buffers: rest, bases, dirtyById }
         })
       },
     }),
@@ -336,10 +387,11 @@ export const useAppStore = create<AppState>()(
       partialize: state => ({
         buffers: state.buffers,
         bases: state.bases,
+        dirtyById: state.dirtyById,
         localLoops: state.localLoops,
         selectedLoopId: state.selectedLoopId,
       }),
-      version: 6,
+      version: 7,
       migrate: (persisted, version) => {
         if (version === 0 || version === 1) {
           const prev = persisted as any
@@ -359,6 +411,7 @@ export const useAppStore = create<AppState>()(
           return {
             ...prev,
             bases: nextBases,
+            dirtyById: {},
             localLoops: [],
             selectedLoopId: null,
           }
@@ -367,6 +420,7 @@ export const useAppStore = create<AppState>()(
           const prev = persisted as any
           return {
             ...prev,
+            dirtyById: {},
             localLoops: [],
             selectedLoopId: null,
           }
@@ -375,6 +429,7 @@ export const useAppStore = create<AppState>()(
           const prev = persisted as any
           return {
             ...prev,
+            dirtyById: {},
             selectedLoopId: null,
           }
         }
@@ -394,6 +449,7 @@ export const useAppStore = create<AppState>()(
             ...prev,
             buffers,
             bases,
+            dirtyById: {},
             localLoops,
             selectedLoopId,
           }
@@ -415,6 +471,26 @@ export const useAppStore = create<AppState>()(
             ...prev,
             buffers: nextBuffers,
             bases,
+            dirtyById: {},
+          }
+        }
+        if (version === 6) {
+          const prev = persisted as any
+          const buffers = prev?.buffers && typeof prev.buffers === 'object' ? prev.buffers as Record<string, any> : {}
+          const bases = prev?.bases && typeof prev.bases === 'object' ? prev.bases as Record<string, any> : {}
+          const dirtyById: Record<string, boolean> = {}
+          for (const [id, buf] of Object.entries(buffers)) {
+            const base = bases[id]?.code
+            const value = buf && typeof buf === 'object' ? (buf as any).value : undefined
+            if (typeof value !== 'string') continue
+            const dirty = typeof base === 'string' ? value !== base : value.length > 0
+            if (dirty) dirtyById[id] = true
+          }
+          return {
+            ...prev,
+            buffers,
+            bases,
+            dirtyById,
           }
         }
         return persisted as any
