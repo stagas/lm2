@@ -1,8 +1,8 @@
 import type { CodeFile, EditorWidget, Theme } from 'mini-code'
 import type React from 'react'
 import { useMemo, useRef } from 'react'
-import type { NumberWithParamsInfo } from '../bytecode.ts'
 import { decimalsOf } from '../utils/number.ts'
+import type { NumberWithParamsInfo } from './bytecode.ts'
 
 type DragState = {
   key: string

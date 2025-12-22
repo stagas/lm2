@@ -20,7 +20,11 @@ import {
   SAMPLE_NEEDLE_ENTRY_SIZE,
   SAMPLE_NEEDLE_HISTORY_SIZE,
 } from '../../as/assembly/constants.ts'
-import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from '../assembly.ts'
+import { acquireSpinLock } from '../lib/atomics.ts'
+import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
+import { compileMiniNotation } from '../mini/compiler.ts'
+import { compileTimelineNotation } from '../timeline/compiler.ts'
+import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import type {
   AnalyserRef,
   ArrayLiteralRef,
@@ -31,14 +35,10 @@ import type {
   TimelineLabel,
   TimelineSequenceDef,
   TimelineSequenceRef,
-} from '../bytecode.ts'
-import { encodeLangToVmOps } from '../bytecode.ts'
-import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
-import { acquireSpinLock } from '../lib/atomics.ts'
-import { compileMiniNotation } from '../mini/compiler.ts'
-import { compileTimelineNotation } from '../timeline/compiler.ts'
-import type { DspProcessor } from '../worklet.ts'
+} from './bytecode.ts'
+import { encodeLangToVmOps } from './bytecode.ts'
 import { useEngineStore } from './store.ts'
+import type { DspProcessor } from './worklet.ts'
 
 export type VmArray = {
   length: number
@@ -352,8 +352,8 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals, numberParams, numberLiterals, sampleDefs, bpm, bars } =
-          buildProgram(newData, source)
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
+          numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {

@@ -6,8 +6,8 @@ import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import { useEngineStore } from './store.ts'
 import type { TimelineWindow } from './ui.tsx'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
-import { applySmoothing } from './util.ts'
 import { useLoopView } from './useLoopView.ts'
+import { applySmoothing } from './util.ts'
 
 export function useTimelineHeader(currentLoopId: string | null) {
   const {
@@ -35,12 +35,14 @@ export function useTimelineHeader(currentLoopId: string | null) {
     timeSeconds: 0,
   })
   const isTimelineDraggingRef = useRef(false)
+  const timelineDragRef = useRef<{ x: number; timeSeconds: number } | null>(null)
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
 
   useEffect(() => {
     timelineTimeRef.current = null
+    timelineDragRef.current = null
     predictedSampleCountRef.current = null
     lastWallTimeRef.current = null
     isFirstFrameRef.current = true
@@ -68,9 +70,8 @@ export function useTimelineHeader(currentLoopId: string | null) {
       return targetTimeSeconds
     }
 
-    const handleSeek = (pointerX: number) => {
-      const targetTimeSeconds = getPointerTimeSeconds(pointerX)
-      if (targetTimeSeconds == null || !audioContext) return
+    const seekToTimeSeconds = (targetTimeSeconds: number) => {
+      if (!audioContext) return
       const targetSampleCount = Math.max(0, Math.floor(targetTimeSeconds * audioContext.sampleRate))
       seekToSample(targetSampleCount)
     }
@@ -128,14 +129,34 @@ export function useTimelineHeader(currentLoopId: string | null) {
           return
         }
         isTimelineDraggingRef.current = true
-        handleSeek(x)
+
+        let timeSeconds = timelineWindowRef.current.timeSeconds
+        if (audioContext && globalSampleCount) {
+          const sample = Math.max(0, Atomics.load(globalSampleCount, 0))
+          timeSeconds = sample / audioContext.sampleRate
+        }
+        timelineDragRef.current = { x, timeSeconds }
       },
       pointerMove: x => {
         if (!isTimelineDraggingRef.current) return
-        handleSeek(x)
+        const start = timelineDragRef.current
+        if (!start || !audioContext) return
+
+        const layout = timelineLayoutRef.current
+        if (layout.viewWidth <= 0) return
+
+        const bpm = bpmValue?.[0] || 60
+        const barLengthSeconds = (4 * 60) / bpm
+        const timeWindowSeconds = TIME_WINDOW_BARS * barLengthSeconds
+        const timelineWidth = Math.max(1, layout.viewWidth - PIANOROLL_KEY_WIDTH)
+        const secondsPerPixel = timeWindowSeconds / timelineWidth
+
+        const dx = (x - start.x) * 7
+        seekToTimeSeconds(start.timeSeconds + dx * secondsPerPixel)
       },
       pointerUp: () => {
         isTimelineDraggingRef.current = false
+        timelineDragRef.current = null
       },
       render: (c, x, y, w, h, vx, vw) => {
         c.fillStyle = '#000c'

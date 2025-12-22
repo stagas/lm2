@@ -6,7 +6,8 @@ import {
   PAST_BARS,
   TIME_WINDOW_BARS,
 } from '../../as/assembly/constants.ts'
-import type { TimelineLabel, TimelineSequenceRef } from '../bytecode.ts'
+import { compileTimelineNotation } from '../timeline/compiler.ts'
+import type { TimelineLabel, TimelineSequenceRef } from './bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useTheme } from './theme.ts'
@@ -19,7 +20,6 @@ import {
 } from './timeline-history.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 import { applySmoothing } from './util.ts'
-import { compileTimelineNotation } from '../timeline/compiler.ts'
 
 type TimelineState = {
   timeSeconds: number | null

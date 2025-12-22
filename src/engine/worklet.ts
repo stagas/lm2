@@ -1,11 +1,11 @@
 import { type Ring, toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
 import { ARRAYS_COUNT, CHUNK_SIZE, HISTORIES_COUNT, MAX_DSP_INSTANCES,
-  RING_BUFFER_SIZE } from '../as/assembly/constants.ts'
-import type * as WasmExports from '../as/build/index.d.ts'
-import config from '../asconfig.json'
+  RING_BUFFER_SIZE } from '../../as/assembly/constants.ts'
+import type * as WasmExports from '../../as/build/index'
+import config from '../../asconfig.json'
+import { type WasmSetup, wasmSetup } from '../lib/wasm-setup.ts'
 import { DspStruct } from './assembly.ts'
-import { type WasmSetup, wasmSetup } from './lib/wasm-setup.ts'
 import { ControlOp } from './worklet-shared.ts'
 
 type DspInstance = {

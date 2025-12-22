@@ -8,9 +8,9 @@ import {
   PAST_BARS,
   TIME_WINDOW_BARS,
 } from '../../as/assembly/constants.ts'
-import type { MiniSequenceRef, TimelineLabel } from '../bytecode.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { frequencyToMidi, midiToNoteName } from '../mini/util.ts'
+import type { MiniSequenceRef, TimelineLabel } from './bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'

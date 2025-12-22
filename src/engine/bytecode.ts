@@ -1,10 +1,10 @@
-import { OPS_COUNT, SEQ_VOICES } from '../as/assembly/constants.ts'
-import { Op, SeqOp } from '../as/assembly/shared.ts'
-import type { Loc, Program } from './lang/ast.ts'
-import { compile } from './lang/bytecode.ts'
-import { type LangError, lineText } from './lang/errors.ts'
-import { lex } from './lang/lexer.ts'
-import { parse } from './lang/parser.ts'
+import { OPS_COUNT, SEQ_VOICES } from '../../as/assembly/constants.ts'
+import { Op, SeqOp } from '../../as/assembly/shared.ts'
+import type { Loc, Program } from '../lang/ast.ts'
+import { compile } from '../lang/bytecode.ts'
+import { type LangError, lineText } from '../lang/errors.ts'
+import { lex } from '../lang/lexer.ts'
+import { parse } from '../lang/parser.ts'
 
 export { Op, SEQ_VOICES, SeqOp }
 

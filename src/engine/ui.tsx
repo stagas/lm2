@@ -8,6 +8,11 @@ import {
   useState,
 } from 'react'
 import { LITERALS_COUNT, OPS_COUNT } from '../../as/assembly/constants.ts'
+import { Logo } from '../components/Logo.tsx'
+import type { LangError } from '../lang/errors.ts'
+import { analyze } from '../lang/pipeline.ts'
+import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
+import { compileMiniNotation } from '../mini/compiler.ts'
 import type {
   AnalyserRef,
   ArrayLiteralRef,
@@ -15,13 +20,8 @@ import type {
   NumberWithParamsInfo,
   SampleDef,
   TimelineSequenceRef,
-} from '../bytecode.ts'
-import { encodeLangToVmOps, extractBarsFromSource, extractTimelineLabelsFromSource } from '../bytecode.ts'
-import { Logo } from '../components/Logo.tsx'
-import type { LangError } from '../lang/errors.ts'
-import { analyze } from '../lang/pipeline.ts'
-import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
-import { compileMiniNotation } from '../mini/compiler.ts'
+} from './bytecode.ts'
+import { encodeLangToVmOps, extractBarsFromSource, extractTimelineLabelsFromSource } from './bytecode.ts'
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { useEngine } from './program.ts'

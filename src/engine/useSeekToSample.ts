@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
-import { ControlOp } from '../worklet-shared.ts'
 import { useEngineStore } from './store.ts'
+import { ControlOp } from './worklet-shared.ts'
 
 export function useSeekToSample() {
   const {

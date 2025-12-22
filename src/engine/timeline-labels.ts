@@ -1,4 +1,4 @@
-import type { TimelineLabel } from '../bytecode.ts'
+import type { TimelineLabel } from './bytecode.ts'
 
 export function buildTimelineLabels(labels: TimelineLabel[], bars: number | undefined): TimelineLabel[] {
   const sorted = [...labels].sort((a, b) => a.bar - b.bar)
@@ -18,5 +18,3 @@ export function buildTimelineLabels(labels: TimelineLabel[], bars: number | unde
     },
   ]
 }
-
-

@@ -6,7 +6,7 @@ import {
   SAMPLE_NEEDLE_ENTRY_SIZE,
   SAMPLE_NEEDLE_HISTORY_SIZE,
 } from '../../as/assembly/constants.ts'
-import type { SampleDef } from '../bytecode.ts'
+import type { SampleDef } from './bytecode.ts'
 import type { ProgramInstance } from './program.ts'
 import { useEngineStore } from './store.ts'
 import { getCurrentTheme } from './theme.ts'

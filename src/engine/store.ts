@@ -1,10 +1,12 @@
 import { rpc } from 'utils/rpc'
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import {
   MAX_DSP_INSTANCES,
 } from '../../as/assembly/constants.ts'
-import { type Dsp, DspStruct } from '../assembly.ts'
+import { AnimationManager } from '../lib/animation-manager.ts'
+import { waitForNonZero } from '../lib/atomics.ts'
+import type { SourceLocation } from '../lib/mini-source-map.ts'
+import { type Dsp, DspStruct } from './assembly.ts'
 import type {
   AnalyserRef,
   ArrayLiteralRef,
@@ -14,19 +16,16 @@ import type {
   SampleDef,
   TimelineLabel,
   TimelineSequenceRef,
-} from '../bytecode.ts'
-import { extractBarsFromSource, extractBpmFromSource, extractTimelineLabelsFromSource } from '../bytecode.ts'
-import { AnimationManager } from '../lib/animation-manager.ts'
-import { waitForNonZero } from '../lib/atomics.ts'
-import type { SourceLocation } from '../lib/mini-source-map.ts'
-import { ControlOp } from '../worklet-shared.ts'
-import workletUrl from '../worklet.js?worker&url'
-import type { DspProcessor, DspProcessorOptions } from '../worklet.ts'
+} from './bytecode.ts'
+import { extractBarsFromSource, extractBpmFromSource, extractTimelineLabelsFromSource } from './bytecode.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
 import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
 import { type LoadedSample, SampleLoader } from './sample-loader.ts'
 import { buildTimelineLabels } from './timeline-labels.ts'
 import { createVisualWasm, type VisualWasm } from './visual-wasm.ts'
+import { ControlOp } from './worklet-shared.ts'
+import workletUrl from './worklet.js?worker&url'
+import type { DspProcessor, DspProcessorOptions } from './worklet.ts'
 
 type PlaybackState = 'stopped' | 'running' | 'paused'
 
