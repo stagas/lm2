@@ -5,4 +5,5 @@ export enum ControlOp {
   Seek,
   Swap,
   SeekImmediate,
+  RestartWithProgram,
 }

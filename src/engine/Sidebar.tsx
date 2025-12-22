@@ -72,6 +72,7 @@ const LoopItem = ({
   loop,
   isCurrent,
   onClick,
+  onPlay,
   canSave = true,
   onSave,
   onSaveAsNew,
@@ -82,6 +83,7 @@ const LoopItem = ({
   loop: Loop
   isCurrent: boolean
   onClick: () => void
+  onPlay?: () => void
   canSave?: boolean
   onSave?: (details: Partial<LoopData>) => void
   onSaveAsNew?: (details: Partial<LoopData>) => void
@@ -94,7 +96,6 @@ const LoopItem = ({
   const [isSaving, setIsSaving] = useState(false)
   const [loopTitle, setLoopTitle] = useState(loop.data.title)
   const code = useCodeFileValue(loop.codeFile)
-  const playLoop = useEngineStore(state => state.playLoop)
   const playingLoopId = useEngineStore(state => state.playingLoopId)
   const playbackState = useEngineStore(state => state.playbackState)
   const base = useAppStore(state => state.bases[loop.data.id])
@@ -273,8 +274,7 @@ const LoopItem = ({
             className={isPlaying ? 'text-orange-600' : undefined}
             icon={<PlayIconPhosphor weight={isPlaying ? 'fill' : 'regular'} size={16} />}
             onClick={() => {
-              onClick()
-              void playLoop(loop.data.id, loop.codeFile.value)
+              onPlay?.()
             }}
           />
         </div>
@@ -289,6 +289,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
   const [loops, setLoops] = useState<Loop[]>([])
   const [apiError, setApiError] = useState<string | null>(null)
+  const [queuedPlay, setQueuedPlay] = useState<{ loopId: string } | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollPosRef = useRef(0)
   const didInitialCenterRef = useRef(false)
@@ -308,6 +309,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const selectedLoopId = useAppStore(state => state.selectedLoopId)
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const preloadSamples = useEngineStore(state => state.preloadSamples)
+  const playLoop = useEngineStore(state => state.playLoop)
 
   useEffect(() => {
     setTimeout(() => {
@@ -400,23 +402,43 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const { isLoading: isLoopLoading, loopData } = useLoopData(currentLoopId, currentLoop)
 
   useEffect(() => {
-    if (loopData) {
-      if (currentLoop?.data === loopData) return
-      const serverCode = loopData.code ?? ''
-      if (loopData.code != null) setLoopBase(loopData.id, serverCode, loopData.timestamp)
-      const codeFile = currentLoop?.codeFile
-      if (codeFile) {
-        const hasUserEdits = codeFile.value.length > 0
-        if (!hasUserEdits && serverCode.length > 0) {
-          codeFile.value = serverCode
-        }
-      }
+    if (!loopData) return
+    if (currentLoopId !== loopData.id) return
 
-      setLoops(prev =>
-        prev.map(loop => loop.data.id !== loopData.id ? loop : new Loop({ ...loop.data, ...loopData }, loop.codeFile))
-      )
-    }
-  }, [loopData])
+    const serverCode = loopData.code ?? ''
+    if (loopData.code != null) setLoopBase(loopData.id, serverCode, loopData.timestamp)
+
+    setLoops(prev => {
+      let changed = false
+      const next = prev.map(loop => {
+        if (loop.data.id !== loopData.id) return loop
+
+        const nextData = { ...loop.data, ...loopData }
+        const isSame = loop.data.title === nextData.title
+          && loop.data.artist === nextData.artist
+          && loop.data.artistId === nextData.artistId
+          && loop.data.code === nextData.code
+          && loop.data.likesCount === nextData.likesCount
+          && loop.data.commentsCount === nextData.commentsCount
+          && loop.data.isPublic === nextData.isPublic
+          && loop.data.timestamp === nextData.timestamp
+          && loop.data.remixOf?.id === nextData.remixOf?.id
+
+        if (loopData.code != null) {
+          const hasUserEdits = loop.codeFile.value.length > 0
+          if (!hasUserEdits && serverCode.length > 0 && loop.codeFile.value !== serverCode) {
+            loop.codeFile.value = serverCode
+          }
+        }
+
+        if (isSame) return loop
+
+        changed = true
+        return new Loop(nextData, loop.codeFile)
+      })
+      return changed ? next : prev
+    })
+  }, [currentLoopId, loopData, setLoopBase])
 
   useLayoutEffect(() => {
     if (!currentLoop) return
@@ -429,6 +451,18 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     if (selectedLoopId === currentLoopId) return
     setSelectedLoopId(currentLoopId)
   }, [currentLoopId, selectedLoopId, setSelectedLoopId])
+
+  useLayoutEffect(() => {
+    if (!queuedPlay) return
+    if (currentLoopId !== queuedPlay.loopId) return
+    const loop = loops.find(loop => loop.data.id === queuedPlay.loopId)
+    if (!loop) return
+    const source = loop.codeFile.value
+    setQueuedPlay(null)
+    requestAnimationFrame(() => {
+      void playLoop(loop.data.id, source)
+    })
+  }, [currentLoopId, loops, playLoop, queuedPlay])
 
   const preserveScrollPos = (callback: () => void) => {
     const container = scrollContainerRef.current
@@ -767,6 +801,10 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                       loop={loop}
                       isCurrent={currentLoopId === loop.data.id}
                       onClick={() => setCurrentLoopId(loop.data.id)}
+                      onPlay={() => {
+                        setQueuedPlay({ loopId: loop.data.id })
+                        setCurrentLoopId(loop.data.id)
+                      }}
                       canSave={sessionData != null}
                       onClose={() => handleClose(loop)}
                       onEditDetails={details => handleEditDetails(loop, details)}
@@ -828,6 +866,10 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                               loop={loop}
                               isCurrent={currentLoopId === loop.data.id}
                               onClick={() => setCurrentLoopId(loop.data.id)}
+                              onPlay={() => {
+                                setQueuedPlay({ loopId: loop.data.id })
+                                setCurrentLoopId(loop.data.id)
+                              }}
                               canSave={sessionData != null}
                               onClose={() => handleClose(loop)}
                               onDelete={() => handleDelete(loop)}
