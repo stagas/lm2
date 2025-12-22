@@ -13,6 +13,7 @@ type UseAnalyserWidgetParams = {
   analyserRefs: AnalyserRef[]
   dspSource: string
   showWidgets: boolean
+  isLive: boolean
   playbackState: 'stopped' | 'running' | 'paused'
   sampleRate: number | undefined
 }
@@ -374,12 +375,38 @@ function drawAmplitudeScroller(
   c.imageSmoothingEnabled = smoothing
 }
 
+function drawInitLines(
+  c: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  leftW: number,
+  midW: number,
+  rightW: number,
+) {
+  if (w <= 1 || h <= 1) return
+  const cy = h / 2
+  c.strokeStyle = 'rgba(180, 180, 180, 0.9)'
+  c.lineWidth = 1.35
+  c.lineCap = 'round'
+  c.lineJoin = 'round'
+
+  c.beginPath()
+  c.moveTo(0, cy)
+  c.lineTo(leftW, cy)
+  c.moveTo(leftW, cy)
+  c.lineTo(leftW + midW, cy)
+  c.moveTo(leftW + midW, cy)
+  c.lineTo(w, cy)
+  c.stroke()
+}
+
 export function useAnalyserWidget({
   program1,
   ringPos,
   analyserRefs,
   dspSource,
   showWidgets,
+  isLive,
   playbackState,
   sampleRate,
 }: UseAnalyserWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
@@ -423,20 +450,22 @@ export function useAnalyserWidget({
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
-    if (!program1?.program?.analyserOuts || !ringPos) return
     if (analyserRefs.length === 0) return
 
-    const currentChunkPos = Atomics.load(ringPos, 0)
     const stArr = analyserStateRef.current
     const seen = seenRef.current
     seen.clear()
+
+    const canRead = isLive
+      && playbackState !== 'stopped'
+      && !!program1?.program?.analyserOuts
+      && !!ringPos
+
+    const currentChunkPos = canRead ? Atomics.load(ringPos!, 0) : 0
     for (const ref of analyserRefs) {
       const analyserIndex = ref.analyserIndex | 0
       if (seen.has(analyserIndex)) continue
       seen.add(analyserIndex)
-
-      const ring = program1.program.analyserOuts[analyserIndex] as Ring | undefined
-      if (!ring) continue
 
       let st = stArr[analyserIndex]
       if (!st) {
@@ -444,10 +473,21 @@ export function useAnalyserWidget({
         stArr[analyserIndex] = st
       }
 
+      if (!canRead) {
+        st.floats = null
+        continue
+      }
+
+      const ring = program1!.program!.analyserOuts[analyserIndex] as Ring | undefined
+      if (!ring) {
+        st.floats = null
+        continue
+      }
+
       const floats = st.waveform.update(ring, currentChunkPos)
       if (floats) st.floats = floats
     }
-  }, [showWidgets, program1, ringPos, analyserRefs])
+  }, [showWidgets, analyserRefs, isLive, playbackState, program1, ringPos])
 
   const drawAnalyser = useCallback((
     c: CanvasRenderingContext2D,
@@ -459,7 +499,6 @@ export function useAnalyserWidget({
   ) => {
     const st = analyserStateRef.current[analyserIndex]
     const floats = st?.floats
-    if (!floats) return
 
     const x = viewX
     const w = viewWidth
@@ -479,6 +518,12 @@ export function useAnalyserWidget({
     const leftW = third
     const midW = third
     const rightW = w - leftW - midW
+
+    if (!floats) {
+      drawInitLines(c, w, h, leftW, midW, rightW)
+      c.restore()
+      return
+    }
 
     drawSpectrum(
       c,

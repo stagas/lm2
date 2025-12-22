@@ -384,7 +384,8 @@ export function DspSourceEditor(
     ringPos,
     analyserRefs: widgetCompileState.analyserRefs,
     dspSource: widgetCompileState.dspSource,
-    showWidgets: showWidgets && isPlayingLoop,
+    showWidgets,
+    isLive: isPlayingLoop,
     playbackState,
     sampleRate: audioContext?.sampleRate,
   })
