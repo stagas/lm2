@@ -54,8 +54,8 @@ export class API {
     await this.requestJson<{ ok: true }>('/api/auth/logout', { method: 'POST' })
   }
 
-  async upsertLoop(id: string, body: LoopUpsertRequest): Promise<SessionData> {
-    return await this.requestJson<SessionData>(`/api/loop/${encodeURIComponent(id)}`, {
+  async upsertLoop(id: string, body: LoopUpsertRequest): Promise<void> {
+    await this.requestJson<{ ok: true }>(`/api/loop/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),

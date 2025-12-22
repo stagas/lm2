@@ -83,6 +83,32 @@ type WidgetCompileState = {
 export function DspSourceEditor(
   { timelineHeader, currentLoop }: { timelineHeader: EditorHeader; currentLoop: Loop | null },
 ) {
+  const hasHydrated = useAppStore(state => state.hasHydrated)
+  const isLoopLoading = useAppStore(state => state.isLoopLoading)
+  const isProgramReady = useEngineStore(state => state.isProgramReady)
+  const code = currentLoop?.codeFile.value ?? ''
+  const isAwaitingCode = currentLoop != null && currentLoop.data.code == null && code.length === 0
+
+  if (!hasHydrated || !isProgramReady || isLoopLoading || isAwaitingCode || !currentLoop) {
+    return (
+      <div className="flex flex-row gap-2 w-full h-full relative"
+        style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.1) 100%)' }}
+      >
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
+          <div className="w-8 h-8">
+            <Spinner lineWidth={1.75} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return <DspSourceEditorReady timelineHeader={timelineHeader} currentLoop={currentLoop} />
+}
+
+function DspSourceEditorReady(
+  { timelineHeader, currentLoop }: { timelineHeader: EditorHeader; currentLoop: Loop },
+) {
   const codeFileKeyByFileRef = useRef<WeakMap<CodeFile, string>>(new WeakMap())
   const nextCodeFileKeyRef = useRef(0)
 
@@ -111,7 +137,6 @@ export function DspSourceEditor(
   const { playbackState } = useEngineStore()
   const [error, setError] = useState<string>()
   const { isUpdatingDsp } = useEngineStore()
-  const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const theme = useTheme()
   // Subscribe for rerenders while editing, but use `codeFile.value` for synchronous reads
   // to avoid a one-render lag during loop switches.
@@ -465,7 +490,7 @@ export function DspSourceEditor(
 
   return (
     <div className="flex flex-row gap-2 w-full h-full relative">
-      <div className={`bg-gray-900 text-white font-mono text-sm w-full h-full ${isLoopLoading ? 'opacity-0' : ''}`}>
+      <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
         <CodeEditor
           key={codeEditorKey}
           codeFile={currentLoop?.codeFile}
@@ -478,13 +503,6 @@ export function DspSourceEditor(
           onBeforeDraw={onBeforeDrawCombined}
         />
       </div>
-      {isLoopLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center">
-          <div className="w-10 h-10">
-            <Spinner lineWidth={1.5} />
-          </div>
-        </div>
-      )}
       {
         /* {error && (
         <div className="bg-red-900 text-red-200 p-2 rounded-md text-sm">

@@ -166,7 +166,12 @@ export const useAppStore = create<AppState>()(
           const sessionData = state.sessionData
           if (!sessionData) return { serverLoopsCache: nextCache } as AppState
 
-          const nextSessionLoops = sessionData.loops.map(l => l.id === loop.id ? nextLoop : l)
+          const { code: _, ...sessionLoop } = nextLoop
+          const nextSessionLoops = (() => {
+            const sidx = sessionData.loops.findIndex(l => l.id === loop.id)
+            if (sidx === -1) return ownId ? [sessionLoop, ...sessionData.loops] : sessionData.loops
+            return sessionData.loops.map(l => l.id === loop.id ? sessionLoop : l)
+          })()
           return {
             serverLoopsCache: nextCache,
             sessionData: { ...sessionData, loops: nextSessionLoops },
@@ -228,9 +233,12 @@ export const useAppStore = create<AppState>()(
               }
               schedulePersistSessionViews()
 
-              const base = get().bases[id]?.code ?? initialValues.get(id) ?? ''
+              const baseEntry = get().bases[id]
+              const initial = initialValues.get(id) ?? ''
+              const base = baseEntry?.code ?? initial
               const shouldPersist = shouldPersistBuffer(id, snapshot, base)
-              const isDirty = snapshot.value !== base
+              const baseKnown = baseEntry != null || isLocalId(id) || initial.length > 0
+              const isDirty = baseKnown ? snapshot.value !== base : false
 
               set(state => {
                 const has = state.buffers[id] != null
