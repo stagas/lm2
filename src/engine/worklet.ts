@@ -700,6 +700,10 @@ export class DspProcessor extends AudioWorkletProcessor {
 
           // Publish the new playhead immediately (restart at 0).
           Atomics.store(this.options.processorOptions.globalSampleCount, 0, 0)
+
+          // Clear the loops if any
+          if (this.loop) Atomics.store(this.loop, 0, 0)
+
           this.signalSwapResult(1)
           return true
         }
@@ -726,7 +730,7 @@ export class DspProcessor extends AudioWorkletProcessor {
       if (this.state === 'stopped') {
         if (seekTargetSample !== undefined) {
           const seekSample = (rangeEnabled && rangeLength > 0
-            && (seekTargetSample < rangeStart || seekTargetSample >= rangeEnd))
+              && (seekTargetSample < rangeStart || seekTargetSample >= rangeEnd))
             ? rangeStart
             : seekTargetSample
           this.applySeekSample(seekSample)
@@ -793,19 +797,19 @@ export class DspProcessor extends AudioWorkletProcessor {
 
       const seekEnabled = seekTargetSample !== undefined
       if (seekEnabled) {
-        this.renderChunk(sampleBefore, begin, length, rangeEnabled, rangeStart, rangeEnd, rangeLength,
-          this.seekLeft, this.seekRight, false)
+        this.renderChunk(sampleBefore, begin, length, rangeEnabled, rangeStart, rangeEnd, rangeLength, this.seekLeft,
+          this.seekRight, false)
 
         const seekSample = (rangeEnabled && rangeLength > 0
-          && (seekTargetSample! < rangeStart || seekTargetSample! >= rangeEnd))
+            && (seekTargetSample! < rangeStart || seekTargetSample! >= rangeEnd))
           ? rangeStart
           : seekTargetSample!
         this.applySeekSample(seekSample)
         sampleBefore = seekSample
       }
 
-      const main = this.renderChunk(sampleBefore, begin, length, rangeEnabled, rangeStart, rangeEnd, rangeLength,
-        L, R, !seekEnabled)
+      const main = this.renderChunk(sampleBefore, begin, length, rangeEnabled, rangeStart, rangeEnd, rangeLength, L, R,
+        !seekEnabled)
       didRangeSeek = didRangeSeek || main.didRangeSeek
 
       if (seekEnabled) {

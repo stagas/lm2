@@ -24,6 +24,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { MouseButton, MouseButtons } from 'utils/mouse-buttons'
 import type { LoopData } from '../../deno/types.ts'
 import { useLoopData } from '../app/hooks/useLoopData.ts'
 import { useSessionData } from '../app/hooks/useSessionData.ts'
@@ -33,6 +34,7 @@ import { AuthForm } from './AuthForm.tsx'
 import { Loop } from './loop.ts'
 import { useEngineStore } from './store.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
+import { useRestartLoop } from './useRestartLoop.tsx'
 
 type SidebarTab = 'loops' | 'liked' | 'browse' | 'compiled' | 'settings'
 
@@ -53,17 +55,27 @@ const LoopItemButton = (
   }: {
     icon: React.ReactNode
     title: string
-    onClick: (() => void) | undefined
+    onClick: ((e: React.PointerEvent<HTMLButtonElement>) => void) | undefined
     className?: string
   },
 ) => (
-  <button title={title}
+  <button
+    title={title}
     className={`p-1 bg-gradient-to-br from-neutral-300 to-neutral-500 rounded-md text-black hover:from-neutral-200 hover:to-neutral-400 ${
       className ?? ''
-    }`} onPointerDown={e => {
-    e.stopPropagation()
-    onClick?.()
-  }}>
+    }`}
+    onContextMenu={e => e.preventDefault()}
+    onPointerUp={e => {
+      if (e.button === 1) {
+        e.preventDefault()
+      }
+    }}
+    onPointerDown={e => {
+      e.preventDefault()
+      e.stopPropagation()
+      onClick?.(e)
+    }}
+  >
     {icon}
   </button>
 )
@@ -73,24 +85,32 @@ const LoopItem = ({
   isCurrent,
   onClick,
   onPlay,
+  onPause,
+  onStop,
   canSave = true,
   onSave,
   onSaveAsNew,
   onEditDetails,
   onDelete,
   onClose,
+  hideCloseWhenNotDirty = false,
 }: {
   loop: Loop
   isCurrent: boolean
   onClick: () => void
   onPlay?: () => void
+  onPause?: () => void
+  onStop?: () => void
   canSave?: boolean
   onSave?: (details: Partial<LoopData>) => void
   onSaveAsNew?: (details: Partial<LoopData>) => void
   onEditDetails?: (details: Partial<LoopData>) => void
   onDelete?: () => void
   onClose?: () => void
+  hideCloseWhenNotDirty?: boolean
 }) => {
+  const restartLoop = useRestartLoop()
+  const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -102,10 +122,18 @@ const LoopItem = ({
   const baseCode = base?.code ?? loop.data.code
   const canCompare = loop.data.code != null || base?.ts != null
   const isDirty = canCompare && baseCode != null && code !== baseCode
-  const isPlaying = playbackState === 'running' && playingLoopId === loop.data.id
+  const isPlaying = playbackState === 'running'
+  const isLive = isPlaying && playingLoopId === loop.data.id
+  const shouldHideClose = hideCloseWhenNotDirty && loop.isNew && !isDirty
 
   const alertSaveRequiresSignIn = () => {
     alert('You need to sign in first.')
+  }
+
+  const cancelEditingDetails = () => {
+    setLoopTitle(loop.data.title)
+    setIsEditingDetails(false)
+    setIsSaving(false)
   }
 
   const handleStartEditingDetails = () => {
@@ -153,8 +181,25 @@ const LoopItem = ({
 
   useEffect(() => {
     if (isEditingDetails) {
+      const onPointerDown = (e: PointerEvent) => {
+        const root = rootRef.current
+        if (!root) return
+        const t = e.target
+        if (t instanceof Node && root.contains(t)) return
+        cancelEditingDetails()
+      }
+      document.addEventListener('pointerdown', onPointerDown, { capture: true })
+      return () => {
+        document.removeEventListener('pointerdown', onPointerDown, { capture: true })
+      }
     }
-  }, [isEditingDetails])
+  }, [isEditingDetails, loop.data.title])
+
+  useEffect(() => {
+    if (!isEditingDetails) return
+    if (isCurrent) return
+    cancelEditingDetails()
+  }, [isCurrent, isEditingDetails, loop.data.title])
 
   useEffect(() => {
     if (isEditingDetails) {
@@ -167,6 +212,7 @@ const LoopItem = ({
 
   return (
     <div
+      ref={rootRef}
       key={loop.data.id}
       data-loop-id={loop.data.id}
       className={`
@@ -191,11 +237,10 @@ const LoopItem = ({
                 className="flex flex-1 min-w-0 bg-gradient-to-b from-black to-neutral-700 rounded-sm outline-none py-1.5 my-0.5 px-2 text-white"
                 type="text"
                 value={loopTitle}
+                onPointerDown={e => e.stopPropagation()}
                 onKeyDown={e => {
                   if (e.key === 'Escape') {
-                    setLoopTitle(loop.data.title)
-                    setIsEditingDetails(false)
-                    setIsSaving(false)
+                    cancelEditingDetails()
                   }
                   else if (e.key === 'Enter') {
                     if (isSaving) {
@@ -247,20 +292,20 @@ const LoopItem = ({
             </div>
           )}
       </div>
-      {!isEditingDetails && (onEditDetails || isPlaying) && (
+      {!isEditingDetails && (onEditDetails || isLive) && (
         <div
           className={`shrink-0 pr-2 flex flex-row items-center gap-2 ${
-            isPlaying || isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            isLive || isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
         >
           <div
-            className={`flex flex-row items-center gap-2 ${isPlaying && !isCurrent ? 'hidden group-hover:flex' : ''}`}
+            className={`flex flex-row items-center gap-2 ${isLive && !isCurrent ? 'hidden group-hover:flex' : ''}`}
           >
             {!isDirty && (
               <LoopItemButton title="Edit" icon={<PencilIcon weight="regular" size={16} />}
                 onClick={handleStartEditingDetails} />
             )}
-            {(isDirty || loop.isNew) && (
+            {(isDirty || loop.isNew) && !shouldHideClose && (
               <LoopItemButton title={!loop.isNew ? 'Discard changes' : 'Close'}
                 icon={<XIcon weight="regular" size={16} />} onClick={onClose} />
             )}
@@ -271,10 +316,26 @@ const LoopItem = ({
           </div>
           <LoopItemButton
             title="Play"
-            className={isPlaying ? 'text-orange-600' : undefined}
-            icon={<PlayIconPhosphor weight={isPlaying ? 'fill' : 'regular'} size={16} />}
-            onClick={() => {
-              onPlay?.()
+            className={isLive ? 'text-orange-600' : undefined}
+            icon={<PlayIconPhosphor weight={isLive ? 'fill' : 'regular'} size={16} />}
+            onClick={e => {
+              if (e.buttons & MouseButtons.Right) {
+                onStop?.()
+                return
+              }
+              if (isLive && ((e.buttons & MouseButtons.Middle) || e.ctrlKey)) {
+                restartLoop()
+                return
+              }
+              if (isLive) {
+                onPause?.()
+              }
+              else {
+                if (!isPlaying) {
+                  restartLoop()
+                }
+                onPlay?.()
+              }
             }}
           />
         </div>
@@ -310,10 +371,12 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const preloadSamples = useEngineStore(state => state.preloadSamples)
   const playLoop = useEngineStore(state => state.playLoop)
+  const pause = useEngineStore(state => state.pause)
+  const stop = useEngineStore(state => state.stop)
 
   useEffect(() => {
     setTimeout(() => {
-      console.log(document.querySelector('textarea')?.focus({ preventScroll: true }))
+      document.querySelector('textarea')?.focus({ preventScroll: true })
     }, 0)
   }, [currentLoopId, loops])
 
@@ -459,9 +522,9 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     if (!loop) return
     const source = loop.codeFile.value
     setQueuedPlay(null)
-    requestAnimationFrame(() => {
-      void playLoop(loop.data.id, source)
-    })
+    // requestAnimationFrame(() => {
+    void playLoop(loop.data.id, source)
+    // })
   }, [currentLoopId, loops, playLoop, queuedPlay])
 
   const preserveScrollPos = (callback: () => void) => {
@@ -795,23 +858,31 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                     isPublic: false,
                     timestamp: 0,
                   })} isCurrent={false} onClick={() => handleNewLoop()} />
-                  {loops.filter(loop => loop.isNew).map(loop => (
-                    <LoopItem
-                      key={loop.data.id}
-                      loop={loop}
-                      isCurrent={currentLoopId === loop.data.id}
-                      onClick={() => setCurrentLoopId(loop.data.id)}
-                      onPlay={() => {
-                        setQueuedPlay({ loopId: loop.data.id })
-                        setCurrentLoopId(loop.data.id)
-                      }}
-                      canSave={sessionData != null}
-                      onClose={() => handleClose(loop)}
-                      onEditDetails={details => handleEditDetails(loop, details)}
-                      onSave={details => handleSave(loop, details)}
-                      onSaveAsNew={details => handleSaveAsNew(loop, details)}
-                    />
-                  ))}
+                  {(() => {
+                    const newLoops = loops.filter(loop => loop.isNew)
+                    const untitledNew = newLoops.filter(loop => loop.data.title.startsWith('Untitled'))
+                    const lastUntitledId = untitledNew.length === 1 ? untitledNew[0]!.data.id : null
+                    return newLoops.map(loop => (
+                      <LoopItem
+                        key={loop.data.id}
+                        loop={loop}
+                        isCurrent={currentLoopId === loop.data.id}
+                        onClick={() => setCurrentLoopId(loop.data.id)}
+                        onPlay={() => {
+                          setQueuedPlay({ loopId: loop.data.id })
+                          setCurrentLoopId(loop.data.id)
+                        }}
+                        onPause={pause}
+                        onStop={stop}
+                        canSave={sessionData != null}
+                        hideCloseWhenNotDirty={loop.data.id === lastUntitledId}
+                        onClose={() => handleClose(loop)}
+                        onEditDetails={details => handleEditDetails(loop, details)}
+                        onSave={details => handleSave(loop, details)}
+                        onSaveAsNew={details => handleSaveAsNew(loop, details)}
+                      />
+                    ))
+                  })()}
                 </div>
                 <div className="flex flex-col w-full h-full">
                   {isSessionLoading
@@ -870,6 +941,8 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                                 setQueuedPlay({ loopId: loop.data.id })
                                 setCurrentLoopId(loop.data.id)
                               }}
+                              onPause={pause}
+                              onStop={stop}
                               canSave={sessionData != null}
                               onClose={() => handleClose(loop)}
                               onDelete={() => handleDelete(loop)}
