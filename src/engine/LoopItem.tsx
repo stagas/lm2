@@ -139,7 +139,8 @@ export const LoopItem = ({
     [isLoading, loop.data.code, onClick],
   )
 
-  const handlePlayClick = runWhenLoopReady<HTMLButtonElement>(e => {
+  const handlePlayClick = runWhenLoopReady<HTMLButtonElement>(async e => {
+    console.log(e.buttons)
     if (e.buttons & MouseButtons.Right) {
       onStop?.()
       return
@@ -152,8 +153,8 @@ export const LoopItem = ({
       onPause?.()
     }
     else {
-      if (!isPlaying) {
-        restartLoop()
+      if (!isPlaying && ((e.buttons & MouseButtons.Middle) || e.ctrlKey)) {
+        await restartLoop()
       }
       onPlay?.()
     }

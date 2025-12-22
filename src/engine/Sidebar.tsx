@@ -52,6 +52,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const serverLoopsUserId = useAppStore(state => state.serverLoopsUserId)
   const api = useAppStore(state => state.api)
   const setSessionData = useAppStore(state => state.setSessionData)
+  const upsertServerLoopCache = useAppStore(state => state.upsertServerLoopCache)
   const getCodeFile = useAppStore(state => state.getCodeFile)
   const moveBuffer = useAppStore(state => state.moveBuffer)
   const dropBuffer = useAppStore(state => state.dropBuffer)
@@ -110,6 +111,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   }
 
   useEffect(() => {
+    if (!hasHydrated) return
     setLoops(prev => {
       const prevById = new Map(prev.map(loop => [loop.data.id, loop]))
       const next: Loop[] = []
@@ -128,6 +130,9 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
         const code = data.code ?? base
         const dataWithCode = code != null ? { ...data, code } : data
         const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, code ?? '')
+        if (prevLoop && code && codeFile.value.length === 0) {
+          codeFile.value = code
+        }
         if (!seen.has(data.id)) {
           next.push(new Loop({ ...prevLoop?.data, ...dataWithCode }, codeFile))
           seen.add(data.id)
@@ -136,7 +141,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
 
       return next
     })
-  }, [bases, getCodeFile, localLoops, serverLoops])
+  }, [bases, getCodeFile, hasHydrated, localLoops, serverLoops])
 
   useEffect(() => {
     if (currentLoopId != null) return
@@ -366,7 +371,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
         const code = state.value
         void (async () => {
           try {
-            const next = await api.upsertLoop(serverId, {
+            await api.upsertLoop(serverId, {
               title,
               code,
               isPublic,
@@ -402,7 +407,17 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
               setSelectedLoopId(serverId)
               didInitialCenterRef.current = false
             })
-            setSessionData(next)
+            upsertServerLoopCache({
+              id: serverId,
+              title,
+              artist: sessionData.user.name,
+              artistId: sessionData.user.id,
+              code,
+              likesCount: 0,
+              commentsCount: 0,
+              isPublic,
+              timestamp,
+            })
             removeLocalLoop(localId)
           }
           catch (e) {
@@ -413,13 +428,21 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
       else if (sessionData && !isLocalId(loop.data.id)) {
         void (async () => {
           try {
-            const next = await api.upsertLoop(loop.data.id, {
+            await api.upsertLoop(loop.data.id, {
               title,
               code: loop.codeFile.value,
               isPublic,
               timestamp,
             })
-            setSessionData(next)
+            upsertServerLoopCache({
+              ...loop.data,
+              title,
+              artist: sessionData.user.name,
+              artistId: sessionData.user.id,
+              code: loop.codeFile.value,
+              isPublic,
+              timestamp,
+            })
           }
           catch (e) {
             setApiError(e instanceof Error ? e.message : String(e))
@@ -694,7 +717,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                           })()
                         }}
                       >
-                        Logout
+                        Sign Out
                       </button>
                     </div>
                   )}

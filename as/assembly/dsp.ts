@@ -433,6 +433,15 @@ export class Dsp {
     hist[0] = f32((writePos + 1) & 0xfffff)
   }
 
+  @inline
+  private vmWrapArrayIndex(indexTag: VmTag, indexNum: f64, len: i32): i32 {
+    // Wrap for JS-like negative indexing and keep index in-bounds without branching in the language.
+    let i = i32(indexTag === VmTag.Bool ? (indexNum != 0.0 ? 1 : 0) : indexNum)
+    i = i % len
+    if (i < 0) i += len
+    return i
+  }
+
   reset(): void {
     this.program.reset()
   }
@@ -725,14 +734,14 @@ export class Dsp {
           continue
         }
 
-        const i = i32(indexTag === VmTag.Bool ? (indexNum != 0.0 ? 1 : 0) : indexNum)
         const start = this.arrStart[arrId]
         const len = this.arrLen[arrId]
-        if (i < 0 || i >= len) {
+        if (len <= 0) {
           this.vmPush(VmTag.Undef)
           continue
         }
 
+        const i = this.vmWrapArrayIndex(indexTag, indexNum, len)
         this.recordArrayAccess(this.arrCreatePc[arrId], i)
 
         const at = start + i
@@ -760,14 +769,14 @@ export class Dsp {
           continue
         }
 
-        const i = i32(indexTag === VmTag.Bool ? (indexNum != 0.0 ? 1 : 0) : indexNum)
         const start = this.arrStart[arrId]
         const len = this.arrLen[arrId]
-        if (i < 0 || i >= len) {
+        if (len <= 0) {
           this.vmPush(VmTag.Undef)
           continue
         }
 
+        const i = this.vmWrapArrayIndex(indexTag, indexNum, len)
         const at = start + i
         this.arrElemTag[at] = this.vmTag[valueIdx]
         this.arrElemNum[at] = this.vmNum[valueIdx]

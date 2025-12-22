@@ -450,7 +450,7 @@ export function MinimapScrollbar({
             seekToSampleImmediate(0)
             return
           }
-          restartLoop()
+          void restartLoop()
         }}
       >
         &nbsp;

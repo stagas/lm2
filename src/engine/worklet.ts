@@ -509,11 +509,19 @@ export class DspProcessor extends AudioWorkletProcessor {
 
       // Only respond to control changes
       if (!isRestartWithProgram && control !== this.lastControl) {
-        if (control === ControlOp.Start && this.state === 'stopped') {
-          this.state = 'fade-in'
-          this.shouldReset = false
+        if (control === ControlOp.Start) {
+          if (this.state === 'stopped') {
+            this.state = 'fade-in'
+            this.shouldReset = false
+          }
+          else if (this.state === 'fade-out') {
+            // If play is pressed while we're fading out, resume immediately so
+            // we don't end up stopped with ControlOp.Start latched.
+            this.state = 'running'
+            this.shouldReset = false
+          }
         }
-        else if (control === ControlOp.Pause && this.state === 'running') {
+        else if (control === ControlOp.Pause && (this.state === 'running' || this.state === 'fade-in')) {
           this.state = 'fade-out'
           this.shouldReset = false
         }

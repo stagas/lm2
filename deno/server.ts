@@ -315,7 +315,7 @@ app.put('/api/loop/:id', async c => {
     .set(k.session(token), nextSession)
     .commit()
 
-  return c.json(sessionToApi(nextSession))
+  return c.json({ ok: true })
 })
 
 app.delete('/api/loop/:id', async c => {
