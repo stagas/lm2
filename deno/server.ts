@@ -1,6 +1,8 @@
 import { compare, hash } from 'bcrypt'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
+import type { ZodError, ZodIssue } from 'zod'
 import { clearSessionCookie, getSessionKvByToken, getSessionToken, setSessionCookie } from './auth.ts'
 import { getKv, k, type LoopKv, type LoopSummaryKv, type SessionKv, type UserKv } from './kv.ts'
 import {
@@ -14,24 +16,73 @@ import {
   SessionDataSchema,
 } from './types.ts'
 
-function jsonError(message: string, status = 400) {
+function jsonError(message: string, status: ContentfulStatusCode = 400) {
   return { body: ErrorResponseSchema.parse({ message }), status }
 }
 
+const fieldLabel: Record<string, string> = {
+  artistName: 'Name',
+  email: 'Email',
+  password: 'Password',
+  title: 'Title',
+  code: 'Code',
+  isPublic: 'Public',
+  timestamp: 'Timestamp',
+}
+
+function zodIssueMessage(issue: ZodIssue): string {
+  const key = typeof issue.path?.[0] === 'string' ? issue.path[0] : null
+  const label = (key && fieldLabel[key]) || (key ? `${key[0]?.toUpperCase()}${key.slice(1)}` : 'Request')
+
+  if (issue.code === 'invalid_type') {
+    const input = ('input' in issue ? (issue as { input: unknown }).input : undefined) ?? undefined
+    if (input === undefined) return key ? `${label} is required` : 'Request body is required'
+
+    const expected = 'expected' in issue ? (issue as { expected: unknown }).expected : null
+    if (expected === 'string') return `${label} must be a string`
+    if (expected === 'number') return `${label} must be a number`
+    if (expected === 'boolean') return `${label} must be a boolean`
+    return `${label} is invalid`
+  }
+
+  if (issue.code === 'too_small') {
+    if ('minimum' in issue && (issue as { minimum: unknown }).minimum === 1) return `${label} is required`
+    return `${label} is too short`
+  }
+
+  if (issue.code === 'invalid_format') {
+    if ('format' in issue && (issue as { format: unknown }).format === 'email') return `${label} is invalid`
+    return `${label} is invalid`
+  }
+
+  if (issue.code === 'unrecognized_keys') {
+    const k = issue.keys?.[0]
+    return k ? `Unexpected field: ${k}` : 'Unexpected fields in request'
+  }
+
+  return key ? `${label} is invalid` : (issue.message || 'Invalid request')
+}
+
+function zodErrorMessage(err: ZodError): string {
+  const issue = err.issues[0]
+  if (!issue) return 'Invalid request'
+  return zodIssueMessage(issue)
+}
+
 function sessionToApi(session: SessionKv): SessionData {
-  const loops: LoopData[] = session.l.map(l => ({
-    id: l.id,
-    title: l.t,
-    artist: session.n,
-    artistId: session.u,
+  const loops: LoopData[] = session.loops.map(loop => ({
+    id: loop.id,
+    title: loop.title,
+    artist: session.name,
+    artistId: session.userId,
     likesCount: 0,
     commentsCount: 0,
-    isPublic: l.pub === 1,
-    timestamp: l.ts,
+    isPublic: loop.isPublic,
+    timestamp: loop.timestamp,
   }))
 
   return SessionDataSchema.parse({
-    user: { id: session.u, name: session.n },
+    user: { id: session.userId, name: session.name, email: session.email },
     loops,
   })
 }
@@ -39,14 +90,14 @@ function sessionToApi(session: SessionKv): SessionData {
 function loopToApi(loop: LoopKv, user: { id: string; name: string }): LoopData {
   return LoopDataSchema.parse({
     id: loop.id,
-    title: loop.t,
+    title: loop.title,
     artist: user.name,
     artistId: user.id,
-    code: loop.c,
+    code: loop.code,
     likesCount: 0,
     commentsCount: 0,
-    isPublic: loop.pub === 1,
-    timestamp: loop.ts,
+    isPublic: loop.isPublic,
+    timestamp: loop.timestamp,
     comments: [],
   })
 }
@@ -74,30 +125,35 @@ app.get('/api/session', async c => {
 app.post('/api/auth/register', async c => {
   const kv = await getKv()
   const raw = await c.req.json().catch(() => null)
+  if (raw === null) {
+    const err = jsonError('Invalid JSON', 400)
+    return c.json(err.body, err.status)
+  }
   const parsed = AuthRegisterRequestSchema.safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError('Invalid request', 400)
+    const err = jsonError(zodErrorMessage(parsed.error), 400)
     return c.json(err.body, err.status)
   }
 
-  const name = parsed.data.name
+  const name = parsed.data.artistName.trim()
+  const email = parsed.data.email.trim().toLowerCase()
   const password = parsed.data.password
   const userId = crypto.randomUUID()
   const pw = await hash(password)
-  const user: UserKv = { id: userId, n: name, p: pw, l: [] }
+  const user: UserKv = { id: userId, name, email, passwordHash: pw, loops: [] }
   const token = crypto.randomUUID()
-  const session: SessionKv = { u: userId, n: name, l: user.l }
+  const session: SessionKv = { userId, name, email, loops: user.loops }
 
   const commit = await kv.atomic()
-    .check({ key: k.userByName(name), versionstamp: null })
+    .check({ key: k.userByEmail(email), versionstamp: null })
     .set(k.user(userId), user)
-    .set(k.userByName(name), userId)
+    .set(k.userByEmail(email), userId)
     .set(k.session(token), session)
-    .set(k.sessionByUser(userId), token)
+    .set(k.sessionByUserId(userId), token)
     .commit()
 
   if (!commit.ok) {
-    const err = jsonError('Name is already taken', 409)
+    const err = jsonError('Email is already registered', 409)
     return c.json(err.body, err.status)
   }
 
@@ -108,45 +164,49 @@ app.post('/api/auth/register', async c => {
 app.post('/api/auth/login', async c => {
   const kv = await getKv()
   const raw = await c.req.json().catch(() => null)
+  if (raw === null) {
+    const err = jsonError('Invalid JSON', 400)
+    return c.json(err.body, err.status)
+  }
   const parsed = AuthLoginRequestSchema.safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError('Invalid request', 400)
+    const err = jsonError(zodErrorMessage(parsed.error), 400)
     return c.json(err.body, err.status)
   }
 
-  const name = parsed.data.name
+  const email = parsed.data.email.trim().toLowerCase()
   const password = parsed.data.password
 
-  const userIdEntry = await kv.get<string>(k.userByName(name))
+  const userIdEntry = await kv.get<string>(k.userByEmail(email))
   const userId = userIdEntry.value ?? null
   if (!userId) {
-    const err = jsonError('Invalid credentials', 401)
+    const err = jsonError('Invalid email or password', 401)
     return c.json(err.body, err.status)
   }
 
   const userEntry = await kv.get<UserKv>(k.user(userId))
   const user = userEntry.value ?? null
   if (!user) {
-    const err = jsonError('Invalid credentials', 401)
+    const err = jsonError('Invalid email or password', 401)
     return c.json(err.body, err.status)
   }
 
-  const ok = await compare(password, user.p)
+  const ok = await compare(password, user.passwordHash)
   if (!ok) {
-    const err = jsonError('Invalid credentials', 401)
+    const err = jsonError('Invalid email or password', 401)
     return c.json(err.body, err.status)
   }
 
-  const prevTokenEntry = await kv.get<string>(k.sessionByUser(userId))
+  const prevTokenEntry = await kv.get<string>(k.sessionByUserId(userId))
   const prevToken = prevTokenEntry.value ?? null
 
   const token = crypto.randomUUID()
-  const session: SessionKv = { u: user.id, n: user.n, l: user.l }
+  const session: SessionKv = { userId: user.id, name: user.name, email: user.email, loops: user.loops }
 
   const a = kv.atomic()
   if (prevToken) a.delete(k.session(prevToken))
   a.set(k.session(token), session)
-  a.set(k.sessionByUser(userId), token)
+  a.set(k.sessionByUserId(userId), token)
   await a.commit()
 
   setSessionCookie(c, token)
@@ -159,7 +219,7 @@ app.post('/api/auth/logout', async c => {
   if (token) {
     const session = await getSessionKvByToken(token)
     const a = kv.atomic().delete(k.session(token))
-    if (session) a.delete(k.sessionByUser(session.u))
+    if (session) a.delete(k.sessionByUserId(session.userId))
     await a.commit()
   }
   clearSessionCookie(c)
@@ -177,12 +237,12 @@ app.get('/api/loop/:id', async c => {
   const id = c.req.param('id')
   const loopEntry = await kv.get<LoopKv>(k.loop(id))
   const loop = loopEntry.value ?? null
-  if (!loop || loop.u !== session.u) {
+  if (!loop || loop.userId !== session.userId) {
     const err = jsonError('Loop not found', 404)
     return c.json(err.body, err.status)
   }
 
-  return c.json(loopToApi(loop, { id: session.u, name: session.n }))
+  return c.json(loopToApi(loop, { id: session.userId, name: session.name }))
 })
 
 app.put('/api/loop/:id', async c => {
@@ -193,9 +253,13 @@ app.put('/api/loop/:id', async c => {
   }
 
   const raw = await c.req.json().catch(() => null)
+  if (raw === null) {
+    const err = jsonError('Invalid JSON', 400)
+    return c.json(err.body, err.status)
+  }
   const parsed = LoopUpsertRequestSchema.safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError('Invalid request', 400)
+    const err = jsonError(zodErrorMessage(parsed.error), 400)
     return c.json(err.body, err.status)
   }
 
@@ -204,7 +268,7 @@ app.put('/api/loop/:id', async c => {
 
   const [sessionEntry, userEntry, loopEntry] = await kv.getMany([
     k.session(token),
-    k.user(session.u),
+    k.user(session.userId),
     k.loop(id),
   ] as const)
 
@@ -217,7 +281,7 @@ app.put('/api/loop/:id', async c => {
     return c.json(err.body, err.status)
   }
 
-  if (prevLoop && prevLoop.u !== session.u) {
+  if (prevLoop && prevLoop.userId !== session.userId) {
     const err = jsonError('Loop not found', 404)
     return c.json(err.body, err.status)
   }
@@ -225,14 +289,14 @@ app.put('/api/loop/:id', async c => {
   const data = parsed.data
   const loop: LoopKv = {
     id,
-    u: session.u,
-    t: data.title,
-    c: data.code,
-    ts: data.timestamp,
-    pub: data.isPublic ? 1 : 0,
+    userId: session.userId,
+    title: data.title,
+    code: data.code,
+    timestamp: (prevLoop?.code === data.code ? prevLoop?.timestamp : data.timestamp) ?? data.timestamp,
+    isPublic: data.isPublic,
   }
 
-  const summary: LoopSummaryKv = { id, t: data.title, ts: data.timestamp, pub: loop.pub }
+  const summary: LoopSummaryKv = { id, title: loop.title, timestamp: loop.timestamp, isPublic: loop.isPublic }
 
   const upsertSummary = (list: LoopSummaryKv[]) => {
     const idx = list.findIndex(x => x.id === id)
@@ -242,12 +306,12 @@ app.put('/api/loop/:id', async c => {
     return next
   }
 
-  const nextUser: UserKv = { ...user, l: upsertSummary(user.l) }
-  const nextSession: SessionKv = { ...currentSession, l: upsertSummary(currentSession.l) }
+  const nextUser: UserKv = { ...user, loops: upsertSummary(user.loops) }
+  const nextSession: SessionKv = { ...currentSession, loops: upsertSummary(currentSession.loops) }
 
   await kv.atomic()
     .set(k.loop(id), loop)
-    .set(k.user(session.u), nextUser)
+    .set(k.user(session.userId), nextUser)
     .set(k.session(token), nextSession)
     .commit()
 
@@ -266,7 +330,7 @@ app.delete('/api/loop/:id', async c => {
 
   const [sessionEntry, userEntry, loopEntry] = await kv.getMany([
     k.session(token),
-    k.user(session.u),
+    k.user(session.userId),
     k.loop(id),
   ] as const)
 
@@ -279,18 +343,18 @@ app.delete('/api/loop/:id', async c => {
     return c.json(err.body, err.status)
   }
 
-  if (!loop || loop.u !== session.u) {
+  if (!loop || loop.userId !== session.userId) {
     const err = jsonError('Loop not found', 404)
     return c.json(err.body, err.status)
   }
 
   const remove = (list: LoopSummaryKv[]) => list.filter(x => x.id !== id)
-  const nextUser: UserKv = { ...user, l: remove(user.l) }
-  const nextSession: SessionKv = { ...currentSession, l: remove(currentSession.l) }
+  const nextUser: UserKv = { ...user, loops: remove(user.loops) }
+  const nextSession: SessionKv = { ...currentSession, loops: remove(currentSession.loops) }
 
   await kv.atomic()
     .delete(k.loop(id))
-    .set(k.user(session.u), nextUser)
+    .set(k.user(session.userId), nextUser)
     .set(k.session(token), nextSession)
     .commit()
 

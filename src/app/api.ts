@@ -34,19 +34,19 @@ export class API {
     return json
   }
 
-  async login(name: string, password: string): Promise<SessionData> {
+  async login(email: string, password: string): Promise<SessionData> {
     return await this.requestJson<SessionData>('/api/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name, password }),
+      body: JSON.stringify({ email, password }),
     })
   }
 
-  async register(name: string, password: string): Promise<SessionData> {
+  async register(artistName: string, email: string, password: string): Promise<SessionData> {
     return await this.requestJson<SessionData>('/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name, password }),
+      body: JSON.stringify({ artistName, email, password }),
     })
   }
 

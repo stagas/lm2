@@ -1,30 +1,32 @@
 export type UserKv = {
   id: string
-  n: string
-  p: string
-  l: LoopSummaryKv[]
+  name: string
+  email: string
+  passwordHash: string
+  loops: LoopSummaryKv[]
 }
 
 export type LoopSummaryKv = {
   id: string
-  t: string
-  ts: number
-  pub: 0 | 1
+  title: string
+  timestamp: number
+  isPublic: boolean
 }
 
 export type SessionKv = {
-  u: string
-  n: string
-  l: LoopSummaryKv[]
+  userId: string
+  name: string
+  email: string
+  loops: LoopSummaryKv[]
 }
 
 export type LoopKv = {
   id: string
-  u: string
-  t: string
-  c: string
-  ts: number
-  pub: 0 | 1
+  userId: string
+  title: string
+  code: string
+  timestamp: number
+  isPublic: boolean
 }
 
 let kv: Deno.Kv | null = null
@@ -38,10 +40,8 @@ export async function getKv(): Promise<Deno.Kv> {
 
 export const k = {
   user: (id: string) => ['u', id] as const,
-  userByName: (name: string) => ['u_by_n', name] as const,
+  userByEmail: (email: string) => ['u_by_e', email] as const,
   session: (token: string) => ['s', token] as const,
-  sessionByUser: (userId: string) => ['s_by_u', userId] as const,
+  sessionByUserId: (userId: string) => ['s_by_u', userId] as const,
   loop: (id: string) => ['l', id] as const,
 }
-
-

@@ -81,6 +81,9 @@ type WidgetCompileState = {
 export function DspSourceEditor(
   { timelineHeader, currentLoop }: { timelineHeader: EditorHeader; currentLoop: Loop | null },
 ) {
+  const codeFileKeyByFileRef = useRef<WeakMap<CodeFile, string>>(new WeakMap())
+  const nextCodeFileKeyRef = useRef(0)
+
   const {
     dspSource,
     updateDspSource,
@@ -446,11 +449,22 @@ export function DspSourceEditor(
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
     arrayAccessWidgets, sliderWidgets, sampleWidgets, viewSampleCount])
+
+  const codeEditorKey = useMemo(() => {
+    const codeFile = currentLoop?.codeFile
+    if (!codeFile) return '<none>'
+    const existing = codeFileKeyByFileRef.current.get(codeFile)
+    if (existing) return existing
+    const next = String(++nextCodeFileKeyRef.current)
+    codeFileKeyByFileRef.current.set(codeFile, next)
+    return next
+  }, [currentLoop?.codeFile])
+
   return (
     <div className="flex flex-row gap-2 w-full h-full">
       <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
         <CodeEditor
-          key={currentLoop?.data.id ?? '<none>'}
+          key={codeEditorKey}
           codeFile={currentLoop?.codeFile}
           widgets={widgets}
           header={timelineHeader}

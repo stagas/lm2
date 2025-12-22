@@ -331,7 +331,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         uiTimelineLabels: nextTimelineLabels,
         uiBars: bars,
       })
-      localStorage.setItem('engine2:dsp-source', source)
+      localStorage.setItem('lm2:dsp-source', source)
       return state.sequences
     }
 
@@ -351,7 +351,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       uiTimelineLabels: nextTimelineLabels,
       uiBars: bars,
     })
-    localStorage.setItem('engine2:dsp-source', source)
+    localStorage.setItem('lm2:dsp-source', source)
     return state.sequences
   }
 
@@ -435,7 +435,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           isProgramSwapPending: false,
         })
         syncBarsHardLoop(bars)
-        localStorage.setItem('engine2:dsp-source', source)
+        localStorage.setItem('lm2:dsp-source', source)
         return sequences
       }
 
@@ -554,7 +554,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       })
 
       syncBarsHardLoop(committedBars)
-      localStorage.setItem('engine2:dsp-source', source)
+      localStorage.setItem('lm2:dsp-source', source)
       return sequences
     }
     catch (error) {
@@ -628,7 +628,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     numberLiterals: [],
     sampleDefs: [],
     loadedSamples: [],
-    dspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
+    dspSource: localStorage.getItem('lm2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     uiSequences: [...DEFAULT_SEQUENCES],
     uiMiniRefs: [],
     uiTimelineRefs: [],
@@ -639,7 +639,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     uiNumberParams: [],
     uiNumberLiterals: [],
     uiSampleDefs: [],
-    uiDspSource: localStorage.getItem('engine2:dsp-source') ?? DEFAULT_DSP_SOURCE,
+    uiDspSource: localStorage.getItem('lm2:dsp-source') ?? DEFAULT_DSP_SOURCE,
     isProgramSwapPending: false,
     isUpdatingDsp: false,
     isInitialized: false,
@@ -681,9 +681,9 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
       const wasRunning = state.playbackState === 'running'
       if (wasRunning) {
-        //   // Ensure we don't briefly run the old program while swapping to the new loop.
+        // Ensure we don't briefly run the old program while swapping to the new loop.
         state.pause()
-        //   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       }
 
       await state.updateDspSource(source)
@@ -694,7 +694,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         const seekSampleCount = get().seekSampleCount
         if (control && seekSampleCount) {
           Atomics.store(seekSampleCount, 0, startSample)
-          Atomics.store(control, 0, ControlOp.Seek)
+          Atomics.store(control, 0, ControlOp.SeekImmediate)
         }
       }
 

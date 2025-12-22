@@ -3,12 +3,7 @@ import { z } from 'zod'
 export const UserDataSchema = z.object({
   id: z.string(),
   name: z.string(),
-  email: z.string().optional(),
-  passwordEncrypted: z.string().optional(),
-  welcomeEmailSent: z.boolean().optional(),
-  isAdmin: z.boolean().optional(),
-  createdAt: z.number().int().optional(),
-  updatedAt: z.number().int().optional(),
+  email: z.string(),
 }).strict()
 export type UserData = z.infer<typeof UserDataSchema>
 
@@ -20,6 +15,20 @@ export const CommentDataSchema = z.object({
   timestamp: z.number().int(),
 }).strict()
 export type CommentData = z.infer<typeof CommentDataSchema>
+
+export type LoopData = {
+  id: string
+  title: string
+  artist: string
+  artistId: string
+  code?: string
+  likesCount: number
+  commentsCount: number
+  remixOf?: LoopData
+  isPublic?: boolean
+  timestamp?: number
+  comments?: CommentData[]
+}
 
 export const LoopDataSchema: z.ZodType<LoopData> = z.lazy(() =>
   z.object({
@@ -36,7 +45,6 @@ export const LoopDataSchema: z.ZodType<LoopData> = z.lazy(() =>
     comments: z.array(CommentDataSchema).optional(),
   }).strict()
 )
-export type LoopData = z.infer<typeof LoopDataSchema>
 
 export const SessionDataSchema = z.object({
   user: UserDataSchema,
@@ -50,13 +58,14 @@ export const ErrorResponseSchema = z.object({
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>
 
 export const AuthLoginRequestSchema = z.object({
-  name: z.string().min(1),
+  email: z.string().email(),
   password: z.string().min(1),
 }).strict()
 export type AuthLoginRequest = z.infer<typeof AuthLoginRequestSchema>
 
 export const AuthRegisterRequestSchema = z.object({
-  name: z.string().min(1),
+  artistName: z.string().min(1),
+  email: z.string().email(),
   password: z.string().min(1),
 }).strict()
 export type AuthRegisterRequest = z.infer<typeof AuthRegisterRequestSchema>

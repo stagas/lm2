@@ -19,6 +19,7 @@ interface AppState {
   updateLocalLoop: (id: string, patch: Partial<LoopData>) => void
   removeLocalLoop: (id: string) => void
   setSelectedLoopId: (id: string | null) => void
+  moveBuffer: (fromId: string, toId: string) => void
   dropBuffer: (id: string) => void
 }
 
@@ -109,6 +110,69 @@ export const useAppStore = create<AppState>()(
         set({ selectedLoopId: id })
       },
 
+      moveBuffer: (fromId: string, toId: string) => {
+        if (fromId === toId) return
+
+        // Move the in-memory CodeFile + its persistence subscription to the new id.
+        const codeFile = codeFiles.get(fromId)
+        if (codeFile) {
+          codeFileUnsubs.get(fromId)?.()
+          codeFileUnsubs.delete(fromId)
+          const t = persistTimers.get(fromId)
+          if (t) window.clearTimeout(t)
+          persistTimers.delete(fromId)
+          codeFiles.delete(fromId)
+
+          codeFileUnsubs.get(toId)?.()
+          codeFileUnsubs.delete(toId)
+          const t2 = persistTimers.get(toId)
+          if (t2) window.clearTimeout(t2)
+          persistTimers.delete(toId)
+
+          codeFiles.set(toId, codeFile)
+
+          const unsub = codeFile.subscribe(() => {
+            const prev = persistTimers.get(toId)
+            if (prev) window.clearTimeout(prev)
+            persistTimers.set(
+              toId,
+              window.setTimeout(() => {
+                set(state => ({
+                  buffers: {
+                    ...state.buffers,
+                    [toId]: codeFile.getState(),
+                  },
+                }))
+              }, 120),
+            )
+          })
+          codeFileUnsubs.set(toId, unsub)
+        }
+
+        set(state => {
+          const buffers = { ...state.buffers }
+          const bases = { ...state.bases }
+
+          const movedBuffer = buffers[fromId]
+          if (movedBuffer) {
+            delete buffers[fromId]
+            buffers[toId] = movedBuffer
+          }
+          else if (codeFile) {
+            buffers[toId] = codeFile.getState()
+          }
+
+          const movedBase = bases[fromId]
+          if (movedBase) {
+            delete bases[fromId]
+            bases[toId] = movedBase
+          }
+
+          const selectedLoopId = state.selectedLoopId === fromId ? toId : state.selectedLoopId
+          return { buffers, bases, selectedLoopId }
+        })
+      },
+
       dropBuffer: (id: string) => {
         codeFileUnsubs.get(id)?.()
         codeFileUnsubs.delete(id)
@@ -175,31 +239,18 @@ export const useAppStore = create<AppState>()(
           const prev = persisted as any
           const buffers = prev?.buffers && typeof prev.buffers === 'object' ? prev.buffers as Record<string, any> : {}
           const bases = prev?.bases && typeof prev.bases === 'object' ? prev.bases as Record<string, any> : {}
-          const nextBuffers: Record<string, any> = {}
-          const nextBases: Record<string, any> = {}
-
-          for (const [id, v] of Object.entries(buffers)) {
-            if (!id.startsWith('local:')) continue
-            nextBuffers[id] = v
-          }
-          for (const [id, v] of Object.entries(bases)) {
-            if (!id.startsWith('local:')) continue
-            nextBases[id] = v
-          }
 
           const localLoops = Array.isArray(prev?.localLoops)
             ? (prev.localLoops as any[])
               .filter(l => l && typeof l === 'object' && typeof l.id === 'string' && (l as any).id.startsWith('local:'))
             : []
 
-          const selectedLoopId = typeof prev?.selectedLoopId === 'string' && prev.selectedLoopId.startsWith('local:')
-            ? prev.selectedLoopId
-            : null
+          const selectedLoopId = typeof prev?.selectedLoopId === 'string' ? prev.selectedLoopId : null
 
           return {
             ...prev,
-            buffers: nextBuffers,
-            bases: nextBases,
+            buffers,
+            bases,
             localLoops,
             selectedLoopId,
           }
