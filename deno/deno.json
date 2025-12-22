@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "bcrypt": "jsr:@da/bcrypt",
+    "hono": "jsr:@hono/hono@^4.11.1",
+    "hono/cookie": "jsr:@hono/hono/cookie",
+    "zod": "jsr:@zod/zod"
+  }
+}

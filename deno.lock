@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@da/bcrypt@*": "1.0.1",
     "jsr:@hono/hono@*": "4.11.1",
+    "jsr:@hono/hono@^4.11.1": "4.11.1",
     "jsr:@zod/zod@*": "4.2.1"
   },
   "jsr": {
@@ -34,6 +35,16 @@
         "npm:zod@^3.24.2",
         "npm:zustand@^5.0.9"
       ]
+    },
+    "members": {
+      "deno": {
+        "dependencies": [
+          "jsr:@da/bcrypt@*",
+          "jsr:@hono/hono@*",
+          "jsr:@hono/hono@^4.11.1",
+          "jsr:@zod/zod@*"
+        ]
+      }
     }
   }
 }

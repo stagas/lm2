@@ -18,9 +18,12 @@
   "keywords": [],
   "license": "ISC",
   "scripts": {
-    "dev": "concurrently -k -n api,web -c green,blue \"bun run api:dev\" \"bun run web:dev\"",
-    "web:dev": "vite --open",
-    "api:dev": "deno run -A --unstable-kv --watch --import-map=./deno/import_map.json ./deno/server.ts",
+    "dev": "concurrently -k -n web,api -c green,blue \"bun run dev:web\" \"bun run dev:api\"",
+    "dev:web": "vite --open",
+    "dev:api": "deno run -A --unstable-kv --env-file=.env --watch ./deno/server.ts",
+    "install:all": "bun run install:web && bun run install:api",
+    "install:web": "bun install",
+    "install:api": "deno install --no-npm",
     "build": "vite build",
     "test": "bun test"
   },

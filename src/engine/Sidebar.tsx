@@ -11,6 +11,8 @@ import {
   LockIcon,
   PencilIcon,
   PlayIcon as PlayIconPhosphor,
+  SpinnerGapIcon,
+  SpinnerIcon,
   TrashIcon,
   WaveformIcon,
   XIcon,
@@ -27,6 +29,7 @@ import { useLoopData } from '../app/hooks/useLoopData.ts'
 import { useSessionData } from '../app/hooks/useSessionData.ts'
 import { useAppStore } from '../app/store.ts'
 import { Spinner } from '../components/Spinner.tsx'
+import { AuthForm } from './AuthForm.tsx'
 import { Loop } from './loop.ts'
 import { useEngineStore } from './store.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
@@ -69,6 +72,7 @@ const LoopItem = ({
   loop,
   isCurrent,
   onClick,
+  canSave = true,
   onSave,
   onSaveAsNew,
   onEditDetails,
@@ -78,12 +82,14 @@ const LoopItem = ({
   loop: Loop
   isCurrent: boolean
   onClick: () => void
+  canSave?: boolean
   onSave?: (details: Partial<LoopData>) => void
   onSaveAsNew?: (details: Partial<LoopData>) => void
   onEditDetails?: (details: Partial<LoopData>) => void
   onDelete?: () => void
   onClose?: () => void
 }) => {
+  const inputRef = useRef<HTMLInputElement>(null)
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [loopTitle, setLoopTitle] = useState(loop.data.title)
@@ -96,6 +102,10 @@ const LoopItem = ({
   const canCompare = loop.data.code != null || base?.ts != null
   const isDirty = canCompare && baseCode != null && code !== baseCode
   const isPlaying = playbackState === 'running' && playingLoopId === loop.data.id
+
+  const alertSaveRequiresSignIn = () => {
+    alert('You need to sign in first.')
+  }
 
   const handleStartEditingDetails = () => {
     setIsEditingDetails(true)
@@ -111,11 +121,19 @@ const LoopItem = ({
   }
 
   const handleStartSaving = () => {
+    if (!canSave) {
+      alertSaveRequiresSignIn()
+      return
+    }
     setIsEditingDetails(true)
     setIsSaving(true)
   }
 
   const handleSave = () => {
+    if (!canSave) {
+      alertSaveRequiresSignIn()
+      return
+    }
     setIsEditingDetails(false)
     setIsSaving(false)
     onSave?.({ title: loopTitle })
@@ -134,6 +152,15 @@ const LoopItem = ({
 
   useEffect(() => {
     if (isEditingDetails) {
+    }
+  }, [isEditingDetails])
+
+  useEffect(() => {
+    if (isEditingDetails) {
+      setTimeout(() => {
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      })
     }
   }, [isEditingDetails])
 
@@ -159,12 +186,8 @@ const LoopItem = ({
           ? (
             <div className="flex flex-1 pr-2 min-w-0 w-0 flex-row items-center gap-2 leading-tight overflow-hidden">
               <input
-                ref={el => {
-                  setTimeout(() => {
-                    el?.focus()
-                  })
-                }}
-                className="flex flex-1 bg-gradient-to-b from-black to-neutral-700 outline-none py-1.5 my-0.5 px-2 text-white"
+                ref={inputRef}
+                className="flex flex-1 min-w-0 bg-gradient-to-b from-black to-neutral-700 rounded-sm outline-none py-1.5 my-0.5 px-2 text-white"
                 type="text"
                 value={loopTitle}
                 onKeyDown={e => {
@@ -265,30 +288,32 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('loops')
   const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
   const [loops, setLoops] = useState<Loop[]>([])
-  const [authName, setAuthName] = useState('')
-  const [authPassword, setAuthPassword] = useState('')
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
-  const [authError, setAuthError] = useState<string | null>(null)
-  const [isAuthBusy, setIsAuthBusy] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollPosRef = useRef(0)
   const didInitialCenterRef = useRef(false)
+  const didEnsureInitialLoopRef = useRef(false)
 
   const { isLoading: isSessionLoading, sessionData } = useSessionData()
   const api = useAppStore(state => state.api)
   const setSessionData = useAppStore(state => state.setSessionData)
   const getCodeFile = useAppStore(state => state.getCodeFile)
+  const moveBuffer = useAppStore(state => state.moveBuffer)
   const dropBuffer = useAppStore(state => state.dropBuffer)
   const setLoopBase = useAppStore(state => state.setLoopBase)
   const localLoops = useAppStore(state => state.localLoops)
-  const buffers = useAppStore(state => state.buffers)
-  const bases = useAppStore(state => state.bases)
   const addLocalLoop = useAppStore(state => state.addLocalLoop)
   const updateLocalLoop = useAppStore(state => state.updateLocalLoop)
   const removeLocalLoop = useAppStore(state => state.removeLocalLoop)
   const selectedLoopId = useAppStore(state => state.selectedLoopId)
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const preloadSamples = useEngineStore(state => state.preloadSamples)
+
+  useEffect(() => {
+    setTimeout(() => {
+      console.log(document.querySelector('textarea')?.focus({ preventScroll: true }))
+    }, 0)
+  }, [currentLoopId, loops])
 
   const isLocalId = (id: string) => id.startsWith('local:')
 
@@ -298,6 +323,25 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   }
 
   const makeServerId = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
+
+  const stopIfPlaying = (loopId: string) => {
+    const engine = useEngineStore.getState()
+    if (engine.playingLoopId !== loopId) return
+    engine.stop()
+    engine.setPlayingLoopId(null)
+  }
+
+  const pickFallbackLoopId = (closingId: string, preferNew: boolean) => {
+    const other = loops.filter(loop => loop.data.id !== closingId)
+    if (preferNew) {
+      const untitled = other.find(loop => loop.isNew && loop.data.title.startsWith('Untitled'))
+      if (untitled) return untitled.data.id
+      const draft = other.find(loop => loop.isNew)
+      if (draft) return draft.data.id
+      return null
+    }
+    return other[0]?.data.id ?? null
+  }
 
   useEffect(() => {
     if (sessionData) {
@@ -331,52 +375,25 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
         }
       }
 
-      for (const id of Object.keys(buffers)) {
-        if (!sessionData && !isLocalId(id)) continue
-        if (seen.has(id)) continue
-        if (selectedLoopId !== id && bases[id]?.ts == null) continue
-        const prevLoop = prevById.get(id)
-        const codeFile = prevLoop?.codeFile ?? getCodeFile(id, buffers[id]?.value ?? '')
-        const title = isLocalId(id) ? (id.split(':')[1] || id) : id
-        next.push(new Loop({
-          id,
-          title,
-          artist: '',
-          artistId: '',
-          likesCount: 0,
-          commentsCount: 0,
-          isPublic: false,
-          timestamp: bases[id]?.ts ?? 1,
-        }, codeFile))
-        seen.add(id)
-      }
-
-      if (selectedLoopId && !seen.has(selectedLoopId)) {
-        if (!sessionData && !isLocalId(selectedLoopId)) return next
-        const prevLoop = prevById.get(selectedLoopId)
-        const codeFile = prevLoop?.codeFile ?? getCodeFile(selectedLoopId, buffers[selectedLoopId]?.value ?? '')
-        const title = isLocalId(selectedLoopId) ? (selectedLoopId.split(':')[1] || selectedLoopId) : selectedLoopId
-        next.push(new Loop({
-          id: selectedLoopId,
-          title,
-          artist: '',
-          artistId: '',
-          likesCount: 0,
-          commentsCount: 0,
-          isPublic: false,
-          timestamp: bases[selectedLoopId]?.ts ?? 1,
-        }, codeFile))
-      }
-
       return next
     })
-  }, [bases, buffers, getCodeFile, localLoops, selectedLoopId, sessionData, setLoopBase])
+  }, [getCodeFile, localLoops, sessionData, setLoopBase])
 
   useEffect(() => {
     if (currentLoopId != null) return
-    const first = selectedLoopId ?? localLoops[0]?.id ?? sessionData?.loops[0]?.id
+    const localIds = new Set(localLoops.map(l => l.id))
+    const sessionIds = new Set(sessionData?.loops.map(l => l.id) ?? [])
+    const has = (id: string | null | undefined) => id != null && (localIds.has(id) || sessionIds.has(id))
+    const first = has(selectedLoopId) ? selectedLoopId : (localLoops[0]?.id ?? sessionData?.loops[0]?.id)
     if (first) setCurrentLoopId(first)
   }, [currentLoopId, localLoops, selectedLoopId, sessionData])
+
+  useEffect(() => {
+    if (!currentLoopId) return
+    if (loops.some(loop => loop.data.id === currentLoopId)) return
+    setCurrentLoopId(loops[0]?.data.id ?? null)
+    didInitialCenterRef.current = false
+  }, [currentLoopId, loops])
 
   const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
 
@@ -456,10 +473,12 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     setSidebarOpen(!sidebarOpen)
   }
 
-  const handleNewLoop = () => {
+  const handleNewLoop = (excludeId?: string) => {
     let newLoopTitle = 'Untitled'
     let untitledCount = 0
     for (const loop of loops) {
+      if (!loop.isNew) continue
+      if (excludeId && loop.data.id === excludeId) continue
       if (loop.data.title.startsWith('Untitled')) {
         untitledCount = Math.max(untitledCount, parseInt(loop.data.title.split(' ').pop() || '0') || 1)
       }
@@ -493,7 +512,39 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     didInitialCenterRef.current = false
   }
 
+  useEffect(() => {
+    if (isSessionLoading) return
+    if (didEnsureInitialLoopRef.current) return
+    if (loops.length > 0) return
+    didEnsureInitialLoopRef.current = true
+    handleNewLoop()
+  }, [isSessionLoading, loops.length])
+
+  const switchAwayFrom = (closingId: string, preferNew: boolean) => {
+    if (currentLoopId !== closingId && selectedLoopId !== closingId) return
+
+    const nextId = pickFallbackLoopId(closingId, preferNew)
+    if (nextId) {
+      setCurrentLoopId(nextId)
+      setSelectedLoopId(nextId)
+      didInitialCenterRef.current = false
+      return
+    }
+
+    if (preferNew) {
+      handleNewLoop(closingId)
+      return
+    }
+
+    setCurrentLoopId(null)
+    setSelectedLoopId(null)
+  }
+
   const handleSave = (loop: Loop, details: Partial<LoopData>) => {
+    if (!sessionData) {
+      alert('To save you first need to sign in')
+      return
+    }
     preserveScrollPos(() => {
       const timestamp = Date.now()
       const title = details.title ?? loop.data.title
@@ -527,17 +578,41 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
               isPublic,
               timestamp,
             })
-            const codeFile = getCodeFile(serverId, state.value)
-            codeFile.setState(state)
+            moveBuffer(localId, serverId)
+            const codeFile = loop.codeFile
             setLoopBase(serverId, code, timestamp)
-            removeLocalLoop(localId)
-            dropBuffer(localId)
-            setCurrentLoopId(prev => prev === localId ? serverId : prev)
-            setSelectedLoopId(serverId)
+            preserveScrollPos(() => {
+              const engine = useEngineStore.getState()
+              if (engine.playingLoopId === localId) {
+                const viewSampleCount = engine.viewSampleCountByLoopId[localId] ?? 0
+                useEngineStore.setState(prev => {
+                  const nextById = { ...prev.viewSampleCountByLoopId }
+                  if (!(serverId in nextById)) nextById[serverId] = viewSampleCount
+                  delete nextById[localId]
+                  return {
+                    ...prev,
+                    playingLoopId: serverId,
+                    viewSampleCountByLoopId: nextById,
+                  }
+                })
+              }
+
+              setLoops(prev =>
+                prev.map(l =>
+                  l.data.id === localId
+                    ? new Loop({ ...l.data, id: serverId, title, isPublic, timestamp, code }, codeFile)
+                    : l
+                )
+              )
+              setCurrentLoopId(prev => prev === localId ? serverId : prev)
+              setSelectedLoopId(serverId)
+              didInitialCenterRef.current = false
+            })
             setSessionData(next)
+            removeLocalLoop(localId)
           }
           catch (e) {
-            setAuthError(e instanceof Error ? e.message : String(e))
+            setApiError(e instanceof Error ? e.message : String(e))
           }
         })()
       }
@@ -553,7 +628,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
             setSessionData(next)
           }
           catch (e) {
-            setAuthError(e instanceof Error ? e.message : String(e))
+            setApiError(e instanceof Error ? e.message : String(e))
           }
         })()
       }
@@ -593,6 +668,8 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     if (isDirty && !confirm('Are you sure? You will lose all your changes!')) return
     preserveScrollPos(() => {
       if (loop.isNew) {
+        stopIfPlaying(loop.data.id)
+        switchAwayFrom(loop.data.id, true)
         if (isLocalId(loop.data.id)) removeLocalLoop(loop.data.id)
         dropBuffer(loop.data.id)
         setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
@@ -623,24 +700,27 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   }
   const handleDelete = (loop: Loop) => {
     if (!confirm(`Are you sure you want to delete "${loop.data.title}"?`)) return
+    stopIfPlaying(loop.data.id)
     if (sessionData && !isLocalId(loop.data.id)) {
       void (async () => {
         try {
           const next = await api.deleteLoop(loop.data.id)
           setSessionData(next)
           preserveScrollPos(() => {
+            switchAwayFrom(loop.data.id, true)
             dropBuffer(loop.data.id)
             setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
           })
         }
         catch (e) {
-          setAuthError(e instanceof Error ? e.message : String(e))
+          setApiError(e instanceof Error ? e.message : String(e))
         }
       })()
       return
     }
 
     preserveScrollPos(() => {
+      switchAwayFrom(loop.data.id, true)
       if (isLocalId(loop.data.id)) removeLocalLoop(loop.data.id)
       dropBuffer(loop.data.id)
       setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
@@ -687,6 +767,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                       loop={loop}
                       isCurrent={currentLoopId === loop.data.id}
                       onClick={() => setCurrentLoopId(loop.data.id)}
+                      canSave={sessionData != null}
                       onClose={() => handleClose(loop)}
                       onEditDetails={details => handleEditDetails(loop, details)}
                       onSave={details => handleSave(loop, details)}
@@ -707,81 +788,8 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                     ? (
                       <>
                         <div className="p-3 flex flex-col gap-2 border-b border-neutral-800">
-                          <div className="text-sm text-neutral-300">Sign in to load your loops.</div>
-                          <div className="flex flex-row gap-2">
-                            <button
-                              className={`flex-1 text-xs font-semibold py-2 ${
-                                authMode === 'login' ? 'bg-orange-600 text-black' : 'bg-neutral-800 text-neutral-200'
-                              }`}
-                              onPointerDown={() => setAuthMode('login')}
-                            >
-                              Login
-                            </button>
-                            <button
-                              className={`flex-1 text-xs font-semibold py-2 ${
-                                authMode === 'register' ? 'bg-orange-600 text-black' : 'bg-neutral-800 text-neutral-200'
-                              }`}
-                              onPointerDown={() => setAuthMode('register')}
-                            >
-                              Register
-                            </button>
-                          </div>
-                          <input
-                            className="bg-black text-white outline-none px-2 py-2 text-sm"
-                            placeholder="name"
-                            value={authName}
-                            onChange={e => setAuthName(e.target.value)}
-                          />
-                          <input
-                            className="bg-black text-white outline-none px-2 py-2 text-sm"
-                            placeholder="password"
-                            type="password"
-                            value={authPassword}
-                            onChange={e => setAuthPassword(e.target.value)}
-                          />
-                          {authError && <div className="text-xs text-orange-400">{authError}</div>}
-                          <button
-                            className="bg-gradient-to-br from-neutral-300 to-neutral-500 text-black font-semibold py-2 text-sm disabled:opacity-50"
-                            disabled={isAuthBusy || authName.length === 0 || authPassword.length === 0}
-                            onPointerDown={() => {
-                              setIsAuthBusy(true)
-                              setAuthError(null)
-                              void (async () => {
-                                try {
-                                  const next = authMode === 'login'
-                                    ? await api.login(authName, authPassword)
-                                    : await api.register(authName, authPassword)
-                                  setSessionData(next)
-                                  setAuthPassword('')
-                                }
-                                catch (e) {
-                                  setAuthError(e instanceof Error ? e.message : String(e))
-                                }
-                                finally {
-                                  setIsAuthBusy(false)
-                                }
-                              })()
-                            }}
-                          >
-                            {isAuthBusy ? '...' : authMode === 'login' ? 'Login' : 'Register'}
-                          </button>
+                          <AuthForm api={api} onSessionData={setSessionData} />
                         </div>
-                        {loops.filter(loop => !loop.isNew).sort((a, b) =>
-                          (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0)
-                        )
-                          .map(loop => (
-                            <LoopItem
-                              key={loop.data.id}
-                              loop={loop}
-                              isCurrent={currentLoopId === loop.data.id}
-                              onClick={() => setCurrentLoopId(loop.data.id)}
-                              onClose={() => handleClose(loop)}
-                              onDelete={() => handleDelete(loop)}
-                              onEditDetails={details => handleEditDetails(loop, details)}
-                              onSave={details => handleSave(loop, details)}
-                              onSaveAsNew={details => handleSaveAsNew(loop, details)}
-                            />
-                          ))}
                       </>
                     )
                     : (
@@ -806,9 +814,9 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                             Logout
                           </button>
                         </div>
-                        {authError && (
+                        {apiError && (
                           <div className="px-3 py-2 text-xs text-orange-400 border-b border-neutral-800">
-                            {authError}
+                            {apiError}
                           </div>
                         )}
                         {loops.filter(loop => !loop.isNew).sort((a, b) =>
@@ -820,6 +828,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                               loop={loop}
                               isCurrent={currentLoopId === loop.data.id}
                               onClick={() => setCurrentLoopId(loop.data.id)}
+                              canSave={sessionData != null}
                               onClose={() => handleClose(loop)}
                               onDelete={() => handleDelete(loop)}
                               onEditDetails={details => handleEditDetails(loop, details)}

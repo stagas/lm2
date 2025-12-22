@@ -1,8 +1,0 @@
-{
-  "imports": {
-    "zod": "jsr:@zod/zod",
-    "bcrypt": "jsr:@da/bcrypt",
-    "hono": "jsr:@hono/hono",
-    "hono/cookie": "jsr:@hono/hono/cookie"
-  }
-}
