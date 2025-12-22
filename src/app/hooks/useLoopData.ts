@@ -25,7 +25,9 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
 
   useEffect(() => {
     requestAnimationFrame(() => {
-      setLoopLoading(isLoading)
+      requestAnimationFrame(() => {
+        setLoopLoading(isLoading)
+      })
     })
   }, [isLoading, setLoopLoading])
 
