@@ -10,6 +10,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "assemblyscript": "^0.28.9",
+    "concurrently": "^9.1.2",
     "typescript": "^5.9.3",
     "vite": "^7.1.12"
   },
@@ -17,7 +18,9 @@
   "keywords": [],
   "license": "ISC",
   "scripts": {
-    "dev": "vite --open",
+    "dev": "concurrently -k -n api,web -c green,blue \"bun run api:dev\" \"bun run web:dev\"",
+    "web:dev": "vite --open",
+    "api:dev": "deno run -A --unstable-kv --watch --import-map=./deno/import_map.json ./deno/server.ts",
     "build": "vite build",
     "test": "bun test"
   },
@@ -26,6 +29,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "zustand": "^5.0.9"
+    "zustand": "^5.0.9",
+    "zod": "^3.24.2"
   }
 }

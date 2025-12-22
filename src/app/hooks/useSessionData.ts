@@ -13,8 +13,13 @@ export function useSessionData() {
 
   useEffect(() => {
     withLoading(async () => {
-      const data = await api.fetchSessionData()
-      setSessionData(data)
+      try {
+        const data = await api.fetchSessionData()
+        setSessionData(data)
+      }
+      catch {
+        setSessionData(null)
+      }
     })
   }, [api, withLoading, setSessionData])
 

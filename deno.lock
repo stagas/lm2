@@ -1,0 +1,39 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@da/bcrypt@*": "1.0.1",
+    "jsr:@hono/hono@*": "4.11.1",
+    "jsr:@zod/zod@*": "4.2.1"
+  },
+  "jsr": {
+    "@da/bcrypt@1.0.1": {
+      "integrity": "d2172d3acbcff52e0465557a1a48b1ff1c92df08c90712dae5372255a8c45eb3"
+    },
+    "@hono/hono@4.11.1": {
+      "integrity": "28bb28c7322a1379e7132af05ef76aef09f86bb8cdd7077c67e004dea288ac0d"
+    },
+    "@zod/zod@4.2.1": {
+      "integrity": "693a557fccaf73bfcbcd132ca286929f3343cda9efb56e9780985aa41d229b38"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@phosphor-icons/react@^2.1.10",
+        "npm:@types/audioworklet@^0.0.88",
+        "npm:@types/bun@^1.3.1",
+        "npm:@types/react-dom@^19.2.3",
+        "npm:@types/react@^19.2.7",
+        "npm:@vitejs/plugin-react-swc@^4.2.2",
+        "npm:assemblyscript@~0.28.9",
+        "npm:concurrently@^9.1.2",
+        "npm:react-dom@^19.2.3",
+        "npm:react@^19.2.3",
+        "npm:typescript@^5.9.3",
+        "npm:vite@^7.1.12",
+        "npm:zod@^3.24.2",
+        "npm:zustand@^5.0.9"
+      ]
+    }
+  }
+}

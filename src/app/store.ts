@@ -3,12 +3,11 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type { LoopData, SessionData } from '../../deno/types.ts'
 import { API } from './api.ts'
-import { mockFetch } from './mock-fetch.ts'
 
 interface AppState {
   api: API
   sessionData: SessionData | null
-  setSessionData: (data: SessionData) => void
+  setSessionData: (data: SessionData | null) => void
   buffers: Record<string, CodeFileState>
   bases: Record<string, { code: string; ts?: number }>
   localLoops: LoopData[]
@@ -23,7 +22,7 @@ interface AppState {
   dropBuffer: (id: string) => void
 }
 
-const api = new API(mockFetch)
+const api = new API((input, init) => fetch(input, { ...init, credentials: 'include' }))
 
 const codeFiles = new Map<string, CodeFile>()
 const codeFileUnsubs = new Map<string, () => void>()
@@ -98,9 +97,7 @@ export const useAppStore = create<AppState>()(
 
       updateLocalLoop: (id: string, patch: Partial<LoopData>) => {
         set(state => ({
-          localLoops: state.localLoops.map(loop =>
-            loop.id === id ? { ...loop, ...patch } : loop
-          ),
+          localLoops: state.localLoops.map(loop => loop.id === id ? { ...loop, ...patch } : loop),
         }))
       },
 
@@ -135,7 +132,7 @@ export const useAppStore = create<AppState>()(
         localLoops: state.localLoops,
         selectedLoopId: state.selectedLoopId,
       }),
-      version: 4,
+      version: 5,
       migrate: (persisted, version) => {
         if (version === 0 || version === 1) {
           const prev = persisted as any
@@ -172,6 +169,39 @@ export const useAppStore = create<AppState>()(
           return {
             ...prev,
             selectedLoopId: null,
+          }
+        }
+        if (version === 4) {
+          const prev = persisted as any
+          const buffers = prev?.buffers && typeof prev.buffers === 'object' ? prev.buffers as Record<string, any> : {}
+          const bases = prev?.bases && typeof prev.bases === 'object' ? prev.bases as Record<string, any> : {}
+          const nextBuffers: Record<string, any> = {}
+          const nextBases: Record<string, any> = {}
+
+          for (const [id, v] of Object.entries(buffers)) {
+            if (!id.startsWith('local:')) continue
+            nextBuffers[id] = v
+          }
+          for (const [id, v] of Object.entries(bases)) {
+            if (!id.startsWith('local:')) continue
+            nextBases[id] = v
+          }
+
+          const localLoops = Array.isArray(prev?.localLoops)
+            ? (prev.localLoops as any[])
+              .filter(l => l && typeof l === 'object' && typeof l.id === 'string' && (l as any).id.startsWith('local:'))
+            : []
+
+          const selectedLoopId = typeof prev?.selectedLoopId === 'string' && prev.selectedLoopId.startsWith('local:')
+            ? prev.selectedLoopId
+            : null
+
+          return {
+            ...prev,
+            buffers: nextBuffers,
+            bases: nextBases,
+            localLoops,
+            selectedLoopId,
           }
         }
         return persisted as any

@@ -67,6 +67,12 @@ export default ({ mode }: ConfigEnv): UserConfig => {
         ),
         cert: fs.readFileSync(path.resolve(__dirname, '/home/stagas/.ssl-certs/localhost.pem')),
       },
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:8787',
+          changeOrigin: true,
+        },
+      },
     },
   })
 }
