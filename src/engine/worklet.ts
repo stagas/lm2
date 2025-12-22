@@ -22,6 +22,13 @@ type SwapState = {
 
 const CROSSFADE_CHUNKS = 8
 
+const f32BitsBuf = new ArrayBuffer(4)
+const f32BitsView = new DataView(f32BitsBuf)
+function u32ToF32(v: number): number {
+  f32BitsView.setUint32(0, v >>> 0, true)
+  return f32BitsView.getFloat32(0, true)
+}
+
 class Limiter {
   private gain = 1
   constructor(
@@ -479,6 +486,7 @@ export class DspProcessor extends AudioWorkletProcessor {
 
       let control = Atomics.load(this.options.processorOptions.control, 0)
       let seekTargetSample: number | undefined
+      const isRestartWithProgram = control === ControlOp.RestartWithProgram
 
       if (control === ControlOp.Seek) {
         const seekSample = this.seekSample
@@ -500,7 +508,7 @@ export class DspProcessor extends AudioWorkletProcessor {
       }
 
       // Only respond to control changes
-      if (control !== this.lastControl) {
+      if (!isRestartWithProgram && control !== this.lastControl) {
         if (control === ControlOp.Start && this.state === 'stopped') {
           this.state = 'fade-in'
           this.shouldReset = false
@@ -576,6 +584,126 @@ export class DspProcessor extends AudioWorkletProcessor {
       }
 
       const rangeLength = rangeEnabled ? Math.max(0, rangeEnd - rangeStart) : 0
+
+      if (isRestartWithProgram) {
+        const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
+        const begin = ringPos * CHUNK_SIZE
+        const length = CHUNK_SIZE
+
+        const swap = this.options.processorOptions.programSwap
+        let newProgram$ = 0
+        let targetDsp$ = 0
+        let bpmBits = 0
+        for (let i = 0; i < MAX_DSP_INSTANCES; i++) {
+          const base = i * 3
+          const bits = Atomics.load(swap, base)
+          const new$ = Atomics.load(swap, base + 1)
+          const dsp$ = Atomics.load(swap, base + 2)
+          if (new$ && dsp$) {
+            bpmBits = bits
+            newProgram$ = new$
+            targetDsp$ = dsp$
+            break
+          }
+        }
+
+        const target = targetDsp$ ? this.dsps.find(d => d.dsp$ === targetDsp$) : undefined
+        if (!newProgram$ || !target) {
+          this.signalSwapResult(-1)
+          Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
+          control = ControlOp.Start
+        }
+        else {
+          // Render the current program, then fade it out across this chunk.
+          this.renderChunk(
+            sampleBefore,
+            begin,
+            length,
+            rangeEnabled,
+            rangeStart,
+            rangeEnd,
+            rangeLength,
+            this.seekLeft,
+            this.seekRight,
+            false,
+          )
+
+          this.crossfadeState.clear()
+
+          for (let i = 0; i < length; i++) {
+            const gain = 1 - i / (length - 1)
+            this.seekLeft[i] *= gain
+            this.seekRight[i] *= gain
+          }
+
+          // Restart the timeline and reset DSP state before rendering the new program.
+          this.applySeekSample(0)
+          if (bpmBits) {
+            const bpm = u32ToF32(bpmBits)
+            this.core.wasm.bpm.value = bpm
+            this.options.processorOptions.bpmValue[0] = bpm
+            this.lastBpm = bpm
+          }
+          target.view.program = newProgram$
+
+          // Ensure we keep running and clear the one-shot op.
+          this.state = 'running'
+          this.lastControl = ControlOp.Start
+          Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
+          control = ControlOp.Start
+
+          const L = this.outLeft
+          const R = this.outRight
+
+          this.renderChunk(
+            0,
+            begin,
+            length,
+            rangeEnabled,
+            rangeStart,
+            rangeEnd,
+            rangeLength,
+            L,
+            R,
+            false,
+          )
+
+          for (let i = 0; i < length; i++) {
+            L[i] += this.seekLeft[i]
+            R[i] += this.seekRight[i]
+          }
+
+          let sampleAfter = length
+          if (rangeEnabled && rangeLength > 0 && sampleAfter >= rangeEnd) {
+            const over = sampleAfter - rangeEnd
+            sampleAfter = rangeStart + (over % rangeLength)
+          }
+          this.core.wasm.globalSampleCount.value = sampleAfter
+
+          let playingCount = 0
+          for (const dsp of this.dsps) {
+            if (!dsp.view.program) continue
+            playingCount++
+          }
+          if (playingCount > 1) {
+            this.limiter.process(L, R)
+          }
+
+          Atomics.store(
+            this.options.processorOptions.ringPos,
+            0,
+            (ringPos + 1) % (RING_BUFFER_SIZE / CHUNK_SIZE),
+          )
+
+          outputs[0][0].set(L)
+          outputs[0][1].set(R)
+
+          // Publish the new playhead immediately (restart at 0).
+          Atomics.store(this.options.processorOptions.globalSampleCount, 0, 0)
+          this.signalSwapResult(1)
+          return true
+        }
+      }
 
       if (rangeEnabled && rangeLength > 0) {
         if ((this.state === 'stopped' && sampleBefore < rangeStart) || sampleBefore >= rangeEnd) {
