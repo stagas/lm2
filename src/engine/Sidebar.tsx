@@ -373,12 +373,12 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     }
   }, [loopData])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!currentLoop) return
     onLoopChange(currentLoop)
   }, [currentLoopId, currentLoop, onLoopChange])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (currentLoopId == null) return
     if (selectedLoopId === currentLoopId) return
     setSelectedLoopId(currentLoopId)
