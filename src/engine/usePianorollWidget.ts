@@ -133,9 +133,14 @@ export function usePianorollWidget({
         activeList: [],
       }
 
-      st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount, 50000))
-      if (st.timeSeconds == null) st.timeSeconds = timeSeconds
-      else st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
+      if (st.timeSeconds == null) {
+        st.timeSeconds = timeSeconds
+        st.sampleCount = sampleCount
+      }
+      else {
+        st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
+        st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount, 100 * sampleRate))
+      }
 
       const bpm = bpmValue?.[0] || 60
       const barLengthSeconds = (4 * 60) / bpm

@@ -5,5 +5,5 @@ export function applySmoothing(target: number, value: number, crossover = 100) {
   const diff = value - target
   const isPlaying = useEngineStore.getState().playbackState === 'running'
   return target
-    + diff * SCROLL_SMOOTHING * (isPlaying && diff > crossover ? 4 : (diff < crossover && !isPlaying ? 1.8 : 1))
+    + diff * SCROLL_SMOOTHING * (isPlaying && Math.abs(diff) > crossover ? 4 : (!isPlaying ? 1.8 : 1))
 }
