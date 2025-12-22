@@ -22,8 +22,14 @@ const shouldPersistBuffer = (id: string, snapshot: CodeFileState, base: string) 
 
 interface AppState {
   api: API
+  sessionState: 'signedOut' | 'signedIn'
   sessionData: SessionData | null
   setSessionData: (data: SessionData | null) => void
+  hasHydrated: boolean
+  setHasHydrated: (hasHydrated: boolean) => void
+  serverLoopsUserId: string | null
+  serverLoopsCache: LoopData[]
+  upsertServerLoopCache: (loop: LoopData) => void
   buffers: Record<string, CodeFileState>
   bases: Record<string, { code: string; ts?: number }>
   dirtyById: Record<string, boolean>
@@ -89,8 +95,88 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       api,
+      sessionState: 'signedOut',
       sessionData: null,
-      setSessionData: sessionData => set({ sessionData }),
+      hasHydrated: false,
+      setHasHydrated: hasHydrated => set({ hasHydrated }),
+      serverLoopsUserId: null,
+      serverLoopsCache: [],
+
+      setSessionData: sessionData => {
+        if (!sessionData) {
+          set({
+            sessionState: 'signedOut',
+            sessionData: null,
+            serverLoopsUserId: null,
+            serverLoopsCache: [],
+          })
+          return
+        }
+
+        set({ sessionState: 'signedIn', sessionData })
+
+        const prevUserId = get().serverLoopsUserId
+        const prevCache = get().serverLoopsCache
+
+        const userId = sessionData.user.id
+        const prevById = new Map<string, LoopData>(
+          prevUserId === userId ? prevCache.map(l => [l.id, l]) : [],
+        )
+
+        const merged = sessionData.loops.map(loop => {
+          const prev = prevById.get(loop.id)
+          if (!prev) return loop
+          if (loop.code != null) return loop
+          if (prev.code == null) return loop
+          return { ...loop, code: prev.code }
+        })
+
+        set({
+          serverLoopsUserId: userId,
+          serverLoopsCache: merged,
+        })
+
+        for (const loop of merged) {
+          if (loop.code != null) {
+            get().setLoopBase(loop.id, loop.code, loop.timestamp)
+          }
+        }
+      },
+
+      upsertServerLoopCache: loop => {
+        const userId = get().serverLoopsUserId
+        const ownId = userId != null && loop.artistId === userId
+
+        set(state => {
+          const idx = state.serverLoopsCache.findIndex(l => l.id === loop.id)
+          if (idx === -1 && !ownId) return state
+
+          const prev = idx === -1 ? null : state.serverLoopsCache[idx]!
+          const nextLoop = (() => {
+            if (!prev) return loop
+            if (loop.code != null) return { ...prev, ...loop }
+            if (prev.code == null) return { ...prev, ...loop }
+            return { ...prev, ...loop, code: prev.code }
+          })()
+
+          const nextCache = idx === -1
+            ? [nextLoop, ...state.serverLoopsCache]
+            : state.serverLoopsCache.map((l, i) => i === idx ? nextLoop : l)
+
+          const sessionData = state.sessionData
+          if (!sessionData) return { serverLoopsCache: nextCache } as AppState
+
+          const nextSessionLoops = sessionData.loops.map(l => l.id === loop.id ? nextLoop : l)
+          return {
+            serverLoopsCache: nextCache,
+            sessionData: { ...sessionData, loops: nextSessionLoops },
+          } as AppState
+        })
+
+        if (loop.code != null) {
+          get().setLoopBase(loop.id, loop.code, loop.timestamp)
+        }
+      },
 
       buffers: {},
       bases: {},
@@ -385,14 +471,45 @@ export const useAppStore = create<AppState>()(
       name: 'app',
       storage: createJSONStorage(() => localStorage),
       partialize: state => ({
+        sessionState: state.sessionState,
+        sessionData: state.sessionData,
+        // hasHydrated is runtime-only
+        serverLoopsUserId: state.serverLoopsUserId,
+        serverLoopsCache: state.serverLoopsCache,
         buffers: state.buffers,
         bases: state.bases,
         dirtyById: state.dirtyById,
         localLoops: state.localLoops,
         selectedLoopId: state.selectedLoopId,
       }),
-      version: 7,
+      version: 10,
+      onRehydrateStorage: () => (_state, _err) => {
+        _state?.setHasHydrated?.(true)
+      },
       migrate: (persisted, version) => {
+        if (version === 9) {
+          const prev = persisted as any
+          const sessionData = prev?.sessionData ?? null
+          return {
+            ...prev,
+            sessionState: sessionData ? 'signedIn' : 'signedOut',
+          }
+        }
+        if (version === 8) {
+          const prev = persisted as any
+          return {
+            ...prev,
+            sessionData: null,
+          }
+        }
+        if (version === 7) {
+          const prev = persisted as any
+          return {
+            ...prev,
+            serverLoopsUserId: null,
+            serverLoopsCache: [],
+          }
+        }
         if (version === 0 || version === 1) {
           const prev = persisted as any
           const nextBases: Record<string, { code: string }> = {}

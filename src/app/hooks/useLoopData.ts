@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LoopData } from '../../../deno/types.ts'
 import type { Loop } from '../../engine/loop.ts'
 import { useAppStore } from '../store.ts'
@@ -8,6 +8,9 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   const [loopData, setLoopData] = useState<LoopData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const setLoopLoading = useAppStore(state => state.setLoopLoading)
+  const upsertServerLoopCache = useAppStore(state => state.upsertServerLoopCache)
+  const didFetchIdRef = useRef<string | null>(null)
+  const isLocalId = (id: string) => id.startsWith('local:')
 
   const withLoading = useCallback((fn: () => Promise<void>) => {
     setIsLoading(true)
@@ -15,13 +18,33 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   }, [])
 
   useEffect(() => {
-    if (currentLoop?.data.code != null) return
-    if (loopId == null) return
-    withLoading(async () => {
+    if (loopId == null) {
+      didFetchIdRef.current = null
+      setLoopData(null)
+      setIsLoading(false)
+      return
+    }
+    if (isLocalId(loopId)) {
+      didFetchIdRef.current = loopId
+      setLoopData(null)
+      setIsLoading(false)
+      return
+    }
+    if (didFetchIdRef.current === loopId) return
+    didFetchIdRef.current = loopId
+
+    const fetch = async () => {
       const data = await api.fetchLoopData(loopId)
       setLoopData(data)
-    })
-  }, [api, withLoading, loopId])
+      upsertServerLoopCache(data)
+    }
+
+    if (currentLoop?.data.code != null) {
+      void fetch()
+      return
+    }
+    withLoading(fetch)
+  }, [api, currentLoop?.data.code, loopId, upsertServerLoopCache, withLoading])
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -31,7 +54,9 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
     })
   }, [isLoading, setLoopLoading])
 
-  if (currentLoop?.data.code != null) return { isLoading: false, loopData: currentLoop.data }
+  const best = loopId && loopData?.id === loopId
+    ? loopData
+    : (currentLoop?.data ?? null)
 
-  return { isLoading, loopData }
+  return { isLoading, loopData: best }
 }
