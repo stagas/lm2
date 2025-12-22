@@ -1,4 +1,4 @@
-export const Spinner = () => (
+export const Spinner = ({ lineWidth = 2.8 }: { lineWidth?: number }) => (
   <svg
     width="100%"
     height="100%"
@@ -7,7 +7,8 @@ export const Spinner = () => (
     xmlns="http://www.w3.org/2000/svg"
     className="block"
   >
-    <style>{`
+    <style>
+      {`
       .spinner_7uc5{
         animation:spinner_3l8F .9s linear infinite;
         animation-delay:-.9s
@@ -26,11 +27,12 @@ export const Spinner = () => (
           height:22px
         }
       }
-    `}</style>
-    <rect className="spinner_7uc5 spinner_ZAxd" x="1" y="6" width="2.8" height="12" />
-    <rect className="spinner_7uc5 spinner_RibN" x="5.8" y="6" width="2.8" height="12" />
-    <rect className="spinner_7uc5" x="10.6" y="6" width="2.8" height="12" />
-    <rect className="spinner_7uc5 spinner_RibN" x="15.4" y="6" width="2.8" height="12" />
-    <rect className="spinner_7uc5 spinner_ZAxd" x="20.2" y="6" width="2.8" height="12" />
+    `}
+    </style>
+    <rect className="spinner_7uc5 spinner_ZAxd" x="1" y="6" width={lineWidth} height="12" />
+    <rect className="spinner_7uc5 spinner_RibN" x="5.8" y="6" width={lineWidth} height="12" />
+    <rect className="spinner_7uc5" x="10.6" y="6" width={lineWidth} height="12" />
+    <rect className="spinner_7uc5 spinner_RibN" x="15.4" y="6" width={lineWidth} height="12" />
+    <rect className="spinner_7uc5 spinner_ZAxd" x="20.2" y="6" width={lineWidth} height="12" />
   </svg>
 )
