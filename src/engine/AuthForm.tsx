@@ -98,7 +98,7 @@ export function AuthForm(
   const passwordError = touched.password ? errors.password : null
 
   return (
-    <>
+    <form onSubmit={e => e.preventDefault()} className="flex flex-col gap-2">
       {showArtistName && (
         <div className="flex flex-col gap-1">
           <input
@@ -199,6 +199,6 @@ export function AuthForm(
           </>
         )}
       </p>
-    </>
+    </form>
   )
 }

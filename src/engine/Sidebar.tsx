@@ -47,12 +47,16 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const didEnsureInitialLoopRef = useRef(false)
 
   const { isLoading: isSessionLoading, sessionData } = useSessionData()
+  const hasHydrated = useAppStore(state => state.hasHydrated)
+  const serverLoopsCache = useAppStore(state => state.serverLoopsCache)
+  const serverLoopsUserId = useAppStore(state => state.serverLoopsUserId)
   const api = useAppStore(state => state.api)
   const setSessionData = useAppStore(state => state.setSessionData)
   const getCodeFile = useAppStore(state => state.getCodeFile)
   const moveBuffer = useAppStore(state => state.moveBuffer)
   const dropBuffer = useAppStore(state => state.dropBuffer)
   const setLoopBase = useAppStore(state => state.setLoopBase)
+  const bases = useAppStore(state => state.bases)
   const localLoops = useAppStore(state => state.localLoops)
   const addLocalLoop = useAppStore(state => state.addLocalLoop)
   const updateLocalLoop = useAppStore(state => state.updateLocalLoop)
@@ -63,6 +67,13 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   const playLoop = useEngineStore(state => state.playLoop)
   const pause = useEngineStore(state => state.pause)
   const stop = useEngineStore(state => state.stop)
+
+  const serverLoops = useMemo(() => {
+    if (sessionData) return sessionData.loops
+    if (!isSessionLoading) return []
+    if (serverLoopsUserId == null) return []
+    return serverLoopsCache
+  }, [isSessionLoading, serverLoopsCache, serverLoopsUserId, sessionData])
 
   useEffect(() => {
     setTimeout(() => {
@@ -99,14 +110,6 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
   }
 
   useEffect(() => {
-    if (sessionData) {
-      for (const data of sessionData.loops) {
-        const base = data.code
-        if (base != null) {
-          setLoopBase(data.id, base, data.timestamp)
-        }
-      }
-    }
     setLoops(prev => {
       const prevById = new Map(prev.map(loop => [loop.data.id, loop]))
       const next: Loop[] = []
@@ -119,29 +122,30 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
         seen.add(data.id)
       }
 
-      if (sessionData) {
-        for (const data of sessionData.loops) {
-          const prevLoop = prevById.get(data.id)
-          const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, data.code ?? '')
-          if (!seen.has(data.id)) {
-            next.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
-            seen.add(data.id)
-          }
+      for (const data of serverLoops) {
+        const prevLoop = prevById.get(data.id)
+        const base = bases[data.id]?.code
+        const code = data.code ?? base
+        const dataWithCode = code != null ? { ...data, code } : data
+        const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, code ?? '')
+        if (!seen.has(data.id)) {
+          next.push(new Loop({ ...prevLoop?.data, ...dataWithCode }, codeFile))
+          seen.add(data.id)
         }
       }
 
       return next
     })
-  }, [getCodeFile, localLoops, sessionData, setLoopBase])
+  }, [bases, getCodeFile, localLoops, serverLoops])
 
   useEffect(() => {
     if (currentLoopId != null) return
     const localIds = new Set(localLoops.map(l => l.id))
-    const sessionIds = new Set(sessionData?.loops.map(l => l.id) ?? [])
+    const sessionIds = new Set(serverLoops.map(l => l.id))
     const has = (id: string | null | undefined) => id != null && (localIds.has(id) || sessionIds.has(id))
-    const first = has(selectedLoopId) ? selectedLoopId : (localLoops[0]?.id ?? sessionData?.loops[0]?.id)
+    const first = has(selectedLoopId) ? selectedLoopId : (localLoops[0]?.id ?? serverLoops[0]?.id)
     if (first) setCurrentLoopId(first)
-  }, [currentLoopId, localLoops, selectedLoopId, sessionData])
+  }, [currentLoopId, localLoops, selectedLoopId, serverLoops])
 
   useEffect(() => {
     if (!currentLoopId) return
@@ -302,11 +306,13 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
 
   useEffect(() => {
     if (isSessionLoading) return
+    if (!hasHydrated) return
     if (didEnsureInitialLoopRef.current) return
-    if (loops.length > 0) return
+    if (localLoops.length > 0) return
+    if (serverLoops.length > 0) return
     didEnsureInitialLoopRef.current = true
     handleNewLoop()
-  }, [isSessionLoading, loops.length])
+  }, [hasHydrated, isSessionLoading, localLoops.length, serverLoops.length])
 
   const switchAwayFrom = (closingId: string, preferNew: boolean) => {
     if (currentLoopId !== closingId && selectedLoopId !== closingId) return
@@ -579,11 +585,41 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                 <div className="flex flex-col w-full h-full">
                   {isSessionLoading
                     ? (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="w-6 h-6">
-                          <Spinner lineWidth={2} />
-                        </div>
-                      </div>
+                      <>
+                        {loops.some(loop => !loop.isNew)
+                          ? (
+                            <>
+                              {loops
+                                .filter(loop => !loop.isNew)
+                                .sort((a, b) => (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0))
+                                .map(loop => (
+                                  <LoopItem
+                                    key={loop.data.id}
+                                    loop={loop}
+                                    isCurrent={currentLoopId === loop.data.id}
+                                    onClick={() => setCurrentLoopId(loop.data.id)}
+                                    onPlay={() => {
+                                      setQueuedPlay({ loopId: loop.data.id })
+                                      setCurrentLoopId(loop.data.id)
+                                    }}
+                                    onPause={pause}
+                                    onStop={stop}
+                                    canSave={false}
+                                    isLoading={loadingLoopId === loop.data.id}
+                                    onClose={() => handleClose(loop)}
+                                    onSaveAsNew={details => handleSaveAsNew(loop, details)}
+                                  />
+                                ))}
+                            </>
+                          )
+                          : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <div className="w-6 h-6">
+                                <Spinner lineWidth={2} />
+                              </div>
+                            </div>
+                          )}
+                      </>
                     )
                     : !sessionData
                     ? (
