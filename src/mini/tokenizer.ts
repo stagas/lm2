@@ -854,6 +854,11 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       valueText = 'c4'
     }
 
+    if (valueText?.toLowerCase() === 'x') {
+      // Treat `x` as shorthand for middle C to match upstream shorthand usage.
+      valueText = 'c4'
+    }
+
     const romanDegree = romanToDegree(valueText)
     if (romanDegree !== null) {
       const base = romanDegree

@@ -15,6 +15,7 @@ import {
   parseCompiledTimeline,
 } from './timeline-history.ts'
 import type { TimelineWindow } from './ui.tsx'
+import { useRestartLoop } from './useRestartLoop.tsx'
 import { useSeekToSampleImmediate } from './useSeekToSample.ts'
 
 type MinimapScrollbarProps = {
@@ -47,6 +48,7 @@ export function MinimapScrollbar({
 }: MinimapScrollbarProps) {
   const { loop, setLoop, clearLoop, animationManager } = useEngineStore()
   const seekToSampleImmediate = useSeekToSampleImmediate()
+  const restartLoop = useRestartLoop()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
@@ -448,9 +450,7 @@ export function MinimapScrollbar({
             seekToSampleImmediate(0)
             return
           }
-          const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
-          if (isLooping && loop) seekToSampleImmediate(Atomics.load(loop, 1))
-          else seekToSampleImmediate(0)
+          restartLoop()
         }}
       >
         &nbsp;
