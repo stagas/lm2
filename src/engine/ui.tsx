@@ -629,9 +629,9 @@ export function EngineUI() {
   const [currentLoop, setCurrentLoop] = useState<Loop | null>(null)
   const { timelineHeader, timelineWindowRef } = useTimelineHeader(currentLoop?.data.id ?? null)
 
-  const handleLoopChange = (loop: Loop) => {
+  const handleLoopChange = useCallback((loop: Loop) => {
     setCurrentLoop(loop)
-  }
+  }, [])
 
   if (!isInitialized) {
     return (

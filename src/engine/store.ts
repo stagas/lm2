@@ -683,7 +683,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
       if (wasRunning) {
         // Ensure we don't briefly run the old program while swapping to the new loop.
         state.pause()
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        await new Promise<void>(resolve => setTimeout(resolve, 2.5))
       }
 
       await state.updateDspSource(source)
@@ -706,7 +706,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
           for (let i = 0; i < 10; i++) {
             const curr = Atomics.load(globalSampleCount, 0)
             if (curr === startSample) break
-            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+            await new Promise<void>(resolve => setTimeout(resolve, 2.5))
           }
         }
       }
@@ -714,9 +714,9 @@ export const useEngineStore = create<EngineState>((set, get) => {
       set({ playingLoopId: loopId })
 
       // Start after the seek has had a chance to apply in the worklet.
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         get().start()
-      })
+      }, 2.5)
     },
 
     initialize: async () => {
