@@ -78,6 +78,8 @@ export class DspProcessor extends AudioWorkletProcessor {
   }> = new Map()
   private outLeft = new Float32Array(CHUNK_SIZE)
   private outRight = new Float32Array(CHUNK_SIZE)
+  private seekLeft = new Float32Array(CHUNK_SIZE)
+  private seekRight = new Float32Array(CHUNK_SIZE)
   private scratchLeft$ = 0
   private scratchRight$ = 0
   private scratchLeft: Float32Array | undefined
@@ -304,48 +306,6 @@ export class DspProcessor extends AudioWorkletProcessor {
     this.core.wasm.processAudio(instance.dsp$, left$, right$, begin, length)
   }
 
-  private renderSwapChunk(
-    instance: DspInstance,
-    state: SwapState,
-    begin: number,
-    length: number,
-    sampleBefore: number,
-  ) {
-    if (!this.core || !this.fadeLeft || !this.fadeRight || !this.scratchLeft || !this.scratchRight) return
-
-    const wasm = this.core.wasm
-    wasm.globalSampleCount.value = sampleBefore
-    wasm.clearVmError()
-    this.renderProgram(instance, state.oldProgram$, this.scratchLeft$, this.scratchRight$, begin, length)
-
-    if (state.chunkIndex === 0) {
-      wasm.globalSampleCount.value = sampleBefore
-      wasm.clearVmError()
-      wasm.copyProgram(state.newProgram$, state.oldProgram$)
-    }
-
-    wasm.globalSampleCount.value = sampleBefore
-    wasm.clearVmError()
-    this.renderProgram(instance, state.newProgram$, this.fadeLeft$, this.fadeRight$, begin, length)
-
-    const totalSamples = state.totalChunks * length
-    const chunkOffset = state.chunkIndex * length
-
-    for (let i = 0; i < length; i++) {
-      const sampleNumber = chunkOffset + i
-      const t = totalSamples > 1 ? sampleNumber / (totalSamples - 1) : 1
-      const inv = 1 - t
-      this.scratchLeft[i] = this.scratchLeft[i] * inv + this.fadeLeft[i] * t
-      this.scratchRight[i] = this.scratchRight[i] * inv + this.fadeRight[i] * t
-    }
-
-    state.chunkIndex += 1
-
-    if (state.chunkIndex >= state.totalChunks) {
-      this.finishCrossfade(instance, state)
-    }
-  }
-
   private renderSwapSegment(
     instance: DspInstance,
     state: SwapState,
@@ -419,6 +379,85 @@ export class DspProcessor extends AudioWorkletProcessor {
     }
   }
 
+  private renderChunk(
+    sampleBefore: number,
+    begin: number,
+    length: number,
+    rangeEnabled: boolean,
+    rangeStart: number,
+    rangeEnd: number,
+    rangeLength: number,
+    outLeft: Float32Array,
+    outRight: Float32Array,
+    advanceSwap: boolean,
+  ) {
+    if (!this.core || !this.scratchLeft || !this.scratchRight) return { didRangeSeek: false, swapToAdvance: [] }
+
+    outLeft.fill(0)
+    outRight.fill(0)
+
+    let didRangeSeek = false
+
+    const segs: Array<{ sampleStart: number; begin: number; length: number; outOffset: number }> = []
+    if (rangeEnabled && rangeLength > 0 && sampleBefore + length > rangeEnd) {
+      const len1 = Math.max(0, rangeEnd - sampleBefore)
+      const len2 = Math.max(0, length - len1)
+      if (len1 > 0) {
+        segs.push({ sampleStart: sampleBefore, begin, length: len1, outOffset: 0 })
+      }
+      if (len2 > 0) {
+        segs.push({ sampleStart: rangeStart, begin: begin + len1, length: len2, outOffset: len1 })
+      }
+    }
+    else {
+      segs.push({ sampleStart: sampleBefore, begin, length, outOffset: 0 })
+    }
+
+    const swapToAdvance: Array<{ dsp: DspInstance; state: SwapState }> = []
+    const swapSeen = new Set<number>()
+
+    for (let segIndex = 0; segIndex < segs.length; segIndex++) {
+      const seg = segs[segIndex]!
+      if (rangeEnabled && rangeLength > 0 && segIndex === 1 && seg.outOffset > 0) {
+        this.applySeekSample(rangeStart)
+        didRangeSeek = true
+      }
+
+      for (const dsp of this.dsps) {
+        if (!dsp.view.program) continue
+
+        const swapState = this.crossfadeState.get(dsp.dsp$)
+        if (swapState && !swapSeen.has(dsp.dsp$)) {
+          swapSeen.add(dsp.dsp$)
+          swapToAdvance.push({ dsp, state: swapState })
+        }
+
+        this.core.wasm.globalSampleCount.value = seg.sampleStart
+
+        if (swapState) {
+          this.renderSwapSegment(dsp, swapState, seg.begin, seg.length, seg.sampleStart, seg.outOffset, length)
+        }
+        else {
+          this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, seg.begin, seg.length)
+        }
+
+        for (let i = 0; i < seg.length; i++) {
+          const j = seg.outOffset + i
+          outLeft[j] += this.scratchLeft[i]
+          outRight[j] += this.scratchRight[i]
+        }
+      }
+    }
+
+    if (advanceSwap) {
+      for (const s of swapToAdvance) {
+        this.advanceSwapState(s.dsp, s.state)
+      }
+    }
+
+    return { didRangeSeek, swapToAdvance }
+  }
+
   reset() {
     if (!this.core) return
     // Reset globalSampleCount and sequence state if Stop was pressed (not just Pause)
@@ -439,12 +478,13 @@ export class DspProcessor extends AudioWorkletProcessor {
       if (!this.core || !this.scratchLeft || !this.scratchRight) return true
 
       let control = Atomics.load(this.options.processorOptions.control, 0)
+      let seekTargetSample: number | undefined
 
       if (control === ControlOp.Seek) {
         const seekSample = this.seekSample
         if (seekSample) {
           const targetSample = Math.max(0, Atomics.load(seekSample, 0))
-          this.applySeekSample(targetSample)
+          seekTargetSample = targetSample
         }
         control = this.lastControl
         Atomics.store(this.options.processorOptions.control, 0, control)
@@ -546,7 +586,16 @@ export class DspProcessor extends AudioWorkletProcessor {
         this.lastBpm = bpmValue
       }
 
-      if (this.state === 'stopped') return true
+      if (this.state === 'stopped') {
+        if (seekTargetSample !== undefined) {
+          const seekSample = (rangeEnabled && rangeLength > 0
+            && (seekTargetSample < rangeStart || seekTargetSample >= rangeEnd))
+            ? rangeStart
+            : seekTargetSample
+          this.applySeekSample(seekSample)
+        }
+        return true
+      }
 
       const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
       const begin = ringPos * CHUNK_SIZE
@@ -554,8 +603,6 @@ export class DspProcessor extends AudioWorkletProcessor {
 
       const L = this.outLeft
       const R = this.outRight
-      L.fill(0)
-      R.fill(0)
 
       if (control === ControlOp.Swap && !this.crossfadeState.size) {
         const swap = this.options.processorOptions.programSwap
@@ -593,77 +640,46 @@ export class DspProcessor extends AudioWorkletProcessor {
       }
 
       let playingCount = 0
-
-      const segs: Array<{ sampleStart: number; begin: number; length: number; outOffset: number }> = []
-      if (rangeEnabled && rangeLength > 0 && sampleBefore + length > rangeEnd) {
-        const len1 = Math.max(0, rangeEnd - sampleBefore)
-        const len2 = Math.max(0, length - len1)
-        if (len1 > 0) {
-          segs.push({ sampleStart: sampleBefore, begin, length: len1, outOffset: 0 })
-        }
-        if (len2 > 0) {
-          segs.push({ sampleStart: rangeStart, begin: begin + len1, length: len2, outOffset: len1 })
-        }
-      }
-      else {
-        segs.push({ sampleStart: sampleBefore, begin, length, outOffset: 0 })
-      }
-
-      const swapToAdvance: Array<{ dsp: DspInstance; state: SwapState }> = []
+      let swapPlayingCount = 0
 
       for (const dsp of this.dsps) {
         if (!dsp.view.program) continue
         playingCount++
-        const swapState = this.crossfadeState.get(dsp.dsp$)
-        if (swapState) swapToAdvance.push({ dsp, state: swapState })
+        if (this.crossfadeState.has(dsp.dsp$)) swapPlayingCount++
       }
 
-      if (control === ControlOp.Swap && this.crossfadeState.size && swapToAdvance.length === 0) {
+      if (control === ControlOp.Swap && this.crossfadeState.size && swapPlayingCount === 0) {
         this.crossfadeState.clear()
         this.signalSwapResult(-1)
         Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
       }
 
-      for (let segIndex = 0; segIndex < segs.length; segIndex++) {
-        const seg = segs[segIndex]!
-        if (rangeEnabled && rangeLength > 0 && segIndex === 1 && seg.outOffset > 0) {
-          this.applySeekSample(rangeStart)
-          didRangeSeek = true
-        }
+      const seekEnabled = seekTargetSample !== undefined
+      if (seekEnabled) {
+        this.renderChunk(sampleBefore, begin, length, rangeEnabled, rangeStart, rangeEnd, rangeLength,
+          this.seekLeft, this.seekRight, false)
 
-        for (const dsp of this.dsps) {
-          if (!dsp.view.program) continue
-
-          const swapState = this.crossfadeState.get(dsp.dsp$)
-          if (swapState && segs.length === 1) {
-            this.core.wasm.globalSampleCount.value = sampleBefore
-            this.renderSwapChunk(dsp, swapState, begin, length, sampleBefore)
-            for (let i = 0; i < CHUNK_SIZE; i++) {
-              L[i] += this.scratchLeft[i]
-              R[i] += this.scratchRight[i]
-            }
-            continue
-          }
-
-          this.core.wasm.globalSampleCount.value = seg.sampleStart
-
-          if (swapState) {
-            this.renderSwapSegment(dsp, swapState, seg.begin, seg.length, seg.sampleStart, seg.outOffset, length)
-          }
-          else {
-            this.renderProgram(dsp, dsp.view.program, this.scratchLeft$, this.scratchRight$, seg.begin, seg.length)
-          }
-
-          for (let i = 0; i < seg.length; i++) {
-            const j = seg.outOffset + i
-            L[j] += this.scratchLeft[i]
-            R[j] += this.scratchRight[i]
-          }
-        }
+        const seekSample = (rangeEnabled && rangeLength > 0
+          && (seekTargetSample! < rangeStart || seekTargetSample! >= rangeEnd))
+          ? rangeStart
+          : seekTargetSample!
+        this.applySeekSample(seekSample)
+        sampleBefore = seekSample
       }
 
-      if (segs.length > 1) {
-        for (const s of swapToAdvance) {
+      const main = this.renderChunk(sampleBefore, begin, length, rangeEnabled, rangeStart, rangeEnd, rangeLength,
+        L, R, !seekEnabled)
+      didRangeSeek = didRangeSeek || main.didRangeSeek
+
+      if (seekEnabled) {
+        for (let i = 0; i < CHUNK_SIZE; i++) {
+          const t = i / (CHUNK_SIZE - 1)
+          const inv = 1 - t
+          L[i] = this.seekLeft[i] * inv + L[i] * t
+          R[i] = this.seekRight[i] * inv + R[i] * t
+        }
+
+        for (const s of main.swapToAdvance ?? []) {
           this.advanceSwapState(s.dsp, s.state)
         }
       }
