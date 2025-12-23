@@ -12,6 +12,7 @@ import {
 import {
   fract,
   roundToDecimals,
+  seededRandom01,
 } from '../util'
 import { CycleStartOp, GroupStartOp } from './ops'
 import { degreeToFrequency } from './scales'
@@ -21,7 +22,6 @@ import {
   EventEmitter,
   MiniEventBuffer,
   parseGroupChildren,
-  seededRandom01,
 } from './util'
 
 export { MiniEventBuffer }
@@ -339,7 +339,7 @@ export class MiniEvents {
     if (groupProb > 0.0) {
       const groupIndex: i32 = reader.getOpIndex(opOffset)
       const randGroup: f64 = seededRandom01(this.randomSeed, cycle, groupIndex)
-      if (randGroup < groupProb) {
+      if (randGroup > groupProb) {
         return pitch
       }
     }
@@ -803,7 +803,7 @@ export class MiniEvents {
             const eventCycle: f64 = cycle * density + passF
             if (eventProb > 0.0) {
               const randEvent: f64 = seededRandom01(this.randomSeed, eventCycle, eventIndex)
-              if (randEvent < eventProb) {
+              if (randEvent > eventProb) {
                 pass++
                 continue
               }

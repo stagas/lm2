@@ -443,16 +443,19 @@ export function useAnalyserWidget({
     if (!showWidgets) return
     if (analyserRefs.length === 0) return
 
+    // When not viewing the currently-loaded (playingLoopId) loop, keep analysers flat
+    // without destroying the last live analyser buffers.
+    if (!isLive) return
+    if (playbackState === 'stopped') return
+
     const stArr = analyserStateRef.current
     const seen = seenRef.current
     seen.clear()
 
-    const canRead = isLive
-      && playbackState !== 'stopped'
-      && !!program1?.program?.analyserOuts
-      && !!ringPos
+    const canRead = !!program1?.program?.analyserOuts && !!ringPos
+    if (!canRead) return
 
-    const currentChunkPos = canRead ? Atomics.load(ringPos!, 0) : 0
+    const currentChunkPos = Atomics.load(ringPos!, 0)
     for (const ref of analyserRefs) {
       const analyserIndex = ref.analyserIndex | 0
       if (seen.has(analyserIndex)) continue
@@ -462,11 +465,6 @@ export function useAnalyserWidget({
       if (!st) {
         st = { waveform: new WaveformBuffer(), floats: null }
         stArr[analyserIndex] = st
-      }
-
-      if (!canRead) {
-        st.floats = null
-        continue
       }
 
       const ring = program1!.program!.analyserOuts[analyserIndex] as Ring | undefined
@@ -489,7 +487,7 @@ export function useAnalyserWidget({
     viewWidth: number,
   ) => {
     const st = analyserStateRef.current[analyserIndex]
-    const floats = st?.floats
+    const floats = isLive ? st?.floats : null
 
     const x = viewX
     const w = viewWidth
@@ -544,7 +542,7 @@ export function useAnalyserWidget({
     drawWaveform(c, leftW + midW, 0, rightW, h, floats)
 
     c.restore()
-  }, [playbackState, sampleRate])
+  }, [isLive, playbackState, sampleRate])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []

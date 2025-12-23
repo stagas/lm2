@@ -6,8 +6,8 @@ import {
   OP_GROUP_END,
   OP_GROUP_START,
 } from '../constants'
-import { CycleEndOp, CycleStartOp, EventOp, getOpcode, GroupEndOp, GroupStartOp, OctaveOp, ScaleOp, skipOp,
-  SwingOp, TransposeOp } from './ops'
+import { CycleEndOp, CycleStartOp, EventOp, getOpcode, GroupEndOp, GroupStartOp, OctaveOp, ScaleOp, skipOp, SwingOp,
+  TransposeOp } from './ops'
 
 export class MiniEvent {
   opIndex: i32 = 0
@@ -137,18 +137,6 @@ export function findGroupEnd(array$: usize, startOffset: i32, opEnd: i32): i32 {
     offset = skipOp(array$, offset)
   }
   return offset
-}
-
-export function seededRandom01(baseSeed: u32, cycle: f64, opIndex: i32, valueIndex: i32 = 0): f64 {
-  let state: i32 = i32(baseSeed)
-  state ^= i32(cycle) * 374761393
-  state ^= opIndex * 668265263
-  state ^= valueIndex * 224682251
-
-  state = (state * 9301 + 49297) % 233280
-  if (state < 0) state += 233280
-
-  return f64(state) / 233280.0
 }
 
 export class BytecodeReader {
