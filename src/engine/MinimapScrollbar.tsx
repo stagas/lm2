@@ -14,7 +14,7 @@ import {
   evalCompiledTimelineAtBeat,
   parseCompiledTimeline,
 } from './timeline-history.ts'
-import type { TimelineWindow } from './ui.tsx'
+import type { TimelineWindow } from './types.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
 import { useSeekToSampleImmediate } from './useSeekToSample.ts'
 
