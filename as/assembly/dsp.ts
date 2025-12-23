@@ -12,7 +12,6 @@ import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Beat } from './gen/beat'
 import { Mini } from './gen/mini'
-import { On } from './gen/on'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
 import { Slicer } from './gen/slicer'
@@ -370,7 +369,6 @@ enum VmBuiltin {
   Sampler = 10,
   Slicer = 11,
   Beat = 12,
-  On = 105,
 }
 
 const VM_FUNC_HEADER: i32 = -2
@@ -582,10 +580,6 @@ export class Dsp {
     }
     if (sym === VmBuiltin.Beat) {
       this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Beat)
-      return
-    }
-    if (sym === VmBuiltin.On) {
-      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.On)
       return
     }
     // Global time scaled to BPM: t = seconds * (bpm / 60)
@@ -1703,52 +1697,6 @@ export class Dsp {
       gen.offset$ = offset$
       gen.skipFirst$ = skipFirst$
       gen.seed$ = seed$
-      gen.process(out$, length)
-
-      this.vmPush(VmTag.Audio, 0.0, outIndex)
-      return
-    }
-
-    if (calleeAux === VmBuiltin.On) {
-      // on(bar, every=0)
-      if (posCount < 1) {
-        this.vmPush(VmTag.Undef)
-        return
-      }
-
-      let barTag: VmTag = posTags[0] as VmTag
-      let barNum: f64 = posNums[0]
-      let barAux: i32 = posAux[0]
-
-      const everyIsSet = posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null
-      let everyTag: VmTag = everyIsSet ? (posTags[1] as VmTag) : VmTag.Num
-      let everyNum: f64 = everyIsSet ? posNums[1] : 0.0
-      let everyAux: i32 = everyIsSet ? posAux[1] : 0
-
-      // Named overrides (bar/every)
-      for (let i = 0; i < namedCount; i++) {
-        const k = nameSyms[i]
-        if (k === 111) {
-          barTag = nameTags[i] as VmTag
-          barNum = nameNums[i]
-          barAux = nameAux[i]
-        }
-        else if (k === 112) {
-          everyTag = nameTags[i] as VmTag
-          everyNum = nameNums[i]
-          everyAux = nameAux[i]
-        }
-      }
-
-      const bar$: usize = this.vmToAudioPtr(barTag, barNum, barAux, length)
-      const every$: usize = this.vmToAudioPtr(everyTag, everyNum, everyAux, length)
-
-      const outIndex: i32 = this.vmAllocOut()
-      const out$: usize = this.program.getOutBuffer(outIndex)
-
-      const gen = this.program.gensPool.get(Op.On) as On
-      gen.bar$ = bar$
-      gen.every$ = every$
       gen.process(out$, length)
 
       this.vmPush(VmTag.Audio, 0.0, outIndex)
