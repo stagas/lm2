@@ -22,7 +22,8 @@ import {
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
-import { Beat } from './gen/beat'
+import { At } from './gen/at'
+import { Every } from './gen/every'
 import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
 import { Sampler } from './gen/sampler'
@@ -75,7 +76,8 @@ class GensPool {
   private analysers: GenPool<Analyser> = new GenPool<Analyser>(() => new Analyser())
   private samplers: GenPool<Sampler> = new GenPool<Sampler>(() => new Sampler())
   private slicers: GenPool<Slicer> = new GenPool<Slicer>(() => new Slicer())
-  private beats: GenPool<Beat> = new GenPool<Beat>(() => new Beat())
+  private every: GenPool<Every> = new GenPool<Every>(() => new Every())
+  private ats: GenPool<At> = new GenPool<At>(() => new At())
   resetIndices(): void {
     this.sines.resetIndex()
     this.ads.resetIndex()
@@ -85,7 +87,8 @@ class GensPool {
     this.analysers.resetIndex()
     this.samplers.resetIndex()
     this.slicers.resetIndex()
-    this.beats.resetIndex()
+    this.every.resetIndex()
+    this.ats.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -96,7 +99,8 @@ class GensPool {
     this.analysers.reset()
     this.samplers.reset()
     this.slicers.reset()
-    this.beats.reset()
+    this.every.reset()
+    this.ats.reset()
   }
   get(op: Op): Gen {
     switch (op) {
@@ -116,8 +120,10 @@ class GensPool {
         return this.samplers.get()
       case Op.Slicer:
         return this.slicers.get()
-      case Op.Beat:
-        return this.beats.get()
+      case Op.Every:
+        return this.every.get()
+      case Op.At:
+        return this.ats.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -131,7 +137,8 @@ class GensPool {
     this.analysers.copyFrom(source.analysers)
     this.samplers.copyFrom(source.samplers)
     this.slicers.copyFrom(source.slicers)
-    this.beats.copyFrom(source.beats)
+    this.every.copyFrom(source.every)
+    this.ats.copyFrom(source.ats)
   }
 }
 

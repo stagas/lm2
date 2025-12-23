@@ -7,7 +7,7 @@ import {
   TIME_WINDOW_BARS,
 } from '../../as/assembly/constants.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
-import type { TimelineLabel, TimelineSequenceRef } from './bytecode.ts'
+import type { TimelineLabel, TimelineSequenceRef } from './bytecode/bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import type { ProgramInstance } from './program.ts'
 import { useTheme } from './theme.ts'

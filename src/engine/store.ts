@@ -9,18 +9,20 @@ import { AnimationManager } from '../lib/animation-manager.ts'
 import { waitForNonZero } from '../lib/atomics.ts'
 import type { SourceLocation } from '../lib/mini-source-map.ts'
 import { type Dsp, DspStruct } from './assembly.ts'
-import type {
-  AnalyserRef,
-  ArrayLiteralRef,
-  MiniSequenceRef,
-  NumberLiteralInfo,
-  NumberWithParamsInfo,
-  SampleDef,
-  TimelineLabel,
-  TimelineSequenceRef,
-} from './bytecode.ts'
-import { encodeLangToVmOps, extractBarsFromSource, extractBpmFromSource,
-  extractTimelineLabelsFromSource } from './bytecode.ts'
+import {
+  type AnalyserRef,
+  type ArrayLiteralRef,
+  encodeLangToVmOps,
+  extractBarsFromSource,
+  extractBpmFromSource,
+  extractTimelineLabelsFromSource,
+  type MiniSequenceRef,
+  type NumberLiteralInfo,
+  type NumberWithParamsInfo,
+  type SampleDef,
+  type TimelineLabel,
+  type TimelineSequenceRef,
+} from './bytecode/bytecode.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from './constants.ts'
 import { createProgramInstance, type ProgramDataView, type ProgramInstance } from './program.ts'
 import { type LoadedSample, SampleLoader } from './sample-loader.ts'

@@ -1,13 +1,13 @@
 import { clamp01, seededRandom01 } from '../util'
 import { Gen } from './gen'
 
-export class Beat extends Gen {
-  on$: usize = 0
+export class Every extends Gen {
+  bar$: usize = 0
   prob$: usize = 0
+  seed$: usize = 0
   swing$: usize = 0
   offset$: usize = 0
   skipFirst$: usize = 0
-  seed$: usize = 0
 
   private id: i32 = 0
   private baseSeed: u32 = 1234
@@ -20,7 +20,7 @@ export class Beat extends Gen {
 
   constructor() {
     super()
-    this.id = Beat.nextId++
+    this.id = Every.nextId++
   }
 
   reset(): void {
@@ -29,13 +29,13 @@ export class Beat extends Gen {
   }
 
   copyFrom(other: Gen): void {
-    const src = other as Beat
-    this.on$ = src.on$
+    const src = other as Every
+    this.bar$ = src.bar$
     this.prob$ = src.prob$
+    this.seed$ = src.seed$
     this.swing$ = src.swing$
     this.offset$ = src.offset$
     this.skipFirst$ = src.skipFirst$
-    this.seed$ = src.seed$
     this.id = src.id
     this.baseSeed = src.baseSeed
     this.lastSeedInput = src.lastSeedInput
@@ -57,12 +57,12 @@ export class Beat extends Gen {
   }
 
   process(out$: usize, length: i32): void {
-    let on$ = this.on$
+    let bar$ = this.bar$
     let prob$ = this.prob$
+    const seed$ = this.seed$
     let swing$ = this.swing$
     let offset$ = this.offset$
     let skipFirst$ = this.skipFirst$
-    const seed$ = this.seed$
 
     let lastGlobalSample: i32 = this.lastGlobalSample
     let skipFirstTriggered: bool = this.skipFirstTriggered
@@ -79,7 +79,7 @@ export class Beat extends Gen {
     let o$ = out$
 
     for (let i: i32 = 0; i < length; i++) {
-      const rawOn: f32 = load<f32>(on$)
+      const rawBar: f32 = load<f32>(bar$)
       const probValue: f32 = clamp01(load<f32>(prob$))
       const swingValue: f32 = clamp01(load<f32>(swing$))
       const offsetSeconds: f32 = load<f32>(offset$)
@@ -87,10 +87,10 @@ export class Beat extends Gen {
 
       const safeBpm: f32 = Mathf.max(1.0, bpm)
       const samplesPerWholeNote: f32 = (60.0 / safeBpm) * sampleRate * 4.0
-      const minOn: f32 = 1.0 / samplesPerWholeNote
-      const onValue: f32 = Mathf.max(minOn, rawOn)
+      const minBar: f32 = 1.0 / samplesPerWholeNote
+      const barValue: f32 = Mathf.max(minBar, rawBar)
 
-      let intervalSamples: i32 = i32(Mathf.ceil(onValue * samplesPerWholeNote))
+      let intervalSamples: i32 = i32(Mathf.ceil(barValue * samplesPerWholeNote))
       if (intervalSamples < 1) intervalSamples = 1
 
       const offsetSamples: i32 = i32(Mathf.ceil(offsetSeconds * sampleRate))
@@ -99,32 +99,32 @@ export class Beat extends Gen {
       let offsetGlobalSample: i32 = globalSample - offsetSamples
 
       if (swingValue > 0.0) {
-        const beatIndex: i32 = Beat.floorDiv(offsetGlobalSample, intervalSamples)
+        const beatIndex: i32 = Every.floorDiv(offsetGlobalSample, intervalSamples)
         if ((beatIndex & 1) === 1) {
           const swingOffset: i32 = i32(Mathf.round((intervalSamples as f32) * swingValue * 0.5))
           offsetGlobalSample -= swingOffset
         }
       }
 
-      const currentBeatCycle: i32 = Beat.floorDiv(offsetGlobalSample, intervalSamples)
+      const currentBeatCycle: i32 = Every.floorDiv(offsetGlobalSample, intervalSamples)
 
       let previousBeatCycle: i32 = -1
       if (lastGlobalSample >= 0) {
         let prevOffsetGlobalSample: i32 = lastGlobalSample - offsetSamples
         if (swingValue > 0.0) {
-          const beatIndexPrev: i32 = Beat.floorDiv(prevOffsetGlobalSample, intervalSamples)
+          const beatIndexPrev: i32 = Every.floorDiv(prevOffsetGlobalSample, intervalSamples)
           if ((beatIndexPrev & 1) === 1) {
             const swingOffset: i32 = i32(Mathf.round((intervalSamples as f32) * swingValue * 0.5))
             prevOffsetGlobalSample -= swingOffset
           }
         }
-        previousBeatCycle = Beat.floorDiv(prevOffsetGlobalSample, intervalSamples)
+        previousBeatCycle = Every.floorDiv(prevOffsetGlobalSample, intervalSamples)
       }
 
       let shouldTrigger: bool = false
 
       if (lastGlobalSample < 0) {
-        if (Beat.posMod(offsetGlobalSample, intervalSamples) === 0) {
+        if (Every.posMod(offsetGlobalSample, intervalSamples) === 0) {
           shouldTrigger = true
           if (skipFirstValue > 0.0 && !skipFirstTriggered) {
             shouldTrigger = false
@@ -147,7 +147,7 @@ export class Beat extends Gen {
       }
 
       o$ += 4
-      on$ += 4
+      bar$ += 4
       prob$ += 4
       swing$ += 4
       offset$ += 4
@@ -158,3 +158,4 @@ export class Beat extends Gen {
     this.skipFirstTriggered = skipFirstTriggered
   }
 }
+

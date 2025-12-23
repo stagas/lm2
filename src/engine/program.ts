@@ -25,18 +25,18 @@ import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.
 import { compileMiniNotation } from '../mini/compiler.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
 import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
-import type {
-  AnalyserRef,
-  ArrayLiteralRef,
-  MiniSequenceRef,
-  NumberLiteralInfo,
-  NumberWithParamsInfo,
-  SampleDef,
-  TimelineLabel,
-  TimelineSequenceDef,
-  TimelineSequenceRef,
-} from './bytecode.ts'
-import { encodeLangToVmOps } from './bytecode.ts'
+import {
+  type AnalyserRef,
+  type ArrayLiteralRef,
+  encodeLangToVmOps,
+  type MiniSequenceRef,
+  type NumberLiteralInfo,
+  type NumberWithParamsInfo,
+  type SampleDef,
+  type TimelineLabel,
+  type TimelineSequenceDef,
+  type TimelineSequenceRef,
+} from './bytecode/bytecode.ts'
 import { useEngineStore } from './store.ts'
 import type { DspProcessor } from './worklet.ts'
 

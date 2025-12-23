@@ -6,7 +6,7 @@ import {
 } from 'react'
 import { MouseButton } from 'utils/mouse-buttons'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
-import type { TimelineLabel, TimelineSequenceRef } from './bytecode.ts'
+import type { TimelineLabel, TimelineSequenceRef } from './bytecode/bytecode.ts'
 import { useEngineStore } from './store.ts'
 import { useTheme } from './theme.ts'
 import {

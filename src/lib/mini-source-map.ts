@@ -7,8 +7,8 @@ import {
   OP_OCTAVE_SIZE,
   OP_REST_SIZE,
   OP_SCALE_SIZE,
-  OP_TRANSPOSE_SIZE,
   OP_SWING_SIZE,
+  OP_TRANSPOSE_SIZE,
 } from '../../as/assembly/constants.ts'
 import type { Node } from '../mini/tokenizer.ts'
 
@@ -80,7 +80,7 @@ function buildSourceMapFromNodes(
       currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map)
       currentOffset += OP_GROUP_END_SIZE
     }
-    else if (node.type === 'on') {
+    else if (node.type === 'at') {
       currentOffset += OP_CYCLE_START_SIZE
       currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map)
       currentOffset += OP_CYCLE_END_SIZE
