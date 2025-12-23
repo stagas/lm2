@@ -74,6 +74,5 @@ export const LoopUpsertRequestSchema = z.object({
   title: z.string().min(1),
   code: z.string(),
   isPublic: z.boolean(),
-  timestamp: z.number().int(),
 }).strict()
 export type LoopUpsertRequest = z.infer<typeof LoopUpsertRequestSchema>

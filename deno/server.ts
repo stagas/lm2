@@ -287,12 +287,13 @@ app.put('/api/loop/:id', async c => {
   }
 
   const data = parsed.data
+  const timestamp = Date.now()
   const loop: LoopKv = {
     id,
     userId: session.userId,
     title: data.title,
     code: data.code,
-    timestamp: (prevLoop?.code === data.code ? prevLoop?.timestamp : data.timestamp) ?? data.timestamp,
+    timestamp: (prevLoop?.code === data.code ? prevLoop.timestamp : timestamp) ?? timestamp,
     isPublic: data.isPublic,
   }
 

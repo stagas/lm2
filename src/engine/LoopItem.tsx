@@ -229,11 +229,11 @@ export const LoopItem = ({
     }
   }, [isEditingDetails, loop.data.title])
 
-  useEffect(() => {
-    if (!isEditingDetails) return
-    if (isCurrent) return
-    cancelEditingDetails()
-  }, [isCurrent, isEditingDetails, loop.data.title])
+  // useEffect(() => {
+  //   if (!isEditingDetails) return
+  //   if (isCurrent) return
+  //   cancelEditingDetails()
+  // }, [isCurrent, isEditingDetails, loop.data.title])
 
   useEffect(() => {
     if (isEditingDetails) {
@@ -250,10 +250,10 @@ export const LoopItem = ({
       key={loop.data.id}
       data-loop-id={loop.data.id}
       className={`
-      select-none cursor-pointer
-      text-sm flex flex-row items-center justify-between gap-2 px-1 w-full flex-shrink-0
-      group
-      bg-gradient-to-b
+        select-none cursor-pointer
+        text-sm flex flex-row items-center justify-between gap-2 px-1 w-full flex-shrink-0
+        group
+        bg-gradient-to-b
       ${
         isCurrent
           ? 'from-neutral-500 to-neutral-800'

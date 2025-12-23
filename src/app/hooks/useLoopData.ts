@@ -5,6 +5,7 @@ import { useAppStore } from '../store.ts'
 
 export function useLoopData(loopId: string | null, currentLoop: Loop | undefined) {
   const api = useAppStore(state => state.api)
+  const base = useAppStore(state => (loopId ? state.bases[loopId]?.code : undefined))
   const [loopData, setLoopData] = useState<LoopData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const setLoopLoading = useAppStore(state => state.setLoopLoading)
@@ -30,6 +31,12 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
       setIsLoading(false)
       return
     }
+    if (base != null || currentLoop?.data.code != null) {
+      didFetchIdRef.current = loopId
+      setLoopData(null)
+      setIsLoading(false)
+      return
+    }
     if (didFetchIdRef.current === loopId) return
     didFetchIdRef.current = loopId
 
@@ -39,12 +46,8 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
       upsertServerLoopCache(data)
     }
 
-    if (currentLoop?.data.code != null) {
-      void fetch()
-      return
-    }
     withLoading(fetch)
-  }, [api, currentLoop?.data.code, loopId, upsertServerLoopCache, withLoading])
+  }, [api, base, currentLoop?.data.code, loopId, upsertServerLoopCache, withLoading])
 
   useEffect(() => {
     requestAnimationFrame(() => {
