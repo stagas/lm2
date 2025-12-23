@@ -1,380 +1,46 @@
 import {
-  ARRAY_HEADER_SIZE,
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
-  ARRAY_SIZE,
   CALLBACK_SCOPE_BASE,
   CALLBACK_SCOPE_BUFFERS_PER_VOICE,
   LITERALS_COUNT,
   SEQ_VOICES,
-} from './constants'
-import { Ad } from './gen/ad'
-import { Adsr } from './gen/adsr'
-import { At } from './gen/at'
-import { Every } from './gen/every'
-import { Mini } from './gen/mini'
-import { Sampler } from './gen/sampler'
-import { Sine } from './gen/sine'
-import { Slicer } from './gen/slicer'
-import { Timeline } from './gen/timeline'
-import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from './globals'
-import { Program, ProgramData } from './program'
-import { Op } from './shared'
-import { VmSym } from './syms'
-
-function clearAudio(out$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    store<f32>(out$, 0)
-    out$ += 4
-  }
-}
-
-function addAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    const sample = s1 + s2
-    store<f32>(out$, sample)
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function subAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    const sample = s1 - s2
-    store<f32>(out$, sample)
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function mulAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    const sample = s1 * s2
-    store<f32>(out$, sample)
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function divAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    const sample = s1 / s2
-    store<f32>(out$, sample)
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function modAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    const sample = s1 % s2
-    store<f32>(out$, sample)
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function powAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    const sample = Mathf.pow(s1, s2)
-    store<f32>(out$, sample)
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function eqAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    store<f32>(out$, s1 == s2 ? (1.0 as f32) : (0.0 as f32))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function ltAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    store<f32>(out$, s1 < s2 ? (1.0 as f32) : (0.0 as f32))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function lteAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    store<f32>(out$, s1 <= s2 ? (1.0 as f32) : (0.0 as f32))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function gtAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    store<f32>(out$, s1 > s2 ? (1.0 as f32) : (0.0 as f32))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function gteAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    store<f32>(out$, s1 >= s2 ? (1.0 as f32) : (0.0 as f32))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function logicOrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    store<f32>(out$, s1 != (0.0 as f32) ? s1 : s2)
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function logicAndAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s1 = load<f32>(a1$)
-    const s2 = load<f32>(a2$)
-    store<f32>(out$, s1 != (0.0 as f32) ? s2 : s1)
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function bitOrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const a = i32(load<f32>(a1$))
-    const b = i32(load<f32>(a2$))
-    store<f32>(out$, f32(a | b))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function bitXorAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const a = i32(load<f32>(a1$))
-    const b = i32(load<f32>(a2$))
-    store<f32>(out$, f32(a ^ b))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function bitAndAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const a = i32(load<f32>(a1$))
-    const b = i32(load<f32>(a2$))
-    store<f32>(out$, f32(a & b))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function shlAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const a = i32(load<f32>(a1$))
-    const b = i32(load<f32>(a2$)) & 31
-    store<f32>(out$, f32(a << b))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function shrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const a = i32(load<f32>(a1$))
-    const b = i32(load<f32>(a2$)) & 31
-    store<f32>(out$, f32(a >> b))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function ushrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const a = <u32> i32(load<f32>(a1$))
-    const b = (<u32> i32(load<f32>(a2$))) & 31
-    store<f32>(out$, f32(a >>> b))
-    out$ += 4
-    a1$ += 4
-    a2$ += 4
-  }
-}
-
-function notAudio(out$: usize, in$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const s = load<f32>(in$)
-    store<f32>(out$, s == (0.0 as f32) ? (1.0 as f32) : (0.0 as f32))
-    out$ += 4
-    in$ += 4
-  }
-}
-
-function bitNotAudio(out$: usize, in$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const a = i32(load<f32>(in$))
-    store<f32>(out$, f32(~a))
-    out$ += 4
-    in$ += 4
-  }
-}
-
-function selectAudio(out$: usize, cond$: usize, then$: usize, else$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    const c = load<f32>(cond$)
-    const t = load<f32>(then$)
-    const e = load<f32>(else$)
-    store<f32>(out$, c != (0.0 as f32) ? t : e)
-    out$ += 4
-    cond$ += 4
-    then$ += 4
-    else$ += 4
-  }
-}
-
-function copyAudio(out$: usize, in$: usize, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    store<f32>(out$, load<f32>(in$))
-    out$ += 4
-    in$ += 4
-  }
-}
-
-function fillAudio(out$: usize, value: f32, length: i32): void {
-  for (let i = 0; i < length; i++) {
-    store<f32>(out$, value)
-    out$ += 4
-  }
-}
-
-const VM_MAGIC: i32 = -1
-
-enum VmOp {
-  End = 0,
-  Nop = 1,
-  PushNum = 2, // literal index (ProgramData.literals)
-  PushNumSmoothed = 24, // literal index (ProgramData.literals), smoothed at audio-rate when needed
-  PushBool = 3, // 0/1
-  PushNull = 4,
-  PushUndef = 5,
-  PushSym = 6, // symbol id
-  Pop = 7,
-  Dup = 8,
-  Load = 9, // symbol id
-  Store = 10, // symbol id
-  Unary = 11, // code
-  Binary = 12, // code
-  Call = 13, // pos, named
-  Jump = 14, // pc
-  JumpIfFalse = 15, // pc
-  Return = 16,
-  Throw = 17,
-  EnterScope = 18,
-  ExitScope = 19,
-  Func = 20, // absolute pc
-  Array = 21, // n
-  GetIndex = 22,
-  SetIndex = 23,
-}
-
-enum VmTag {
-  Undef = 0,
-  Null = 1,
-  Bool = 2,
-  Num = 3,
-  Sym = 4,
-  Audio = 5, // aux = outIndex
-  Builtin = 6, // aux = builtin id
-  Func = 7, // aux = absolute pc
-  Arr = 8, // aux = array pool id
-}
-
-enum VmUnary {
-  Neg = 0,
-  Not = 1,
-  BitNot = 2,
-}
-
-enum VmBinary {
-  Add = 0,
-  Sub = 1,
-  Mul = 2,
-  Div = 3,
-  Mod = 4,
-  Pow = 5,
-  Eq = 6,
-  Lt = 7,
-  Lte = 8,
-  Gt = 9,
-  Gte = 10,
-  BitOr = 11,
-  BitXor = 12,
-  BitAnd = 13,
-  Shl = 14,
-  Shr = 15,
-  Ushr = 16,
-}
-
-enum VmBuiltin {
-  Out = VmSym.Out,
-  Sine = VmSym.Sine,
-  Ad = VmSym.Ad,
-  Adsr = VmSym.Adsr,
-  Mini = VmSym.Mini,
-  Analyser = VmSym.Analyser,
-  T = VmSym.T,
-  Play = VmSym.Play,
-  Timeline = VmSym.Timeline,
-  Sampler = VmSym.Sampler,
-  Slicer = VmSym.Slicer,
-  Every = VmSym.Every,
-  At = VmSym.At,
-}
-
-const VM_FUNC_HEADER: i32 = -2
+} from '../constants'
+import { Ad } from '../gen/ad'
+import { Adsr } from '../gen/adsr'
+import { At } from '../gen/at'
+import { Every } from '../gen/every'
+import { Mini } from '../gen/mini'
+import { Sampler } from '../gen/sampler'
+import { Sine } from '../gen/sine'
+import { Slicer } from '../gen/slicer'
+import { Timeline } from '../gen/timeline'
+import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from '../globals'
+import { Program, ProgramData } from '../program'
+import { Op } from '../shared'
+import { VmSym } from '../syms'
+import {
+  addAudio,
+  bitAndAudio,
+  bitOrAudio,
+  bitXorAudio,
+  clearAudio,
+  divAudio,
+  eqAudio,
+  fillAudio,
+  gtAudio,
+  gteAudio,
+  ltAudio,
+  lteAudio,
+  modAudio,
+  mulAudio,
+  powAudio,
+  shlAudio,
+  shrAudio,
+  subAudio,
+  ushrAudio,
+} from './audio-ops'
+import { VM_FUNC_HEADER, VM_MAGIC, VmBinary, VmBuiltin, VmOp, VmTag, VmUnary } from './types'
 
 export class Dsp {
   program: Program = new Program()
