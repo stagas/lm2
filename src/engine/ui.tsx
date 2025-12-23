@@ -92,6 +92,7 @@ export function EngineUI() {
         source.buffer = audioBuffer
         source.connect(audioContext.destination)
         source.start()
+        useEngineStore.getState().playLoop('1', '.001 |> out($)')
       })()
     }, deltaTime < 700 ? 800 - deltaTime : 100)
   }, [shouldWait, showIntro])
