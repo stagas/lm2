@@ -1,5 +1,6 @@
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from '../globals'
-import { Program, ProgramData } from '../program'
+import { Program } from '../program'
+import { ProgramData } from '../program-data'
 import { clearAudio } from './audio-ops'
 import { VM_FUNC_HEADER, VM_MAGIC, VmBinary, VmOp, VmTag, VmUnary } from './types'
 import { VmArrays } from './vm-arrays'

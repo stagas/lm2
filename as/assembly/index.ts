@@ -11,7 +11,8 @@ import {
 } from './constants'
 import { Dsp } from './dsp/dsp'
 import { MiniEventBuffer, MiniEvents } from './mini/events'
-import { Program, ProgramData } from './program'
+import { Program } from './program'
+import { ProgramData } from './program-data'
 
 export * from './globals'
 
