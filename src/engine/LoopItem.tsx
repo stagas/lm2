@@ -141,7 +141,6 @@ export const LoopItem = ({
   )
 
   const handlePlayClick = runWhenLoopReady<HTMLButtonElement>(async e => {
-    console.log(e.buttons)
     if (e.buttons & MouseButtons.Right) {
       onStop?.()
       return
