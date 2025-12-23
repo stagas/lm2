@@ -36,3 +36,16 @@ export const Spinner = ({ lineWidth = 2.8 }: { lineWidth?: number }) => (
     <rect className="spinner_7uc5 spinner_ZAxd" x="20.2" y="6" width={lineWidth} height="12" />
   </svg>
 )
+
+export const SpinnerFull = ({ children }: { children?: React.ReactNode }) => (
+  <div className="flex flex-row gap-2 w-full h-full relative"
+    style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.11) 0%, rgba(0,0,0,0.0) 100%)' }}
+  >
+    <div className="absolute inset-0 z-10 flex flex-col gap-1 items-center justify-center">
+      {children}
+      <div className="w-8 h-8 relative">
+        <Spinner lineWidth={1.75} />
+      </div>
+    </div>
+  </div>
+)
