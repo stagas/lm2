@@ -17,6 +17,8 @@ import {
   OP_REST_SIZE,
   OP_SCALE,
   OP_SCALE_SIZE,
+  OP_SWING,
+  OP_SWING_SIZE,
   OP_TRANSPOSE,
   OP_TRANSPOSE_SIZE,
 } from '../../as/assembly/constants.ts'
@@ -178,4 +180,15 @@ export function writeScaleOp(
   buffer[base + 1] = rootMidi
   buffer[base + 2] = scaleIndex
   return OP_SCALE_SIZE
+}
+
+export function writeSwingOp(
+  buffer: Float32Array,
+  offset: number,
+  amount: number,
+): number {
+  const base = MINI_HEADER_SIZE + offset
+  buffer[base + 0] = OP_SWING
+  buffer[base + 1] = amount
+  return OP_SWING_SIZE
 }

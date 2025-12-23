@@ -8,6 +8,7 @@ import {
   OP_REST_SIZE,
   OP_SCALE_SIZE,
   OP_TRANSPOSE_SIZE,
+  OP_SWING_SIZE,
 } from '../../as/assembly/constants.ts'
 import type { Node } from '../mini/tokenizer.ts'
 
@@ -64,6 +65,15 @@ function buildSourceMapFromNodes(
         end: node.source.start + node.source.length,
       })
       currentOffset += OP_SCALE_SIZE
+    }
+    else if (node.type === 'swing') {
+      const opIndex = currentOffset
+      map.set(opIndex, {
+        text: node.source.text,
+        start: node.source.start,
+        end: node.source.start + node.source.length,
+      })
+      currentOffset += OP_SWING_SIZE
     }
     else if (node.type === 'group') {
       currentOffset += OP_GROUP_START_SIZE

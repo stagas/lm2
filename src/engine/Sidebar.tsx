@@ -2,12 +2,18 @@ import {
   ArrowLineLeftIcon,
   ArrowLineRightIcon,
   ArticleIcon,
+  FilePlusIcon,
   GearSixIcon,
+  GitBranchIcon,
   GlobeIcon,
   HeartIcon,
+  PlusCircleIcon,
+  PlusIcon,
+  PlusSquareIcon,
   WaveformIcon,
 } from '@phosphor-icons/react'
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -222,9 +228,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     if (!loop) return
     const source = loop.codeFile.value
     setQueuedPlay(null)
-    // requestAnimationFrame(() => {
     void playLoop(loop.data.id, source)
-    // })
   }, [currentLoopId, loops, playLoop, queuedPlay])
 
   const preserveScrollPos = (callback: () => void) => {
@@ -309,12 +313,41 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     didInitialCenterRef.current = false
   }
 
+  const handleBranchLoop = useCallback(() => {
+    if (!currentLoop) return
+
+    const baseTitle = Number.isFinite(parseInt(currentLoop.data.title.split(' ').pop() || '0'))
+      ? currentLoop.data.title.split(' ').slice(0, -1).join(' ')
+      : currentLoop.data.title
+
+    let count = 0
+    for (const loop of loops) {
+      if (loop.data.title.startsWith(baseTitle)) {
+        count = Math.max(count, parseInt(loop.data.title.split(' ').pop() || '0') || 1)
+      }
+    }
+    count = count + 1
+    const title = `${baseTitle} ${count}`
+    const id = makeLocalId(title)
+    const data: LoopData = { ...currentLoop.data, id, title, code: '', timestamp: 0 }
+
+    const codeFile = getCodeFile(id, currentLoop.codeFile.value)
+    const loop = new Loop(data, codeFile)
+
+    addLocalLoop(data)
+    setLoops(prev => [loop, ...prev])
+    setCurrentLoopId(id)
+    setSelectedLoopId(id)
+    didInitialCenterRef.current = false
+  }, [currentLoop])
+
   useEffect(() => {
     if (isSessionLoading) return
     if (!hasHydrated) return
     if (didEnsureInitialLoopRef.current) return
     if (localLoops.length > 0) return
     if (serverLoops.length > 0) return
+    if (loops.length > 0) return
     didEnsureInitialLoopRef.current = true
     handleNewLoop()
   }, [hasHydrated, isSessionLoading, localLoops.length, serverLoops.length])
@@ -344,10 +377,19 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
       alert('To save you first need to sign in')
       return
     }
+    const title = details.title ?? loop.data.title
+    const isPublic = (details.isPublic ?? loop.data.isPublic) ?? false
+    const base = useAppStore.getState().getLoopBase(loop.data.id, loop.data.code ?? '')
+    const prevIsPublic = loop.data.isPublic ?? false
+    const isNoopSave = !isLocalId(loop.data.id)
+      && title === loop.data.title
+      && isPublic === prevIsPublic
+      && loop.codeFile.value === base
+    if (isNoopSave) return
+
+    const timestamp = loop.data.timestamp !== 0 ? loop.data.timestamp : Date.now()
+
     preserveScrollPos(() => {
-      const timestamp = Date.now()
-      const title = details.title ?? loop.data.title
-      const isPublic = (details.isPublic ?? loop.data.isPublic) ?? false
       setLoopBase(loop.data.id, loop.codeFile.value, timestamp)
       if (isLocalId(loop.data.id)) {
         updateLocalLoop(loop.data.id, {
@@ -375,7 +417,6 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
               title,
               code,
               isPublic,
-              timestamp,
             })
             moveBuffer(localId, serverId)
             const codeFile = loop.codeFile
@@ -432,7 +473,6 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
               title,
               code: loop.codeFile.value,
               isPublic,
-              timestamp,
             })
             upsertServerLoopCache({
               ...loop.data,
@@ -521,13 +561,17 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
     if (sessionData && !isLocalId(loop.data.id)) {
       void (async () => {
         try {
-          const next = await api.deleteLoop(loop.data.id)
-          setSessionData(next)
+          setSessionData({
+            ...sessionData,
+            loops: sessionData.loops.filter(l => l.id !== loop.data.id),
+          })
           preserveScrollPos(() => {
             switchAwayFrom(loop.data.id, true)
             dropBuffer(loop.data.id)
             setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
           })
+          const next = await api.deleteLoop(loop.data.id)
+          setSessionData(next)
         }
         catch (e) {
           setApiError(e instanceof Error ? e.message : String(e))
@@ -556,7 +600,7 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                 className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
                   sidebarTab === tab
                     ? 'bg-black text-white'
-                    : 'bg-gradient-to-b from-black to-neutral-800 text-[#888] hover:text-white'
+                    : 'bg-gradient-to-b from-black to-neutral-800 text-neutral-500 hover:text-white'
                 }`}
               >
                 {icon}
@@ -567,21 +611,22 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
             {sidebarTab === 'loops' && (
               <>
                 <div className="flex flex-col w-full border-b-2 border-orange-600">
-                  <LoopItem key="<new>" loop={new Loop({
-                    id: '<new>',
-                    title: '<new>',
-                    artist: 'stagas',
-                    artistId: 'stagas',
-                    code: '',
-                    likesCount: 0,
-                    commentsCount: 0,
-                    isPublic: false,
-                    timestamp: 0,
-                  })} isCurrent={false} onClick={() => handleNewLoop()} />
+                  <div className="flex flex-row bg-gradient-to-b from-black to-neutral-800 items-center justify-evenly">
+                    <button onPointerDown={() => handleNewLoop()} className="p-2.5 text-neutral-500 hover:text-white">
+                      <FilePlusIcon weight="regular" size={16} />
+                    </button>
+                    <button onPointerDown={() => handleBranchLoop()}
+                      className="p-2.5 text-neutral-500 hover:text-white"
+                    >
+                      <GitBranchIcon weight="regular" size={16} />
+                    </button>
+                  </div>
                   {(() => {
                     const newLoops = loops.filter(loop => loop.isNew)
                     const untitledNew = newLoops.filter(loop => loop.data.title.startsWith('Untitled'))
-                    const lastUntitledId = untitledNew.length === 1 ? untitledNew[0]!.data.id : null
+                    const lastUntitledId = untitledNew.length === 1
+                      ? untitledNew[0]!.data.id
+                      : null
                     return newLoops.map(loop => (
                       <LoopItem
                         key={loop.data.id}
@@ -596,7 +641,8 @@ export function Sidebar({ onLoopChange }: { onLoopChange: (loop: Loop) => void }
                         onPause={pause}
                         onStop={stop}
                         canSave={sessionData != null}
-                        hideCloseWhenNotDirty={loop.data.id === lastUntitledId}
+                        hideCloseWhenNotDirty={loop.data.id === lastUntitledId
+                          && (loops.length === 1 || currentLoopId === loop.data.id)}
                         onClose={() => handleClose(loop)}
                         onEditDetails={details => handleEditDetails(loop, details)}
                         onSave={details => handleSave(loop, details)}

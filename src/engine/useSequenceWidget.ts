@@ -6,6 +6,7 @@ import {
   HISTORY_ENTRY_SIZE,
   OP_OCTAVE,
   OP_SCALE,
+  OP_SWING,
   OP_TRANSPOSE,
   PAST_BARS,
 } from '../../as/assembly/constants.ts'
@@ -36,9 +37,11 @@ export type SeqControlState = {
   octaveHistory: ControlHistory | null
   transposeHistory: ControlHistory | null
   scaleHistory: ControlHistory | null
+  swingHistory: ControlHistory | null
   fadingOctave?: FadingState
   fadingTranspose?: FadingState
   fadingScale?: FadingState
+  fadingSwing?: FadingState
   lastSampleCount: number | null
   seq: string | null
 }
@@ -59,16 +62,16 @@ type UseSequenceParams = {
   resetKey?: string | number | null
 }
 
-const CONTROL_REGEX = /\b(octave|transpose|scale)\b/
+const CONTROL_REGEX = /\b(octave|transpose|scale|swing)\b/
 const WHITESPACE_REGEX = /\s/
 const SIGN_REGEX = /[+-]/
 const DIGIT_REGEX = /[0-9]/
 const NOTE_REGEX = /^[a-gA-G](?:#|b)?[0-9]+/
 const NAME_REGEX = /^[a-zA-Z]+/
 
-function getControlKind(text: string): 'octave' | 'transpose' | 'scale' | null {
+function getControlKind(text: string): 'octave' | 'transpose' | 'scale' | 'swing' | null {
   const match = text.match(CONTROL_REGEX)
-  const kind = match?.[1] as 'octave' | 'transpose' | 'scale' | null | undefined
+  const kind = match?.[1] as 'octave' | 'transpose' | 'scale' | 'swing' | null | undefined
   return kind ?? null
 }
 
@@ -85,14 +88,26 @@ function getControlDeltaSpan(location: SourceLocation): { start: number; end: nu
   const start = i
   let j = i
   const kind = match[1]
-  if (kind === 'octave' || kind === 'transpose') {
+  if (kind === 'octave' || kind === 'transpose' || kind === 'swing') {
     if (SIGN_REGEX.test(text[j]!)) {
       j++
       while (j < text.length && WHITESPACE_REGEX.test(text[j]!)) j++
     }
     const digitsStart = j
-    while (j < text.length && DIGIT_REGEX.test(text[j]!)) j++
-    if (j === digitsStart) return null
+    if (text[j] === '.') {
+      j++
+      const fracStart = j
+      while (j < text.length && DIGIT_REGEX.test(text[j]!)) j++
+      if (j === fracStart) return null
+    }
+    else {
+      while (j < text.length && DIGIT_REGEX.test(text[j]!)) j++
+      if (j < text.length && text[j] === '.') {
+        j++
+        while (j < text.length && DIGIT_REGEX.test(text[j]!)) j++
+      }
+      if (j === digitsStart) return null
+    }
   }
   else if (kind === 'scale') {
     const noteMatch = text.slice(j).match(NOTE_REGEX)
@@ -238,6 +253,7 @@ export function useSequenceWidget({
         octaveHistory: null,
         transposeHistory: null,
         scaleHistory: null,
+        swingHistory: null,
         lastSampleCount: null,
         seq: null,
       }
@@ -246,6 +262,7 @@ export function useSequenceWidget({
       const prevOctaveOp = st.octaveHistory?.opIndex ?? null
       const prevTransposeOp = st.transposeHistory?.opIndex ?? null
       const prevScaleOp = st.scaleHistory?.opIndex ?? null
+      const prevSwingOp = st.swingHistory?.opIndex ?? null
 
       const prevSampleCount = st.lastSampleCount
       const didSeek = prevSampleCount != null && currentSampleCount < prevSampleCount
@@ -257,9 +274,11 @@ export function useSequenceWidget({
         st.octaveHistory = null
         st.transposeHistory = null
         st.scaleHistory = null
+        st.swingHistory = null
         st.fadingOctave = undefined
         st.fadingTranspose = undefined
         st.fadingScale = undefined
+        st.fadingSwing = undefined
       }
       else if (didPause) {
         const playbackState = useEngineStore.getState().playbackState
@@ -268,6 +287,7 @@ export function useSequenceWidget({
           st.fadingOctave = undefined
           st.fadingTranspose = undefined
           st.fadingScale = undefined
+          st.fadingSwing = undefined
         }
       }
 
@@ -305,6 +325,9 @@ export function useSequenceWidget({
           else if (op === OP_SCALE) {
             st.scaleHistory = updateControlHistory(st.scaleHistory, opIndex, startSample)
           }
+          else if (op === OP_SWING) {
+            st.swingHistory = updateControlHistory(st.swingHistory, opIndex, startSample)
+          }
         }
         else {
           const existing = eventData.get(opIndex)
@@ -317,12 +340,15 @@ export function useSequenceWidget({
       const currentOctave = st.octaveHistory?.opIndex ?? null
       const currentTranspose = st.transposeHistory?.opIndex ?? null
       const currentScale = st.scaleHistory?.opIndex ?? null
+      const currentSwing = st.swingHistory?.opIndex ?? null
 
       st.fadingOctave = updateFadingControl(st.fadingOctave, currentOctave, prevOctaveOp, st.octaveHistory,
         currentSampleCount, sampleRate, FADEOUT_SECONDS)
       st.fadingTranspose = updateFadingControl(st.fadingTranspose, currentTranspose, prevTransposeOp,
         st.transposeHistory, currentSampleCount, sampleRate, FADEOUT_SECONDS)
       st.fadingScale = updateFadingControl(st.fadingScale, currentScale, prevScaleOp, st.scaleHistory,
+        currentSampleCount, sampleRate, FADEOUT_SECONDS)
+      st.fadingSwing = updateFadingControl(st.fadingSwing, currentSwing, prevSwingOp, st.swingHistory,
         currentSampleCount, sampleRate, FADEOUT_SECONDS)
 
       const events = new Map<number, number>()
@@ -342,11 +368,13 @@ export function useSequenceWidget({
       if (st.octaveHistory) controls.set(st.octaveHistory.opIndex, 1)
       if (st.transposeHistory) controls.set(st.transposeHistory.opIndex, 1)
       if (st.scaleHistory) controls.set(st.scaleHistory.opIndex, 1)
+      if (st.swingHistory) controls.set(st.swingHistory.opIndex, 1)
 
       st.fadingOctave = applyFadeToControls(st.fadingOctave, controls, currentSampleCount, sampleRate, FADEOUT_SECONDS)
       st.fadingTranspose = applyFadeToControls(st.fadingTranspose, controls, currentSampleCount, sampleRate,
         FADEOUT_SECONDS)
       st.fadingScale = applyFadeToControls(st.fadingScale, controls, currentSampleCount, sampleRate, FADEOUT_SECONDS)
+      st.fadingSwing = applyFadeToControls(st.fadingSwing, controls, currentSampleCount, sampleRate, FADEOUT_SECONDS)
 
       controlStateRef.current.set(seqIndex, st)
       nextFrame[seqIndex] = { events, controls }

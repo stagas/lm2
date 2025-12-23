@@ -16,6 +16,8 @@ import {
   OP_REST_SIZE,
   OP_SCALE,
   OP_SCALE_SIZE,
+  OP_SWING,
+  OP_SWING_SIZE,
   OP_TRANSPOSE,
   OP_TRANSPOSE_SIZE,
 } from '../constants'
@@ -164,6 +166,20 @@ export class ScaleOp {
 }
 
 @unmanaged
+export class SwingOp {
+  opcode!: f32
+  amount!: f32
+
+  static size(): i32 {
+    return OP_SWING_SIZE
+  }
+
+  static at(array$: usize, offset: i32): SwingOp {
+    return changetype<SwingOp>(array$ + (offset << 2))
+  }
+}
+
+@unmanaged
 export class GroupEndOp {
   opcode!: f32
 
@@ -191,5 +207,6 @@ export function skipOp(array$: usize, offset: i32): i32 {
   if (opcode === OP_OCTAVE) return offset + OP_OCTAVE_SIZE
   if (opcode === OP_TRANSPOSE) return offset + OP_TRANSPOSE_SIZE
   if (opcode === OP_SCALE) return offset + OP_SCALE_SIZE
+  if (opcode === OP_SWING) return offset + OP_SWING_SIZE
   return offset
 }

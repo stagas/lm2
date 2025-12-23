@@ -6,6 +6,7 @@ import {
   OP_GROUP_START,
   OP_OCTAVE,
   OP_SCALE,
+  OP_SWING,
   OP_TRANSPOSE,
 } from '../constants'
 import {
@@ -39,6 +40,7 @@ export class MiniEvents {
   private scaleActive: bool = false
   private scaleRootMidi: i32 = 0
   private scaleIndex: i32 = 0
+  private swing: f64 = 0.0
 
   constructor() {
     // We keep per-depth buffers so nested groups don't overwrite the parent's
@@ -91,6 +93,7 @@ export class MiniEvents {
     this.scaleActive = false
     this.scaleRootMidi = 0
     this.scaleIndex = 0
+    this.swing = 0.0
 
     this.reader.update(bytecode$, opEnd)
     this.emitter.update(eventBuffer, cycleStartSample, cycleLength, cycleSamples, windowStart, windowEnd)
@@ -173,6 +176,30 @@ export class MiniEvents {
     const el = this.getElongateWeight(elongate)
     if (el <= 0.0) return 0.0
     return rep * el
+  }
+
+  private clampSwing(amount: f64): f64 {
+    if (amount > 1.0) return 1.0
+    if (amount < -1.0) return -1.0
+    return amount
+  }
+
+  private applySwingPhase01(phase01: f64, amount: f64): f64 {
+    const s: f64 = this.clampSwing(amount)
+    if (s === 0.0) return phase01
+    let mid: f64 = 0.5 + s * (1.0 / 6.0)
+    if (mid < 0.000001) mid = 0.000001
+    if (mid > 0.999999) mid = 0.999999
+    if (phase01 < 0.5) {
+      return phase01 * (2.0 * mid)
+    }
+    return mid + (phase01 - 0.5) * (2.0 * (1.0 - mid))
+  }
+
+  private applySwingPhase(phase: f64, amount: f64): f64 {
+    const base: f64 = Math.floor(phase)
+    const frac: f64 = phase - base // [0,1)
+    return base + this.applySwingPhase01(frac, amount)
   }
 
   private groupHasValueEvents(reader: BytecodeReader, groupOpOffset: i32, scratchDepth: i32): bool {
@@ -393,6 +420,7 @@ export class MiniEvents {
         const off = childOpsBuffer.get(i)
         const opcode = reader.getOpcode(off)
         if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE || opcode === OP_SCALE) continue
+        if (opcode === OP_SWING) continue
         if (opcode === OP_EVENT) {
           const op = reader.getEvent(off)
           timedLength += this.getTimedWeight(op.replicate as f64, op.elongate as f64)
@@ -442,6 +470,19 @@ export class MiniEvents {
     const slotDurationScaled: f64 = slotDuration * invDensity
 
     if (isParallelGroup) {
+      const swing0: f64 = this.swing
+      let hasSwingTarget: bool = false
+      if (swing0 !== 0.0) {
+        for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
+          const opOff = childOpsBuffer.get(i)
+          const op = reader.getOpcode(opOff)
+          if (op === OP_EVENT || op === OP_GROUP_START) {
+            hasSwingTarget = true
+            break
+          }
+        }
+      }
+
       const normalizedPosition: f64 = 0.0
       let delta: f64 = normalizedPosition - phaseStart
       if (delta < 0.0) delta += 1.0
@@ -451,7 +492,10 @@ export class MiniEvents {
         const passF: f64 = pass as f64
         if (delta + passF >= density) break
 
-        const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
+        const phase01: f64 = (delta + passF) * invDensity
+        const startTime: f64 = hasSwingTarget
+          ? this.applySwingPhase01(phase01, swing0) * parentSlotDuration
+          : phase01 * parentSlotDuration
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
         if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
@@ -460,12 +504,14 @@ export class MiniEvents {
           const baseScaleActive: bool = this.scaleActive
           const baseScaleRootMidi: i32 = this.scaleRootMidi
           const baseScaleIndex: i32 = this.scaleIndex
+          const baseSwing: f64 = this.swing
 
           for (let i: i32 = 0; i < childOpsBuffer.length; i++) {
             const childOpOffset = childOpsBuffer.get(i)
             this.scaleActive = baseScaleActive
             this.scaleRootMidi = baseScaleRootMidi
             this.scaleIndex = baseScaleIndex
+            this.swing = baseSwing
             this.processChild(
               reader,
               childOpOffset,
@@ -489,6 +535,7 @@ export class MiniEvents {
           this.scaleActive = baseScaleActive
           this.scaleRootMidi = baseScaleRootMidi
           this.scaleIndex = baseScaleIndex
+          this.swing = baseSwing
         }
 
         pass++
@@ -530,6 +577,11 @@ export class MiniEvents {
           this.scaleIndex = i32(op0.scaleIndex)
           this.scaleActive = true
         }
+        else if (opcode0 === OP_SWING) {
+          const op0 = reader.getSwing(childOpOffset0)
+          emitter.emitControl(childOpOffset0, groupVelocity, groupStartTime + groupOffsetTime)
+          this.swing = this.clampSwing(op0.amount as f64)
+        }
       }
 
       const normalizedPosition: f64 = 0.0
@@ -541,16 +593,19 @@ export class MiniEvents {
         const passF: f64 = pass as f64
         if (delta + passF >= density) break
 
-        const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
+        const phase01: f64 = (delta + passF) * invDensity
+        const childCycle: f64 = roundToDecimals(cycleDensity + delta + passF, 6)
+        const stepIndex: i32 = i32(Math.floor(childCycle))
+        let childIndex: i32 = stepIndex % childOpsBuffer.length
+        if (childIndex < 0) childIndex += childOpsBuffer.length
+        const childOpOffset = childOpsBuffer.get(childIndex)
+        const childOpcode: i32 = reader.getOpcode(childOpOffset)
+        const startTime: f64 = (this.swing !== 0.0 && (childOpcode === OP_EVENT || childOpcode === OP_GROUP_START))
+          ? this.applySwingPhase01(phase01, this.swing) * parentSlotDuration
+          : phase01 * parentSlotDuration
         const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
         if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
-          const childCycle: f64 = roundToDecimals(cycleDensity + delta + passF, 6)
-          const stepIndex: i32 = i32(Math.floor(childCycle))
-          let childIndex: i32 = stepIndex % childOpsBuffer.length
-          if (childIndex < 0) childIndex += childOpsBuffer.length
-          const childOpOffset = childOpsBuffer.get(childIndex)
-
           pitch = this.processChild(
             reader,
             childOpOffset,
@@ -602,7 +657,7 @@ export class MiniEvents {
             isTimed = true
           }
         }
-        else if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE || opcode === OP_SCALE) {
+        else if (opcode === OP_OCTAVE || opcode === OP_TRANSPOSE || opcode === OP_SCALE || opcode === OP_SWING) {
           if (posIndex >= timedLength) posIndex = timedLength - 0.000001
         }
         else {
@@ -624,7 +679,10 @@ export class MiniEvents {
 
         if (delta + passF < density) {
           scheduled = true
-          const startTime: f64 = (delta + passF) * invDensity * parentSlotDuration
+          const phase01: f64 = (delta + passF) * invDensity
+          const startTime: f64 = (this.swing !== 0.0 && (opcode === OP_EVENT || opcode === OP_GROUP_START))
+            ? this.applySwingPhase01(phase01, this.swing) * parentSlotDuration
+            : phase01 * parentSlotDuration
           const childRelativeTime: f64 = roundToDecimals(startTime + groupOffsetTime, 6)
 
           if (roundToDecimals(childRelativeTime, 3) < parentSlotDuration) {
@@ -723,7 +781,7 @@ export class MiniEvents {
         const invDensity: f64 = 1.0 / density
         const phaseStart: f64 = fract(roundToDecimals(cycle * density, 3))
         const slotDurationScaled: f64 = slotDuration * invDensity
-        const eventOffsetTime: f64 = eventOffset * slotDuration
+        const eventOffsetPhase: f64 = eventOffset
 
         const normalizedPosition: f64 = 0.0
         let delta: f64 = normalizedPosition - phaseStart
@@ -734,8 +792,12 @@ export class MiniEvents {
           const passF: f64 = pass as f64
           if (delta + passF >= density) break
 
-          const startTime: f64 = (delta + passF) * invDensity * slotDuration
-          const eventRelativeTime: f64 = roundToDecimals(startTime + eventOffsetTime, 6)
+          const phase01: f64 = (delta + passF) * invDensity
+          const basePhase: f64 = phase01 + eventOffsetPhase
+          const baseTime: f64 = this.swing !== 0.0
+            ? this.applySwingPhase(basePhase, this.swing) * slotDuration
+            : basePhase * slotDuration
+          const eventRelativeTime: f64 = roundToDecimals(baseTime, 6)
 
           if (roundToDecimals(eventRelativeTime, 3) < slotDuration) {
             const eventCycle: f64 = cycle * density + passF
@@ -809,10 +871,14 @@ export class MiniEvents {
                 }
 
                 const strumOffset: f64 = si === 0 ? strumOffset0 : strumOffset1
+                const voiceOffsetPhase: f64 = (strumOffset + jitterOffset) / slotDuration
+                const voiceTime: f64 = this.swing !== 0.0
+                  ? this.applySwingPhase(basePhase + voiceOffsetPhase, this.swing) * slotDuration
+                  : (basePhase + voiceOffsetPhase) * slotDuration
                 emitter.emit(
                   opOffset,
                   groupVelocity,
-                  groupStartTime + relativeTime + eventRelativeTime + strumOffset + jitterOffset,
+                  groupStartTime + relativeTime + voiceTime,
                   slotDurationScaled,
                   hold,
                   vi,
@@ -847,6 +913,13 @@ export class MiniEvents {
         this.scaleRootMidi = i32(op.rootMidi)
         this.scaleIndex = i32(op.scaleIndex)
         this.scaleActive = true
+        break
+      }
+
+      case OP_SWING: {
+        const op = reader.getSwing(opOffset)
+        emitter.emitControl(opOffset, groupVelocity, groupStartTime + relativeTime)
+        this.swing = this.clampSwing(op.amount as f64)
         break
       }
 

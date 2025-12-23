@@ -1,6 +1,6 @@
 import { midiToFrequency, noteNameToMidi } from './util.ts'
 
-type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale' | 'on'
+type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale' | 'swing' | 'on'
 
 export interface Modifiers {
   velocity: number
@@ -29,7 +29,7 @@ export interface NodeSource {
 
 export interface Node {
   type: NodeType
-  values: number[] // empty for rest/group, [delta] for octave/transpose
+  values: number[] // empty for rest/group, [delta] for octave/transpose/swing
   children: Node[]
   modifiers: Modifiers
   angle: boolean
@@ -736,6 +736,23 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       continue
     }
 
+    if (raw === 'swing') {
+      const next = tokens[ti + 1]
+      const amount = parseDeltaToken(next)
+      const end = next?.end ?? token.end
+      nodes.push({
+        type: 'swing',
+        angle: false,
+        parallel: false,
+        values: [amount],
+        children: [],
+        modifiers: getDefaultMods(),
+        source: makeSource(input, token.start, end),
+      })
+      if (next) ti++
+      continue
+    }
+
     if (first === '[' || first === '<') {
       const { inner, modText } = parseGroupedTokenText(raw, first)
       const modifiers = parseModifiers(modText)
@@ -809,6 +826,18 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       if (head === 'transpose') {
         nodes.push({
           type: 'transpose',
+          angle: false,
+          parallel: false,
+          values: [parseDeltaToken(adjustedInnerTokens[1])],
+          children: [],
+          modifiers: getDefaultMods(),
+          source: makeSource(input, token.start, token.end),
+        })
+        continue
+      }
+      if (head === 'swing') {
+        nodes.push({
+          type: 'swing',
           angle: false,
           parallel: false,
           values: [parseDeltaToken(adjustedInnerTokens[1])],

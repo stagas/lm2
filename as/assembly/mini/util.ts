@@ -7,7 +7,7 @@ import {
   OP_GROUP_START,
 } from '../constants'
 import { CycleEndOp, CycleStartOp, EventOp, getOpcode, GroupEndOp, GroupStartOp, OctaveOp, ScaleOp, skipOp,
-  TransposeOp } from './ops'
+  SwingOp, TransposeOp } from './ops'
 
 export class MiniEvent {
   opIndex: i32 = 0
@@ -191,6 +191,10 @@ export class BytecodeReader {
 
   getScale(offset: i32): ScaleOp {
     return ScaleOp.at(this.array$, offset)
+  }
+
+  getSwing(offset: i32): SwingOp {
+    return SwingOp.at(this.array$, offset)
   }
 
   getOpIndex(offset: i32): i32 {
