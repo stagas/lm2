@@ -99,12 +99,15 @@ export const LoopItem = ({
   const code = useCodeFileValue(loop.codeFile)
   const playingLoopId = useEngineStore(state => state.playingLoopId)
   const playbackState = useEngineStore(state => state.playbackState)
+  const setViewSampleCount = useEngineStore(state => state.setViewSampleCount)
+  const globalSampleCount = useEngineStore(state => state.globalSampleCount)
   const base = useAppStore(state => state.bases[loop.data.id])
   const wasDirty = useAppStore(state => state.dirtyById[loop.data.id] === true)
   const baseCode = base?.code ?? loop.data.code ?? ''
   const isDirty = loop.data.code == null ? wasDirty : code !== baseCode
   const isPlaying = playbackState === 'running'
-  const isLive = isPlaying && playingLoopId === loop.data.id
+  const isActive = playingLoopId === loop.data.id
+  const isLive = isPlaying && isActive
   const shouldHideClose = hideCloseWhenNotDirty && loop.isNew && !isDirty
 
   type PendingPointerHandler = {
@@ -141,23 +144,42 @@ export const LoopItem = ({
   )
 
   const handlePlayClick = runWhenLoopReady<HTMLButtonElement>(async e => {
-    if (e.buttons & MouseButtons.Right) {
-      onStop?.()
-      return
-    }
-    if (isLive && ((e.buttons & MouseButtons.Middle) || e.ctrlKey)) {
-      restartLoop()
-      return
-    }
-    if (isLive) {
-      onPause?.()
-    }
-    else {
-      if (!isPlaying && ((e.buttons & MouseButtons.Middle) || e.ctrlKey)) {
-        await restartLoop()
+    const isRight = (e.buttons & MouseButtons.Right) !== 0
+    const isRestart = ((e.buttons & MouseButtons.Middle) !== 0) || e.ctrlKey
+
+    if (isRight) {
+      onClick()
+      if (isActive) {
+        setViewSampleCount(loop.data.id, 0)
+        onStop?.()
+        return
       }
-      onPlay?.()
+      if (playingLoopId && isPlaying && globalSampleCount) {
+        const curr = Math.max(0, Atomics.load(globalSampleCount, 0))
+        setViewSampleCount(playingLoopId, curr)
+        onPause?.()
+      }
+      setViewSampleCount(loop.data.id, 0)
+      return
     }
+
+    if (isRestart) {
+      if (isActive) {
+        await restartLoop()
+        if (playbackState !== 'running') onPlay?.()
+        return
+      }
+      setViewSampleCount(loop.data.id, 0)
+      onPlay?.()
+      return
+    }
+
+    if (isActive && playbackState === 'running') {
+      onPause?.()
+      return
+    }
+
+    onPlay?.()
   })
 
   const alertSaveRequiresSignIn = () => {
