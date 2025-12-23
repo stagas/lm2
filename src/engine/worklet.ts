@@ -597,6 +597,10 @@ export class DspProcessor extends AudioWorkletProcessor {
         const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
         const begin = ringPos * CHUNK_SIZE
         const length = CHUNK_SIZE
+        const seekSample = this.seekSample ? Math.max(0, Atomics.load(this.seekSample, 0)) : 0
+        const restartSample = (rangeEnabled && rangeLength > 0 && (seekSample < rangeStart || seekSample >= rangeEnd))
+          ? rangeStart
+          : seekSample
 
         const swap = this.options.processorOptions.programSwap
         let newProgram$ = 0
@@ -645,7 +649,7 @@ export class DspProcessor extends AudioWorkletProcessor {
           }
 
           // Restart the timeline and reset DSP state before rendering the new program.
-          this.applySeekSample(0)
+          this.applySeekSample(restartSample)
           if (bpmBits) {
             const bpm = u32ToF32(bpmBits)
             this.core.wasm.bpm.value = bpm
@@ -664,7 +668,7 @@ export class DspProcessor extends AudioWorkletProcessor {
           const R = this.outRight
 
           this.renderChunk(
-            0,
+            restartSample,
             begin,
             length,
             rangeEnabled,
@@ -681,7 +685,7 @@ export class DspProcessor extends AudioWorkletProcessor {
             R[i] += this.seekRight[i]
           }
 
-          let sampleAfter = length
+          let sampleAfter = restartSample + length
           if (rangeEnabled && rangeLength > 0 && sampleAfter >= rangeEnd) {
             const over = sampleAfter - rangeEnd
             sampleAfter = rangeStart + (over % rangeLength)
@@ -706,8 +710,8 @@ export class DspProcessor extends AudioWorkletProcessor {
           outputs[0][0].set(L)
           outputs[0][1].set(R)
 
-          // Publish the new playhead immediately (restart at 0).
-          Atomics.store(this.options.processorOptions.globalSampleCount, 0, 0)
+          // Publish the new playhead immediately.
+          Atomics.store(this.options.processorOptions.globalSampleCount, 0, restartSample)
 
           // Clear the loops if any
           if (this.loop) Atomics.store(this.loop, 0, 0)
