@@ -15,15 +15,17 @@ import type { LangError } from '../lang/errors.ts'
 import { analyze } from '../lang/pipeline.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
-import type {
-  AnalyserRef,
-  ArrayLiteralRef,
-  MiniSequenceRef,
-  NumberWithParamsInfo,
-  SampleDef,
-  TimelineSequenceRef,
-} from './bytecode.ts'
-import { encodeLangToVmOps, extractBarsFromSource, extractTimelineLabelsFromSource } from './bytecode.ts'
+import {
+  type AnalyserRef,
+  type ArrayLiteralRef,
+  encodeLangToVmOps,
+  extractBarsFromSource,
+  extractTimelineLabelsFromSource,
+  type MiniSequenceRef,
+  type NumberWithParamsInfo,
+  type SampleDef,
+  type TimelineSequenceRef,
+} from './bytecode/bytecode.ts'
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { useEngine } from './program.ts'

@@ -1,7 +1,7 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useMemo, useRef } from 'react'
 import { ARRAY_HISTORY_ENTRY_SIZE, ARRAY_HISTORY_SIZE } from '../../as/assembly/constants.ts'
-import type { ArrayLiteralRef } from './bytecode.ts'
+import type { ArrayLiteralRef } from './bytecode/bytecode.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 import type { ProgramInstance } from './program.ts'
 

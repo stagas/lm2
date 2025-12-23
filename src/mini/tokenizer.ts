@@ -1,6 +1,6 @@
 import { midiToFrequency, noteNameToMidi } from './util.ts'
 
-type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale' | 'swing' | 'on'
+type NodeType = 'event' | 'rest' | 'group' | 'octave' | 'transpose' | 'scale' | 'swing' | 'at'
 
 export interface Modifiers {
   velocity: number
@@ -629,7 +629,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
         groupStart = Math.min(groupStart, start)
         groupEnd = Math.max(groupEnd, end)
         onChildren.push({
-          type: 'on',
+          type: 'at',
           angle: false,
           parallel: false,
           values: [si + 1, loop],
@@ -679,7 +679,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       continue
     }
 
-    if (raw === 'on') {
+    if (raw === 'at') {
       const next = tokens[ti + 1]
       const rawOn = next?.text ?? ''
       let pos = 0
@@ -698,7 +698,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       const bodyStart = ti + 2
       let bodyEnd = tokens.length
       for (let j = bodyStart; j < tokens.length; j++) {
-        if (tokens[j]?.text === 'on') {
+        if (tokens[j]?.text === 'at') {
           bodyEnd = j
           break
         }
@@ -707,7 +707,7 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       const children = tokensToNodesInternal(bodyTokens, input)
       const last = tokens[bodyEnd - 1] ?? next ?? token
       nodes.push({
-        type: 'on',
+        type: 'at',
         angle: false,
         parallel: false,
         values: [pos, loop],

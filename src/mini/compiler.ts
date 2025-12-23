@@ -37,7 +37,7 @@ function compileNode(
   else if (node.type === 'swing') {
     return writeSwingOp(bytecode, offset, node.values[0] ?? 0)
   }
-  else if (node.type === 'on') {
+  else if (node.type === 'at') {
     let currentOffset = writeCycleStartOp(
       bytecode,
       offset,

@@ -7,7 +7,7 @@ import {
   TIMELINE_SEGMENT_SIZE,
 } from '../../as/assembly/constants.ts'
 import { compileTimelineNotation } from '../timeline/compiler.ts'
-import type { TimelineSequenceRef } from './bytecode.ts'
+import type { TimelineSequenceRef } from './bytecode/bytecode.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 import type { ProgramInstance } from './program.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
