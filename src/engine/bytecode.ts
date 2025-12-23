@@ -76,12 +76,23 @@ const builtinSyms: Record<string, number> = {
   timeline: 9,
   sampler: 10,
   slicer: 11,
+  beat: 12,
   // Named args for adsr()
   attack: 100,
   decay: 101,
   sustain: 102,
   release: 103,
   trig: 104,
+  // Named args for beat()
+  on: 105,
+  prob: 106,
+  swing: 107,
+  offset: 108,
+  skipFirst: 109,
+  seed: 110,
+  // Named args for on()
+  bar: 111,
+  every: 112,
 }
 
 type VmTarget = {

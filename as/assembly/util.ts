@@ -35,3 +35,15 @@ export function roundToFactor(value: f64, factor: f64): f64 {
 export function floorToFactor(value: f64, factor: f64): f64 {
   return Math.floor(value * factor) / factor
 }
+
+export function seededRandom01(baseSeed: u32, cycle: f64, opIndex: i32, valueIndex: i32 = 0): f64 {
+  let state: i32 = i32(baseSeed)
+  state ^= i32(cycle) * 374761393
+  state ^= opIndex * 668265263
+  state ^= valueIndex * 224682251
+
+  state = (state * 9301 + 49297) % 233280
+  if (state < 0) state += 233280
+
+  return f64(state) / 233280.0
+}

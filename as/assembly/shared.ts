@@ -34,6 +34,8 @@ export enum Op {
   Timeline,
   Sampler,
   Slicer,
+  Beat,
+  On,
 }
 
 export enum SeqOp {

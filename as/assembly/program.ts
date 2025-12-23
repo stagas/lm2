@@ -22,8 +22,10 @@ import {
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
+import { Beat } from './gen/beat'
 import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
+import { On } from './gen/on'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
 import { Slicer } from './gen/slicer'
@@ -74,6 +76,8 @@ class GensPool {
   private analysers: GenPool<Analyser> = new GenPool<Analyser>(() => new Analyser())
   private samplers: GenPool<Sampler> = new GenPool<Sampler>(() => new Sampler())
   private slicers: GenPool<Slicer> = new GenPool<Slicer>(() => new Slicer())
+  private beats: GenPool<Beat> = new GenPool<Beat>(() => new Beat())
+  private ons: GenPool<On> = new GenPool<On>(() => new On())
   resetIndices(): void {
     this.sines.resetIndex()
     this.ads.resetIndex()
@@ -83,6 +87,8 @@ class GensPool {
     this.analysers.resetIndex()
     this.samplers.resetIndex()
     this.slicers.resetIndex()
+    this.beats.resetIndex()
+    this.ons.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -93,6 +99,8 @@ class GensPool {
     this.analysers.reset()
     this.samplers.reset()
     this.slicers.reset()
+    this.beats.reset()
+    this.ons.reset()
   }
   get(op: Op): Gen {
     switch (op) {
@@ -112,6 +120,10 @@ class GensPool {
         return this.samplers.get()
       case Op.Slicer:
         return this.slicers.get()
+      case Op.Beat:
+        return this.beats.get()
+      case Op.On:
+        return this.ons.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -125,6 +137,8 @@ class GensPool {
     this.analysers.copyFrom(source.analysers)
     this.samplers.copyFrom(source.samplers)
     this.slicers.copyFrom(source.slicers)
+    this.beats.copyFrom(source.beats)
+    this.ons.copyFrom(source.ons)
   }
 }
 

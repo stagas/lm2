@@ -271,7 +271,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
         const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
         for (let barStart = firstBarStart; barStart < windowEndTime + barLengthSeconds; barStart += barLengthSeconds) {
           if (barStart < 0) continue
-          const barIndex = Math.floor(barStart / barLengthSeconds)
+          const barIndex = Math.round(barStart / barLengthSeconds)
           const barNumber = barIndex + 1
           const isPhraseStart = ((barNumber - 1) & 3) === 0
 

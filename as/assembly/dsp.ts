@@ -10,7 +10,9 @@ import {
 } from './constants'
 import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
+import { Beat } from './gen/beat'
 import { Mini } from './gen/mini'
+import { On } from './gen/on'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
 import { Slicer } from './gen/slicer'
@@ -367,6 +369,8 @@ enum VmBuiltin {
   Timeline = 9,
   Sampler = 10,
   Slicer = 11,
+  Beat = 12,
+  On = 105,
 }
 
 const VM_FUNC_HEADER: i32 = -2
@@ -574,6 +578,14 @@ export class Dsp {
     }
     if (sym === VmBuiltin.Slicer) {
       this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Slicer)
+      return
+    }
+    if (sym === VmBuiltin.Beat) {
+      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.Beat)
+      return
+    }
+    if (sym === VmBuiltin.On) {
+      this.vmPush(VmTag.Builtin, 0.0, VmBuiltin.On)
       return
     }
     // Global time scaled to BPM: t = seconds * (bpm / 60)
@@ -1597,6 +1609,146 @@ export class Dsp {
       gen.trig$ = trig$
       gen.repeat$ = repeat$
       gen.needleHistory$ = changetype<usize>(this.program.sampleNeedleHistory)
+      gen.process(out$, length)
+
+      this.vmPush(VmTag.Audio, 0.0, outIndex)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Beat) {
+      // beat(on, prob=1, swing=0, offset=0, skipFirst=false, seed=1234)
+      if (posCount < 1) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      let onTag: VmTag = posTags[0] as VmTag
+      let onNum: f64 = posNums[0]
+      let onAux: i32 = posAux[0]
+
+      const probIsSet = posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null
+      let probTag: VmTag = probIsSet ? (posTags[1] as VmTag) : VmTag.Num
+      let probNum: f64 = probIsSet ? posNums[1] : 1.0
+      let probAux: i32 = probIsSet ? posAux[1] : 0
+
+      const swingIsSet = posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null
+      let swingTag: VmTag = swingIsSet ? (posTags[2] as VmTag) : VmTag.Num
+      let swingNum: f64 = swingIsSet ? posNums[2] : 0.0
+      let swingAux: i32 = swingIsSet ? posAux[2] : 0
+
+      const offsetIsSet = posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null
+      let offsetTag: VmTag = offsetIsSet ? (posTags[3] as VmTag) : VmTag.Num
+      let offsetNum: f64 = offsetIsSet ? posNums[3] : 0.0
+      let offsetAux: i32 = offsetIsSet ? posAux[3] : 0
+
+      const skipFirstIsSet = posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null
+      let skipFirstTag: VmTag = skipFirstIsSet ? (posTags[4] as VmTag) : VmTag.Bool
+      let skipFirstNum: f64 = skipFirstIsSet ? posNums[4] : 0.0
+      let skipFirstAux: i32 = skipFirstIsSet ? posAux[4] : 0
+
+      const seedIsSet = posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null
+      let seedTag: VmTag = seedIsSet ? (posTags[5] as VmTag) : VmTag.Num
+      let seedNum: f64 = seedIsSet ? posNums[5] : 1234.0
+      let seedAux: i32 = seedIsSet ? posAux[5] : 0
+
+      // Named overrides (on/prob/swing/offset/skipFirst/seed)
+      for (let i = 0; i < namedCount; i++) {
+        const k = nameSyms[i]
+        if (k === 105) {
+          onTag = nameTags[i] as VmTag
+          onNum = nameNums[i]
+          onAux = nameAux[i]
+        }
+        else if (k === 106) {
+          probTag = nameTags[i] as VmTag
+          probNum = nameNums[i]
+          probAux = nameAux[i]
+        }
+        else if (k === 107) {
+          swingTag = nameTags[i] as VmTag
+          swingNum = nameNums[i]
+          swingAux = nameAux[i]
+        }
+        else if (k === 108) {
+          offsetTag = nameTags[i] as VmTag
+          offsetNum = nameNums[i]
+          offsetAux = nameAux[i]
+        }
+        else if (k === 109) {
+          skipFirstTag = nameTags[i] as VmTag
+          skipFirstNum = nameNums[i]
+          skipFirstAux = nameAux[i]
+        }
+        else if (k === 110) {
+          seedTag = nameTags[i] as VmTag
+          seedNum = nameNums[i]
+          seedAux = nameAux[i]
+        }
+      }
+
+      const on$: usize = this.vmToAudioPtr(onTag, onNum, onAux, length)
+      const prob$: usize = this.vmToAudioPtr(probTag, probNum, probAux, length)
+      const swing$: usize = this.vmToAudioPtr(swingTag, swingNum, swingAux, length)
+      const offset$: usize = this.vmToAudioPtr(offsetTag, offsetNum, offsetAux, length)
+      const skipFirst$: usize = this.vmToAudioPtr(skipFirstTag, skipFirstNum, skipFirstAux, length)
+      const seed$: usize = this.vmToAudioPtr(seedTag, seedNum, seedAux, length)
+
+      const outIndex: i32 = this.vmAllocOut()
+      const out$: usize = this.program.getOutBuffer(outIndex)
+
+      const gen = this.program.gensPool.get(Op.Beat) as Beat
+      gen.on$ = on$
+      gen.prob$ = prob$
+      gen.swing$ = swing$
+      gen.offset$ = offset$
+      gen.skipFirst$ = skipFirst$
+      gen.seed$ = seed$
+      gen.process(out$, length)
+
+      this.vmPush(VmTag.Audio, 0.0, outIndex)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.On) {
+      // on(bar, every=0)
+      if (posCount < 1) {
+        this.vmPush(VmTag.Undef)
+        return
+      }
+
+      let barTag: VmTag = posTags[0] as VmTag
+      let barNum: f64 = posNums[0]
+      let barAux: i32 = posAux[0]
+
+      const everyIsSet = posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null
+      let everyTag: VmTag = everyIsSet ? (posTags[1] as VmTag) : VmTag.Num
+      let everyNum: f64 = everyIsSet ? posNums[1] : 0.0
+      let everyAux: i32 = everyIsSet ? posAux[1] : 0
+
+      // Named overrides (bar/every)
+      for (let i = 0; i < namedCount; i++) {
+        const k = nameSyms[i]
+        if (k === 111) {
+          barTag = nameTags[i] as VmTag
+          barNum = nameNums[i]
+          barAux = nameAux[i]
+        }
+        else if (k === 112) {
+          everyTag = nameTags[i] as VmTag
+          everyNum = nameNums[i]
+          everyAux = nameAux[i]
+        }
+      }
+
+      const bar$: usize = this.vmToAudioPtr(barTag, barNum, barAux, length)
+      const every$: usize = this.vmToAudioPtr(everyTag, everyNum, everyAux, length)
+
+      const outIndex: i32 = this.vmAllocOut()
+      const out$: usize = this.program.getOutBuffer(outIndex)
+
+      const gen = this.program.gensPool.get(Op.On) as On
+      gen.bar$ = bar$
+      gen.every$ = every$
       gen.process(out$, length)
 
       this.vmPush(VmTag.Audio, 0.0, outIndex)
