@@ -187,7 +187,7 @@ export function MinimapScrollbar({
     const viewportWidth = Math.max(0, width * (endRatio - startRatio))
 
     if (viewportWidth > 0) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.16)'
       ctx.fillRect(width * startRatio, 0, viewportWidth, height)
     }
 
@@ -381,7 +381,7 @@ export function MinimapScrollbar({
     const currentRatio = currentSampleRef.current / totalSamples
     const playheadX = currentRatio * width + 1
 
-    ctx.strokeStyle = '#fff'
+    ctx.strokeStyle = '#ea580c'
     ctx.lineWidth = 2.5
     ctx.beginPath()
     ctx.moveTo(playheadX, 0)
