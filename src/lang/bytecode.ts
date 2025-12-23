@@ -538,7 +538,7 @@ class Compiler {
       sine: ['hz', 'trig'],
       ad: ['attack', 'decay', 'trig'],
       adsr: ['attack', 'decay', 'sustain', 'release', 'trig'],
-      every: ['bar', 'prob', 'seed', 'swing', 'offset', 'skipFirst'],
+      every: ['bar', 'prob', 'seed', 'swing', 'offset'],
       at: ['bar', 'every', 'prob', 'seed'],
       mini: ['seq', 'cb'],
       play: ['seq', 'cb'],

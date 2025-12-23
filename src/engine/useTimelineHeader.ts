@@ -1,6 +1,6 @@
 import type { EditorHeader } from 'mini-code'
 import { useEffect, useMemo, useRef } from 'react'
-import { MouseButton } from 'utils/mouse-buttons'
+import { MouseButtons } from 'utils/mouse-buttons'
 import { FUTURE_BARS, PAST_BARS, TIME_WINDOW_BARS } from '../../as/assembly/constants.ts'
 import { PIANOROLL_KEY_WIDTH } from './constants.ts'
 import { useEngineStore } from './store.ts'
@@ -18,6 +18,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
     clearLoop,
     timelineLabels,
     uiTimelineLabels,
+    uiZeroBased,
   } = useEngineStore()
 
   const {
@@ -124,7 +125,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
     return {
       height: 40,
       pointerDown: (e, x) => {
-        if (e.buttons & MouseButton.Right) {
+        if (e.buttons & MouseButtons.Right) {
           if (canControlPlayback) handleLoopBar(x)
           return
         }
@@ -288,7 +289,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
           c.font = isPhraseStart ? 'bold 9pt Inter' : 'normal 8pt Inter'
           c.textAlign = 'left'
           c.textBaseline = 'middle'
-          c.fillText(String(barNumber), barX + 4, y + 10)
+          c.fillText(String(uiZeroBased ? barNumber - 1 : barNumber), barX + 4, y + 10)
 
           // Show time below the phrase number (formatted MM:SS) calculated from bar start seconds
           const t = Math.max(0, barStart)
@@ -385,6 +386,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
     setLoop,
     timelineLabels,
     uiTimelineLabels,
+    uiZeroBased,
   ])
 
   return { timelineHeader, timelineWindowRef }

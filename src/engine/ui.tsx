@@ -1,4 +1,5 @@
-import { CodeEditor, CodeFile, type EditorHeader, type EditorWidget } from 'mini-code'
+import { CopyIcon } from '@phosphor-icons/react'
+import { CodeEditor, CodeFile, type EditorError, type EditorHeader, type EditorWidget } from 'mini-code'
 import {
   useCallback,
   useEffect,
@@ -26,6 +27,7 @@ import {
   type SampleDef,
   type TimelineSequenceRef,
 } from './bytecode/bytecode.ts'
+import { functionDefinitions } from './function-definitions.ts'
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { useEngine } from './program.ts'
@@ -70,7 +72,7 @@ export type TimelineWindow = {
   timeSeconds: number
 }
 
-type WidgetCompileState = {
+type WidgetCompileResult = {
   dspSource: string
   sequences: string[]
   miniRefs: MiniSequenceRef[]
@@ -80,10 +82,21 @@ type WidgetCompileState = {
   arrayLiterals: ArrayLiteralRef[]
   numberParams: NumberWithParamsInfo[]
   sampleDefs: SampleDef[]
+  errors: LangError[]
 }
 
 export function DspSourceEditor(
-  { timelineHeader, currentLoop }: { timelineHeader: EditorHeader; currentLoop: Loop | null },
+  {
+    timelineHeader,
+    currentLoop,
+    dspError,
+    onDspError,
+  }: {
+    timelineHeader: EditorHeader
+    currentLoop: Loop | null
+    dspError: string | undefined
+    onDspError: (error: string | undefined) => void
+  },
 ) {
   const hasHydrated = useAppStore(state => state.hasHydrated)
   const isLoopLoading = useAppStore(state => state.isLoopLoading)
@@ -105,14 +118,39 @@ export function DspSourceEditor(
     )
   }
 
-  return <DspSourceEditorReady timelineHeader={timelineHeader} currentLoop={currentLoop} />
+  return (
+    <DspSourceEditorReady
+      timelineHeader={timelineHeader}
+      currentLoop={currentLoop}
+      dspError={dspError}
+      onDspError={onDspError}
+    />
+  )
 }
 
 function DspSourceEditorReady(
-  { timelineHeader, currentLoop }: { timelineHeader: EditorHeader; currentLoop: Loop },
+  {
+    timelineHeader,
+    currentLoop,
+    dspError,
+    onDspError,
+  }: {
+    timelineHeader: EditorHeader
+    currentLoop: Loop
+    dspError: string | undefined
+    onDspError: (error: string | undefined) => void
+  },
 ) {
   const codeFileKeyByFileRef = useRef<WeakMap<CodeFile, string>>(new WeakMap())
   const nextCodeFileKeyRef = useRef(0)
+
+  const previewTargetRef = useRef<{ ops: Int32Array; literals: Float32Array } | null>(null)
+  if (!previewTargetRef.current) {
+    previewTargetRef.current = {
+      ops: new Int32Array(OPS_COUNT),
+      literals: new Float32Array(LITERALS_COUNT),
+    }
+  }
 
   const {
     dspSource,
@@ -137,7 +175,6 @@ function DspSourceEditorReady(
   } = useEngineStore()
 
   const { playbackState } = useEngineStore()
-  const [error, setError] = useState<string>()
   const { isUpdatingDsp } = useEngineStore()
   const theme = useTheme()
   // Subscribe for rerenders while editing, but use `codeFile.value` for synchronous reads
@@ -159,45 +196,62 @@ function DspSourceEditorReady(
   //   }
   // }, [currentLoop])
 
-  // Keep widgets visible while the store is still processing updates or when
-  // the editor has compilation errors so the user can see widgets while fixing.
-  const localAnalysis = useMemo(() => {
-    const source = code
-    try {
-      return analyze(source)
-    }
-    catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      const fallback: LangError = {
-        message,
-        line: 0,
-        column: 0,
-        length: 0,
-        code: '',
-      }
-      return {
-        bytecodeText: '',
-        errors: [fallback],
-        tokenCount: 0,
-      } as any
-    }
+  const previewCompile = useMemo(() => {
+    const target = previewTargetRef.current
+    if (!target) return { errors: [] as LangError[] }
+    target.ops.fill(0)
+    target.literals.fill(0)
+    return encodeLangToVmOps(code, target)
   }, [code])
 
-  const hasLocalErrors = (localAnalysis?.errors?.length ?? 0) > 0
+  const compileErrors = previewCompile.errors ?? []
+  const hasCompileErrors = compileErrors.length > 0
 
   const showWidgets = currentLoop != null && (code.length > 0 || dspSource.length > 0)
     || isUpdatingDsp
-    || hasLocalErrors
+    || hasCompileErrors
 
-  const previewTargetRef = useRef<{ ops: Int32Array; literals: Float32Array } | null>(null)
-  if (!previewTargetRef.current) {
-    previewTargetRef.current = {
-      ops: new Int32Array(OPS_COUNT),
-      literals: new Float32Array(LITERALS_COUNT),
+  const headerErrorText = useMemo(() => {
+    const parts: string[] = []
+
+    if (dspError) parts.push(`runtime: ${dspError}`)
+
+    for (const err of compileErrors) {
+      const loc = err.line > 0 || err.column > 0 ? ` (${err.line}:${err.column})` : ''
+      parts.push(`${err.message}${loc}`)
     }
-  }
 
-  const widgetCompileState = useMemo((): WidgetCompileState => {
+    return parts.join('  •  ')
+  }, [compileErrors, dspError])
+
+  const editorErrors = useMemo((): EditorError[] => {
+    const errors: EditorError[] = []
+
+    if (dspError) {
+      errors.push({
+        line: 0,
+        startColumn: 0,
+        endColumn: 1,
+        message: dspError,
+      })
+    }
+
+    for (const err of compileErrors) {
+      const line = Math.max(0, err.line - 1)
+      const startColumn = Math.max(0, err.column - 1)
+      const endColumn = startColumn + Math.max(1, err.length)
+      errors.push({
+        line,
+        startColumn,
+        endColumn,
+        message: err.message,
+      })
+    }
+
+    return errors
+  }, [compileErrors, dspError])
+
+  const widgetCompileState = useMemo((): WidgetCompileResult => {
     if (code === uiDspSource) {
       return {
         dspSource: uiDspSource,
@@ -209,11 +263,11 @@ function DspSourceEditorReady(
         arrayLiterals: uiArrayLiterals,
         numberParams: uiNumberParams,
         sampleDefs: uiSampleDefs,
+        errors: [],
       }
     }
 
-    const target = previewTargetRef.current
-    if (!target) {
+    if (previewCompile.errors.length) {
       return {
         dspSource: uiDspSource,
         sequences: uiSequences,
@@ -224,28 +278,11 @@ function DspSourceEditorReady(
         arrayLiterals: uiArrayLiterals,
         numberParams: uiNumberParams,
         sampleDefs: uiSampleDefs,
+        errors: previewCompile.errors,
       }
     }
 
-    target.ops.fill(0)
-    target.literals.fill(0)
-
-    const result = encodeLangToVmOps(code, target)
-    if (result.errors.length) {
-      return {
-        dspSource: uiDspSource,
-        sequences: uiSequences,
-        miniRefs: uiMiniRefs,
-        timelineRefs: uiTimelineRefs,
-        miniSourceMaps: uiMiniSourceMaps,
-        analyserRefs: uiAnalyserRefs,
-        arrayLiterals: uiArrayLiterals,
-        numberParams: uiNumberParams,
-        sampleDefs: uiSampleDefs,
-      }
-    }
-
-    const sequences = result.miniSequences ?? []
+    const sequences = previewCompile.miniSequences ?? []
     const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map(s => {
       const compiled = compileMiniNotation(s)
       return buildMiniSourceMap(compiled.nodes, compiled.bytecode)
@@ -254,16 +291,18 @@ function DspSourceEditorReady(
     return {
       dspSource: code,
       sequences,
-      miniRefs: result.miniRefs ?? [],
-      timelineRefs: result.timelineRefs ?? [],
+      miniRefs: previewCompile.miniRefs ?? [],
+      timelineRefs: previewCompile.timelineRefs ?? [],
       miniSourceMaps,
-      analyserRefs: result.analyserRefs ?? [],
-      arrayLiterals: result.arrayLiterals ?? [],
-      numberParams: result.numberParams ?? [],
-      sampleDefs: result.sampleDefs ?? [],
+      analyserRefs: previewCompile.analyserRefs ?? [],
+      arrayLiterals: previewCompile.arrayLiterals ?? [],
+      numberParams: previewCompile.numberParams ?? [],
+      sampleDefs: previewCompile.sampleDefs ?? [],
+      errors: [],
     }
   }, [
     code,
+    previewCompile,
     uiDspSource,
     uiSequences,
     uiMiniRefs,
@@ -323,13 +362,14 @@ function DspSourceEditorReady(
 
   const handleApply = async () => {
     if (!isProgramReady) return
+    if (hasCompileErrors) return
     const requested = code
     try {
-      setError(undefined)
+      onDspError(undefined)
       await updateDspSource(requested)
     }
     catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      onDspError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -343,11 +383,11 @@ function DspSourceEditorReady(
     if (!isProgramReady) return
     if (!currentLoop) return
     if (!isPlayingLoop) return
-    if (hasLocalErrors) return
+    if (hasCompileErrors) return
     if (code === dspSource) return
 
     void handleApply()
-  }, [code, currentLoop?.data.id, dspSource, hasLocalErrors, isProgramReady, isPlayingLoop])
+  }, [code, currentLoop?.data.id, dspSource, hasCompileErrors, isProgramReady, isPlayingLoop])
 
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())
@@ -493,13 +533,30 @@ function DspSourceEditorReady(
   return (
     <div className="flex flex-row gap-2 w-full h-full relative">
       <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
+        {headerErrorText.length > 0 && (
+          <div className="absolute top-0 left-[37px] right-0 h-[40px] z-50">
+            <div className="h-full w-full flex items-center gap-2 px-2 bg-[#f00a] border-b border-red-700 text-red-100">
+              <button title="Copy error message" className="py-2 px-1" onClick={() => {
+                navigator.clipboard.writeText(headerErrorText)
+              }}>
+                <CopyIcon weight="regular" size="16" />
+              </button>
+              <div className="shrink-0 text-md font-semibold">Error:</div>
+              <div className="flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap text-md">
+                {headerErrorText}
+              </div>
+            </div>
+          </div>
+        )}
         <CodeEditor
           key={codeEditorKey}
           codeFile={currentLoop?.codeFile}
           widgets={widgets}
+          errors={editorErrors}
           header={timelineHeader}
           theme={theme}
           tokenizer={tokenizer}
+          functionDefinitions={functionDefinitions}
           isAnimating={true}
           gutter={true}
           onBeforeDraw={onBeforeDrawCombined}
@@ -605,9 +662,11 @@ const StopIcon = () => (
 export function PlaybackControls({
   timelineWindowRef,
   currentLoop,
+  onDspError,
 }: {
   timelineWindowRef: React.RefObject<TimelineWindow>
   currentLoop: Loop | null
+  onDspError: (error: string | undefined) => void
 }) {
   const {
     audioContext,
@@ -616,6 +675,7 @@ export function PlaybackControls({
     uiTimelineLabels,
     uiTimelineRefs,
     uiBars,
+    uiZeroBased,
     pause,
     stop,
     playLoop,
@@ -633,7 +693,10 @@ export function PlaybackControls({
       <div className="flex items-center justify-center">
         <PlaybackButton icon={<PlayIcon />} onClick={() => {
           if (!currentLoop) return
-          void playLoop(currentLoop.data.id, currentLoop.codeFile.value)
+          onDspError(undefined)
+          void playLoop(currentLoop.data.id, currentLoop.codeFile.value).catch(err => {
+            onDspError(err instanceof Error ? err.message : String(err))
+          })
         }} />
         <PlaybackButton icon={<PauseIcon />} onClick={pause} />
         <PlaybackButton icon={<StopIcon />} onClick={stop} />
@@ -645,6 +708,7 @@ export function PlaybackControls({
         timelineRefs={uiTimelineRefs}
         timelineLabels={uiTimelineLabels}
         bars={uiBars}
+        zeroBased={uiZeroBased}
         seekToSample={seekToSample}
         timelineWindowRef={timelineWindowRef}
         canControlPlayback={canControlPlayback}
@@ -657,6 +721,7 @@ export function EngineUI() {
   const { isInitialized } = useEngine()
 
   const [currentLoop, setCurrentLoop] = useState<Loop | null>(null)
+  const [dspError, setDspError] = useState<string>()
   const { timelineHeader, timelineWindowRef } = useTimelineHeader(currentLoop?.data.id ?? null)
 
   const handleLoopChange = useCallback((loop: Loop) => {
@@ -673,10 +738,19 @@ export function EngineUI() {
 
   return (
     <div className="flex flex-col">
-      <PlaybackControls timelineWindowRef={timelineWindowRef} currentLoop={currentLoop} />
+      <PlaybackControls
+        timelineWindowRef={timelineWindowRef}
+        currentLoop={currentLoop}
+        onDspError={setDspError}
+      />
       <div className="flex flex-row h-[calc(100dvh-61px)]">
         <Sidebar onLoopChange={handleLoopChange} />
-        <DspSourceEditor timelineHeader={timelineHeader} currentLoop={currentLoop} />
+        <DspSourceEditor
+          timelineHeader={timelineHeader}
+          currentLoop={currentLoop}
+          dspError={dspError}
+          onDspError={setDspError}
+        />
       </div>
     </div>
   )

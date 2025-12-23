@@ -35,6 +35,7 @@ export class Ad extends Gen {
 
     if (isTrigger) {
       this.phase = Phase.Attack
+      this.position = 0
     }
 
     if (this.phase === Phase.Idle) {
@@ -62,14 +63,13 @@ export class Ad extends Gen {
       if (decaySamples <= 0) {
         this.position = 0
         this.phase = Phase.Idle
-        return 0
       }
       else {
-        this.position -= 1.0 / decaySamples
+        const delta: f32 = 1.0 / decaySamples
+        this.position -= delta
         if (this.position <= 0) {
           this.position = 0
           this.phase = Phase.Idle
-          return 0
         }
       }
       return this.position

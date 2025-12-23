@@ -131,10 +131,10 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
       continue
     }
 
-    if (c === '$'
-      && (peek() === ' ' || peek() === '\t' || peek() === '\r' || peek() === '\n' || peek() === ')' || peek() === ']'
-        || peek() === '}' || peek() === ',' || peek() === ';' || peek() === '\0'))
-    {
+    // `$` is a special pipe placeholder token (used on the RHS of `|>`).
+    // It should work naturally in expressions like `$+1`, `$*0.5`, `$.x`, `$[0]`.
+    // Only treat `$` as identifier start when it's immediately followed by an identifier character.
+    if (c === '$' && !isAlphaNum(peek())) {
       add('pipe_value', start, startLine, startCol)
       continue
     }

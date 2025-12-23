@@ -1617,7 +1617,7 @@ export class Dsp {
     }
 
     if (calleeAux === VmBuiltin.Every) {
-      // every(bar, prob=1, seed=1234, swing=0, offset=0, skipFirst=false)
+      // every(bar, prob=1, seed=1234, swing=0, offset=0)
       if (posCount < 1) {
         this.vmPush(VmTag.Undef)
         return
@@ -1647,12 +1647,7 @@ export class Dsp {
       let offsetNum: f64 = offsetIsSet ? posNums[4] : 0.0
       let offsetAux: i32 = offsetIsSet ? posAux[4] : 0
 
-      const skipFirstIsSet = posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null
-      let skipFirstTag: VmTag = skipFirstIsSet ? (posTags[5] as VmTag) : VmTag.Bool
-      let skipFirstNum: f64 = skipFirstIsSet ? posNums[5] : 0.0
-      let skipFirstAux: i32 = skipFirstIsSet ? posAux[5] : 0
-
-      // Named overrides (bar/prob/seed/swing/offset/skipFirst)
+      // Named overrides (bar/prob/seed/swing/offset)
       for (let i = 0; i < namedCount; i++) {
         const k = nameSyms[i]
         if (k === VmSym.Bar) {
@@ -1680,11 +1675,6 @@ export class Dsp {
           offsetNum = nameNums[i]
           offsetAux = nameAux[i]
         }
-        else if (k === VmSym.SkipFirst) {
-          skipFirstTag = nameTags[i] as VmTag
-          skipFirstNum = nameNums[i]
-          skipFirstAux = nameAux[i]
-        }
       }
 
       const bar$: usize = this.vmToAudioPtr(barTag, barNum, barAux, length)
@@ -1692,7 +1682,6 @@ export class Dsp {
       const seed$: usize = this.vmToAudioPtr(seedTag, seedNum, seedAux, length)
       const swing$: usize = this.vmToAudioPtr(swingTag, swingNum, swingAux, length)
       const offset$: usize = this.vmToAudioPtr(offsetTag, offsetNum, offsetAux, length)
-      const skipFirst$: usize = this.vmToAudioPtr(skipFirstTag, skipFirstNum, skipFirstAux, length)
 
       const outIndex: i32 = this.vmAllocOut()
       const out$: usize = this.program.getOutBuffer(outIndex)
@@ -1703,7 +1692,6 @@ export class Dsp {
       gen.seed$ = seed$
       gen.swing$ = swing$
       gen.offset$ = offset$
-      gen.skipFirst$ = skipFirst$
       gen.process(out$, length)
 
       this.vmPush(VmTag.Audio, 0.0, outIndex)

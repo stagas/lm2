@@ -62,6 +62,7 @@ type EngineState = {
   hardLoop?: Int32Array<SharedArrayBuffer>
   bars?: number
   uiBars?: number
+  uiZeroBased: boolean
   barsLoopEndSample?: number
   programSwap?: Uint32Array<SharedArrayBuffer>
   programSwapStatus?: Int32Array<SharedArrayBuffer>
@@ -132,6 +133,10 @@ export const useEngineStore = create<EngineState>((set, get) => {
   let sampleDecodeToken = 0
   let sampleUploadToken = 0
   const samplePreviewTarget = {
+    ops: new Int32Array(OPS_COUNT),
+    literals: new Float32Array(LITERALS_COUNT),
+  }
+  const compilePreviewTarget = {
     ops: new Int32Array(OPS_COUNT),
     literals: new Float32Array(LITERALS_COUNT),
   }
@@ -629,6 +634,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     timelineLabels: [],
     bars: undefined,
     uiBars: undefined,
+    uiZeroBased: false,
     barsLoopEndSample: undefined,
     miniSourceMaps: [],
     analyserRefs: [],
@@ -679,6 +685,12 @@ export const useEngineStore = create<EngineState>((set, get) => {
       const state = get()
       const prevId = state.playingLoopId
       const startSample = state.viewSampleCountByLoopId[loopId] ?? 0
+
+      // If the source has compile errors, don't start playback and don't surface it as a runtime error.
+      compilePreviewTarget.ops.fill(0)
+      compilePreviewTarget.literals.fill(0)
+      const preview = encodeLangToVmOps(source, compilePreviewTarget)
+      if (preview.errors.length) return
 
       // If the requested loop is already the playing loop, avoid reloading or resetting.
       if (prevId === loopId) {

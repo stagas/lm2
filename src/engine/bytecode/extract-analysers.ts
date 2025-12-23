@@ -5,6 +5,7 @@ import {
 
 export function extractAnalysersFromProgramWithRefs(program: Program): AnalyserRef[] {
   const refs: AnalyserRef[] = []
+  const MAX_ANALYSER_INDEX = 63
 
   function getPosArgValue(call: any, posIndex: number): any | null {
     let pos = 0
@@ -16,17 +17,50 @@ export function extractAnalysersFromProgramWithRefs(program: Program): AnalyserR
     return null
   }
 
+  function clampAnalyserIndex(n: any): number {
+    const v = Math.floor(Number(n ?? 0))
+    if (!Number.isFinite(v)) return 0
+    if (v < 0) return 0
+    if (v > MAX_ANALYSER_INDEX) return MAX_ANALYSER_INDEX
+    return v
+  }
+
+  function getAnalyserIndexFromCall(callExpr: any): number {
+    const idxArg = getPosArgValue(callExpr, 1)
+    if (idxArg?.kind === 'number') return clampAnalyserIndex(idxArg.value)
+    return 0
+  }
+
+  function visitOutCall(expr: any): void {
+    const audioArg = getPosArgValue(expr, 0)
+    if (audioArg?.kind === 'call' && audioArg.callee?.kind === 'ident' && audioArg.callee?.name === 'analyser') {
+      refs.push({
+        analyserIndex: getAnalyserIndexFromCall(audioArg),
+        loc: expr.callee.loc ?? expr.loc,
+      })
+
+      // Avoid duplicating widgets for the nested analyser() by visiting only the signal.
+      const signal = getPosArgValue(audioArg, 0)
+      visitExpr(signal)
+      return
+    }
+
+    // Fallback: still traverse the output expression normally (no implicit analyser found).
+    visitExpr(audioArg)
+  }
+
   function visitExpr(expr: any): void {
     if (!expr) return
 
     if (expr.kind === 'call') {
-      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'analyser') {
-        const idxArg = getPosArgValue(expr, 1)
-        let analyserIndex = 0
-        if (idxArg?.kind === 'number') analyserIndex = Math.max(0, Math.floor(Number(idxArg.value ?? 0)))
+      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'out') {
+        visitOutCall(expr)
+        return
+      }
 
+      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'analyser') {
         refs.push({
-          analyserIndex,
+          analyserIndex: getAnalyserIndexFromCall(expr),
           loc: expr.callee.loc ?? expr.loc,
         })
       }
