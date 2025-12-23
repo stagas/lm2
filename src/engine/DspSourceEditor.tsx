@@ -9,7 +9,8 @@ import {
 } from 'react'
 import { LITERALS_COUNT, OPS_COUNT } from '../../as/assembly/constants.ts'
 import { useAppStore } from '../app/store.ts'
-import { SpinnerFull } from '../components/Spinner.tsx'
+import { RadialGradient } from '../components/RadialGradient.tsx'
+import { SpinnerLarge } from '../components/Spinner.tsx'
 import type { LangError } from '../lang/errors.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
@@ -56,7 +57,11 @@ export function DspSourceEditor(
   const isAwaitingCode = currentLoop != null && currentLoop.data.code == null && code.length === 0
 
   if (!hasHydrated || !isProgramReady || isLoopLoading || isAwaitingCode || !currentLoop) {
-    return <SpinnerFull />
+    return (
+      <RadialGradient>
+        <SpinnerLarge />
+      </RadialGradient>
+    )
   }
 
   return (

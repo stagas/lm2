@@ -6,7 +6,7 @@ import {
   GlobeIcon,
   LockIcon,
   PencilIcon,
-  PlayIcon as PlayIconPhosphor,
+  PlayIcon,
   TrashIcon,
   XIcon,
 } from '@phosphor-icons/react'
@@ -19,6 +19,7 @@ import {
 import { MouseButtons } from 'utils/mouse-buttons'
 import type { LoopData } from '../../deno/types.ts'
 import { useAppStore } from '../app/store.ts'
+import { PlayGradientIcon } from './Icons.tsx'
 import { Loop } from './loop.ts'
 import { useEngineStore } from './store.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
@@ -356,7 +357,7 @@ export const LoopItem = ({
           <LoopItemButton
             title="Play"
             className={isLive ? 'text-orange-600' : undefined}
-            icon={<PlayIconPhosphor weight={isLive ? 'fill' : 'regular'} size={16} />}
+            icon={isLive ? <PlayGradientIcon size={16} /> : <PlayIcon weight="regular" size={16} />}
             onClick={handlePlayClick}
           />
         </div>
