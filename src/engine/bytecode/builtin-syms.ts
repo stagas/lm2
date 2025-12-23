@@ -25,7 +25,6 @@ export const builtinSyms: Record<string, number> = {
   prob: VmSym.Prob,
   swing: VmSym.Swing,
   offset: VmSym.Offset,
-  skipFirst: VmSym.SkipFirst,
   seed: VmSym.Seed,
   // Named args for at()
   bar: VmSym.Bar,

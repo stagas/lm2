@@ -1,8 +1,21 @@
 import { SEQ_VOICES } from '../../../as/assembly/constants.ts'
 import { Op, SeqOp } from '../../../as/assembly/shared.ts'
-import type { Loc } from '../../lang/ast.ts'
+import type {
+  Arg,
+  BlockStmt,
+  CallExpr,
+  DestructurePattern,
+  Expr,
+  ForHead,
+  FuncExpr,
+  Loc,
+  Program,
+  Stmt,
+  SwitchCase,
+  TryStmt,
+} from '../../lang/ast.ts'
 import { compile } from '../../lang/bytecode.ts'
-import { type LangError } from '../../lang/errors.ts'
+import { type LangError, lineText } from '../../lang/errors.ts'
 import { lex } from '../../lang/lexer.ts'
 import { parse } from '../../lang/parser.ts'
 import { builtinSyms } from './builtin-syms.ts'
@@ -39,6 +52,253 @@ export * from './extract-timeline-labels.ts'
 export * from './extract-timeline-sequences.ts'
 export * from './types.ts'
 
+const BUILTIN_CALL_NAMES = new Set([
+  'out',
+  'sine',
+  'ad',
+  'adsr',
+  'mini',
+  'play',
+  'timeline',
+  'analyser',
+  'sampler',
+  'slicer',
+  'every',
+  'at',
+  'freesound',
+  'label',
+  't',
+])
+
+function checkUndefinedCallErrors(src: string, program: Program): LangError[] {
+  const errors: LangError[] = []
+
+  const scopeStack: Array<Set<string>> = [new Set(BUILTIN_CALL_NAMES)]
+
+  const makeError = (loc: Pick<Loc, 'line' | 'column' | 'length'>, message: string): LangError => ({
+    message,
+    line: loc.line,
+    column: loc.column,
+    length: Math.max(1, loc.length),
+    code: lineText(src, loc.line),
+  })
+
+  const isDefined = (name: string): boolean => {
+    for (let i = scopeStack.length - 1; i >= 0; i--) {
+      if (scopeStack[i].has(name)) return true
+    }
+    return false
+  }
+
+  const defineName = (name: string): void => {
+    for (let i = scopeStack.length - 1; i >= 0; i--) {
+      if (scopeStack[i].has(name)) return
+    }
+    scopeStack[scopeStack.length - 1].add(name)
+  }
+
+  const withScope = (fn: () => void): void => {
+    scopeStack.push(new Set())
+    try {
+      fn()
+    }
+    finally {
+      scopeStack.pop()
+    }
+  }
+
+  const definePattern = (pattern: DestructurePattern): void => {
+    if (pattern.kind === 'obj') {
+      for (const key of pattern.keys) defineName(key)
+    }
+    else {
+      for (const item of pattern.items) defineName(item)
+    }
+  }
+
+  const visitBranch = (branch: Expr | BlockStmt): void => {
+    if ('kind' in branch && branch.kind === 'block') {
+      visitStmt(branch)
+      return
+    }
+    visitExpr(branch as Expr)
+  }
+
+  const visitAssignable = (target: Expr, shouldDefine: boolean): void => {
+    if (target.kind === 'ident') {
+      if (shouldDefine) defineName(target.name)
+      return
+    }
+    if (target.kind === 'member') {
+      visitExpr(target.object)
+      if (target.computed) visitExpr(target.index)
+    }
+  }
+
+  const visitArg = (arg: Arg): void => {
+    if (arg.kind === 'pos') {
+      visitExpr(arg.value)
+      return
+    }
+    if (arg.kind === 'named') {
+      visitExpr(arg.value)
+      return
+    }
+    if (!isDefined(arg.name)) {
+      errors.push(makeError(arg.loc, `${arg.name} is not defined`))
+    }
+  }
+
+  const visitExpr = (expr: Expr): void => {
+    switch (expr.kind) {
+      case 'number':
+      case 'string':
+      case 'bool':
+      case 'null':
+      case 'undefined':
+      case 'pipe_value':
+        return
+      case 'ident':
+        return
+      case 'array':
+        for (const item of expr.items) visitExpr(item)
+        return
+      case 'object':
+        for (const prop of expr.props) visitExpr(prop.value)
+        return
+      case 'member':
+        visitExpr(expr.object)
+        if (expr.computed) visitExpr(expr.index)
+        return
+      case 'call':
+        visitExpr(expr.callee)
+        expr.args.forEach(visitArg)
+        if (expr.callee.kind === 'ident') {
+          const name = expr.callee.name
+          if (!isDefined(name)) {
+            errors.push(makeError(expr.callee.loc, `${name} is not defined`))
+          }
+        }
+        return
+      case 'unary':
+        visitExpr(expr.expr)
+        return
+      case 'postfix':
+        visitExpr(expr.expr)
+        return
+      case 'binary':
+        visitExpr(expr.left)
+        visitExpr(expr.right)
+        return
+      case 'assign':
+        visitAssignable(expr.target, true)
+        visitExpr(expr.value)
+        return
+      case 'if':
+        visitExpr(expr.test)
+        visitBranch(expr.then)
+        visitBranch(expr.else)
+        return
+      case 'func':
+        withScope(() => {
+          for (const param of expr.params) defineName(param.name)
+          for (const param of expr.params) {
+            if (param.default) visitExpr(param.default)
+          }
+          if ('kind' in expr.body && expr.body.kind === 'block') {
+            visitStmt(expr.body)
+          }
+          else {
+            visitExpr(expr.body as Expr)
+          }
+        })
+        return
+    }
+  }
+
+  const visitStmt = (stmt: Stmt): void => {
+    switch (stmt.kind) {
+      case 'block':
+        withScope(() => {
+          for (const child of stmt.body) visitStmt(child)
+        })
+        return
+      case 'expr_stmt':
+        visitExpr(stmt.expr)
+        return
+      case 'destructure':
+        definePattern(stmt.pattern)
+        visitExpr(stmt.value)
+        return
+      case 'label':
+        visitStmt(stmt.stmt)
+        return
+      case 'for': {
+        const head = stmt.head
+        if (head.kind === 'c_style') {
+          if (head.init) visitExpr(head.init)
+          if (head.test) visitExpr(head.test)
+          if (head.update) visitExpr(head.update)
+          withScope(() => visitStmt(stmt.body))
+        }
+        else {
+          visitExpr(head.iterable)
+          withScope(() => {
+            defineName(head.value)
+            if (head.index) defineName(head.index)
+            if (head.length) defineName(head.length)
+            visitStmt(stmt.body)
+          })
+        }
+        return
+      }
+      case 'while':
+        visitExpr(stmt.test)
+        withScope(() => visitStmt(stmt.body))
+        return
+      case 'do_while':
+        withScope(() => visitStmt(stmt.body))
+        visitExpr(stmt.test)
+        return
+      case 'switch':
+        visitExpr(stmt.test)
+        for (const c of stmt.cases) {
+          withScope(() => {
+            if (c.test) visitExpr(c.test)
+            for (const bodyStmt of c.body) visitStmt(bodyStmt)
+          })
+        }
+        return
+      case 'try':
+        visitStmt(stmt.body)
+        if (stmt.catchBody) {
+          const catchBody = stmt.catchBody
+          withScope(() => {
+            if (stmt.catchName) defineName(stmt.catchName)
+            for (const cStmt of catchBody.body) visitStmt(cStmt)
+          })
+        }
+        if (stmt.finallyBody) visitStmt(stmt.finallyBody)
+        return
+      case 'throw':
+        visitExpr(stmt.value)
+        return
+      case 'return':
+        if (stmt.value) visitExpr(stmt.value)
+        return
+      case 'break':
+      case 'continue':
+        return
+    }
+  }
+
+  for (const stmt of program.body) {
+    visitStmt(stmt)
+  }
+
+  return errors
+}
+
 export { Op, SEQ_VOICES, SeqOp }
 
 export function encodeLangToVmOps(
@@ -62,6 +322,9 @@ export function encodeLangToVmOps(
   const lexed = lex(src)
   const parsed = parse(src, lexed.tokens)
   const errors: LangError[] = [...lexed.errors, ...parsed.errors]
+  if (errors.length === 0) {
+    errors.push(...checkUndefinedCallErrors(src, parsed.program))
+  }
   if (errors.length) return { errors }
 
   const bpm = extractBpmFromProgram(src, parsed.program, errors)
@@ -90,13 +353,17 @@ export function encodeLangToVmOps(
 
   const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
 
+  const MAX_ANALYSER_INDEX = 63
+  const clampAnalyserIndex = (n: number) => Math.max(0, Math.min(MAX_ANALYSER_INDEX, Math.floor(Number(n || 0))))
+
   const usedAnalyserIndices = new Set<number>([0])
   let nextAnalyserIndex = 1
   const allocAnalyserIndex = (): number => {
-    while (usedAnalyserIndices.has(nextAnalyserIndex)) nextAnalyserIndex++
+    if (nextAnalyserIndex > MAX_ANALYSER_INDEX) return MAX_ANALYSER_INDEX
+    while (usedAnalyserIndices.has(nextAnalyserIndex) && nextAnalyserIndex < MAX_ANALYSER_INDEX) nextAnalyserIndex++
     const idx = nextAnalyserIndex
     usedAnalyserIndices.add(idx)
-    nextAnalyserIndex++
+    nextAnalyserIndex = Math.min(MAX_ANALYSER_INDEX, idx + 1)
     return idx
   }
 
@@ -116,6 +383,7 @@ export function encodeLangToVmOps(
       const isPlay = calleeName === 'play'
       const isTimeline = calleeName === 'timeline'
       const isAnalyser = calleeName === 'analyser'
+      const isOut = calleeName === 'out'
       const isLabel = calleeName === 'label'
       const isFreesound = calleeName === 'freesound'
 
@@ -141,7 +409,7 @@ export function encodeLangToVmOps(
         const idxVal = idxArg?.value
 
         if (idxVal?.kind === 'number') {
-          const idx = Math.max(0, Math.floor(Number(idxVal.value ?? 0)))
+          const idx = clampAnalyserIndex(Number(idxVal.value ?? 0))
           usedAnalyserIndices.add(idx)
           idxArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
           return { ...expr, callee, args }
@@ -150,6 +418,31 @@ export function encodeLangToVmOps(
         if (posArgs.length === 1) {
           const idx = allocAnalyserIndex()
           return { ...expr, callee, args: [...args, { kind: 'pos', value: toSeqIndexExpr(expr.loc, idx) }] }
+        }
+      }
+
+      if (isOut) {
+        const posArgs = args.filter((a: any) => a.kind === 'pos')
+        const audioArg = posArgs[0]
+        const audioExpr = audioArg?.value
+        const audioCalleeName = audioExpr?.kind === 'call' && audioExpr.callee?.kind === 'ident'
+          ? audioExpr.callee.name
+          : null
+
+        // If the signal is already analysed (common: `... |> analyser(%) |> out(%)`), don't wrap again.
+        if (audioArg?.kind === 'pos' && audioExpr && audioCalleeName !== 'analyser') {
+          const idx = allocAnalyserIndex()
+          const analyserCall = {
+            kind: 'call',
+            callee: { kind: 'ident', name: 'analyser', loc: expr.callee?.loc ?? expr.loc },
+            args: [
+              { kind: 'pos', value: audioExpr },
+              { kind: 'pos', value: toSeqIndexExpr(expr.loc, idx) },
+            ],
+            loc: expr.loc,
+          }
+          const args2 = args.map((a: any) => a === audioArg ? { ...a, value: analyserCall } : a)
+          return { ...expr, callee, args: args2 }
         }
       }
 

@@ -7,16 +7,8 @@ export class At extends Gen {
   prob$: usize = 0
   seed$: usize = 0
 
-  private id: i32 = 0
-  private static nextId: i32 = 0
-
   private baseSeed: u32 = 1234
   private lastSeedInput: i32 = 0x7fffffff
-
-  constructor() {
-    super()
-    this.id = At.nextId++
-  }
 
   reset(): void {}
 
@@ -26,7 +18,6 @@ export class At extends Gen {
     this.every$ = src.every$
     this.prob$ = src.prob$
     this.seed$ = src.seed$
-    this.id = src.id
     this.baseSeed = src.baseSeed
     this.lastSeedInput = src.lastSeedInput
   }
@@ -37,7 +28,7 @@ export class At extends Gen {
     let prob$ = this.prob$
     const seed$ = this.seed$
 
-    const id: i32 = this.id
+    const randKey: i32 = 2
 
     const seedInput: i32 = i32(load<f32>(seed$))
     if (seedInput !== this.lastSeedInput) {
@@ -79,7 +70,7 @@ export class At extends Gen {
       }
 
       if (shouldTrigger) {
-        const random: f32 = seededRandom01(baseSeed, cycle as f64, id) as f32
+        const random: f32 = seededRandom01(baseSeed, cycle as f64, randKey) as f32
         store<f32>(o$, random < probValue ? 1.0 : 0.0)
       }
       else {

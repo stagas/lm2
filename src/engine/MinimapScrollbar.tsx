@@ -25,6 +25,7 @@ type MinimapScrollbarProps = {
   timelineRefs?: TimelineSequenceRef[]
   timelineLabels?: TimelineLabel[]
   bars?: number
+  zeroBased: boolean
   seekToSample: (targetSampleCount: number) => void
   timelineWindowRef: React.RefObject<TimelineWindow>
   canControlPlayback?: boolean
@@ -42,6 +43,7 @@ export function MinimapScrollbar({
   timelineRefs,
   timelineLabels,
   bars,
+  zeroBased,
   seekToSample,
   timelineWindowRef,
   canControlPlayback = true,
@@ -237,7 +239,7 @@ export function MinimapScrollbar({
       ctx.font = isMajor ? 'bold 6pt Inter' : '6pt Inter'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
-      const phraseNumber = String(barIndex + 1)
+      const phraseNumber = String(zeroBased ? barIndex : barIndex + 1)
       // place label a few pixels from the top-left of the marker
       ctx.fillText(phraseNumber, x + 2.25, 10)
       // if (barIndex >= barCount) continue

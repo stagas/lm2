@@ -90,12 +90,8 @@ function parseTimelineNotation(input: string): TimelinePoint[] {
 function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; totalBars: number } {
   if (points.length === 0) return { segments: [], totalBars: 0 }
 
-  const minBar = points.reduce((m, p) => Math.min(m, p.bar), Infinity)
-  const hasBar0 = points.some(p => p.bar === 0)
-  const barOffset = minBar >= 1 && !hasBar0 ? 1 : 0
-
   const pts = points
-    .map(p => ({ ...p, bar: p.bar - barOffset }))
+    .map(p => ({ ...p, bar: p.bar }))
     .filter(p => p.bar >= 0)
 
   if (pts.length === 0) return { segments: [], totalBars: 0 }

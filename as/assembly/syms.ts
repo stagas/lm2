@@ -28,7 +28,6 @@ export enum VmSym {
   Prob = 106,
   Swing = 107,
   Offset = 108,
-  SkipFirst = 109,
   Seed = 110,
 
   // Named args (at/every)
