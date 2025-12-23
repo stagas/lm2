@@ -9,7 +9,7 @@ import {
   HISTORY_WRITE_POS_OFFSET,
   OPS_COUNT,
 } from './constants'
-import { Dsp } from './dsp'
+import { Dsp } from './dsp/dsp'
 import { MiniEventBuffer, MiniEvents } from './mini/events'
 import { Program, ProgramData } from './program'
 
