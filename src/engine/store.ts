@@ -700,16 +700,32 @@ export const useEngineStore = create<EngineState>((set, get) => {
         return
       }
 
+      if (prevId && state.globalSampleCount) {
+        const prevSample = Math.max(0, Atomics.load(state.globalSampleCount, 0))
+        set(s => {
+          const prevSaved = s.viewSampleCountByLoopId[prevId] ?? 0
+          if (prevSaved === prevSample) return s
+          return {
+            ...s,
+            viewSampleCountByLoopId: {
+              ...s.viewSampleCountByLoopId,
+              [prevId]: prevSample,
+            },
+          }
+        })
+      }
+
       const wasRunning = state.playbackState === 'running'
       if (wasRunning) {
         const control = state.control
         const swap = state.programSwap
         const swapStatus = state.programSwapStatus
+        const seekSampleCount = state.seekSampleCount
         const dspPtr = state.wasmDspPtr
         const primaryProgram = state.program1
         const stagingProgram = state.program2
 
-        if (!control || !swap || !swapStatus || !dspPtr || !primaryProgram || !stagingProgram) {
+        if (!control || !swap || !swapStatus || !seekSampleCount || !dspPtr || !primaryProgram || !stagingProgram) {
           return
         }
 
@@ -749,19 +765,13 @@ export const useEngineStore = create<EngineState>((set, get) => {
 
         const globalSampleCount = state.globalSampleCount
         if (globalSampleCount) {
-          Atomics.store(globalSampleCount, 0, 0)
+          Atomics.store(globalSampleCount, 0, startSample)
         }
 
         set(prev => {
-          const prevView = prev.viewSampleCountByLoopId[loopId] ?? 0
-          const viewSampleCountByLoopId = prevView === 0
-            ? prev.viewSampleCountByLoopId
-            : { ...prev.viewSampleCountByLoopId, [loopId]: 0 }
-
           return {
             ...prev,
             playingLoopId: loopId,
-            viewSampleCountByLoopId,
             dspSource: source,
             sequences,
             miniRefs,
@@ -801,6 +811,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
         Atomics.store(swap, 0, bpmBits)
         Atomics.store(swap, 1, newProgram$)
         Atomics.store(swap, 2, dspPtr)
+        Atomics.store(seekSampleCount, 0, startSample)
         Atomics.store(control, 0, ControlOp.RestartWithProgram)
         return
       }
