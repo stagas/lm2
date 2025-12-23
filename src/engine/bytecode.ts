@@ -90,9 +90,6 @@ const builtinSyms: Record<string, number> = {
   offset: 108,
   skipFirst: 109,
   seed: 110,
-  // Named args for on()
-  bar: 111,
-  every: 112,
 }
 
 type VmTarget = {
