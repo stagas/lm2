@@ -118,12 +118,19 @@ export class VmArrays {
         stack.push(VmTag.Undef)
         return
       }
+      const index$ = audio.toAudioPtr(indexTag, indexNum, indexAux, length, program)
+      const i0 = i32(load<f32>(index$)) % len
+      const i0w = i0 < 0 ? (i0 + len) : i0
+
       if (elemType !== VmTag.Num && elemType !== VmTag.Audio) {
-        stack.push(VmTag.Undef)
+        // Arrays-of-arrays (and other non-numeric arrays) can't produce audio-rate values here because
+        // the VM has no audio-rate "array handles". Fall back to block-rate selection (sample 0).
+        this.recordAccess(program, this.createPc[arrId], i0w)
+        const at = start + i0w
+        stack.push(this.elemTag[at] as VmTag, this.elemNum[at], this.elemAux[at])
         return
       }
 
-      const index$ = audio.toAudioPtr(indexTag, indexNum, indexAux, length, program)
       const outIndex = audio.allocOut(program)
       const out$ = program.getOutBuffer(outIndex)
 
@@ -147,8 +154,6 @@ export class VmArrays {
       }
 
       // Record the sample-0 access for UI widgets.
-      const i0 = i32(load<f32>(index$)) % len
-      const i0w = i0 < 0 ? (i0 + len) : i0
       this.recordAccess(program, this.createPc[arrId], i0w)
 
       stack.push(VmTag.Audio, 0.0, outIndex)
