@@ -8,6 +8,7 @@ import { callEvery } from './builtins/every'
 import { callMini } from './builtins/mini'
 import { callOut } from './builtins/out'
 import { callPlay } from './builtins/play'
+import { callPlayPick } from './builtins/play-pick'
 import { callSampler } from './builtins/sampler'
 import { callSine } from './builtins/sine'
 import { callSlicer } from './builtins/slicer'
@@ -131,6 +132,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Play) {
       callPlay(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp, this.miniTrigOuts,
+        this.miniVelOuts, this.miniValOuts, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.PlayPick) {
+      callPlayPick(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp, this.miniTrigOuts,
         this.miniVelOuts, this.miniValOuts, this.cbArgTags, this.cbArgNums, this.cbArgAux)
       return
     }

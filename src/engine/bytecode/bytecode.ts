@@ -762,6 +762,7 @@ export function encodeLangToVmOps(
           pc += 2
           break
         case 'GET_INDEX':
+        case 'GET_INDEX2':
         case 'SET_INDEX':
           pc += 1
           break
@@ -874,6 +875,10 @@ export function encodeLangToVmOps(
         }
         case 'GET_INDEX': {
           target.ops[w++] = VmOp.GetIndex
+          break
+        }
+        case 'GET_INDEX2': {
+          target.ops[w++] = VmOp.GetIndex2
           break
         }
         case 'SET_INDEX': {

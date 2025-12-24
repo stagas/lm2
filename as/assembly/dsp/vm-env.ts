@@ -1,6 +1,8 @@
 import { setVmError } from '../globals'
+import { Program } from '../program'
 import { VmSym } from '../syms'
 import { VmTag } from './types'
+import { VmAudio } from './vm-audio'
 import { VmStack } from './vm-stack'
 
 export class VmEnv {
@@ -53,7 +55,7 @@ export class VmEnv {
   }
 
   @inline
-  load(sym: i32, stack: VmStack): void {
+  load(sym: i32, stack: VmStack, audio: VmAudio, program: Program, length: i32): void {
     const idx = this.find(sym)
     if (idx >= 0) {
       stack.push(this.tag[idx] as VmTag, this.num[idx], this.aux[idx])
@@ -89,6 +91,10 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Play)
       return
     }
+    if (sym === VmSym.PlayPick) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.PlayPick)
+      return
+    }
     if (sym === VmSym.Timeline) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Timeline)
       return
@@ -109,14 +115,9 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.At)
       return
     }
-    // Global time scaled to BPM: t = seconds * (bpm / 60)
     if (sym === VmSym.T) {
-      // globalSampleCount: i32 samples since start
-      // sampleRate: f32 samples per second
-      // bpm: f32 current beats per minute
-      const seconds = (globalSampleCount as f64) / (sampleRate as f64)
-      const scaled = seconds * (bpm as f64) / 60.0
-      stack.push(VmTag.Num, scaled)
+      const outIndex = audio.getTRamp(length, program)
+      stack.push(VmTag.Audio, 0.0, outIndex)
       return
     }
 

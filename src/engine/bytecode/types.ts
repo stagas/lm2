@@ -28,6 +28,7 @@ export enum VmOp {
   Array = 21, // immediate: n
   GetIndex = 22,
   SetIndex = 23,
+  GetIndex2 = 25,
 }
 
 export enum VmUnary {
