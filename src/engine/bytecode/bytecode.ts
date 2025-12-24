@@ -30,6 +30,7 @@ import { binaryCode, encoderError, tryEvalConstNumber, unaryCode } from './helpe
 import {
   AnalyserRef,
   ArrayLiteralRef,
+  BranchMarkRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
@@ -315,6 +316,7 @@ export function encodeLangToVmOps(
   timelineLabels?: TimelineLabel[]
   analyserRefs?: AnalyserRef[]
   arrayLiterals?: ArrayLiteralRef[]
+  branchMarks?: BranchMarkRef[]
   numberParams?: NumberWithParamsInfo[]
   numberLiterals?: NumberLiteralInfo[]
   sampleDefs?: SampleDef[]
@@ -643,6 +645,7 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
   const chunk = compiled.chunk
   const arrayLiterals: ArrayLiteralRef[] = []
+  const branchMarks: BranchMarkRef[] = []
 
   const syms = new Map<string, number>()
   let nextSym = 1000
@@ -697,7 +700,10 @@ export function encodeLangToVmOps(
 
   const vmFuncHeader = -2
 
-  const encodeChunk = (chunk: { consts: any[]; funcs: any[]; code: any[]; arrayLiterals?: any[] }, base: number) => {
+  const encodeChunk = (
+    chunk: { consts: any[]; funcs: any[]; code: any[]; arrayLiterals?: any[]; branchMarks?: any[] },
+    base: number,
+  ) => {
     const code = chunk.code as any[]
 
     const pcMap = new Int32Array(code.length)
@@ -720,6 +726,7 @@ export function encodeLangToVmOps(
         case 'EXIT_SCOPE':
         case 'POP':
         case 'DUP':
+        case 'BRANCH':
         case 'LABEL':
         case 'RETURN':
         case 'THROW':
@@ -788,6 +795,14 @@ export function encodeLangToVmOps(
       }
     }
 
+    const branchMeta = chunk.branchMarks as Array<{ ins: number; loc: Loc }> | undefined
+    if (branchMeta?.length) {
+      for (const m of branchMeta) {
+        const pcAt = pcMap[m.ins]
+        if (pcAt != null) branchMarks.push({ pc: pcAt, loc: m.loc })
+      }
+    }
+
     let w = base
     for (let i = 0; i < code.length; i++) {
       const ins = code[i]!
@@ -824,6 +839,9 @@ export function encodeLangToVmOps(
           break
         case 'EXIT_SCOPE':
           target.ops[w++] = VmOp.ExitScope
+          break
+        case 'BRANCH':
+          target.ops[w++] = VmOp.Branch
           break
         case 'POP':
           target.ops[w++] = VmOp.Pop
@@ -996,6 +1014,7 @@ export function encodeLangToVmOps(
       timelineLabels,
       analyserRefs,
       arrayLiterals,
+      branchMarks,
       numberParams: numberParamsWithLiteralIndex,
       numberLiterals: numberLiteralsWithLiteralIndex,
       sampleDefs: samplesExtracted.samples,
@@ -1011,6 +1030,7 @@ export function encodeLangToVmOps(
       timelineLabels,
       analyserRefs,
       arrayLiterals,
+      branchMarks,
       numberParams: numberParamsWithLiteralIndex,
       numberLiterals: numberLiteralsWithLiteralIndex,
       sampleDefs: samplesExtracted.samples,

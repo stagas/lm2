@@ -230,7 +230,21 @@ export type Arg =
 
 export type CallExpr = { kind: 'call'; callee: Expr; args: Arg[]; loc: Loc }
 
-export type IfExpr = { kind: 'if'; test: Expr; then: Expr | BlockStmt; else: Expr | BlockStmt; loc: Loc }
+export type IfExpr = {
+  kind: 'if'
+  test: Expr
+  then: Expr | BlockStmt
+  else: Expr | BlockStmt
+  loc: Loc
+  /** Location of the `if` keyword for `if (...) ... else ...` syntax. */
+  ifLoc?: Loc
+  /** Location of the `else` keyword for `if (...) ... else ...` syntax. */
+  elseLoc?: Loc
+  /** Location of the `?` token for ternary syntax. */
+  questionLoc?: Loc
+  /** Location of the `:` token for ternary syntax. */
+  colonLoc?: Loc
+}
 
 export type Param = { name: string; isRest: boolean; default?: Expr; loc: Loc }
 export type FuncExpr = { kind: 'func'; params: Param[]; body: Expr | BlockStmt; loc: Loc }

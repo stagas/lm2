@@ -1,57 +1,11 @@
-import { CopyIcon } from '@phosphor-icons/react'
-import { CodeEditor, CodeFile, type EditorError, type EditorHeader, type EditorWidget } from 'mini-code'
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
-import { LITERALS_COUNT, OPS_COUNT } from '../../../as/assembly/constants.ts'
-import { useAppStore } from '../../app/store.ts'
-import { Logo } from '../../components/Logo.tsx'
-import { Spinner } from '../../components/Spinner.tsx'
+import { useMemo } from 'react'
 import type { LangError } from '../../lang/errors.ts'
 import { analyze } from '../../lang/pipeline.ts'
-import { buildMiniSourceMap, type SourceLocation } from '../../lib/mini-source-map.ts'
-import { compileMiniNotation } from '../../mini/compiler.ts'
-import {
-  type AnalyserRef,
-  type ArrayLiteralRef,
-  encodeLangToVmOps,
-  extractBarsFromSource,
-  extractTimelineLabelsFromSource,
-  type MiniSequenceRef,
-  type NumberWithParamsInfo,
-  type SampleDef,
-  type TimelineSequenceRef,
-} from '../bytecode/bytecode.ts'
-import { useEngine } from '../dsp/program.ts'
-import { buildTimelineLabels } from '../dsp/timeline-labels.ts'
-import { functionDefinitions } from './function-definitions.ts'
-import type { Loop } from './loop.ts'
-import { MinimapScrollbar } from './MinimapScrollbar.tsx'
-import { Sidebar } from './Sidebar.tsx'
-import { useTheme } from './theme.ts'
-import { tokenizer } from './tokenizer.ts'
-import { useAnalyserWidget } from './useAnalyserWidget.ts'
-import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
-import { useCodeFileValue } from './useCodeFileValue.ts'
-import { useLoopView } from './useLoopView.ts'
-import { usePianorollWidget } from './usePianorollWidget.ts'
-import { useSampleWidget } from './useSampleWidget.ts'
-import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
-import { useSliderWidget } from './useSliderWidget.ts'
-import { useTimelineHeader } from './useTimelineHeader.ts'
-import { useTimelineSequenceWidget } from './useTimelineSequenceWidget.ts'
-import { useTimelineWidget } from './useTimelineWidget.ts'
+import { useEngineDspStore } from '../store.ts'
 
-export type BytecodeInspectorProps = {
-  source: string
-}
+export function BytecodeInspector() {
+  const source = useEngineDspStore(state => state.dspSource)
 
-export function BytecodeInspector({ source }: BytecodeInspectorProps) {
   const analysis = useMemo(() => {
     try {
       const result = analyze(source)

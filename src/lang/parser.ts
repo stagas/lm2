@@ -424,10 +424,19 @@ class Parser {
 
     // Ternary operator (condition ? thenExpr : elseExpr) desugared to `if` expression.
     if (this.match('question' as TokenKind)) {
+      const questionTok = this.prev()
       const thenExpr = this.parseExpr()
-      this.expect('colon', 'Expected \':\' after ternary consequent')
+      const colonTok = this.expect('colon', 'Expected \':\' after ternary consequent')
       const elseExpr = this.parseExpr()
-      return { kind: 'if', test: expr, then: thenExpr, else: elseExpr, loc: locFrom(start, locOf(elseExpr)) }
+      return {
+        kind: 'if',
+        test: expr,
+        then: thenExpr,
+        else: elseExpr,
+        loc: locFrom(start, locOf(elseExpr)),
+        questionLoc: locFrom(questionTok),
+        colonLoc: locFrom(colonTok),
+      }
     }
 
     return expr
@@ -693,13 +702,21 @@ class Parser {
     const test = this.parseExpr()
     this.expect('r_paren', 'Expected \')\'')
     const then = this.at('l_brace') ? this.parseBlockStmt() : this.parseExpr()
-    this.expect('kw_else', 'Expected \'else\'')
+    const elseTok = this.expect('kw_else', 'Expected \'else\'')
     const elsePart = this.at('kw_if')
       ? this.parseIfExpr()
       : this.at('l_brace')
       ? this.parseBlockStmt()
       : this.parseExpr()
-    return { kind: 'if', test, then, else: elsePart, loc: locFrom(start, locOf(elsePart)) }
+    return {
+      kind: 'if',
+      test,
+      then,
+      else: elsePart,
+      loc: locFrom(start, locOf(elsePart)),
+      ifLoc: locFrom(start),
+      elseLoc: locFrom(elseTok),
+    }
   }
 
   private parseArrayExpr(): Expr {

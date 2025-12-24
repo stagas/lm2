@@ -29,6 +29,7 @@ export enum VmOp {
   GetIndex = 22,
   SetIndex = 23,
   GetIndex2 = 25,
+  Branch = 26,
 }
 
 export enum VmUnary {
@@ -66,6 +67,11 @@ export type ArrayLiteralRef = {
   pc: number
   loc: Loc
   items: Loc[]
+}
+
+export type BranchMarkRef = {
+  pc: number
+  loc: Loc
 }
 
 export type AnalyserRef = {
