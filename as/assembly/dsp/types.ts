@@ -30,6 +30,7 @@ export enum VmOp {
   SetIndex = 23,
   GetIndex2 = 25,
   Branch = 26, // no-op marker for UI branch visualizers
+  Len = 27,
 }
 
 export enum VmTag {

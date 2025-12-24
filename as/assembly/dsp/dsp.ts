@@ -185,6 +185,21 @@ export class Dsp {
         this.arrays.create(n, this.stack, pc - 2)
         continue
       }
+      if (op === VmOp.Len) {
+        const idx = this.stack.pop()
+        const tag = this.stack.tag[idx] as VmTag
+        if (tag !== VmTag.Arr) {
+          this.stack.push(VmTag.Undef)
+          continue
+        }
+        const arrId = this.stack.aux[idx]
+        if (arrId < 0 || arrId >= this.arrays.count) {
+          this.stack.push(VmTag.Undef)
+          continue
+        }
+        this.stack.push(VmTag.Num, f64(this.arrays.len[arrId]))
+        continue
+      }
       if (op === VmOp.GetIndex) {
         this.arrays.getIndex(this.stack, this.audio, this.program, length)
         continue
