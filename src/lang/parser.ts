@@ -158,26 +158,42 @@ class Parser {
 
   private tryParseDestructurePattern(): DestructurePattern | null {
     const start = this.cur()
+    const save = this.i
+
     if (this.match('l_brace')) {
       const keys: string[] = []
       while (!this.at('eof') && !this.at('r_brace')) {
-        const id = this.expect('identifier', 'Expected identifier in object destructuring')
-        if (id.kind === 'identifier') keys.push(id.lexeme)
+        if (!this.at('identifier')) {
+          this.i = save
+          return null
+        }
+        keys.push(this.next().lexeme)
         if (!this.match('comma')) break
       }
-      this.expect('r_brace', 'Expected \'}\'')
+      if (!this.match('r_brace')) {
+        this.i = save
+        return null
+      }
       return { kind: 'obj', keys, loc: locFrom(start, this.prev()) }
     }
+
     if (this.match('l_bracket')) {
       const items: string[] = []
       while (!this.at('eof') && !this.at('r_bracket')) {
-        const id = this.expect('identifier', 'Expected identifier in array destructuring')
-        if (id.kind === 'identifier') items.push(id.lexeme)
+        if (!this.at('identifier')) {
+          this.i = save
+          return null
+        }
+        items.push(this.next().lexeme)
         if (!this.match('comma')) break
       }
-      this.expect('r_bracket', 'Expected \']\'')
+      if (!this.match('r_bracket')) {
+        this.i = save
+        return null
+      }
       return { kind: 'arr', items, loc: locFrom(start, this.prev()) }
     }
+
     return null
   }
 
@@ -613,6 +629,7 @@ class Parser {
         expr = { kind: 'member', object: expr, prop, computed: false, loc: locFrom(expr.loc, id) }
         continue
       }
+      if (expr.kind === 'string' && this.at('l_bracket')) break
       if (this.match('l_bracket')) {
         const index = this.parseExpr()
         const end = this.expect('r_bracket', 'Expected \']\'')
