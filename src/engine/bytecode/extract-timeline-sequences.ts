@@ -1,5 +1,5 @@
 import type { Loc, Program } from '../../lang/ast.ts'
-import { buildLineStarts } from '../editor-spans.ts'
+import { buildLineStarts } from '../ui/editor-spans.ts'
 import { locToIndex } from './helpers.ts'
 import {
   type TimelineSequenceDef,

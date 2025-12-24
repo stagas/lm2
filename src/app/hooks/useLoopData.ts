@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LoopData } from '../../../deno/types.ts'
-import type { Loop } from '../../engine/loop.ts'
+import type { Loop } from '../../engine/ui/loop.ts'
 import { useAppStore } from '../store.ts'
 
 export function useLoopData(loopId: string | null, currentLoop: Loop | undefined) {

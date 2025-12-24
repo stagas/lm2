@@ -1,4 +1,4 @@
-import { EngineUI } from '../engine/ui.tsx'
+import { EngineUI } from '../engine/ui/ui.tsx'
 
 export function App() {
   return (

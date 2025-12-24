@@ -1,6 +1,6 @@
 import { CodeFile, type CodeFileState, type InputState } from 'mini-code'
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
 import type { LoopData, SessionData } from '../../deno/types.ts'
 import { API } from './api.ts'
 
@@ -23,8 +23,10 @@ const shouldPersistBuffer = (id: string, snapshot: CodeFileState, base: string) 
 interface AppState {
   api: API
   sessionState: 'signedOut' | 'signedIn'
+  sessionFetchState: 'idle' | 'loading' | 'done'
   sessionData: SessionData | null
   setSessionData: (data: SessionData | null) => void
+  setSessionFetchState: (state: 'idle' | 'loading' | 'done') => void
   hasHydrated: boolean
   setHasHydrated: (hasHydrated: boolean) => void
   serverLoopsUserId: string | null
@@ -98,6 +100,7 @@ export const useAppStore = create<AppState>()(
         return res
       }),
       sessionState: 'signedOut',
+      sessionFetchState: 'idle',
       sessionData: null,
       hasHydrated: false,
       setHasHydrated: hasHydrated => set({ hasHydrated }),
@@ -143,6 +146,10 @@ export const useAppStore = create<AppState>()(
             get().setLoopBase(loop.id, loop.code, loop.timestamp)
           }
         }
+      },
+
+      setSessionFetchState: sessionFetchState => {
+        set({ sessionFetchState })
       },
 
       upsertServerLoopCache: loop => {
@@ -479,9 +486,9 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'app',
-      storage: createJSONStorage(() => localStorage),
       partialize: state => ({
         sessionState: state.sessionState,
+        // sessionFetchState is runtime-only
         sessionData: state.sessionData,
         // hasHydrated is runtime-only
         serverLoopsUserId: state.serverLoopsUserId,
@@ -497,130 +504,7 @@ export const useAppStore = create<AppState>()(
         _state?.setHasHydrated?.(true)
       },
       migrate: (persisted, version) => {
-        if (version === 9) {
-          const prev = persisted as any
-          const sessionData = prev?.sessionData ?? null
-          return {
-            ...prev,
-            sessionState: sessionData ? 'signedIn' : 'signedOut',
-          }
-        }
-        if (version === 8) {
-          const prev = persisted as any
-          return {
-            ...prev,
-            sessionData: null,
-          }
-        }
-        if (version === 7) {
-          const prev = persisted as any
-          return {
-            ...prev,
-            serverLoopsUserId: null,
-            serverLoopsCache: [],
-          }
-        }
-        if (version === 0 || version === 1) {
-          const prev = persisted as any
-          const nextBases: Record<string, { code: string }> = {}
-          const bases = prev?.bases
-          if (bases && typeof bases === 'object') {
-            for (const [id, value] of Object.entries(bases)) {
-              if (typeof value === 'string') {
-                if (value.length > 0) nextBases[id] = { code: value }
-              }
-              else if (value && typeof value === 'object' && typeof (value as any).code === 'string') {
-                const code = (value as any).code as string
-                if (code.length > 0) nextBases[id] = { code }
-              }
-            }
-          }
-          return {
-            ...prev,
-            bases: nextBases,
-            dirtyById: {},
-            localLoops: [],
-            selectedLoopId: null,
-          }
-        }
-        if (version === 2) {
-          const prev = persisted as any
-          return {
-            ...prev,
-            dirtyById: {},
-            localLoops: [],
-            selectedLoopId: null,
-          }
-        }
-        if (version === 3) {
-          const prev = persisted as any
-          return {
-            ...prev,
-            dirtyById: {},
-            selectedLoopId: null,
-          }
-        }
-        if (version === 4) {
-          const prev = persisted as any
-          const buffers = prev?.buffers && typeof prev.buffers === 'object' ? prev.buffers as Record<string, any> : {}
-          const bases = prev?.bases && typeof prev.bases === 'object' ? prev.bases as Record<string, any> : {}
-
-          const localLoops = Array.isArray(prev?.localLoops)
-            ? (prev.localLoops as any[])
-              .filter(l => l && typeof l === 'object' && typeof l.id === 'string' && (l as any).id.startsWith('local:'))
-            : []
-
-          const selectedLoopId = typeof prev?.selectedLoopId === 'string' ? prev.selectedLoopId : null
-
-          return {
-            ...prev,
-            buffers,
-            bases,
-            dirtyById: {},
-            localLoops,
-            selectedLoopId,
-          }
-        }
-        if (version === 5) {
-          const prev = persisted as any
-          const buffers = prev?.buffers && typeof prev.buffers === 'object' ? prev.buffers as Record<string, any> : {}
-          const bases = prev?.bases && typeof prev.bases === 'object' ? prev.bases as Record<string, any> : {}
-          const nextBuffers: Record<string, any> = {}
-          for (const [id, buf] of Object.entries(buffers)) {
-            const base = bases[id]?.code
-            if (typeof base === 'string' && buf && typeof buf === 'object' && typeof (buf as any).value === 'string') {
-              const value = (buf as any).value as string
-              if (value === base && (!isLocalId(id) || value.length === 0)) continue
-            }
-            nextBuffers[id] = buf
-          }
-          return {
-            ...prev,
-            buffers: nextBuffers,
-            bases,
-            dirtyById: {},
-          }
-        }
-        if (version === 6) {
-          const prev = persisted as any
-          const buffers = prev?.buffers && typeof prev.buffers === 'object' ? prev.buffers as Record<string, any> : {}
-          const bases = prev?.bases && typeof prev.bases === 'object' ? prev.bases as Record<string, any> : {}
-          const dirtyById: Record<string, boolean> = {}
-          for (const [id, buf] of Object.entries(buffers)) {
-            const base = bases[id]?.code
-            const value = buf && typeof buf === 'object' ? (buf as any).value : undefined
-            if (typeof value !== 'string') continue
-            const dirty = typeof base === 'string' ? value !== base : value.length > 0
-            if (dirty) dirtyById[id] = true
-          }
-          return {
-            ...prev,
-            buffers,
-            bases,
-            dirtyById,
-          }
-        }
-        return persisted as any
+        return persisted
       },
     },
   ),
