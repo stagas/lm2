@@ -8,6 +8,7 @@ export const builtinSyms: Record<string, number> = {
   mini: VmSym.Mini,
   analyser: VmSym.Analyser,
   t: VmSym.T,
+  co: VmSym.Co,
   play: VmSym.Play,
   playPick: VmSym.PlayPick,
   timeline: VmSym.Timeline,
@@ -15,6 +16,13 @@ export const builtinSyms: Record<string, number> = {
   slicer: VmSym.Slicer,
   every: VmSym.Every,
   at: VmSym.At,
+  note: VmSym.Note,
+  degree: VmSym.Degree,
+  // Runtime directive globals (stable ids so VM can provide defaults)
+  tune: VmSym.Tune,
+  octave: VmSym.Octave,
+  transpose: VmSym.Transpose,
+  scale: VmSym.Scale,
   // Named args for adsr()
   attack: VmSym.Attack,
   decay: VmSym.Decay,

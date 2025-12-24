@@ -86,6 +86,8 @@ export enum VmBuiltin {
   Slicer = VmSym.Slicer,
   Every = VmSym.Every,
   At = VmSym.At,
+  Note = VmSym.Note,
+  Degree = VmSym.Degree,
 }
 
 export const VM_FUNC_HEADER: i32 = -2

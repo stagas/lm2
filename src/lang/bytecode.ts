@@ -131,6 +131,7 @@ class Compiler {
   private pipe: string[] = []
   private labelId = 0
   private callTempId = 0
+  private forTempId = 0
 
   constructor(private readonly src: string) {}
 
@@ -276,6 +277,9 @@ class Compiler {
   }
 
   private compileForStmt(stmt: ForStmt): void {
+    // Loops introduce a scope (loop head bindings shouldn't leak).
+    this.emit({ op: 'ENTER_SCOPE' })
+
     if (stmt.head.kind === 'c_style') {
       if (stmt.head.init) {
         this.compileExpr(stmt.head.init)
@@ -301,12 +305,70 @@ class Compiler {
         }
         this.emit({ op: 'JUMP', to: start })
       }
+      this.emit({ op: 'EXIT_SCOPE' })
       return
     }
 
+    const id = this.forTempId++
+    const iterTemp = `$for#${id}#iter`
+    const indexTemp = `$for#${id}#i`
+    const lenTemp = `$for#${id}#len`
+
+    // iterable
     this.compileExpr(stmt.head.iterable)
+    this.emit({ op: 'STORE', name: this.nameConst(iterTemp) })
     this.emit({ op: 'POP' })
+
+    // length (cache it once)
+    this.emit({ op: 'LOAD', name: this.nameConst(iterTemp) })
+    this.emit({ op: 'LEN' })
+    this.emit({ op: 'STORE', name: this.nameConst(lenTemp) })
+    this.emit({ op: 'POP' })
+
+    if (stmt.head.length) {
+      this.emit({ op: 'LOAD', name: this.nameConst(lenTemp) })
+      this.emit({ op: 'STORE', name: this.nameConst(stmt.head.length) })
+      this.emit({ op: 'POP' })
+    }
+
+    // index = 0
+    this.emit({ op: 'PUSH_CONST', k: this.k(0) })
+    this.emit({ op: 'STORE', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'POP' })
+
+    const start = this.emit({ op: 'LABEL', id: this.labelId++ })
+
+    // while (index < len)
+    this.emit({ op: 'LOAD', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'LOAD', name: this.nameConst(lenTemp) })
+    this.emit({ op: 'BINARY', opName: '<' })
+    const jEnd = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
+
+    if (stmt.head.index) {
+      this.emit({ op: 'LOAD', name: this.nameConst(indexTemp) })
+      this.emit({ op: 'STORE', name: this.nameConst(stmt.head.index) })
+      this.emit({ op: 'POP' })
+    }
+
+    // value = iterable[index]
+    this.emit({ op: 'LOAD', name: this.nameConst(iterTemp) })
+    this.emit({ op: 'LOAD', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'GET_INDEX' })
+    this.emit({ op: 'STORE', name: this.nameConst(stmt.head.value) })
+    this.emit({ op: 'POP' })
+
     this.compileStmt(stmt.body, false)
+
+    // index++
+    this.emit({ op: 'LOAD', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'PUSH_CONST', k: this.k(1) })
+    this.emit({ op: 'BINARY', opName: '+' })
+    this.emit({ op: 'STORE', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'POP' })
+
+    this.emit({ op: 'JUMP', to: start })
+    this.patch(jEnd, this.chunk.code.length)
+    this.emit({ op: 'EXIT_SCOPE' })
   }
 
   private compileSwitchStmt(stmt: SwitchStmt): void {

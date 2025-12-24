@@ -115,9 +115,39 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.At)
       return
     }
+    if (sym === VmSym.Note) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Note)
+      return
+    }
+    if (sym === VmSym.Degree) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Degree)
+      return
+    }
     if (sym === VmSym.T) {
       const outIndex = audio.getTRamp(length, program)
       stack.push(VmTag.Audio, 0.0, outIndex)
+      return
+    }
+    if (sym === VmSym.Co) {
+      stack.push(VmTag.Num, bpm / 60)
+      return
+    }
+
+    // Runtime directive globals (defaults)
+    if (sym === VmSym.Tune) {
+      stack.push(VmTag.Num, 1.0)
+      return
+    }
+    if (sym === VmSym.Octave) {
+      stack.push(VmTag.Num, 0.0)
+      return
+    }
+    if (sym === VmSym.Transpose) {
+      stack.push(VmTag.Num, 0.0)
+      return
+    }
+    if (sym === VmSym.Scale) {
+      stack.push(VmTag.Num, 0.0)
       return
     }
 
@@ -153,4 +183,3 @@ export class VmEnv {
     this.scopeDepth = 0
   }
 }
-

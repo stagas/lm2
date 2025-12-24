@@ -31,6 +31,22 @@ export function useArrayAccessWidget({
     return m
   }, [arrayLiterals])
 
+  const pcToLocGroups = useMemo(() => {
+    const m = new Map<number, Array<{ loc: ArrayLiteralRef['items'][number]; idxs: number[] }>>()
+    for (const lit of arrayLiterals) {
+      const groups = new Map<string, { loc: ArrayLiteralRef['items'][number]; idxs: number[] }>()
+      for (let i = 0; i < lit.items.length; i++) {
+        const loc = lit.items[i]!
+        const k = `${loc.line}:${loc.column}:${loc.length}`
+        const g = groups.get(k)
+        if (g) g.idxs.push(i)
+        else groups.set(k, { loc, idxs: [i] })
+      }
+      m.set(lit.pc, Array.from(groups.values()))
+    }
+    return m
+  }, [arrayLiterals])
+
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     const history = program1?.program.arrayAccessHistory
@@ -102,12 +118,12 @@ export function useArrayAccessWidget({
     const out: EditorWidget[] = []
 
     for (const lit of arrayLiterals) {
-      const items = lit.items
-      for (let i = 0; i < items.length; i++) {
-        const loc = items[i]!
+      const groups = pcToLocGroups.get(lit.pc) ?? []
+      for (const g of groups) {
+        const loc = g.loc
         const absStart = (lineStarts[loc.line - 1] ?? 0) + (loc.column - 1)
         const absEnd = absStart + Math.max(1, loc.length)
-        const key = lit.pc + ':' + i
+        const keys = g.idxs.map(i => lit.pc + ':' + i)
 
         for (const span of spanToWidgetSpans(lineStarts, absStart, absEnd)) {
           out.push({
@@ -116,7 +132,12 @@ export function useArrayAccessWidget({
             column: span.column,
             length: span.length,
             render: (ctx, x, y, w, h) => {
-              const a = frameRef.current.get(key) ?? 0
+              let a = 0
+              const frame = frameRef.current
+              for (let ki = 0; ki < keys.length; ki++) {
+                const v = frame.get(keys[ki]!) ?? 0
+                if (v > a) a = v
+              }
               if (a <= 0) return
               ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
               ctx.fillRect(x - 2, y - 2, w + 4, h - 1)

@@ -12,6 +12,20 @@ import { VmStack } from '../vm-stack'
 
 // @ts-ignore
 @inline
+function pow2(x: f64): f64 {
+  return Math.pow(2.0, x)
+}
+
+// @ts-ignore
+@inline
+function numFromTag(tag: VmTag, num: f64): f64 {
+  if (tag === VmTag.Bool) return num != 0.0 ? 1.0 : 0.0
+  if (tag === VmTag.Num) return num
+  return 0.0
+}
+
+// @ts-ignore
+@inline
 export function playMini(
   arrayIndex: i32,
   cbAux: i32,
@@ -54,6 +68,61 @@ export function playMini(
   }
 
   mini.process(0, length)
+
+  // Apply runtime directive globals to pitch output (works for numeric and audio-rate directives).
+  const tuneTag = dsp.tuneTag as VmTag
+  const tuneNum = dsp.tuneNum
+  const tuneAux = dsp.tuneAux
+  const octaveTag = dsp.octaveTag as VmTag
+  const octaveNum = dsp.octaveNum
+  const octaveAux = dsp.octaveAux
+  const transposeTag = dsp.transposeTag as VmTag
+  const transposeNum = dsp.transposeNum
+  const transposeAux = dsp.transposeAux
+
+  const tuneAudio = tuneTag === VmTag.Audio || (tuneTag === VmTag.Num && tuneAux < 0)
+  const octaveAudio = octaveTag === VmTag.Audio || (octaveTag === VmTag.Num && octaveAux < 0)
+  const transposeAudio = transposeTag === VmTag.Audio || (transposeTag === VmTag.Num && transposeAux < 0)
+  const audioNeeded = tuneAudio || octaveAudio || transposeAudio
+
+  const tune$ = tuneAudio ? audio.toAudioPtr(tuneTag, tuneNum, tuneAux, length, program) : 0
+  const octave$ = octaveAudio ? audio.toAudioPtr(octaveTag, octaveNum, octaveAux, length, program) : 0
+  const transpose$ = transposeAudio ? audio.toAudioPtr(transposeTag, transposeNum, transposeAux, length, program) : 0
+
+  const tune0 = tuneAudio ? 0.0 : numFromTag(tuneTag, tuneNum)
+  const octave0 = octaveAudio ? 0.0 : numFromTag(octaveTag, octaveNum)
+  const transpose0 = transposeAudio ? 0.0 : numFromTag(transposeTag, transposeNum)
+
+  if (!audioNeeded) {
+    const semis = transpose0 + octave0 * 12.0
+    const mul = tune0 * pow2(semis / 12.0)
+    if (mul !== 1.0) {
+      for (let v = 0; v < SEQ_VOICES; v++) {
+        const val$ = program.getOutBuffer(valOuts[v])
+        let p$ = val$
+        for (let i = 0; i < length; i++) {
+          store<f32>(p$, (load<f32>(p$) as f64 * mul) as f32)
+          p$ += 4
+        }
+      }
+    }
+  }
+  else {
+    for (let v = 0; v < SEQ_VOICES; v++) {
+      const val$ = program.getOutBuffer(valOuts[v])
+      let p$ = val$
+      for (let i = 0; i < length; i++) {
+        const baseHz = load<f32>(p$) as f64
+        const tune = tuneAudio ? (load<f32>(tune$ + (i << 2)) as f64) : tune0
+        const oct = octaveAudio ? (load<f32>(octave$ + (i << 2)) as f64) : octave0
+        const tr = transposeAudio ? (load<f32>(transpose$ + (i << 2)) as f64) : transpose0
+        const semis = tr + oct * 12.0
+        const mul = tune * pow2(semis / 12.0)
+        store<f32>(p$, (baseHz * mul) as f32)
+        p$ += 4
+      }
+    }
+  }
 
   const mixOut = audio.allocOut(program)
   const mixOut$ = program.getOutBuffer(mixOut)
