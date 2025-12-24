@@ -1,3 +1,4 @@
+import { parseChordSuffix, romanToDegree } from './chord-parser.ts'
 import { findScaleIndex, SCALE_KEY_TO_INDEX } from './scales.ts'
 import { midiToFrequency, noteNameToMidi } from './util.ts'
 
@@ -349,18 +350,6 @@ function parseValues(valueText: string): number[] {
 
 function isNoteNameText(text: string): boolean {
   return /^([a-gA-G][#b]?)(-?\d+)$/.test(text)
-}
-
-function romanToDegree(text: string): number | null {
-  const t = text.toLowerCase()
-  if (t === 'i') return 1
-  if (t === 'ii') return 2
-  if (t === 'iii') return 3
-  if (t === 'iv') return 4
-  if (t === 'v') return 5
-  if (t === 'vi') return 6
-  if (t === 'vii') return 7
-  return null
 }
 
 function makeSource(input: string, start: number, end: number): NodeSource {
@@ -786,21 +775,34 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
       valueText = 'c4'
     }
 
-    const romanDegree = romanToDegree(valueText)
-    if (romanDegree !== null) {
-      const base = romanDegree
-      const values = [-base, -(base + 2), -(base + 4)]
-      const modifiers = parseModifiers(mods)
-      nodes.push({
-        type: 'event',
-        angle: false,
-        parallel: false,
-        values,
-        children: [],
-        modifiers,
-        source: makeSource(input, token.start, token.end),
-      })
-      continue
+    // Try parsing as roman numeral chord with suffix
+    const chordMatch = valueText.match(/^([ivxlcdm]+)(.*)$/i)
+    if (chordMatch) {
+      const roman = chordMatch[1]
+      const suffix = chordMatch[2] ?? ''
+      const base = romanToDegree(roman)
+      if (base !== null) {
+        const tones = parseChordSuffix(suffix)
+        // Convert ChordTone[] to negative degree values (for mini's degree encoding)
+        // Each tone has {degree: offset, semitoneAdjust}
+        // In mini, negative values mean degrees, and we encode semitone adjustments as fractional parts
+        // For now, encode as: -(scaleDegree + semitoneAdjust/100)
+        const values = tones.map(tone => {
+          const scaleDegree = base + tone.degree
+          return -(scaleDegree + tone.semitoneAdjust / 100)
+        })
+        const modifiers = parseModifiers(mods)
+        nodes.push({
+          type: 'event',
+          angle: false,
+          parallel: false,
+          values,
+          children: [],
+          modifiers,
+          source: makeSource(input, token.start, token.end),
+        })
+        continue
+      }
     }
 
     // Support comma-separated numeric degrees like "1,3,5"

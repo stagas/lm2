@@ -19,6 +19,7 @@ import { type LangError, lineText } from '../../lang/errors.ts'
 import { lex } from '../../lang/lexer.ts'
 import { parse } from '../../lang/parser.ts'
 import type { LexError, Token } from '../../lang/token.ts'
+import { parseChordSuffix, romanToDegree } from '../../mini/chord-parser.ts'
 import { findScaleIndex } from '../../mini/scales.ts'
 import { builtinSyms } from './builtin-syms.ts'
 import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
@@ -97,18 +98,6 @@ function noteIdentToMidi(name: string): number | null {
   if (acc === '#') midi += 1
   else if (acc === 'b') midi -= 1
   return midi
-}
-
-function romanToDegree(text: string): number | null {
-  const t = text.toLowerCase()
-  if (t === 'i') return 1
-  if (t === 'ii') return 2
-  if (t === 'iii') return 3
-  if (t === 'iv') return 4
-  if (t === 'v') return 5
-  if (t === 'vi') return 6
-  if (t === 'vii') return 7
-  return null
 }
 
 function checkUndefinedCallErrors(src: string, program: Program): LangError[] {
@@ -470,21 +459,43 @@ export function encodeLangToVmOps(
           }
         }
 
-        const base = romanToDegree(raw)
-        if (base !== null) {
-          const numLoc = (dx: number): Loc =>
-            dx === 0 ? expr.loc : { ...expr.loc, line: 0, column: expr.loc.column + dx }
-          const mk = (n: number, dx: number) => ({
-            kind: 'call',
-            callee: { kind: 'ident', name: 'degree', loc: expr.loc },
-            args: [{
-              kind: 'pos',
-              value: { kind: 'number', value: n, raw: String(n), loc: numLoc(dx) },
-              loc: expr.loc,
-            }],
-            loc: expr.loc,
-          })
-          return { kind: 'array', items: [mk(base, 0), mk(base + 2, 1), mk(base + 4, 2)], loc: expr.loc }
+        const chordMatch = raw.match(/^([ivxlcdm]+)(.*)$/i)
+        if (chordMatch) {
+          const roman = chordMatch[1]
+          const suffix = chordMatch[2] ?? ''
+          const base = romanToDegree(roman)
+          if (base !== null) {
+            const tones = parseChordSuffix(suffix)
+            const numLoc = (dx: number): Loc =>
+              dx === 0 ? expr.loc : { ...expr.loc, line: 0, column: expr.loc.column + dx }
+
+            const items = tones.map((tone, idx) => {
+              const scaleDegree = base + tone.degree
+              const args: any[] = [{
+                kind: 'pos',
+                value: { kind: 'number', value: scaleDegree, raw: String(scaleDegree), loc: numLoc(idx) },
+                loc: expr.loc,
+              }]
+
+              if (tone.semitoneAdjust !== 0) {
+                args.push({
+                  kind: 'pos',
+                  value: { kind: 'number', value: tone.semitoneAdjust, raw: String(tone.semitoneAdjust),
+                    loc: numLoc(idx) },
+                  loc: expr.loc,
+                })
+              }
+
+              return {
+                kind: 'call',
+                callee: { kind: 'ident', name: 'degree', loc: expr.loc },
+                args,
+                loc: expr.loc,
+              }
+            })
+
+            return { kind: 'array', items, loc: expr.loc }
+          }
         }
       }
 
