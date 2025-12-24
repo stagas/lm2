@@ -14,7 +14,7 @@ export const availableFonts = [
 export type FontName = (typeof availableFonts)[number]
 
 const getFontString = (fontName: string): string => {
-  return `12pt "${fontName}", monospace`
+  return `11.5pt "${fontName}", monospace`
 }
 
 const createBaseTheme = (colors: any, rainbowColors: string[], errorColor: string, background: string,

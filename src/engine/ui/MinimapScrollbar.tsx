@@ -236,12 +236,12 @@ export function MinimapScrollbar({
         : barIndex % MINIMAP_MAJOR_STEP === 0
       // Draw a small phrase number above the major marker
       ctx.fillStyle = isMajor ? '#fff' : 'rgba(255, 255, 255, 0.35)'
-      ctx.font = isMajor ? 'bold 6pt Inter' : '6pt Inter'
+      ctx.font = isMajor ? 'bold 6pt Outfit' : '6pt Outfit'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
       const phraseNumber = String(zeroBased ? barIndex : barIndex + 1)
       // place label a few pixels from the top-left of the marker
-      ctx.fillText(phraseNumber, x + 2.25, 10)
+      ctx.fillText(phraseNumber, x + 5, 10)
       // if (barIndex >= barCount) continue
       ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.15)'
       ctx.lineWidth = 1
@@ -381,8 +381,8 @@ export function MinimapScrollbar({
     const currentRatio = currentSampleRef.current / totalSamples
     const playheadX = currentRatio * width + 1
 
-    ctx.strokeStyle = '#ea580c'
-    ctx.lineWidth = 2.5
+    ctx.strokeStyle = 'rgba(255, 220, 0, 0.9)'
+    ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(playheadX, 0)
     ctx.lineTo(playheadX, height)
@@ -418,8 +418,8 @@ export function MinimapScrollbar({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const pixelRatio = window.devicePixelRatio || 1
     const observer = new ResizeObserver(() => {
+      const pixelRatio = window.devicePixelRatio || 1
       const width = canvas.clientWidth
       const height = canvas.clientHeight
       if (width > 0 && height > 0) {

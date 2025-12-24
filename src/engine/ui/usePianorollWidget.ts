@@ -312,7 +312,7 @@ export function usePianorollWidget({
 
     // Key labels on left
     if (keyHeight > 6) {
-      c.font = '6pt Inter'
+      c.font = '6pt Outfit'
       c.textAlign = 'center'
       c.textBaseline = 'middle'
       for (let midi = displayMinMidi; midi <= displayMaxMidi; midi += 1) {
@@ -498,7 +498,7 @@ export function usePianorollWidget({
     c.lineTo(currentTimeX, h)
     c.stroke()
 
-    // c.font = '6pt Inter'
+    // c.font = '6pt Outfit'
     // c.textAlign = 'right'
     // c.textBaseline = 'middle'
     // for (const n of st.notes) {

@@ -38,7 +38,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className={`z-10 relative h-full min-w-0 ${sidebarOpen ? 'w-[40ch]' : 'w-0'}`}>
+    <div className={`font-light z-10 relative h-full min-w-0 ${sidebarOpen ? 'w-[40ch]' : 'w-0'}`}>
       {sidebarOpen && (
         <div className="flex flex-col w-full h-full">
           <div className="h-[40px] bg-black flex shrink-0">
