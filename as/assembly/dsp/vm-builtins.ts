@@ -88,6 +88,13 @@ export class VmBuiltins {
     const calleeTag = stack.tag[callee] as VmTag
     const calleeAux = stack.aux[callee]
 
+    if (calleeTag === VmTag.Func) {
+      // User-defined function values.
+      // Named args are currently ignored (still popped above to keep stack balanced).
+      dsp.vmInvokeFunc(calleeAux, posCount, posTags, posNums, posAux, length, left$, right$)
+      return
+    }
+
     if (calleeTag !== VmTag.Builtin) {
       stack.push(VmTag.Undef)
       return

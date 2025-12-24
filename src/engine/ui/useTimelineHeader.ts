@@ -284,7 +284,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
           c.stroke()
 
           c.fillStyle = isPhraseStart ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.75)'
-          c.font = isPhraseStart ? 'bold 9pt Inter' : 'normal 8pt Inter'
+          c.font = isPhraseStart ? 'bold 9pt Outfit' : 'normal 8pt Outfit'
           c.textAlign = 'left'
           c.textBaseline = 'middle'
           c.fillText(String(uiZeroBased ? barNumber - 1 : barNumber), barX + 4, y + 10)
@@ -294,7 +294,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
           const mins = Math.floor(t / 60)
           const secs = Math.floor(t % 60)
           const timeLabel = mins + ':' + String(secs).padStart(2, '0')
-          c.font = '7pt Inter'
+          c.font = '7pt Outfit'
           c.textBaseline = 'top'
           c.fillStyle = 'rgba(200,200,200,0.6)'
           c.fillText(timeLabel, barX + 4, y + 18)
@@ -306,7 +306,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
           const beatLengthSeconds = (60 * 4) / bpm
           c.textAlign = 'left'
           c.textBaseline = 'bottom'
-          c.font = '800 7.5pt Inter'
+          c.font = '800 7.5pt Outfit'
           for (let i = 0; i < labels.length; i++) {
             const label = labels[i]
             const labelSeconds = (label.bar - 1) * beatLengthSeconds
