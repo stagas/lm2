@@ -55,7 +55,7 @@ export function SidebarSettings(
         )
         : (
           <div className="px-3 py-2 border-b border-neutral-800 flex items-center justify-between gap-2">
-            <div className="text-xs text-neutral-400 truncate">
+            <div className="text-xs text-neutral-100 font-semibold truncate">
               {sessionData.user.name}
             </div>
             <button
