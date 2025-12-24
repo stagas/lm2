@@ -12,6 +12,11 @@ export const ARRAY_HISTORY_SIZE = 128 // space for history metadata in array hea
 export const ARRAY_HISTORY_ENTRY_SIZE = 6 // opIndex, voiceIndex, value, velocity, startSample, endSample
 export const ARRAY_HEADER_SIZE = 4 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE // length, historyWritePos, historySize, version, [opIndex,voiceIndex,value,velocity,startSample,endSample]*historySize
 
+// Best-effort branch marker history for UI widgets.
+// entry: ifPc, branchPc
+export const BRANCH_HISTORY_SIZE = 256
+export const BRANCH_HISTORY_ENTRY_SIZE = 2
+
 // Best-effort sample needle history for UI widgets.
 // entry: sampleIndex, posFrames, playing, sampleCountMod
 export const SAMPLE_NEEDLE_HISTORY_SIZE = 512

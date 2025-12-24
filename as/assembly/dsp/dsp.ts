@@ -1,3 +1,4 @@
+import { BRANCH_HISTORY_ENTRY_SIZE, BRANCH_HISTORY_SIZE } from '../constants'
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from '../globals'
 import { Program } from '../program'
 import { ProgramData } from '../program-data'
@@ -27,7 +28,9 @@ export class Dsp {
   private ifEndPc: StaticArray<i32> = new StaticArray<i32>(64)
   private ifElsePc: StaticArray<i32> = new StaticArray<i32>(64)
   private ifCondAux: StaticArray<i32> = new StaticArray<i32>(64)
+  private ifCondPc: StaticArray<i32> = new StaticArray<i32>(64)
   private ifBaseSp: StaticArray<i32> = new StaticArray<i32>(64)
+  private ifThenBranchPc: StaticArray<i32> = new StaticArray<i32>(64)
   private ifThenTag: StaticArray<i32> = new StaticArray<i32>(64)
   private ifThenNum: StaticArray<f64> = new StaticArray<f64>(64)
   private ifThenAux: StaticArray<i32> = new StaticArray<i32>(64)
@@ -35,6 +38,19 @@ export class Dsp {
 
   reset(): void {
     this.program.reset()
+  }
+
+  @inline
+  private recordBranch(ifPc: i32, branchPc: i32): void {
+    if (ifPc <= 0 || branchPc <= 0) return
+    // Best-effort ring buffer for UI widgets (no atomics needed).
+    const hist: StaticArray<f32> = this.program.branchHistory
+    const writePos: i32 = i32(hist[0])
+    const slot: i32 = writePos % BRANCH_HISTORY_SIZE
+    const base: i32 = 1 + slot * BRANCH_HISTORY_ENTRY_SIZE
+    hist[base] = f32(ifPc)
+    hist[base + 1] = f32(branchPc)
+    hist[0] = f32((writePos + 1) & 0xfffff)
   }
 
   private vmExec(pcStart: i32, pcEnd: i32, length: i32, left$: usize, right$: usize, stopOnReturn: bool): i32 {
@@ -52,7 +68,9 @@ export class Dsp {
     let ifDepth: i32 = 0
 
     while (pc >= 0 && pc < pcEnd) {
-      if (ifEnabled && ifDepth > 0 && pc === this.ifEndPc[ifBase + ifDepth - 1]) {
+      // Nested audio-conditionals can share the same endPc (common with nested ternaries).
+      // Merge all frames ending at this pc before executing the next instruction.
+      while (ifEnabled && ifDepth > 0 && pc === this.ifEndPc[ifBase + ifDepth - 1]) {
         const f = ifDepth - 1
         const frame = ifBase + f
         const condOutIndex = this.ifCondAux[frame]
@@ -73,6 +91,8 @@ export class Dsp {
         const elseSignal = elseTag === VmTag.Audio || elseTag === VmTag.Num || elseTag === VmTag.Bool
 
         if (thenSignal && elseSignal) {
+          const c0 = load<f32>(cond$) != (0.0 as f32)
+          this.recordBranch(this.ifCondPc[frame], c0 ? this.ifThenBranchPc[frame] : this.ifElsePc[frame])
           const then$ = this.audio.toAudioPtr(thenTag, thenNum, thenAux, length, this.program)
           const else$ = this.audio.toAudioPtr(elseTag, elseNum, elseAux, length, this.program)
           const outIndex = this.audio.allocOut(this.program)
@@ -83,6 +103,7 @@ export class Dsp {
         }
         else {
           const c0 = load<f32>(cond$) != (0.0 as f32)
+          this.recordBranch(this.ifCondPc[frame], c0 ? this.ifThenBranchPc[frame] : this.ifElsePc[frame])
           this.stack.sp = baseSp
           if (c0) this.stack.push(thenTag, thenNum, thenAux)
           else this.stack.push(elseTag, elseNum, elseAux)
@@ -103,6 +124,7 @@ export class Dsp {
         break
       }
       if (op === VmOp.Nop) continue
+      if (op === VmOp.Branch) continue
 
       if (op === VmOp.PushNum) {
         const k = ops[pc++]
@@ -236,6 +258,8 @@ export class Dsp {
       }
       if (op === VmOp.JumpIfFalse) {
         const to = ops[pc++]
+        const ifPc = pc - 2
+        const thenBranchPc = pc
         const idx = this.stack.pop()
         const tag = this.stack.tag[idx] as VmTag
         const num = this.stack.num[idx]
@@ -250,7 +274,9 @@ export class Dsp {
             const frame = ifBase + ifDepth
             this.ifEndPc[frame] = ops[to - 1]
             this.ifElsePc[frame] = to
+            this.ifThenBranchPc[frame] = thenBranchPc
             this.ifCondAux[frame] = this.stack.aux[idx]
+            this.ifCondPc[frame] = ifPc
             this.ifBaseSp[frame] = this.stack.sp
             this.ifThenHas[frame] = 0
             ifDepth++
@@ -258,11 +284,15 @@ export class Dsp {
           else {
             // Fallback: use sample-0 truthiness for control flow.
             const cond$ = this.program.getOutBuffer(this.stack.aux[idx])
-            if (load<f32>(cond$) == (0.0 as f32)) pc = to
+            const c0 = load<f32>(cond$) != (0.0 as f32)
+            this.recordBranch(ifPc, c0 ? thenBranchPc : to)
+            if (!c0) pc = to
           }
         }
         else {
-          if (!this.stack.truthy(tag, num)) pc = to
+          const c0 = this.stack.truthy(tag, num)
+          this.recordBranch(ifPc, c0 ? thenBranchPc : to)
+          if (!c0) pc = to
         }
         continue
       }

@@ -2,6 +2,8 @@ import { AnalyserOutsPool } from './analyser-outs-pool'
 import {
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
+  BRANCH_HISTORY_ENTRY_SIZE,
+  BRANCH_HISTORY_SIZE,
   CALLBACK_SCOPE_MAX_BINDINGS,
   CALLBACK_SCOPE_MAX_DEPTH,
   CHUNK_SIZE,
@@ -23,6 +25,7 @@ export class Program {
   histories: StaticArray<usize> = new StaticArray<usize>(HISTORIES_COUNT)
   analyserOutsPool: AnalyserOutsPool = new AnalyserOutsPool()
   arrayAccessHistory: StaticArray<f32> = new StaticArray<f32>(1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE)
+  branchHistory: StaticArray<f32> = new StaticArray<f32>(1 + BRANCH_HISTORY_SIZE * BRANCH_HISTORY_ENTRY_SIZE)
   sampleNeedleHistory: StaticArray<f32> = new StaticArray<f32>(
     SAMPLE_NEEDLE_DATA_OFFSET + SAMPLE_NEEDLE_HISTORY_SIZE * SAMPLE_NEEDLE_ENTRY_SIZE,
   )

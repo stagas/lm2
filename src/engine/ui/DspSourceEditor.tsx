@@ -28,6 +28,7 @@ import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
+import { useBranchWidget } from './useBranchWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useLoopView } from './useLoopView.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
@@ -109,6 +110,7 @@ function DspSourceEditorReady(
     uiMiniSourceMaps,
     uiAnalyserRefs,
     uiArrayLiterals,
+    uiBranchMarks,
     uiNumberParams,
     uiSampleDefs,
     isProgramSwapPending,
@@ -199,6 +201,7 @@ function DspSourceEditorReady(
         miniSourceMaps: uiMiniSourceMaps,
         analyserRefs: uiAnalyserRefs,
         arrayLiterals: uiArrayLiterals,
+        branchMarks: uiBranchMarks,
         numberParams: uiNumberParams,
         sampleDefs: uiSampleDefs,
         errors: [],
@@ -214,6 +217,7 @@ function DspSourceEditorReady(
         miniSourceMaps: uiMiniSourceMaps,
         analyserRefs: uiAnalyserRefs,
         arrayLiterals: uiArrayLiterals,
+        branchMarks: uiBranchMarks,
         numberParams: uiNumberParams,
         sampleDefs: uiSampleDefs,
         errors: previewCompile.errors,
@@ -234,6 +238,7 @@ function DspSourceEditorReady(
       miniSourceMaps,
       analyserRefs: previewCompile.analyserRefs ?? [],
       arrayLiterals: previewCompile.arrayLiterals ?? [],
+      branchMarks: previewCompile.branchMarks ?? [],
       numberParams: previewCompile.numberParams ?? [],
       sampleDefs: previewCompile.sampleDefs ?? [],
       errors: [],
@@ -248,6 +253,7 @@ function DspSourceEditorReady(
     uiMiniSourceMaps,
     uiAnalyserRefs,
     uiArrayLiterals,
+    uiBranchMarks,
     uiNumberParams,
     uiSampleDefs,
   ])
@@ -293,6 +299,7 @@ function DspSourceEditorReady(
       miniSourceMaps,
       analyserRefs: result.analyserRefs ?? [],
       arrayLiterals: result.arrayLiterals ?? [],
+      branchMarks: result.branchMarks ?? [],
       numberParams: result.numberParams ?? [],
       sampleDefs: result.sampleDefs ?? [],
     })
@@ -408,6 +415,13 @@ function DspSourceEditorReady(
     arrayLiterals: widgetCompileState.arrayLiterals,
   })
 
+  const { widgets: branchWidgets, onBeforeDraw: onBeforeDrawBranch } = useBranchWidget({
+    program1: runtimeProgram,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets: showWidgets && isPlayingLoop,
+    branchMarks: widgetCompileState.branchMarks,
+  })
+
   const { widgets: sampleWidgets, onBeforeDraw: onBeforeDrawSample } = useSampleWidget({
     program1: runtimeProgram,
     audioContext,
@@ -432,6 +446,7 @@ function DspSourceEditorReady(
     onBeforeDrawTimelineSequence()
     onBeforeDrawAnalyser()
     onBeforeDrawArrayAccess()
+    onBeforeDrawBranch()
     onBeforeDrawSample()
   }, [
     onBeforeDraw,
@@ -440,6 +455,7 @@ function DspSourceEditorReady(
     onBeforeDrawTimelineSequence,
     onBeforeDrawAnalyser,
     onBeforeDrawArrayAccess,
+    onBeforeDrawBranch,
     onBeforeDrawSample,
   ])
 
@@ -453,10 +469,11 @@ function DspSourceEditorReady(
       ...pianorollWidgets,
       ...sequenceWidgets,
       ...arrayAccessWidgets,
+      ...branchWidgets,
       ...sliderWidgets,
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets, sliderWidgets, sampleWidgets, viewSampleCount])
+    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, viewSampleCount])
 
   const codeEditorKey = useMemo(() => {
     const codeFile = currentLoop?.codeFile

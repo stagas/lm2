@@ -21,6 +21,7 @@ export type ConstVal = number | string | boolean | null | undefined
 
 export type Instr =
   | { op: 'PUSH_CONST'; k: number; loc?: Loc }
+  | { op: 'BRANCH' }
   | { op: 'ENTER_SCOPE' }
   | { op: 'EXIT_SCOPE' }
   | { op: 'POP' }
@@ -56,6 +57,7 @@ export type Chunk = {
   funcs: FuncChunk[]
   code: Instr[]
   arrayLiterals: Array<{ ins: number; loc: Loc; items: Loc[] }>
+  branchMarks: Array<{ ins: number; loc: Loc }>
 }
 
 export type FuncChunk = {
@@ -82,6 +84,7 @@ export function disassemble(chunk: Chunk): string {
     const ins = chunk.code[i]!
     const head = `${pad(i)}  ${ins.op}`
     if (ins.op === 'PUSH_CONST') lines.push(`${head} ${ins.k} (${String(chunk.consts[ins.k])})`)
+    else if (ins.op === 'BRANCH') lines.push(head)
     else if (ins.op === 'LOAD') lines.push(`${head} ${ins.name} (${String(chunk.consts[ins.name])})`)
     else if (ins.op === 'STORE') lines.push(`${head} ${ins.name} (${String(chunk.consts[ins.name])})`)
     else if (ins.op === 'GET_PROP') lines.push(`${head} ${ins.key} (${String(chunk.consts[ins.key])})`)
@@ -121,7 +124,7 @@ export function disassemble(chunk: Chunk): string {
 }
 
 class Compiler {
-  readonly chunk: Chunk = { consts: [], funcs: [], code: [], arrayLiterals: [] }
+  readonly chunk: Chunk = { consts: [], funcs: [], code: [], arrayLiterals: [], branchMarks: [] }
   readonly errors: LangError[] = []
   private pipe: string[] = []
   private labelId = 0
@@ -149,6 +152,16 @@ class Compiler {
     const ins = this.chunk.code[at]
     if (!ins) return
     if (ins.op === 'JUMP' || ins.op === 'JUMP_IF_FALSE') ins.to = to
+  }
+
+  private locFrom(a: Loc, b: Loc): Loc {
+    const len = Math.max(1, (b.column + b.length) - a.column)
+    return { line: a.line, column: a.column, length: len }
+  }
+
+  private emitBranchMark(loc: Loc): void {
+    const ins = this.emit({ op: 'BRANCH' })
+    this.chunk.branchMarks.push({ ins, loc: { line: loc.line, column: loc.column, length: Math.max(1, loc.length) } })
   }
 
   private err(loc: { line: number; column: number; length: number }, message: string): void {
@@ -779,9 +792,19 @@ class Compiler {
   private compileIf(expr: IfExpr): void {
     this.compileExpr(expr.test)
     const jFalse = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
+
+    const thenLoc = expr.ifLoc ?? expr.questionLoc ?? expr.then.loc ?? expr.loc
+    this.emitBranchMark(thenLoc)
     this.compileIfBranch(expr.then)
     const jEnd = this.emit({ op: 'JUMP', to: -1 })
     this.patch(jFalse, this.chunk.code.length)
+
+    let elseLoc = expr.elseLoc ?? expr.colonLoc ?? expr.else.loc ?? expr.loc
+    if (expr.elseLoc && expr.else.kind === 'if') {
+      const elseIfLoc = expr.else.ifLoc
+      if (elseIfLoc) elseLoc = this.locFrom(expr.elseLoc, elseIfLoc)
+    }
+    this.emitBranchMark(elseLoc)
     this.compileIfBranch(expr.else)
     this.patch(jEnd, this.chunk.code.length)
   }

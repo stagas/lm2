@@ -7,6 +7,8 @@ import {
   ARRAY_HISTORY_SIZE,
   ARRAY_SIZE,
   ARRAYS_COUNT,
+  BRANCH_HISTORY_ENTRY_SIZE,
+  BRANCH_HISTORY_SIZE,
   CHUNK_SIZE,
   HISTORIES_COUNT,
   HISTORY_ENTRY_SIZE,
@@ -27,6 +29,7 @@ import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import {
   type AnalyserRef,
   type ArrayLiteralRef,
+  type BranchMarkRef,
   encodeLangToVmOps,
   type MiniSequenceRef,
   type NumberLiteralInfo,
@@ -52,6 +55,11 @@ export type VmHistory = {
 }
 
 export type VmArrayAccessHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
+export type VmBranchHistory = {
   writePos: number
   raw: Float32Array
 }
@@ -111,6 +119,7 @@ function buildProgram(
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   arrayLiterals: ArrayLiteralRef[]
+  branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
   numberLiterals: NumberLiteralInfo[]
   sampleDefs: SampleDef[]
@@ -118,7 +127,7 @@ function buildProgram(
   bars?: number
 } {
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
-    numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
+    branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
     })
@@ -134,6 +143,7 @@ function buildProgram(
     timelineLabels: timelineLabels ?? [],
     analyserRefs: analyserRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
+    branchMarks: branchMarks ?? [],
     numberParams: numberParams ?? [],
     numberLiterals: numberLiterals ?? [],
     sampleDefs: sampleDefs ?? [],
@@ -165,6 +175,7 @@ export type ProgramBuildResult = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   timelineSequences: TimelineSequenceDef[]
   arrayLiterals: ArrayLiteralRef[]
+  branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
   numberLiterals: NumberLiteralInfo[]
   sampleDefs: SampleDef[]
@@ -303,6 +314,15 @@ async function createProgram(
     raw: new Float32Array(wasmMemory.buffer, arrayAccessHistory$, 1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE),
   }
 
+  const branchHistory$ = program.branchHistory
+  const branchWritePos = new Float32Array(wasmMemory.buffer, branchHistory$, 1)
+  const branchHistory: VmBranchHistory = {
+    get writePos() {
+      return branchWritePos[0] || 0
+    },
+    raw: new Float32Array(wasmMemory.buffer, branchHistory$, 1 + BRANCH_HISTORY_SIZE * BRANCH_HISTORY_ENTRY_SIZE),
+  }
+
   const sampleNeedleHistory$ = program.sampleNeedleHistory
   const sampleNeedleWritePos = new Float32Array(
     wasmMemory.buffer,
@@ -340,6 +360,7 @@ async function createProgram(
     analyserOuts,
     histories,
     arrayAccessHistory,
+    branchHistory,
     sampleNeedleHistory,
     get data() {
       return programData
@@ -353,7 +374,7 @@ async function createProgram(
 
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
-          numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
+          branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -405,6 +426,7 @@ async function createProgram(
           miniSourceMaps,
           timelineSequences,
           arrayLiterals,
+          branchMarks,
           numberParams,
           numberLiterals,
           sampleDefs,
