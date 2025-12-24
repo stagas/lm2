@@ -1,11 +1,13 @@
 import { rpc } from 'utils/rpc'
 import { create } from 'zustand'
+import { useAppStore } from '../../app/store.ts'
 import { AnimationManager } from '../../lib/animation-manager.ts'
 import type { Dsp } from '../dsp/assembly.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import type { VisualWasm } from '../dsp/visual-wasm.ts'
 import { ControlOp } from '../dsp/worklet-shared.ts'
 import type { DspProcessor } from '../dsp/worklet.ts'
+import { useEngineUiStore } from './ui.ts'
 
 export type PlaybackState = 'stopped' | 'running' | 'paused'
 
@@ -120,6 +122,11 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
       if (!state.control) return
       Atomics.store(state.control, 0, ControlOp.Stop)
       set({ playbackState: 'stopped' })
+      const ui = useEngineUiStore.getState()
+      const app = useAppStore.getState()
+      if (app.selectedLoopId) {
+        ui.setViewSampleCount(app.selectedLoopId, 0)
+      }
     },
 
     setLoop: (startSample: number, endSample: number) => {
