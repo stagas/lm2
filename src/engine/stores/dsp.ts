@@ -1,0 +1,1036 @@
+import { rpc } from 'utils/rpc'
+import { create } from 'zustand'
+import {
+  LITERALS_COUNT,
+  MAX_DSP_INSTANCES,
+  OPS_COUNT,
+} from '../../../as/assembly/constants.ts'
+import { AnimationManager } from '../../lib/animation-manager.ts'
+import { waitForNonZero } from '../../lib/atomics.ts'
+import type { SourceLocation } from '../../lib/mini-source-map.ts'
+import {
+  type AnalyserRef,
+  type ArrayLiteralRef,
+  encodeLangToVmOps,
+  extractBarsFromSource,
+  extractBpmFromSource,
+  extractTimelineLabelsFromSource,
+  type MiniSequenceRef,
+  type NumberLiteralInfo,
+  type NumberWithParamsInfo,
+  type SampleDef,
+  type TimelineLabel,
+  type TimelineSequenceRef,
+} from '../bytecode/bytecode.ts'
+import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from '../constants.ts'
+import { DspStruct } from '../dsp/assembly.ts'
+import { createProgramInstance, type ProgramDataView } from '../dsp/program.ts'
+import { type LoadedSample, SampleLoader } from '../dsp/sample-loader.ts'
+import { buildTimelineLabels } from '../dsp/timeline-labels.ts'
+import { createVisualWasm } from '../dsp/visual-wasm.ts'
+import { ControlOp } from '../dsp/worklet-shared.ts'
+import type { DspProcessor, DspProcessorOptions } from '../dsp/worklet.ts'
+import workletUrl from '../dsp/worklet.ts?worker&url'
+import { useEngineRuntimeStore } from './runtime.ts'
+import { useEngineUiStore } from './ui.ts'
+
+const f32BitsBuf = new ArrayBuffer(4)
+const f32BitsView = new DataView(f32BitsBuf)
+function f32ToU32(v: number): number {
+  f32BitsView.setFloat32(0, v, true)
+  return f32BitsView.getUint32(0, true)
+}
+
+type PendingDspUpdate = {
+  source: string
+  resolve: (value: string[] | undefined) => void
+  reject: (reason: unknown) => void
+}
+
+export type EngineDspState = {
+  sequences: string[]
+  miniRefs: MiniSequenceRef[]
+  timelineRefs: TimelineSequenceRef[]
+  timelineLabels: TimelineLabel[]
+  miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  analyserRefs: AnalyserRef[]
+  arrayLiterals: ArrayLiteralRef[]
+  numberParams: NumberWithParamsInfo[]
+  numberLiterals: NumberLiteralInfo[]
+  sampleDefs: SampleDef[]
+  loadedSamples: Array<LoadedSample | undefined>
+  dspSource: string
+
+  uiSequences: string[]
+  uiMiniRefs: MiniSequenceRef[]
+  uiTimelineRefs: TimelineSequenceRef[]
+  uiTimelineLabels: TimelineLabel[]
+  uiMiniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  uiAnalyserRefs: AnalyserRef[]
+  uiArrayLiterals: ArrayLiteralRef[]
+  uiNumberParams: NumberWithParamsInfo[]
+  uiNumberLiterals: NumberLiteralInfo[]
+  uiSampleDefs: SampleDef[]
+  uiDspSource: string
+
+  bars?: number
+  uiBars?: number
+  isProgramSwapPending: boolean
+  isUpdatingDsp: boolean
+  lastSuccessfulProgramData?: ProgramDataView
+
+  initialize: () => Promise<void>
+  dispose: () => void
+  updateWasmBinary: () => Promise<void>
+  updateDspSource: (source: string) => Promise<string[] | undefined>
+  preloadSamples: (source: string) => void
+  playLoop: (loopId: string, source: string) => Promise<void>
+  setUiCompilePreview: (next: {
+    source: string
+    sequences: string[]
+    miniRefs: MiniSequenceRef[]
+    timelineRefs: TimelineSequenceRef[]
+    timelineLabels: TimelineLabel[]
+    bars: number | undefined
+    miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+    analyserRefs: AnalyserRef[]
+    arrayLiterals: ArrayLiteralRef[]
+    numberParams: NumberWithParamsInfo[]
+    sampleDefs: SampleDef[]
+  }) => void
+}
+
+export const useEngineDspStore = create<EngineDspState>((set, get) => {
+  const dspUpdateQueue = {
+    isProcessing: false,
+    pendingSource: undefined as string | undefined,
+    requests: [] as PendingDspUpdate[],
+  }
+
+  let sampleLoader: SampleLoader | undefined
+  let sampleDecodeToken = 0
+  let sampleUploadToken = 0
+  const samplePreviewTarget = {
+    ops: new Int32Array(OPS_COUNT),
+    literals: new Float32Array(LITERALS_COUNT),
+  }
+  const compilePreviewTarget = {
+    ops: new Int32Array(OPS_COUNT),
+    literals: new Float32Array(LITERALS_COUNT),
+  }
+  const sampleUrlByIndex = new Map<number, string>()
+
+  function scheduleSampleLoad(
+    defs: SampleDef[] | undefined,
+    opts: { uploadToWorklet: boolean },
+  ): void {
+    const runtime = useEngineRuntimeStore.getState()
+    const audioContext = runtime.audioContext
+    if (!audioContext) return
+    if (!defs?.length) return
+
+    if (!sampleLoader) sampleLoader = new SampleLoader(audioContext)
+    const token = opts.uploadToWorklet ? ++sampleUploadToken : ++sampleDecodeToken
+    const isStale = () => token !== (opts.uploadToWorklet ? sampleUploadToken : sampleDecodeToken)
+
+    // Clear stale waveforms immediately when the same index points at a different URL.
+    {
+      const prev = get().loadedSamples
+      let next: Array<LoadedSample | undefined> | null = null
+      for (const d of defs) {
+        const prevLoaded = prev[d.sampleIndex]
+        if (prevLoaded && prevLoaded.url !== d.url) {
+          if (!next) next = prev.slice()
+          next[d.sampleIndex] = undefined
+        }
+      }
+      if (next) set({ loadedSamples: next })
+    }
+
+    void (async () => {
+      for (const d of defs) {
+        if (isStale()) return
+
+        const alreadyUploaded = sampleUrlByIndex.get(d.sampleIndex) === d.url
+        const alreadyDecoded = get().loadedSamples[d.sampleIndex]?.url === d.url
+        if (alreadyDecoded && (!opts.uploadToWorklet || alreadyUploaded)) continue
+
+        const loaded = alreadyDecoded
+          ? get().loadedSamples[d.sampleIndex]!
+          : await sampleLoader!.load(d.url)
+        if (isStale()) return
+
+        if (!alreadyDecoded) {
+          set(prev => {
+            const next = prev.loadedSamples.slice()
+            next[d.sampleIndex] = loaded
+            return { loadedSamples: next }
+          })
+        }
+
+        if (!opts.uploadToWorklet) continue
+
+        const worklet = useEngineRuntimeStore.getState().worklet
+        if (!worklet) continue
+
+        await worklet.setSample(d.sampleIndex, loaded.sampleRate, loaded.length, loaded.ch0Buffer)
+        sampleUrlByIndex.set(d.sampleIndex, d.url)
+      }
+    })()
+  }
+
+  function lineStarts(src: string): number[] {
+    const out = [0]
+    for (let i = 0; i < src.length; i++) {
+      if (src[i] === '\n') out.push(i + 1)
+    }
+    return out
+  }
+
+  function normalizeSourceWithRanges(src: string, ranges: Array<{ start: number; end: number }>): string {
+    if (ranges.length === 0) return src
+    const sorted = [...ranges].sort((a, b) => a.start - b.start)
+    let out = ''
+    let pos = 0
+    for (const r of sorted) {
+      out += src.slice(pos, r.start)
+      out += '#'.repeat(Math.max(0, r.end - r.start))
+      pos = r.end
+    }
+    out += src.slice(pos)
+    return out
+  }
+
+  function readNumberAt(
+    src: string,
+    starts: number[],
+    info: Pick<NumberWithParamsInfo, 'line' | 'column' | 'length'>,
+  ): { value: number; range: { start: number; end: number } } | null {
+    const lineStart = starts[info.line - 1]
+    if (lineStart === undefined) return null
+    const start = lineStart + (info.column - 1)
+    const end = start + Math.max(1, info.length)
+    if (start < 0 || end > src.length) return null
+
+    const token = src.slice(start, end)
+    const match = token.match(/^-?\d*\.?\d*/)
+    const raw = match?.[0] ?? ''
+    if (!raw) return null
+    const value = Number.parseFloat(raw)
+    if (!Number.isFinite(value)) return null
+    return { value, range: { start, end } }
+  }
+
+  async function tryApplyLiteralOnlyUpdate(source: string): Promise<string[] | undefined> {
+    const runtime = useEngineRuntimeStore.getState()
+    const primaryProgram = runtime.program1
+    if (!primaryProgram) return undefined
+    if (!get().lastSuccessfulProgramData) return undefined
+    if (get().numberLiterals.length === 0) return undefined
+
+    const oldSource = get().dspSource
+    const oldStarts = lineStarts(oldSource)
+    const newStarts = lineStarts(source)
+    const ranges: Array<{ start: number; end: number }> = []
+
+    const updates: Array<{ index: number; value: number }> = []
+    const nextNumberLiterals: NumberLiteralInfo[] = []
+    const nextNumberParams: NumberWithParamsInfo[] = []
+
+    for (const info of get().numberLiterals) {
+      const index = info.literalIndex
+      if (index === undefined) return undefined
+
+      const oldRead = readNumberAt(oldSource, oldStarts, info)
+      const newRead = readNumberAt(source, newStarts, info)
+      if (!oldRead || !newRead) return undefined
+
+      ranges.push(oldRead.range)
+      ranges.push(newRead.range)
+
+      if (newRead.value !== info.value) {
+        updates.push({ index, value: newRead.value })
+      }
+
+      nextNumberLiterals.push({ ...info, value: newRead.value })
+    }
+
+    // Keep slider UI params in sync (subset of number literals).
+    for (const info of get().numberParams) {
+      const newRead = readNumberAt(source, newStarts, info)
+      if (!newRead) return undefined
+      nextNumberParams.push({ ...info, value: newRead.value })
+    }
+
+    const oldNorm = normalizeSourceWithRanges(oldSource, ranges.filter((_, i) => i % 2 === 0))
+    const newNorm = normalizeSourceWithRanges(source, ranges.filter((_, i) => i % 2 === 1))
+    if (oldNorm !== newNorm) return undefined
+
+    const extracted = extractTimelineLabelsFromSource(source)
+    if (extracted.errors.length) return undefined
+
+    const bpmExtracted = extractBpmFromSource(source)
+    if (bpmExtracted.errors.length) return undefined
+    if (bpmExtracted.bpm !== undefined && runtime.bpmValue) {
+      runtime.bpmValue[0] = bpmExtracted.bpm
+    }
+
+    const barsExtracted = extractBarsFromSource(source)
+    if (barsExtracted.errors.length) return undefined
+
+    const bars = barsExtracted.bars
+    const nextTimelineLabels = buildTimelineLabels(extracted.labels, bars)
+    runtime.syncBarsHardLoop(bars)
+
+    if (updates.length === 0) {
+      set({
+        dspSource: source,
+        numberLiterals: nextNumberLiterals,
+        numberParams: nextNumberParams,
+        timelineLabels: nextTimelineLabels,
+        bars,
+        uiDspSource: source,
+        uiNumberLiterals: nextNumberLiterals,
+        uiNumberParams: nextNumberParams,
+        uiTimelineLabels: nextTimelineLabels,
+        uiBars: bars,
+      })
+      localStorage.setItem('lm2:dsp-source', source)
+      return get().sequences
+    }
+
+    for (const u of updates) {
+      await primaryProgram.program.writeLiteral(u.index, u.value)
+    }
+
+    set({
+      dspSource: source,
+      numberLiterals: nextNumberLiterals,
+      numberParams: nextNumberParams,
+      timelineLabels: nextTimelineLabels,
+      bars,
+      uiDspSource: source,
+      uiNumberLiterals: nextNumberLiterals,
+      uiNumberParams: nextNumberParams,
+      uiTimelineLabels: nextTimelineLabels,
+      uiBars: bars,
+    })
+    localStorage.setItem('lm2:dsp-source', source)
+    return get().sequences
+  }
+
+  async function runQueuedDspUpdate(source: string): Promise<string[] | undefined> {
+    const runtime = useEngineRuntimeStore.getState()
+    if (!runtime.program1 || !runtime.program2) return undefined
+
+    if (get().lastSuccessfulProgramData && get().dspSource === source) {
+      return get().sequences
+    }
+
+    try {
+      const literalOnly = await tryApplyLiteralOnlyUpdate(source)
+      if (literalOnly) return literalOnly
+
+      const primaryProgram = runtime.program1
+      const stagingProgram = runtime.program2
+
+      const comparisonReference = get().lastSuccessfulProgramData ?? primaryProgram.program.data
+        ?? stagingProgram.program.data
+
+      const primaryResult = await primaryProgram.program.compileSource(source, {
+        apply: false,
+        setData: false,
+        compareAgainst: comparisonReference,
+      })
+
+      if (runtime.worklet && runtime.audioContext) {
+        scheduleSampleLoad(primaryResult.sampleDefs, { uploadToWorklet: true })
+      }
+
+      if (primaryResult.bpm !== undefined && runtime.bpmValue) {
+        runtime.bpmValue[0] = primaryResult.bpm
+      }
+
+      const sequences = primaryResult.sequences
+      const miniRefs = primaryResult.miniRefs
+      const timelineRefs = primaryResult.timelineRefs
+      const bars = primaryResult.bars
+      const timelineLabels = buildTimelineLabels(primaryResult.timelineLabels, bars)
+      const miniSourceMaps = primaryResult.miniSourceMaps
+      const analyserRefs = primaryResult.analyserRefs
+      const arrayLiterals = primaryResult.arrayLiterals
+      const numberParams = primaryResult.numberParams
+      const numberLiterals = primaryResult.numberLiterals
+      const sampleDefs: SampleDef[] = primaryResult.sampleDefs ?? []
+
+      if (!primaryResult.diff.significantChange) {
+        if (primaryResult.bpm !== undefined && runtime.bpmValue) {
+          const oldBpm = runtime.bpmValue[0]
+          runtime.bpmValue[0] = primaryResult.bpm
+          runtime.worklet?.syncBpm(oldBpm, primaryResult.bpm)
+        }
+        await primaryProgram.program.applyPreparedData(primaryResult.data)
+        set({
+          dspSource: source,
+          sequences,
+          miniRefs,
+          timelineRefs,
+          timelineLabels,
+          bars,
+          miniSourceMaps,
+          analyserRefs,
+          arrayLiterals,
+          numberParams,
+          numberLiterals,
+          sampleDefs,
+          lastSuccessfulProgramData: primaryResult.data,
+          uiDspSource: source,
+          uiSequences: sequences,
+          uiMiniRefs: miniRefs,
+          uiTimelineRefs: timelineRefs,
+          uiTimelineLabels: timelineLabels,
+          uiBars: bars,
+          uiMiniSourceMaps: miniSourceMaps,
+          uiAnalyserRefs: analyserRefs,
+          uiArrayLiterals: arrayLiterals,
+          uiNumberParams: numberParams,
+          uiNumberLiterals: numberLiterals,
+          uiSampleDefs: sampleDefs,
+          isProgramSwapPending: false,
+        })
+        runtime.syncBarsHardLoop(bars)
+        localStorage.setItem('lm2:dsp-source', source)
+        return sequences
+      }
+
+      const stagingResult = await stagingProgram.program.compileSource(source, {
+        apply: false,
+        setData: true,
+        compareAgainst: primaryResult.previousData,
+        copyVersionFrom: primaryResult.previousData,
+      })
+
+      const swap = runtime.programSwap
+      const control = runtime.control
+      const dspPtr = runtime.wasmDspPtr
+      const swapStatus = runtime.programSwapStatus
+      if (!swap || !control || !dspPtr || !swapStatus) {
+        throw new Error('Program swap buffers not initialized')
+      }
+
+      // Early UI update: we already have the compiled refs/source maps, but the worklet
+      // crossfade swap can take a few chunks to finish.
+      const stagingBars = stagingResult.bars
+      set({
+        uiDspSource: source,
+        uiSequences: sequences,
+        uiMiniRefs: stagingResult.miniRefs,
+        uiTimelineRefs: stagingResult.timelineRefs,
+        uiTimelineLabels: buildTimelineLabels(stagingResult.timelineLabels, stagingBars),
+        uiBars: stagingBars,
+        uiMiniSourceMaps: stagingResult.miniSourceMaps,
+        uiAnalyserRefs: stagingResult.analyserRefs,
+        uiArrayLiterals: stagingResult.arrayLiterals,
+        uiNumberParams: stagingResult.numberParams,
+        uiNumberLiterals: stagingResult.numberLiterals,
+        uiSampleDefs: stagingResult.sampleDefs ?? [],
+        isProgramSwapPending: true,
+      })
+
+      swapStatus.fill(0)
+      swap.fill(0)
+
+      if (stagingResult.bpm !== undefined && runtime.bpmValue) {
+        const oldBpm = runtime.bpmValue[0]
+        runtime.bpmValue[0] = stagingResult.bpm
+        runtime.worklet?.syncBpm(oldBpm, stagingResult.bpm)
+      }
+
+      Atomics.store(swap, 0, primaryProgram.program.ptr$)
+      Atomics.store(swap, 1, stagingProgram.program.ptr$)
+      Atomics.store(swap, 2, dspPtr)
+      Atomics.store(control, 0, ControlOp.Swap)
+
+      const swapResult = await waitForSwapResult(swapStatus, 0, 1)
+      Atomics.store(swapStatus, 0, 0)
+
+      const swappedPrograms = {
+        program1: stagingProgram,
+        program2: primaryProgram,
+      }
+
+      if (swapResult === 0) {
+        const nextControl = useEngineRuntimeStore.getState().playbackState === 'running'
+          ? ControlOp.Start
+          : ControlOp.Pause
+        Atomics.store(control, 0, nextControl)
+      }
+
+      if (swapResult !== 1) {
+        console.warn('Program swap failed; will retry against the last-known program on the next update.')
+        const current = get()
+        set({
+          uiDspSource: current.dspSource,
+          uiSequences: current.sequences,
+          uiMiniRefs: current.miniRefs,
+          uiTimelineRefs: current.timelineRefs,
+          uiTimelineLabels: current.timelineLabels,
+          uiBars: current.bars,
+          uiMiniSourceMaps: current.miniSourceMaps,
+          uiAnalyserRefs: current.analyserRefs,
+          uiArrayLiterals: current.arrayLiterals,
+          uiNumberParams: current.numberParams,
+          uiNumberLiterals: current.numberLiterals,
+          uiSampleDefs: current.sampleDefs,
+          isProgramSwapPending: false,
+        })
+        return undefined
+      }
+
+      useEngineRuntimeStore.setState(swappedPrograms)
+
+      const committedBars = stagingResult.bars
+      const committedLabels = buildTimelineLabels(stagingResult.timelineLabels, committedBars)
+      set({
+        dspSource: source,
+        sequences,
+        miniRefs: stagingResult.miniRefs,
+        timelineRefs: stagingResult.timelineRefs,
+        timelineLabels: committedLabels,
+        bars: committedBars,
+        miniSourceMaps: stagingResult.miniSourceMaps,
+        analyserRefs: stagingResult.analyserRefs,
+        arrayLiterals: stagingResult.arrayLiterals,
+        numberParams: stagingResult.numberParams,
+        numberLiterals: stagingResult.numberLiterals,
+        sampleDefs: stagingResult.sampleDefs ?? [],
+        uiDspSource: source,
+        uiSequences: sequences,
+        uiMiniRefs: stagingResult.miniRefs,
+        uiTimelineRefs: stagingResult.timelineRefs,
+        uiTimelineLabels: committedLabels,
+        uiBars: committedBars,
+        uiMiniSourceMaps: stagingResult.miniSourceMaps,
+        uiAnalyserRefs: stagingResult.analyserRefs,
+        uiArrayLiterals: stagingResult.arrayLiterals,
+        uiNumberParams: stagingResult.numberParams,
+        uiNumberLiterals: stagingResult.numberLiterals,
+        uiSampleDefs: stagingResult.sampleDefs ?? [],
+        isProgramSwapPending: false,
+        lastSuccessfulProgramData: stagingProgram.program.data,
+      })
+
+      runtime.syncBarsHardLoop(committedBars)
+      localStorage.setItem('lm2:dsp-source', source)
+      return sequences
+    }
+    catch (error) {
+      set({ isProgramSwapPending: false })
+      console.error('Failed to build program:', error)
+      throw error
+    }
+  }
+
+  async function processDspQueue() {
+    if (dspUpdateQueue.isProcessing) return
+    dspUpdateQueue.isProcessing = true
+    try {
+      while (dspUpdateQueue.requests.length) {
+        const batch = dspUpdateQueue.requests.splice(0)
+        const sourceToBuild = dspUpdateQueue.pendingSource ?? batch[batch.length - 1].source
+        dspUpdateQueue.pendingSource = undefined
+
+        try {
+          // Bounded so the queue cannot hang forever if a wait primitive gets stuck.
+          const result = await Promise.race([
+            runQueuedDspUpdate(sourceToBuild),
+            new Promise<string[] | undefined>((_resolve, reject) => {
+              setTimeout(() => reject(new Error('DSP update timed out')), 6000)
+            }),
+          ])
+          batch.forEach(({ resolve }) => resolve(result))
+        }
+        catch (error) {
+          batch.forEach(({ reject }) => reject(error))
+        }
+      }
+    }
+    finally {
+      dspUpdateQueue.isProcessing = false
+      if (dspUpdateQueue.requests.length) {
+        void processDspQueue()
+      }
+      else {
+        // No more pending requests — clear the public updating flag.
+        set({ isUpdatingDsp: false })
+      }
+    }
+  }
+
+  function enqueueDspUpdate(source: string) {
+    // Mark that the store is processing updates so UI can show applying state.
+    set({ isUpdatingDsp: true })
+    return new Promise<string[] | undefined>((resolve, reject) => {
+      dspUpdateQueue.requests.push({ source, resolve, reject })
+      dspUpdateQueue.pendingSource = source
+      void processDspQueue()
+    })
+  }
+
+  async function updateWasmBinaryInner() {
+    const runtime = useEngineRuntimeStore.getState()
+    if (!runtime.worklet) throw new Error('Worklet not initialized')
+
+    // Prevent stale in-flight uploads from bumping versions after a reload.
+    sampleDecodeToken++
+    sampleUploadToken++
+    sampleUrlByIndex.clear()
+
+    const binary = await fetchWasmBinary()
+    const visualBinary = binary.slice(0)
+    const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
+    const { memory, dsp$ } = await runtime.worklet.setWasmBinary(binary)
+    const wasmMemory = memory
+    const wasmDsp = DspStruct(wasmMemory.buffer, dsp$)
+    const wasmDspPtr = dsp$
+
+    const visualWasm = await createVisualWasm(visualBinary, sourcemapUrl)
+
+    runtime.program1?.cleanup()
+    runtime.program2?.cleanup()
+
+    runtime.animationManager?.start()
+
+    const program1 = await createProgramInstance(
+      runtime.worklet,
+      wasmMemory,
+      runtime.control!,
+    )
+
+    const program2 = await createProgramInstance(
+      runtime.worklet,
+      wasmMemory,
+      runtime.control!,
+    )
+
+    wasmDsp.program = program1.program.ptr$
+
+    useEngineRuntimeStore.setState({
+      wasmMemory,
+      wasmDsp,
+      wasmDspPtr,
+      visualWasm,
+      program1,
+      program2,
+      isProgramReady: true,
+    })
+
+    set({ lastSuccessfulProgramData: undefined })
+
+    const currentSource = get().dspSource
+    if (currentSource) {
+      // Reapply the current DSP source once the new programs are ready.
+      await enqueueDspUpdate(currentSource)
+    }
+  }
+
+  return {
+    sequences: [...DEFAULT_SEQUENCES],
+    miniRefs: [],
+    timelineRefs: [],
+    timelineLabels: [],
+    miniSourceMaps: [],
+    analyserRefs: [],
+    arrayLiterals: [],
+    numberParams: [],
+    numberLiterals: [],
+    sampleDefs: [],
+    loadedSamples: [],
+    dspSource: localStorage.getItem('lm2:dsp-source') ?? DEFAULT_DSP_SOURCE,
+
+    uiSequences: [...DEFAULT_SEQUENCES],
+    uiMiniRefs: [],
+    uiTimelineRefs: [],
+    uiTimelineLabels: [],
+    uiMiniSourceMaps: [],
+    uiAnalyserRefs: [],
+    uiArrayLiterals: [],
+    uiNumberParams: [],
+    uiNumberLiterals: [],
+    uiSampleDefs: [],
+    uiDspSource: localStorage.getItem('lm2:dsp-source') ?? DEFAULT_DSP_SOURCE,
+
+    bars: undefined,
+    uiBars: undefined,
+    isProgramSwapPending: false,
+    isUpdatingDsp: false,
+    lastSuccessfulProgramData: undefined,
+
+    initialize: async () => {
+      const runtime = useEngineRuntimeStore.getState()
+      if (runtime.isInitialized) return
+
+      const workletData = await createWorklet()
+      const animationManager = new AnimationManager()
+
+      useEngineRuntimeStore.setState({
+        ...workletData,
+        animationManager,
+        isInitialized: true,
+      })
+
+      await get().updateWasmBinary()
+    },
+
+    dispose: () => {
+      const runtime = useEngineRuntimeStore.getState()
+      runtime.program1?.cleanup()
+      runtime.program2?.cleanup()
+      runtime.animationManager?.stop()
+      runtime.audioContext?.close()
+
+      useEngineRuntimeStore.setState({
+        wasmMemory: undefined,
+        wasmDsp: undefined,
+        wasmDspPtr: 0,
+        visualWasm: undefined,
+        program1: undefined,
+        program2: undefined,
+        animationManager: undefined,
+        worklet: undefined,
+        audioContext: undefined,
+        ringPos: undefined,
+        control: undefined,
+        bpmValue: undefined,
+        globalSampleCount: undefined,
+        seekSampleCount: undefined,
+        loop: undefined,
+        hardLoop: undefined,
+        programSwap: undefined,
+        programSwapStatus: undefined,
+        barsLoopEndSample: undefined,
+        isInitialized: false,
+        isProgramReady: false,
+        playbackState: 'stopped',
+        playingLoopId: null,
+      })
+
+      set({
+        lastSuccessfulProgramData: undefined,
+        miniRefs: [],
+        timelineRefs: [],
+        timelineLabels: [],
+        bars: undefined,
+        uiBars: undefined,
+        miniSourceMaps: [],
+        analyserRefs: [],
+        arrayLiterals: [],
+        numberParams: [],
+        numberLiterals: [],
+        uiMiniRefs: [],
+        uiTimelineRefs: [],
+        uiTimelineLabels: [],
+        uiMiniSourceMaps: [],
+        uiAnalyserRefs: [],
+        uiArrayLiterals: [],
+        uiNumberParams: [],
+        uiNumberLiterals: [],
+        uiSampleDefs: [],
+        uiSequences: [],
+        uiDspSource: '',
+        isProgramSwapPending: false,
+        isUpdatingDsp: false,
+        sampleDefs: [],
+        loadedSamples: [],
+      })
+    },
+
+    updateDspSource: (source: string) => {
+      const runtime = useEngineRuntimeStore.getState()
+      if (!runtime.program1 || !runtime.program2) {
+        return Promise.resolve(undefined)
+      }
+      return enqueueDspUpdate(source)
+    },
+
+    updateWasmBinary: async () => {
+      await updateWasmBinaryInner()
+    },
+
+    preloadSamples: (source: string) => {
+      const runtime = useEngineRuntimeStore.getState()
+      if (!runtime.audioContext) return
+      if (!source) return
+
+      samplePreviewTarget.ops.fill(0)
+      samplePreviewTarget.literals.fill(0)
+      const result = encodeLangToVmOps(source, samplePreviewTarget)
+      if (result.errors.length) return
+
+      scheduleSampleLoad(result.sampleDefs ?? [], { uploadToWorklet: false })
+    },
+
+    playLoop: async (loopId: string, source: string) => {
+      const runtime = useEngineRuntimeStore.getState()
+      const ui = useEngineUiStore.getState()
+      const prevId = runtime.playingLoopId
+      const startSample = ui.viewSampleCountByLoopId[loopId] ?? 0
+
+      // If the source has compile errors, don't start playback and don't surface it as a runtime error.
+      compilePreviewTarget.ops.fill(0)
+      compilePreviewTarget.literals.fill(0)
+      const preview = encodeLangToVmOps(source, compilePreviewTarget)
+      if (preview.errors.length) return
+
+      // If the requested loop is already the playing loop, avoid reloading or resetting.
+      if (prevId === loopId) {
+        if (runtime.playbackState !== 'running') {
+          runtime.start()
+        }
+        return
+      }
+
+      if (prevId && runtime.globalSampleCount) {
+        const prevSample = Math.max(0, Atomics.load(runtime.globalSampleCount, 0))
+        ui.setViewSampleCount(prevId, prevSample)
+      }
+
+      const wasRunning = runtime.playbackState === 'running'
+      if (wasRunning) {
+        const control = runtime.control
+        const swap = runtime.programSwap
+        const swapStatus = runtime.programSwapStatus
+        const seekSampleCount = runtime.seekSampleCount
+        const dspPtr = runtime.wasmDspPtr
+        const primaryProgram = runtime.program1
+        const stagingProgram = runtime.program2
+
+        if (!control || !swap || !swapStatus || !seekSampleCount || !dspPtr || !primaryProgram || !stagingProgram) {
+          return
+        }
+
+        const comparisonReference = get().lastSuccessfulProgramData
+          ?? primaryProgram.program.data
+          ?? stagingProgram.program.data
+
+        const stagingResult = await stagingProgram.program.compileSource(source, {
+          apply: false,
+          setData: true,
+          compareAgainst: comparisonReference,
+          copyVersionFrom: comparisonReference,
+        })
+
+        if (runtime.worklet && runtime.audioContext) {
+          scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true })
+        }
+
+        if (stagingResult.bpm !== undefined && runtime.bpmValue) {
+          runtime.bpmValue[0] = stagingResult.bpm
+        }
+
+        const sequences = stagingResult.sequences
+        const miniRefs = stagingResult.miniRefs
+        const timelineRefs = stagingResult.timelineRefs
+        const bars = stagingResult.bars
+        const timelineLabels = buildTimelineLabels(stagingResult.timelineLabels, bars)
+        const miniSourceMaps = stagingResult.miniSourceMaps
+        const analyserRefs = stagingResult.analyserRefs
+        const arrayLiterals = stagingResult.arrayLiterals
+        const numberParams = stagingResult.numberParams
+        const numberLiterals = stagingResult.numberLiterals
+        const sampleDefs: SampleDef[] = stagingResult.sampleDefs ?? []
+
+        const newProgram$ = stagingProgram.program.ptr$
+        const bpmBits = f32ToU32(runtime.bpmValue?.[0] ?? 60)
+
+        const globalSampleCount = runtime.globalSampleCount
+        if (globalSampleCount) {
+          Atomics.store(globalSampleCount, 0, startSample)
+        }
+
+        useEngineRuntimeStore.setState({
+          playingLoopId: loopId,
+          program1: stagingProgram,
+          program2: primaryProgram,
+        })
+
+        set({
+          dspSource: source,
+          sequences,
+          miniRefs,
+          timelineRefs,
+          timelineLabels,
+          bars,
+          miniSourceMaps,
+          analyserRefs,
+          arrayLiterals,
+          numberParams,
+          numberLiterals,
+          sampleDefs,
+          lastSuccessfulProgramData: stagingResult.data,
+          uiDspSource: source,
+          uiSequences: sequences,
+          uiMiniRefs: miniRefs,
+          uiTimelineRefs: timelineRefs,
+          uiTimelineLabels: timelineLabels,
+          uiBars: bars,
+          uiMiniSourceMaps: miniSourceMaps,
+          uiAnalyserRefs: analyserRefs,
+          uiArrayLiterals: arrayLiterals,
+          uiNumberParams: numberParams,
+          uiNumberLiterals: numberLiterals,
+          uiSampleDefs: sampleDefs,
+          isProgramSwapPending: false,
+        })
+
+        runtime.syncBarsHardLoop(bars)
+        localStorage.setItem('lm2:dsp-source', source)
+
+        swapStatus.fill(0)
+        swap.fill(0)
+        Atomics.store(swap, 0, bpmBits)
+        Atomics.store(swap, 1, newProgram$)
+        Atomics.store(swap, 2, dspPtr)
+        Atomics.store(seekSampleCount, 0, startSample)
+        Atomics.store(control, 0, ControlOp.RestartWithProgram)
+        return
+      }
+
+      await get().updateDspSource(source)
+
+      // Seek while paused/stopped so the new loop doesn't inherit the previous playhead.
+      {
+        const control = useEngineRuntimeStore.getState().control
+        const seekSampleCount = useEngineRuntimeStore.getState().seekSampleCount
+        if (control && seekSampleCount) {
+          Atomics.store(seekSampleCount, 0, startSample)
+          Atomics.store(control, 0, ControlOp.SeekImmediate)
+        }
+      }
+
+      // Wait for the worklet to publish the new playhead before "claiming" the loop as playing.
+      // This avoids a brief UI smooth from the previous loop's playhead under the new loop id.
+      {
+        const globalSampleCount = useEngineRuntimeStore.getState().globalSampleCount
+        if (globalSampleCount) {
+          for (let i = 0; i < 10; i++) {
+            const curr = Atomics.load(globalSampleCount, 0)
+            if (curr === startSample) break
+            await new Promise<void>(resolve => setTimeout(resolve, 2.5))
+          }
+        }
+      }
+
+      useEngineRuntimeStore.getState().setPlayingLoopId(loopId)
+
+      // Start after the seek has had a chance to apply in the worklet.
+      setTimeout(() => {
+        useEngineRuntimeStore.getState().start()
+      }, 2.5)
+    },
+
+    setUiCompilePreview: next => {
+      set({
+        uiDspSource: next.source,
+        uiSequences: next.sequences,
+        uiMiniRefs: next.miniRefs,
+        uiTimelineRefs: next.timelineRefs,
+        uiTimelineLabels: next.timelineLabels,
+        uiBars: next.bars,
+        uiMiniSourceMaps: next.miniSourceMaps,
+        uiAnalyserRefs: next.analyserRefs,
+        uiArrayLiterals: next.arrayLiterals,
+        uiNumberParams: next.numberParams,
+        uiSampleDefs: next.sampleDefs,
+      })
+    },
+  }
+})
+
+async function fetchWasmBinary() {
+  const wasmUrl = new URL('/as/build/index.wasm', location.origin).toString()
+  const response = await fetch(wasmUrl + '?t=' + Date.now())
+  if (!response.ok) {
+    throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`)
+  }
+  const binary = await response.arrayBuffer()
+  return binary
+}
+
+async function createWorklet() {
+  const audioContext = new AudioContext({ latencyHint: 0.05 })
+  window.addEventListener('pointerdown', () => {
+    audioContext.resume()
+  }, { once: true })
+  await audioContext.audioWorklet.addModule(workletUrl)
+  const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
+  const ringPos = new Uint8Array(new SharedArrayBuffer(1 * Uint8Array.BYTES_PER_ELEMENT))
+  const control = new Uint32Array(new SharedArrayBuffer(1 * Uint32Array.BYTES_PER_ELEMENT))
+  const bpmValue = new Float32Array(new SharedArrayBuffer(1 * Float32Array.BYTES_PER_ELEMENT))
+  bpmValue[0] = 60
+  const globalSampleCount = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
+  globalSampleCount[0] = 0
+  const seekSampleCount = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
+  seekSampleCount[0] = 0
+  const loop = new Int32Array(new SharedArrayBuffer(3 * Int32Array.BYTES_PER_ELEMENT))
+  loop[0] = 0
+  loop[1] = 0
+  loop[2] = 0
+  const hardLoop = new Int32Array(new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT))
+  hardLoop[0] = 0
+  hardLoop[1] = 0
+  const programSwap = new Uint32Array(
+    new SharedArrayBuffer(3 * MAX_DSP_INSTANCES * Uint32Array.BYTES_PER_ELEMENT),
+  )
+  const programSwapStatus = new Int32Array(
+    new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT),
+  )
+  const dsp = new AudioWorkletNode(audioContext, 'dsp', {
+    outputChannelCount: [2],
+    processorOptions: {
+      sourcemapUrl,
+      ringPos,
+      control,
+      bpmValue,
+      globalSampleCount,
+      seekSample: seekSampleCount,
+      loop,
+      hardLoop,
+      programSwap,
+      swapStatus: programSwapStatus,
+    },
+  } satisfies DspProcessorOptions)
+  dsp.connect(audioContext.destination)
+  const worklet = rpc<DspProcessor>(dsp.port)
+  return {
+    ringPos,
+    control,
+    bpmValue,
+    globalSampleCount,
+    seekSampleCount,
+    loop,
+    hardLoop,
+    programSwap,
+    worklet,
+    audioContext,
+    programSwapStatus,
+  }
+}
+
+async function waitForSwapResult(
+  status: Int32Array,
+  resultIndex: number,
+  eventIndex: number,
+  timeoutMs: number = 500,
+) {
+  return await waitForNonZero(status, resultIndex, eventIndex, timeoutMs, { pollMs: 8 })
+}
+
+if (import.meta.hot) {
+  import.meta.hot.on('vite:beforeUpdate', async () => {
+    const { isInitialized } = useEngineRuntimeStore.getState()
+    if (isInitialized) {
+      await useEngineDspStore.getState().updateWasmBinary()
+    }
+  })
+}
