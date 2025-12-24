@@ -370,6 +370,10 @@ export const LoopItem = ({
               <LoopItemButton title={!loop.isNew ? 'Discard changes' : 'Close'}
                 icon={<XIcon weight="regular" size={16} />} onClick={onClose} />
             )}
+            {isDirty && loop.isNew && (
+              <LoopItemButton title="Edit" icon={<PencilIcon weight="regular" size={16} />}
+                onClick={handleStartEditingDetails} />
+            )}
             {isDirty && (
               <LoopItemButton title="Save" icon={<FloppyDiskBackIcon weight="regular" size={16} />}
                 onClick={handleStartSaving} />
