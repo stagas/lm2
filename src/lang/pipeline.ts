@@ -1,5 +1,6 @@
 import type { Program } from './ast.ts'
 import { type Chunk, compile, disassemble } from './bytecode.ts'
+import { desugarProgram } from './desugar.ts'
 import { type LangError } from './errors.ts'
 import { lex } from './lexer.ts'
 import { parse } from './parser.ts'
@@ -16,14 +17,15 @@ export type Analysis = {
 export function analyze(src: string): Analysis {
   const lexed = lex(src)
   const parsed = parse(src, lexed.tokens)
-  const compiled = compile(src, parsed.program)
+  const program = desugarProgram(parsed.program)
+  const compiled = compile(src, program)
 
   const errors: LangError[] = [...lexed.errors, ...parsed.errors, ...compiled.errors]
   const bytecodeText = disassemble(compiled.chunk)
 
   return {
     tokens: lexed.tokens,
-    program: parsed.program,
+    program,
     chunk: compiled.chunk,
     bytecodeText,
     errors,

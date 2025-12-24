@@ -18,6 +18,8 @@ import { compile } from '../../lang/bytecode.ts'
 import { type LangError, lineText } from '../../lang/errors.ts'
 import { lex } from '../../lang/lexer.ts'
 import { parse } from '../../lang/parser.ts'
+import type { LexError, Token } from '../../lang/token.ts'
+import { findScaleIndex } from '../../mini/scales.ts'
 import { builtinSyms } from './builtin-syms.ts'
 import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
@@ -56,6 +58,8 @@ export * from './types.ts'
 const BUILTIN_CALL_NAMES = new Set([
   'out',
   'sine',
+  'note',
+  'degree',
   'ad',
   'adsr',
   'mini',
@@ -70,6 +74,42 @@ const BUILTIN_CALL_NAMES = new Set([
   'label',
   't',
 ])
+
+const NOTE_OFFSETS: Record<string, number> = {
+  c: 0,
+  d: 2,
+  e: 4,
+  f: 5,
+  g: 7,
+  a: 9,
+  b: 11,
+}
+
+function noteIdentToMidi(name: string): number | null {
+  const m = name.match(/^([a-gA-G])([#b]?)(\d+)$/)
+  if (!m) return null
+  const note = m[1]!.toLowerCase()
+  const acc = m[2] ?? ''
+  const oct = parseInt(m[3]!, 10)
+  const base = NOTE_OFFSETS[note]
+  if (base === undefined || !Number.isFinite(oct)) return null
+  let midi = base + (oct + 1) * 12
+  if (acc === '#') midi += 1
+  else if (acc === 'b') midi -= 1
+  return midi
+}
+
+function romanToDegree(text: string): number | null {
+  const t = text.toLowerCase()
+  if (t === 'i') return 1
+  if (t === 'ii') return 2
+  if (t === 'iii') return 3
+  if (t === 'iv') return 4
+  if (t === 'v') return 5
+  if (t === 'vi') return 6
+  if (t === 'vii') return 7
+  return null
+}
 
 function checkUndefinedCallErrors(src: string, program: Program): LangError[] {
   const errors: LangError[] = []
@@ -305,6 +345,7 @@ export { Op, SEQ_VOICES, SeqOp }
 export function encodeLangToVmOps(
   src: string,
   target: VmTarget,
+  prelude = 'bpm=60;',
 ): {
   errors: LangError[]
   bpm?: number
@@ -321,9 +362,41 @@ export function encodeLangToVmOps(
   numberLiterals?: NumberLiteralInfo[]
   sampleDefs?: SampleDef[]
 } {
-  const lexed = lex(src)
-  const parsed = parse(src, lexed.tokens)
-  const errors: LangError[] = [...lexed.errors, ...parsed.errors]
+  const normalizePrelude = (s: string): string => {
+    const t = s.trimEnd()
+    if (!t) return ''
+    const last = t[t.length - 1]
+    const withSep = last === ';' || last === '}' ? t : `${t};`
+    return withSep.endsWith('\n') ? withSep : `${withSep}\n`
+  }
+
+  const countNewlines = (s: string): number => {
+    let n = 0
+    for (let i = 0; i < s.length; i++) if (s[i] === '\n') n++
+    return n
+  }
+
+  const p = normalizePrelude(prelude)
+  const pLines = countNewlines(p)
+  const fullSrc = `${p}${src}`
+
+  const mapToken = (t: Token): Token => {
+    const line = t.line - pLines
+    if (line <= 0) return { ...t, line, column: 0 }
+    return { ...t, line }
+  }
+
+  const mapLexError = (e: LexError): LangError => {
+    const line = e.line - pLines
+    if (line <= 0) return { ...e, line, column: 0, code: '' }
+    return { ...e, line, code: lineText(src, line) }
+  }
+
+  const lexed = lex(fullSrc)
+  const tokens = lexed.tokens.map(mapToken)
+  const lexErrors: LangError[] = lexed.errors.map(mapLexError)
+  const parsed = parse(src, tokens)
+  const errors: LangError[] = [...lexErrors, ...parsed.errors]
   if (errors.length === 0) {
     errors.push(...checkUndefinedCallErrors(src, parsed.program))
   }
@@ -339,8 +412,8 @@ export function encodeLangToVmOps(
   const samplesExtracted = extractSamplesFromProgramWithRefs(src, parsed.program, errors)
   if (errors.length) return { errors }
   let analyserRefs: AnalyserRef[] = []
-  const numberParams = extractNumberParamsFromProgram(parsed.program)
-  const numberLiterals = extractNumberLiteralsFromProgram(parsed.program)
+  const numberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
+  const numberLiterals = extractNumberLiteralsFromProgram(parsed.program).filter(p => p.line > 0)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
   const sliderKeys = new Set(numberParams.map(p => sliderKeyOf(p)))
   const sequenceToIndex = new Map<string, number>()
@@ -371,6 +444,64 @@ export function encodeLangToVmOps(
 
   const transformExpr = (expr: any): any => {
     if (!expr) return expr
+
+    if (expr.kind === 'ident') {
+      const om = expr.name.match(/^o(\d+)$/)
+      if (om) {
+        const o = parseInt(om[1]!, 10)
+        const mul = Number.isFinite(o) ? 2 ** (o + 1) : 0
+        return { kind: 'number', value: mul, raw: String(mul), loc: expr.loc }
+      }
+
+      if (expr.name.startsWith('#')) {
+        const raw = expr.name.slice(1)
+        const dm = raw.match(/^(\d+)$/)
+        if (dm) {
+          const d = parseInt(dm[1]!, 10)
+          return {
+            kind: 'call',
+            callee: { kind: 'ident', name: 'degree', loc: expr.loc },
+            args: [{
+              kind: 'pos',
+              value: { kind: 'number', value: d, raw: String(d), loc: expr.loc },
+              loc: expr.loc,
+            }],
+            loc: expr.loc,
+          }
+        }
+
+        const base = romanToDegree(raw)
+        if (base !== null) {
+          const numLoc = (dx: number): Loc =>
+            dx === 0 ? expr.loc : { ...expr.loc, line: 0, column: expr.loc.column + dx }
+          const mk = (n: number, dx: number) => ({
+            kind: 'call',
+            callee: { kind: 'ident', name: 'degree', loc: expr.loc },
+            args: [{
+              kind: 'pos',
+              value: { kind: 'number', value: n, raw: String(n), loc: numLoc(dx) },
+              loc: expr.loc,
+            }],
+            loc: expr.loc,
+          })
+          return { kind: 'array', items: [mk(base, 0), mk(base + 2, 1), mk(base + 4, 2)], loc: expr.loc }
+        }
+      }
+
+      const midi = noteIdentToMidi(expr.name)
+      if (midi !== null) {
+        return {
+          kind: 'call',
+          callee: { kind: 'ident', name: 'note', loc: expr.loc },
+          args: [{
+            kind: 'pos',
+            value: { kind: 'number', value: midi, raw: String(midi), loc: expr.loc },
+            loc: expr.loc,
+          }],
+          loc: expr.loc,
+        }
+      }
+    }
 
     if (expr.kind === 'call') {
       const callee = transformExpr(expr.callee)
@@ -534,6 +665,15 @@ export function encodeLangToVmOps(
     }
 
     if (expr.kind === 'assign') {
+      if (expr.op === '=' && expr.target?.kind === 'ident' && expr.target.name === 'scale') {
+        const v = expr.value
+        const name = v?.kind === 'string' ? String(v.value ?? '') : v?.kind === 'ident' ? String(v.name ?? '') : ''
+        if (name) {
+          const idx = findScaleIndex(name) ?? findScaleIndex(name.toLowerCase()) ?? 0
+          return { ...expr, target: transformExpr(expr.target),
+            value: { kind: 'number', value: idx, raw: String(idx), loc: v?.loc ?? expr.loc } }
+        }
+      }
       return { ...expr, target: transformExpr(expr.target), value: transformExpr(expr.value) }
     }
 
@@ -961,6 +1101,12 @@ export function encodeLangToVmOps(
   const main = encodeChunk(chunk as any, writePc)
   writePc = main.writtenEnd
 
+  // Terminate the main program before encoding function bodies. Function bodies
+  // are stored inline after the main chunk and referenced by absolute pc via
+  // `VmOp.Func`; executing into them would desync the VM pc (their header is not
+  // a normal opcode).
+  target.ops[writePc++] = VmOp.End
+
   // Encode functions (BFS), patching FUNC placeholders to absolute pcs.
   for (let qi = 0; qi < funcQueue.length; qi++) {
     const fn: any = funcQueue[qi]
@@ -994,8 +1140,6 @@ export function encodeLangToVmOps(
       target.ops[p.at] = off
     }
   }
-
-  target.ops[writePc++] = VmOp.End
 
   const timelineRefs = timelineExtracted.refs.map(r => ({ ...r, seqIndex: miniCount + r.seqIndex }))
   const numberParamsWithLiteralIndex = numberParams.map(p => ({

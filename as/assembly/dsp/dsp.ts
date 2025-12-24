@@ -4,6 +4,7 @@ import { Program } from '../program'
 import { ProgramData } from '../program-data'
 import { clearAudio, selectAudio } from './audio-ops'
 import { VM_FUNC_HEADER, VM_MAGIC, VmBinary, VmOp, VmTag, VmUnary } from './types'
+import { VmSym } from '../syms'
 import { VmArrays } from './vm-arrays'
 import { VmAudio } from './vm-audio'
 import { vmBinaryOp } from './vm-binary'
@@ -22,6 +23,19 @@ export class Dsp {
   private builtins: VmBuiltins = new VmBuiltins()
 
   private funcParamSyms: StaticArray<i32> = new StaticArray<i32>(8)
+
+  // Runtime directive globals (segment-scoped; saved/restored across vmInvokeFunc)
+  tuneTag: i32 = VmTag.Num
+  tuneNum: f64 = 1.0
+  tuneAux: i32 = 0
+  octaveTag: i32 = VmTag.Num
+  octaveNum: f64 = 0.0
+  octaveAux: i32 = 0
+  transposeTag: i32 = VmTag.Num
+  transposeNum: f64 = 0.0
+  transposeAux: i32 = 0
+
+  scaleIndex: i32 = 0
 
   // Audio-conditional `if` support. Must not allocate inside `vmExec`.
   private ifStackDepth: i32 = 0
@@ -178,6 +192,39 @@ export class Dsp {
       if (op === VmOp.Store) {
         const sym = ops[pc++]
         this.env.store(sym, this.stack)
+        if (sym === VmSym.Tune || sym === VmSym.Octave || sym === VmSym.Transpose) {
+          const top = this.stack.peek()
+          const tag = this.stack.tag[top] as VmTag
+          const num = this.stack.num[top]
+          const aux = this.stack.aux[top]
+          if (sym === VmSym.Tune) {
+            this.tuneTag = tag
+            this.tuneNum = num
+            this.tuneAux = aux
+          }
+          else if (sym === VmSym.Octave) {
+            this.octaveTag = tag
+            this.octaveNum = num
+            this.octaveAux = aux
+          }
+          else {
+            this.transposeTag = tag
+            this.transposeNum = num
+            this.transposeAux = aux
+          }
+        }
+        else if (sym === VmSym.Scale) {
+          const top = this.stack.peek()
+          const tag = this.stack.tag[top] as VmTag
+          const num = this.stack.num[top]
+          let idx: i32 = 0
+          if (tag === VmTag.Bool) idx = num != 0.0 ? 1 : 0
+          else if (tag === VmTag.Num) idx = i32(num)
+          if (idx < 0) idx = 0
+          // SCALE_COUNT is constant 60 today, but keep this lightweight and safe.
+          if (idx > 59) idx = 59
+          this.scaleIndex = idx
+        }
         continue
       }
       if (op === VmOp.Array) {
@@ -376,6 +423,16 @@ export class Dsp {
     const savedEnv = this.env.count
     const savedDepth = this.env.scopeDepth
     const savedOut = this.audio.outCursor
+    const savedTuneTag = this.tuneTag
+    const savedTuneNum = this.tuneNum
+    const savedTuneAux = this.tuneAux
+    const savedOctaveTag = this.octaveTag
+    const savedOctaveNum = this.octaveNum
+    const savedOctaveAux = this.octaveAux
+    const savedTransposeTag = this.transposeTag
+    const savedTransposeNum = this.transposeNum
+    const savedTransposeAux = this.transposeAux
+    const savedScaleIndex = this.scaleIndex
 
     this.env.enter()
 
@@ -394,6 +451,16 @@ export class Dsp {
     this.env.count = savedEnv
     this.env.scopeDepth = savedDepth
     this.audio.outCursor = savedOut
+    this.tuneTag = savedTuneTag
+    this.tuneNum = savedTuneNum
+    this.tuneAux = savedTuneAux
+    this.octaveTag = savedOctaveTag
+    this.octaveNum = savedOctaveNum
+    this.octaveAux = savedOctaveAux
+    this.transposeTag = savedTransposeTag
+    this.transposeNum = savedTransposeNum
+    this.transposeAux = savedTransposeAux
+    this.scaleIndex = savedScaleIndex
   }
 
   @inline
@@ -412,6 +479,18 @@ export class Dsp {
       this.audio.reset()
       this.env.reset()
       this.arrays.reset()
+
+      // Reset directive globals each segment; user code can override via `tune=...`, `octave=...`, `transpose=...`.
+      this.tuneTag = VmTag.Num
+      this.tuneNum = 1.0
+      this.tuneAux = 0
+      this.octaveTag = VmTag.Num
+      this.octaveNum = 0.0
+      this.octaveAux = 0
+      this.transposeTag = VmTag.Num
+      this.transposeNum = 0.0
+      this.transposeAux = 0
+      this.scaleIndex = 0
 
       const leftBlock$ = left$ + (offset * 4) as usize
       const rightBlock$ = right$ + (offset * 4) as usize

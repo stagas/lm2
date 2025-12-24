@@ -3,6 +3,7 @@ import { keywords, type LexError, type Token, type TokenKind } from './token.ts'
 const isDigit = (c: string) => c >= '0' && c <= '9'
 const isAlpha = (c: string) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_' || c === '$'
 const isAlphaNum = (c: string) => isAlpha(c) || isDigit(c)
+const isIdentContinue = (c: string) => isAlphaNum(c) || c === '#'
 
 export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
   const t: Token[] = []
@@ -88,7 +89,7 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
   }
 
   const readIdentifier = (start: number, startLine: number, startCol: number) => {
-    while (isAlphaNum(peek())) advance()
+    while (isIdentContinue(peek())) advance()
     const s = src.slice(start, i)
     const kw = keywords[s]
     if (kw) add(kw, start, startLine, startCol)
@@ -145,6 +146,12 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
     }
 
     if (isAlpha(c)) {
+      readIdentifier(start, startLine, startCol)
+      continue
+    }
+
+    // Degree identifiers: `#1`, `#ii`, etc.
+    if (c === '#' && (isDigit(peek()) || isAlpha(peek()))) {
       readIdentifier(start, startLine, startCol)
       continue
     }

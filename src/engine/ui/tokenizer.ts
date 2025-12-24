@@ -1,6 +1,8 @@
 import type { Token, Tokenizer } from 'mini-code'
 import { splitValueAndModifiers, tokenize as miniTokenize } from '../../mini/tokenizer.ts'
 
+const keywords = ['of']
+
 // State for multiline strings and context
 let inMultilineString: string | null = null // Tracks the quote type we're inside
 let inMiniString: { quote: string; depth: number; callName?: string | null } | null = null // Tracks if we're inside mini('...')
@@ -690,9 +692,9 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
     }
 
     // Identifiers and function names
-    if (/[a-zA-Z_]/.test(char)) {
+    if (/[a-zA-Z#_]/.test(char)) {
       let word = ''
-      while (i < line.length && /[a-zA-Z0-9_]/.test(line[i])) {
+      while (i < line.length && /[a-zA-Z0-9#_]/.test(line[i])) {
         word += line[i]
         i++
       }
@@ -727,6 +729,9 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
         // Parameter name followed by colon (named parameter syntax)
         // Treat as parameter even if the function call spans multiple lines
         tokens.push({ type: 'parameter', content: word, length: word.length })
+      }
+      else if (keywords.includes(word)) {
+        tokens.push({ type: 'function', content: word, length: word.length })
       }
       else if (inFunctionCall) {
         // Known parameter name used inside a function call (positional or value)

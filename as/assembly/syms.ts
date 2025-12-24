@@ -17,6 +17,9 @@ export enum VmSym {
   Every = 12,
   At = 13,
   PlayPick = 14,
+  Note = 15,
+  Co = 16,
+  Degree = 17,
 
   // Named args (adsr)
   Attack = 100,
@@ -36,6 +39,10 @@ export enum VmSym {
 
   // Legacy named args (older bytecode)
   AtEveryLegacy = 112,
+
+  // Runtime directives / implicit globals
+  Tune = 200,
+  Octave = 201,
+  Transpose = 202,
+  Scale = 203,
 }
-
-

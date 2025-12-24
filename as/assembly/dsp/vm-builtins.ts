@@ -6,6 +6,8 @@ import { callAnalyser } from './builtins/analyser'
 import { callAt } from './builtins/at'
 import { callEvery } from './builtins/every'
 import { callMini } from './builtins/mini'
+import { callDegree } from './builtins/degree'
+import { callNote } from './builtins/note'
 import { callOut } from './builtins/out'
 import { callPlay } from './builtins/play'
 import { callPlayPick } from './builtins/play-pick'
@@ -117,6 +119,16 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Sine) {
       callSine(posCount, posTags, posNums, posAux, stack, audio, program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Note) {
+      callNote(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Degree) {
+      callDegree(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
       return
     }
 
