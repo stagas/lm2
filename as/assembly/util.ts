@@ -6,6 +6,12 @@ export function clamp01(value: f32): f32 {
   return clamp(value, 0.0, 1.0)
 }
 
+export function clamp01f64(value: f64): f64 {
+  if (value < 0.0) return 0.0
+  if (value > 1.0) return 1.0
+  return value
+}
+
 export function clamp11(value: f32): f32 {
   return clamp(value, -1.0, 1.0)
 }

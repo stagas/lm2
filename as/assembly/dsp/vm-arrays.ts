@@ -207,6 +207,7 @@ export class VmArrays {
 
     if (!audio1 && !audio2) {
       const i1 = this.wrapIndex(index1Tag, index1Num, outerLen)
+      this.recordAccess(program, this.createPc[outerId], i1)
       const outerAt = outerStart + i1
       const innerTag = this.elemTag[outerAt] as VmTag
       const innerId = this.elemAux[outerAt]
@@ -221,6 +222,7 @@ export class VmArrays {
         return
       }
       const i2 = this.wrapIndex(index2Tag, index2Num, innerLen)
+      this.recordAccess(program, this.createPc[innerId], i2)
       const innerAt = innerStart + i2
       stack.push(this.elemTag[innerAt] as VmTag, this.elemNum[innerAt], this.elemAux[innerAt])
       return
@@ -239,6 +241,9 @@ export class VmArrays {
 
     let p$ = out$
     const fixed1 = audio1 ? 0 : this.wrapIndex(index1Tag, index1Num, outerLen)
+    let i10: i32 = fixed1
+    let inner0: i32 = -1
+    let i20: i32 = 0
 
     for (let s: i32 = 0; s < length; s++) {
       let i1: i32 = fixed1
@@ -251,6 +256,10 @@ export class VmArrays {
 
       const outerAt = outerStart + i1
       const innerId = this.elemAux[outerAt]
+      if (s === 0) {
+        i10 = i1
+        inner0 = innerId
+      }
       if (innerId < 0 || innerId >= this.count) {
         store<f32>(p$, 0.0 as f32)
         p$ += 4
@@ -281,10 +290,16 @@ export class VmArrays {
       }
       i2 = i2 % innerLen
       if (i2 < 0) i2 += innerLen
+      if (s === 0) i20 = i2
 
       const innerAt = this.start[innerId] + i2
       store<f32>(p$, this.elemNum[innerAt] as f32)
       p$ += 4
+    }
+
+    this.recordAccess(program, this.createPc[outerId], i10)
+    if (inner0 >= 0 && inner0 < this.count) {
+      this.recordAccess(program, this.createPc[inner0], i20)
     }
 
     stack.push(VmTag.Audio, 0.0, outIndex)
