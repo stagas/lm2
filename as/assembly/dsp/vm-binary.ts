@@ -20,6 +20,7 @@ import {
 } from './audio-ops'
 import { VmBinary, VmTag } from './types'
 import { VmAudio } from './vm-audio'
+import { VmArrays } from './vm-arrays'
 import { VmStack } from './vm-stack'
 import { Program } from '../program'
 
@@ -28,17 +29,88 @@ export function vmBinaryOp(
   stack: VmStack,
   audio: VmAudio,
   program: Program,
-  length: i32
+  arrays: VmArrays,
+  length: i32,
 ): void {
   const b = stack.pop()
   const a = stack.pop()
 
-  const aTag = stack.tag[a] as VmTag
-  const bTag = stack.tag[b] as VmTag
-  const aNum = stack.num[a]
-  const bNum = stack.num[b]
-  const aAux = stack.aux[a]
-  const bAux = stack.aux[b]
+  let aTag = stack.tag[a] as VmTag
+  let bTag = stack.tag[b] as VmTag
+  let aNum = stack.num[a]
+  let bNum = stack.num[b]
+  let aAux = stack.aux[a]
+  let bAux = stack.aux[b]
+
+  if (aTag === VmTag.Arr) {
+    const arrId = aAux
+    const elemType = arrId >= 0 && arrId < arrays.count ? (arrays.elemType[arrId] as VmTag) : VmTag.Undef
+    if (elemType === VmTag.Num) {
+      const start = arrays.start[arrId]
+      const n = arrays.len[arrId]
+      let sum: f64 = 0.0
+      for (let i: i32 = 0; i < n; i++) sum += arrays.elemNum[start + i]
+      aTag = VmTag.Num
+      aNum = sum
+      aAux = 0
+    }
+    else if (elemType === VmTag.Audio) {
+      const start = arrays.start[arrId]
+      const n = arrays.len[arrId]
+      const outIndex = audio.allocOut(program)
+      const out$ = program.getOutBuffer(outIndex)
+      clearAudio(out$, length)
+      for (let i: i32 = 0; i < n; i++) {
+        const srcIndex = arrays.elemAux[start + i]
+        if (srcIndex < 0) continue
+        const src$ = program.getOutBuffer(srcIndex)
+        addAudio(out$, out$, src$, length)
+      }
+      aTag = VmTag.Audio
+      aNum = 0.0
+      aAux = outIndex
+    }
+    else {
+      aTag = VmTag.Num
+      aNum = 0.0
+      aAux = 0
+    }
+  }
+
+  if (bTag === VmTag.Arr) {
+    const arrId = bAux
+    const elemType = arrId >= 0 && arrId < arrays.count ? (arrays.elemType[arrId] as VmTag) : VmTag.Undef
+    if (elemType === VmTag.Num) {
+      const start = arrays.start[arrId]
+      const n = arrays.len[arrId]
+      let sum: f64 = 0.0
+      for (let i: i32 = 0; i < n; i++) sum += arrays.elemNum[start + i]
+      bTag = VmTag.Num
+      bNum = sum
+      bAux = 0
+    }
+    else if (elemType === VmTag.Audio) {
+      const start = arrays.start[arrId]
+      const n = arrays.len[arrId]
+      const outIndex = audio.allocOut(program)
+      const out$ = program.getOutBuffer(outIndex)
+      clearAudio(out$, length)
+      for (let i: i32 = 0; i < n; i++) {
+        const srcIndex = arrays.elemAux[start + i]
+        if (srcIndex < 0) continue
+        const src$ = program.getOutBuffer(srcIndex)
+        addAudio(out$, out$, src$, length)
+      }
+      bTag = VmTag.Audio
+      bNum = 0.0
+      bAux = outIndex
+    }
+    else {
+      bTag = VmTag.Num
+      bNum = 0.0
+      bAux = 0
+    }
+  }
 
   if (aTag !== VmTag.Audio && bTag !== VmTag.Audio) {
     const aSmoothed = aTag === VmTag.Num && aAux < 0
@@ -147,8 +219,8 @@ export function vmBinaryOp(
     return
   }
 
-  const aPtr$ = audio.toAudioPtr(aTag, aNum, stack.aux[a], length, program)
-  const bPtr$ = audio.toAudioPtr(bTag, bNum, stack.aux[b], length, program)
+  const aPtr$ = audio.toAudioPtr(aTag, aNum, aAux, length, program)
+  const bPtr$ = audio.toAudioPtr(bTag, bNum, bAux, length, program)
   const outIndex = audio.allocOut(program)
   const out$ = program.getOutBuffer(outIndex)
 

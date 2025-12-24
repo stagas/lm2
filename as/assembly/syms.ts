@@ -20,6 +20,8 @@ export enum VmSym {
   Note = 15,
   Co = 16,
   Degree = 17,
+  Map = 18,
+  Sum = 19,
 
   // Named args (adsr)
   Attack = 100,

@@ -88,6 +88,8 @@ export enum VmBuiltin {
   At = VmSym.At,
   Note = VmSym.Note,
   Degree = VmSym.Degree,
+  Map = VmSym.Map,
+  Sum = VmSym.Sum,
 }
 
 export const VM_FUNC_HEADER: i32 = -2

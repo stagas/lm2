@@ -2,9 +2,9 @@ import { BRANCH_HISTORY_ENTRY_SIZE, BRANCH_HISTORY_SIZE } from '../constants'
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from '../globals'
 import { Program } from '../program'
 import { ProgramData } from '../program-data'
+import { VmSym } from '../syms'
 import { clearAudio, selectAudio } from './audio-ops'
 import { VM_FUNC_HEADER, VM_MAGIC, VmBinary, VmOp, VmTag, VmUnary } from './types'
-import { VmSym } from '../syms'
 import { VmArrays } from './vm-arrays'
 import { VmAudio } from './vm-audio'
 import { vmBinaryOp } from './vm-binary'
@@ -288,7 +288,7 @@ export class Dsp {
       }
       if (op === VmOp.Binary) {
         const code = ops[pc++] as VmBinary
-        vmBinaryOp(code, this.stack, this.audio, this.program, length)
+        vmBinaryOp(code, this.stack, this.audio, this.program, this.arrays, length)
         continue
       }
       if (op === VmOp.Call) {
@@ -400,6 +400,20 @@ export class Dsp {
   vmInvokeFunc(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
   {
+    this.vmInvokeFuncInternal(funcPc, argCount, argTags, argNums, argAux, length, left$, right$, true)
+  }
+
+  @inline
+  vmInvokeFuncKeepOuts(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
+    argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
+  {
+    this.vmInvokeFuncInternal(funcPc, argCount, argTags, argNums, argAux, length, left$, right$, false)
+  }
+
+  @inline
+  private vmInvokeFuncInternal(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
+    argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize, restoreOuts: bool): void
+  {
     const ops = this.program.data.ops
     if (funcPc < 0 || funcPc >= ops.length) {
       setVmError(3, funcPc)
@@ -450,7 +464,7 @@ export class Dsp {
 
     this.env.count = savedEnv
     this.env.scopeDepth = savedDepth
-    this.audio.outCursor = savedOut
+    if (restoreOuts) this.audio.outCursor = savedOut
     this.tuneTag = savedTuneTag
     this.tuneNum = savedTuneNum
     this.tuneAux = savedTuneAux

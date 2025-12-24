@@ -7,6 +7,8 @@ import { callAt } from './builtins/at'
 import { callEvery } from './builtins/every'
 import { callMini } from './builtins/mini'
 import { callDegree } from './builtins/degree'
+import { callMap } from './builtins/map'
+import { callSum } from './builtins/sum'
 import { callNote } from './builtins/note'
 import { callOut } from './builtins/out'
 import { callPlay } from './builtins/play'
@@ -36,6 +38,10 @@ export class VmBuiltins {
   cbArgTags: StaticArray<i32> = new StaticArray<i32>(3)
   cbArgNums: StaticArray<f64> = new StaticArray<f64>(3)
   cbArgAux: StaticArray<i32> = new StaticArray<i32>(3)
+
+  mapArgTags: StaticArray<i32> = new StaticArray<i32>(3)
+  mapArgNums: StaticArray<f64> = new StaticArray<f64>(3)
+  mapArgAux: StaticArray<i32> = new StaticArray<i32>(3)
 
   analyserRingBase: i32 = 0
 
@@ -129,6 +135,17 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Degree) {
       callDegree(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Map) {
+      callMap(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp, this.mapArgTags,
+        this.mapArgNums, this.mapArgAux)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Sum) {
+      callSum(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
       return
     }
 
