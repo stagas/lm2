@@ -1,29 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store.ts'
 
 export function useSessionData() {
   const api = useAppStore(state => state.api)
   const setSessionData = useAppStore(state => state.setSessionData)
-  const sessionState = useAppStore(state => state.sessionState)
   const sessionData = useAppStore(state => state.sessionData)
+  const hasHydrated = useAppStore(state => state.hasHydrated)
 
-  const shouldFetch = useMemo(() => {
-    return sessionState === 'signedIn' && sessionData == null
-  }, [sessionData, sessionState])
-
-  const [isLoading, setIsLoading] = useState(shouldFetch)
-
-  const withLoading = useCallback((fn: () => Promise<void>) => {
-    setIsLoading(true)
-    fn().finally(() => setIsLoading(false))
-  }, [])
+  const [isLoading, setIsLoading] = useState(false)
+  const didFetchRef = useRef(false)
 
   useEffect(() => {
-    if (!shouldFetch) {
-      setIsLoading(false)
-      return
-    }
-    withLoading(async () => {
+    if (!hasHydrated) return
+    if (didFetchRef.current) return
+    didFetchRef.current = true
+
+    const shouldBlock = sessionData == null
+    if (shouldBlock) setIsLoading(true)
+
+    void (async () => {
       try {
         const data = await api.fetchSessionData()
         setSessionData(data)
@@ -31,8 +26,11 @@ export function useSessionData() {
       catch {
         // Keep any cached session data on network errors; server remains the source of truth.
       }
-    })
-  }, [api, shouldFetch, withLoading, setSessionData])
+      finally {
+        if (shouldBlock) setIsLoading(false)
+      }
+    })()
+  }, [api, hasHydrated, sessionData, setSessionData])
 
   return { isLoading, sessionData }
 }
