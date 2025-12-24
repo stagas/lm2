@@ -63,6 +63,9 @@ type EngineState = {
   bars?: number
   uiBars?: number
   uiZeroBased: boolean
+  setUiZeroBased: (zeroBased: boolean) => void
+  uiShowFunctionDefinitions: boolean
+  setUiShowFunctionDefinitions: (showFunctionDefinitions: boolean) => void
   barsLoopEndSample?: number
   programSwap?: Uint32Array<SharedArrayBuffer>
   programSwapStatus?: Int32Array<SharedArrayBuffer>
@@ -635,6 +638,7 @@ export const useEngineStore = create<EngineState>((set, get) => {
     bars: undefined,
     uiBars: undefined,
     uiZeroBased: false,
+    uiShowFunctionDefinitions: true,
     barsLoopEndSample: undefined,
     miniSourceMaps: [],
     analyserRefs: [],
@@ -1038,6 +1042,14 @@ export const useEngineStore = create<EngineState>((set, get) => {
       if (result.errors.length) return
 
       scheduleSampleLoad(result.sampleDefs ?? [], { uploadToWorklet: false })
+    },
+
+    setUiZeroBased: (zeroBased: boolean) => {
+      set({ uiZeroBased: zeroBased })
+    },
+
+    setUiShowFunctionDefinitions: (showFunctionDefinitions: boolean) => {
+      set({ uiShowFunctionDefinitions: showFunctionDefinitions })
     },
   }
 })

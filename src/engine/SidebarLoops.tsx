@@ -1,0 +1,687 @@
+import { FilePlusIcon, GitBranchIcon } from '@phosphor-icons/react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { LoopData } from '../../deno/types.ts'
+import { useLoopData } from '../app/hooks/useLoopData.ts'
+import { useSessionData } from '../app/hooks/useSessionData.ts'
+import { useAppStore } from '../app/store.ts'
+import { Spinner } from '../components/Spinner.tsx'
+import { AuthForm } from './AuthForm.tsx'
+import { Loop } from './loop.ts'
+import { LoopItem } from './LoopItem.tsx'
+import { useEngineStore } from './store.ts'
+
+export function SidebarLoops(
+  {
+    onLoopChange,
+    scrollContainerRef,
+    apiError,
+    setApiError,
+  }: {
+    onLoopChange: (loop: Loop) => void
+    scrollContainerRef: React.RefObject<HTMLDivElement | null>
+    apiError: string | null
+    setApiError: (error: string | null) => void
+  },
+) {
+  const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
+  const [loops, setLoops] = useState<Loop[]>([])
+  const [queuedPlay, setQueuedPlay] = useState<{ loopId: string } | null>(null)
+  const scrollPosRef = useRef(0)
+  const didInitialCenterRef = useRef(false)
+  const didEnsureInitialLoopRef = useRef(false)
+
+  const { isLoading: isSessionLoading, sessionData } = useSessionData()
+  const hasHydrated = useAppStore(state => state.hasHydrated)
+  const serverLoopsCache = useAppStore(state => state.serverLoopsCache)
+  const serverLoopsUserId = useAppStore(state => state.serverLoopsUserId)
+  const api = useAppStore(state => state.api)
+  const setSessionData = useAppStore(state => state.setSessionData)
+  const upsertServerLoopCache = useAppStore(state => state.upsertServerLoopCache)
+  const getCodeFile = useAppStore(state => state.getCodeFile)
+  const moveBuffer = useAppStore(state => state.moveBuffer)
+  const dropBuffer = useAppStore(state => state.dropBuffer)
+  const setLoopBase = useAppStore(state => state.setLoopBase)
+  const bases = useAppStore(state => state.bases)
+  const localLoops = useAppStore(state => state.localLoops)
+  const addLocalLoop = useAppStore(state => state.addLocalLoop)
+  const updateLocalLoop = useAppStore(state => state.updateLocalLoop)
+  const removeLocalLoop = useAppStore(state => state.removeLocalLoop)
+  const selectedLoopId = useAppStore(state => state.selectedLoopId)
+  const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
+  const preloadSamples = useEngineStore(state => state.preloadSamples)
+  const playLoop = useEngineStore(state => state.playLoop)
+  const pause = useEngineStore(state => state.pause)
+  const stop = useEngineStore(state => state.stop)
+
+  const serverLoops = useMemo(() => {
+    if (sessionData) return sessionData.loops
+    if (!isSessionLoading) return []
+    if (serverLoopsUserId == null) return []
+    return serverLoopsCache
+  }, [isSessionLoading, serverLoopsCache, serverLoopsUserId, sessionData])
+
+  useEffect(() => {
+    setTimeout(() => {
+      document.querySelector('textarea')?.focus({ preventScroll: true })
+    }, 0)
+  }, [currentLoopId, loops])
+
+  const isLocalId = (id: string) => id.startsWith('local:')
+
+  const makeLocalId = (title: string) => {
+    const suffix = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
+    return `local:${title}:${Date.now()}:${suffix}`
+  }
+
+  const makeServerId = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
+
+  const stopIfPlaying = (loopId: string) => {
+    const engine = useEngineStore.getState()
+    if (engine.playingLoopId !== loopId) return
+    engine.stop()
+    engine.setPlayingLoopId(null)
+  }
+
+  const pickFallbackLoopId = (closingId: string, preferNew: boolean) => {
+    const other = loops.filter(loop => loop.data.id !== closingId)
+    if (preferNew) {
+      const untitled = other.find(loop => loop.isNew && loop.data.title.startsWith('Untitled'))
+      if (untitled) return untitled.data.id
+      const draft = other.find(loop => loop.isNew)
+      if (draft) return draft.data.id
+      return null
+    }
+    return other[0]?.data.id ?? null
+  }
+
+  useEffect(() => {
+    if (!hasHydrated) return
+    setLoops(prev => {
+      const prevById = new Map(prev.map(loop => [loop.data.id, loop]))
+      const next: Loop[] = []
+      const seen = new Set<string>()
+
+      for (const data of localLoops) {
+        const prevLoop = prevById.get(data.id)
+        const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, data.code ?? '')
+        next.push(new Loop({ ...prevLoop?.data, ...data }, codeFile))
+        seen.add(data.id)
+      }
+
+      for (const data of serverLoops) {
+        const prevLoop = prevById.get(data.id)
+        const base = bases[data.id]?.code
+        const code = data.code ?? base
+        const dataWithCode = code != null ? { ...data, code } : data
+        const codeFile = prevLoop?.codeFile ?? getCodeFile(data.id, code ?? '')
+        if (prevLoop && code && codeFile.value.length === 0) {
+          codeFile.value = code
+        }
+        if (!seen.has(data.id)) {
+          next.push(new Loop({ ...prevLoop?.data, ...dataWithCode }, codeFile))
+          seen.add(data.id)
+        }
+      }
+
+      return next
+    })
+  }, [bases, getCodeFile, hasHydrated, localLoops, serverLoops])
+
+  useEffect(() => {
+    if (currentLoopId != null) return
+    const localIds = new Set(localLoops.map(l => l.id))
+    const sessionIds = new Set(serverLoops.map(l => l.id))
+    const has = (id: string | null | undefined) => id != null && (localIds.has(id) || sessionIds.has(id))
+    const first = has(selectedLoopId) ? selectedLoopId : (localLoops[0]?.id ?? serverLoops[0]?.id)
+    if (first) setCurrentLoopId(first)
+  }, [currentLoopId, localLoops, selectedLoopId, serverLoops])
+
+  useEffect(() => {
+    if (!currentLoopId) return
+    if (loops.some(loop => loop.data.id === currentLoopId)) return
+    setCurrentLoopId(loops[0]?.data.id ?? null)
+    didInitialCenterRef.current = false
+  }, [currentLoopId, loops])
+
+  const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
+
+  const { isLoading: isLoopLoading, loopData } = useLoopData(currentLoopId, currentLoop)
+  const loadingLoopId = isLoopLoading ? currentLoopId : null
+
+  useEffect(() => {
+    if (!loopData) return
+    if (currentLoopId !== loopData.id) return
+
+    const serverCode = loopData.code ?? ''
+    if (loopData.code != null) setLoopBase(loopData.id, serverCode, loopData.timestamp)
+
+    setLoops(prev => {
+      let changed = false
+      const next = prev.map(loop => {
+        if (loop.data.id !== loopData.id) return loop
+
+        const nextData = { ...loop.data, ...loopData }
+        const isSame = loop.data.title === nextData.title
+          && loop.data.artist === nextData.artist
+          && loop.data.artistId === nextData.artistId
+          && loop.data.code === nextData.code
+          && loop.data.likesCount === nextData.likesCount
+          && loop.data.commentsCount === nextData.commentsCount
+          && loop.data.isPublic === nextData.isPublic
+          && loop.data.timestamp === nextData.timestamp
+          && loop.data.remixOf?.id === nextData.remixOf?.id
+
+        if (loopData.code != null) {
+          const hasUserEdits = loop.codeFile.value.length > 0
+          if (!hasUserEdits && serverCode.length > 0 && loop.codeFile.value !== serverCode) {
+            loop.codeFile.value = serverCode
+          }
+        }
+
+        if (isSame) return loop
+
+        changed = true
+        return new Loop(nextData, loop.codeFile)
+      })
+      return changed ? next : prev
+    })
+  }, [currentLoopId, loopData, setLoopBase])
+
+  useLayoutEffect(() => {
+    if (!currentLoop) return
+    onLoopChange(currentLoop)
+    preloadSamples(currentLoop.codeFile.value)
+  }, [currentLoopId, currentLoop, onLoopChange, preloadSamples])
+
+  useLayoutEffect(() => {
+    if (currentLoopId == null) return
+    if (selectedLoopId === currentLoopId) return
+    setSelectedLoopId(currentLoopId)
+  }, [currentLoopId, selectedLoopId, setSelectedLoopId])
+
+  useLayoutEffect(() => {
+    if (!queuedPlay) return
+    if (currentLoopId !== queuedPlay.loopId) return
+    const loop = loops.find(loop => loop.data.id === queuedPlay.loopId)
+    if (!loop) return
+    const source = loop.codeFile.value
+    setQueuedPlay(null)
+    void playLoop(loop.data.id, source)
+  }, [currentLoopId, loops, playLoop, queuedPlay])
+
+  const preserveScrollPos = (callback: () => void) => {
+    const container = scrollContainerRef.current
+    if (container) {
+      scrollPosRef.current = container.scrollTop
+    }
+    callback()
+  }
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (container && scrollPosRef.current > 0) {
+      container.scrollTop = scrollPosRef.current
+    }
+  }, [loops])
+
+  useEffect(() => {
+    if (isSessionLoading) return
+    if (didInitialCenterRef.current) return
+    if (!currentLoopId) return
+    if (loops.length === 0) return
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const nodes = container.querySelectorAll<HTMLElement>('[data-loop-id]')
+    let target: HTMLElement | null = null
+    for (const node of nodes) {
+      if (node.dataset.loopId === currentLoopId) {
+        target = node
+        break
+      }
+    }
+    if (!target) return
+
+    didInitialCenterRef.current = true
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ block: 'center', inline: 'nearest' })
+    })
+  }, [isSessionLoading, currentLoopId, loops])
+
+  const handleNewLoop = (excludeId?: string) => {
+    let newLoopTitle = 'Untitled'
+    let untitledCount = 0
+    for (const loop of loops) {
+      if (!loop.isNew) continue
+      if (excludeId && loop.data.id === excludeId) continue
+      if (loop.data.title.startsWith('Untitled')) {
+        untitledCount = Math.max(untitledCount, parseInt(loop.data.title.split(' ').pop() || '0') || 1)
+      }
+    }
+    if (untitledCount > 0) {
+      newLoopTitle = `Untitled ${untitledCount + 1}`
+    }
+
+    const id = makeLocalId(newLoopTitle)
+    const userName = sessionData?.user.name ?? 'local'
+    const userId = sessionData?.user.id ?? 'local'
+    const data: LoopData = {
+      id,
+      title: newLoopTitle,
+      artist: userName,
+      artistId: userId,
+      code: '',
+      likesCount: 0,
+      commentsCount: 0,
+      isPublic: false,
+      timestamp: 0,
+    }
+
+    const codeFile = getCodeFile(id, data.code ?? '')
+    const loop = new Loop(data, codeFile)
+
+    addLocalLoop(data)
+    setLoops(prev => [loop, ...prev])
+    setCurrentLoopId(id)
+    setSelectedLoopId(id)
+    didInitialCenterRef.current = false
+  }
+
+  const handleBranchLoop = useCallback(() => {
+    if (!currentLoop) return
+
+    const baseTitle = Number.isFinite(parseInt(currentLoop.data.title.split(' ').pop() || '0'))
+      ? currentLoop.data.title.split(' ').slice(0, -1).join(' ')
+      : currentLoop.data.title
+
+    let count = 0
+    for (const loop of loops) {
+      if (loop.data.title.startsWith(baseTitle)) {
+        count = Math.max(count, parseInt(loop.data.title.split(' ').pop() || '0') || 1)
+      }
+    }
+    count = count + 1
+    const title = `${baseTitle} ${count}`
+    const id = makeLocalId(title)
+    const data: LoopData = { ...currentLoop.data, id, title, code: '', timestamp: 0 }
+
+    const codeFile = getCodeFile(id, currentLoop.codeFile.value)
+    const loop = new Loop(data, codeFile)
+
+    addLocalLoop(data)
+    setLoops(prev => [loop, ...prev])
+    setCurrentLoopId(id)
+    setSelectedLoopId(id)
+    didInitialCenterRef.current = false
+  }, [currentLoop])
+
+  useEffect(() => {
+    if (isSessionLoading) return
+    if (!hasHydrated) return
+    if (didEnsureInitialLoopRef.current) return
+    if (localLoops.length > 0) return
+    if (serverLoops.length > 0) return
+    if (loops.length > 0) return
+    didEnsureInitialLoopRef.current = true
+    handleNewLoop()
+  }, [hasHydrated, isSessionLoading, localLoops.length, serverLoops.length])
+
+  const switchAwayFrom = (closingId: string, preferNew: boolean) => {
+    if (currentLoopId !== closingId && selectedLoopId !== closingId) return
+
+    const nextId = pickFallbackLoopId(closingId, preferNew)
+    if (nextId) {
+      setCurrentLoopId(nextId)
+      setSelectedLoopId(nextId)
+      didInitialCenterRef.current = false
+      return
+    }
+
+    if (preferNew) {
+      handleNewLoop(closingId)
+      return
+    }
+
+    setCurrentLoopId(null)
+    setSelectedLoopId(null)
+  }
+
+  const handleSave = (loop: Loop, details: Partial<LoopData>) => {
+    if (!sessionData) {
+      alert('To save you first need to sign in')
+      return
+    }
+    const title = details.title ?? loop.data.title
+    const isPublic = (details.isPublic ?? loop.data.isPublic) ?? false
+    const base = useAppStore.getState().getLoopBase(loop.data.id, loop.data.code ?? '')
+    const prevIsPublic = loop.data.isPublic ?? false
+    const isSameCode = loop.codeFile.value === base
+    const isNoopSave = !isLocalId(loop.data.id)
+      && title === loop.data.title
+      && isPublic === prevIsPublic
+      && isSameCode
+    if (isNoopSave) return
+
+    const timestamp = loop.data.timestamp !== 0 && isSameCode ? loop.data.timestamp : Date.now()
+
+    preserveScrollPos(() => {
+      setLoopBase(loop.data.id, loop.codeFile.value, timestamp)
+      if (isLocalId(loop.data.id)) {
+        updateLocalLoop(loop.data.id, {
+          ...details,
+          timestamp,
+          code: loop.data.code ?? '',
+        })
+      }
+      setLoops(prev =>
+        prev.map(l =>
+          l.data.id === loop.data.id
+            ? new Loop({ ...loop.data, ...details, timestamp, isPublic, code: loop.codeFile.value }, loop.codeFile)
+            : l
+        )
+      )
+
+      if (sessionData && isLocalId(loop.data.id)) {
+        const localId = loop.data.id
+        const serverId = makeServerId()
+        const state = loop.codeFile.getState()
+        const code = state.value
+        void (async () => {
+          try {
+            await api.upsertLoop(serverId, {
+              title,
+              code,
+              isPublic,
+            })
+            moveBuffer(localId, serverId)
+            const codeFile = loop.codeFile
+            setLoopBase(serverId, code, timestamp)
+            preserveScrollPos(() => {
+              const engine = useEngineStore.getState()
+              if (engine.playingLoopId === localId) {
+                const viewSampleCount = engine.viewSampleCountByLoopId[localId] ?? 0
+                useEngineStore.setState(prev => {
+                  const nextById = { ...prev.viewSampleCountByLoopId }
+                  if (!(serverId in nextById)) nextById[serverId] = viewSampleCount
+                  delete nextById[localId]
+                  return {
+                    ...prev,
+                    playingLoopId: serverId,
+                    viewSampleCountByLoopId: nextById,
+                  }
+                })
+              }
+
+              setLoops(prev =>
+                prev.map(l =>
+                  l.data.id === localId
+                    ? new Loop({ ...l.data, id: serverId, title, isPublic, timestamp, code }, codeFile)
+                    : l
+                )
+              )
+              setCurrentLoopId(prev => prev === localId ? serverId : prev)
+              setSelectedLoopId(serverId)
+              didInitialCenterRef.current = false
+            })
+            upsertServerLoopCache({
+              id: serverId,
+              title,
+              artist: sessionData.user.name,
+              artistId: sessionData.user.id,
+              code,
+              likesCount: 0,
+              commentsCount: 0,
+              isPublic,
+              timestamp,
+            })
+            removeLocalLoop(localId)
+          }
+          catch (e) {
+            setApiError(e instanceof Error ? e.message : String(e))
+          }
+        })()
+      }
+      else if (sessionData && !isLocalId(loop.data.id)) {
+        void (async () => {
+          try {
+            await api.upsertLoop(loop.data.id, {
+              title,
+              code: loop.codeFile.value,
+              isPublic,
+            })
+            upsertServerLoopCache({
+              ...loop.data,
+              title,
+              artist: sessionData.user.name,
+              artistId: sessionData.user.id,
+              code: loop.codeFile.value,
+              isPublic,
+              timestamp,
+            })
+          }
+          catch (e) {
+            setApiError(e instanceof Error ? e.message : String(e))
+          }
+        })()
+      }
+    })
+  }
+  const handleSaveAsNew = (loop: Loop, details: Partial<LoopData>) => {
+    const state = loop.codeFile.getState()
+    const title = details.title ?? loop.data.title
+    const id = makeLocalId(title)
+    const codeFile = getCodeFile(id, state.value)
+    codeFile.setState(state)
+
+    loop.codeFile.value = loop.data.code ?? ''
+
+    const userName = sessionData?.user.name ?? loop.data.artist
+    const userId = sessionData?.user.id ?? loop.data.artistId
+    const newLoopData: LoopData = {
+      ...loop.data,
+      ...details,
+      id,
+      timestamp: 0,
+      code: '',
+      artist: userName,
+      artistId: userId,
+    }
+    setLoopBase(id, state.value, 0)
+    addLocalLoop(newLoopData)
+    const newLoop = new Loop({ ...newLoopData, code: state.value }, codeFile)
+    setCurrentLoopId(id)
+    setSelectedLoopId(id)
+    didInitialCenterRef.current = false
+    setLoops(prev => [...prev, newLoop])
+  }
+  const handleClose = (loop: Loop) => {
+    const base = useAppStore.getState().getLoopBase(loop.data.id, loop.data.code ?? '')
+    const isDirty = loop.codeFile.value !== base
+    if (isDirty && !confirm('Are you sure? You will lose all your changes!')) return
+    preserveScrollPos(() => {
+      if (loop.isNew) {
+        stopIfPlaying(loop.data.id)
+        switchAwayFrom(loop.data.id, true)
+        if (isLocalId(loop.data.id)) removeLocalLoop(loop.data.id)
+        dropBuffer(loop.data.id)
+        setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
+      }
+      else {
+        loop.codeFile.value = useAppStore.getState().getLoopBase(loop.data.id, loop.data.code ?? '')
+        setLoops(prev => [...prev])
+      }
+    })
+  }
+  const handleEditDetails = (loop: Loop, details: Partial<LoopData>) => {
+    if (sessionData && !isLocalId(loop.data.id)) {
+      handleSave(loop, details)
+      return
+    }
+    preserveScrollPos(() => {
+      if (isLocalId(loop.data.id)) {
+        updateLocalLoop(loop.data.id, details)
+      }
+      setLoops(prev =>
+        prev.map(l =>
+          l.data.id === loop.data.id
+            ? new Loop({ ...loop.data, ...details }, loop.codeFile)
+            : l
+        )
+      )
+    })
+  }
+  const handleDelete = (loop: Loop) => {
+    if (!confirm(`Are you sure you want to delete "${loop.data.title}"?`)) return
+    stopIfPlaying(loop.data.id)
+    if (sessionData && !isLocalId(loop.data.id)) {
+      void (async () => {
+        try {
+          setSessionData({
+            ...sessionData,
+            loops: sessionData.loops.filter(l => l.id !== loop.data.id),
+          })
+          preserveScrollPos(() => {
+            switchAwayFrom(loop.data.id, true)
+            dropBuffer(loop.data.id)
+            setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
+          })
+          const next = await api.deleteLoop(loop.data.id)
+          setSessionData(next)
+        }
+        catch (e) {
+          setApiError(e instanceof Error ? e.message : String(e))
+        }
+      })()
+      return
+    }
+
+    preserveScrollPos(() => {
+      switchAwayFrom(loop.data.id, true)
+      if (isLocalId(loop.data.id)) removeLocalLoop(loop.data.id)
+      dropBuffer(loop.data.id)
+      setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
+    })
+  }
+  return (
+    <>
+      <div className="flex flex-col w-full border-b-2 border-orange-600">
+        <div className="flex flex-row bg-gradient-to-b from-black to-neutral-800 items-center justify-evenly">
+          <button onPointerDown={() => handleNewLoop()} className="p-2.5 text-neutral-500 hover:text-white">
+            <FilePlusIcon weight="regular" size={16} />
+          </button>
+          <button onPointerDown={() => handleBranchLoop()} className="p-2.5 text-neutral-500 hover:text-white">
+            <GitBranchIcon weight="regular" size={16} />
+          </button>
+        </div>
+        {(() => {
+          const newLoops = loops.filter(loop => loop.isNew)
+          const untitledNew = newLoops.filter(loop => loop.data.title.startsWith('Untitled'))
+          const lastUntitledId = untitledNew.length === 1
+            ? untitledNew[0]!.data.id
+            : null
+          return newLoops.map(loop => (
+            <LoopItem
+              key={loop.data.id}
+              loop={loop}
+              isCurrent={currentLoopId === loop.data.id}
+              isLoading={loadingLoopId === loop.data.id}
+              onClick={() => setCurrentLoopId(loop.data.id)}
+              onPlay={() => {
+                setQueuedPlay({ loopId: loop.data.id })
+                setCurrentLoopId(loop.data.id)
+              }}
+              onPause={pause}
+              onStop={stop}
+              canSave={sessionData != null}
+              hideCloseWhenNotDirty={loop.data.id === lastUntitledId
+                && (loops.length === 1 || currentLoopId === loop.data.id)}
+              onClose={() => handleClose(loop)}
+              onEditDetails={details => handleEditDetails(loop, details)}
+              onSave={details => handleSave(loop, details)}
+              onSaveAsNew={details => handleSaveAsNew(loop, details)}
+            />
+          ))
+        })()}
+      </div>
+      <div className="flex flex-col w-full h-full">
+        {isSessionLoading
+          ? (
+            <>
+              {loops.some(loop => !loop.isNew)
+                ? (
+                  <>
+                    {loops
+                      .filter(loop => !loop.isNew)
+                      .sort((a, b) => (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0))
+                      .map(loop => (
+                        <LoopItem
+                          key={loop.data.id}
+                          loop={loop}
+                          isCurrent={currentLoopId === loop.data.id}
+                          onClick={() => setCurrentLoopId(loop.data.id)}
+                          onPlay={() => {
+                            setQueuedPlay({ loopId: loop.data.id })
+                            setCurrentLoopId(loop.data.id)
+                          }}
+                          onPause={pause}
+                          onStop={stop}
+                          canSave={false}
+                          isLoading={loadingLoopId === loop.data.id}
+                          onClose={() => handleClose(loop)}
+                          onSaveAsNew={details => handleSaveAsNew(loop, details)}
+                        />
+                      ))}
+                  </>
+                )
+                : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="w-6 h-6">
+                      <Spinner lineWidth={2} />
+                    </div>
+                  </div>
+                )}
+            </>
+          )
+          : !sessionData
+          ? (
+            <>
+              <div className="p-3 flex flex-col gap-2 border-b border-neutral-800">
+                <AuthForm api={api} onSessionData={setSessionData} />
+              </div>
+            </>
+          )
+          : (
+            <>
+              {apiError && (
+                <div className="px-3 py-2 text-xs text-orange-400 border-b border-neutral-800">
+                  {apiError}
+                </div>
+              )}
+              {loops.filter(loop => !loop.isNew).sort((a, b) => (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0))
+                .map(loop => (
+                  <LoopItem
+                    key={loop.data.id}
+                    loop={loop}
+                    isCurrent={currentLoopId === loop.data.id}
+                    onClick={() => setCurrentLoopId(loop.data.id)}
+                    onPlay={() => {
+                      setQueuedPlay({ loopId: loop.data.id })
+                      setCurrentLoopId(loop.data.id)
+                    }}
+                    onPause={pause}
+                    onStop={stop}
+                    canSave={sessionData != null}
+                    isLoading={loadingLoopId === loop.data.id}
+                    onClose={() => handleClose(loop)}
+                    onDelete={() => handleDelete(loop)}
+                    onEditDetails={details => handleEditDetails(loop, details)}
+                    onSave={details => handleSave(loop, details)}
+                    onSaveAsNew={details => handleSaveAsNew(loop, details)}
+                  />
+                ))}
+            </>
+          )}
+      </div>
+    </>
+  )
+}

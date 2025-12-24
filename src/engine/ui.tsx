@@ -49,7 +49,6 @@ export function EngineUI() {
   const hasHydrated = useAppStore(state => state.hasHydrated)
   const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const isProgramReady = useEngineStore(state => state.isProgramReady)
-  const audioContext = useEngineStore(state => state.audioContext)
   const isAwaitingCode = currentLoop != null && currentLoop.data.code == null
   const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || isLoopLoading || isAwaitingCode
     || !currentLoop
@@ -77,24 +76,33 @@ export function EngineUI() {
     if (shouldWait || !showIntro) return
     const deltaTime = performance.now() - animationIntroTimeRef.current
     setTimeout(() => {
-      audioContext?.resume()
       setIsFadingOut(true)
       setTimeout(() => {
         setIsFadingOut(false)
         setShowIntro(false)
       }, 2000)
-      ;(async () => {
-        if (!audioContext) return
-        const res = await fetch('./cowbell.ogg')
+    }, deltaTime < 700 ? (700 - deltaTime) + (1700 - 700) : 1700)
+    ;(async () => {
+      for (let i = 0; i < 100; i++) {
+        const audioContext = useEngineStore.getState().audioContext
+        audioContext?.resume()
+        if (!audioContext || audioContext.state !== 'running') {
+          await new Promise<void>(resolve => setTimeout(resolve, 100))
+          continue
+        }
+        const resPromise = fetch('./cowbell.ogg')
+        await useEngineStore.getState().playLoop('1', '.001 |> out($)')
+        await new Promise<void>(resolve => setTimeout(resolve, 1500))
+        const res = await resPromise
         const arrayBuffer = await res.arrayBuffer()
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
         const source = audioContext.createBufferSource()
         source.buffer = audioBuffer
         source.connect(audioContext.destination)
         source.start()
-        useEngineStore.getState().playLoop('1', '.001 |> out($)')
-      })()
-    }, deltaTime < 700 ? 800 - deltaTime : 100)
+        break
+      }
+    })()
   }, [shouldWait, showIntro])
 
   if (!isInitialized && showIntro) {

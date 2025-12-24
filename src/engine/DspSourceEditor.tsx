@@ -117,6 +117,7 @@ function DspSourceEditorReady(
     uiArrayLiterals,
     uiNumberParams,
     uiSampleDefs,
+    uiShowFunctionDefinitions,
     isProgramSwapPending,
   } = useEngineStore()
 
@@ -490,6 +491,7 @@ function DspSourceEditorReady(
           header={timelineHeader}
           theme={theme}
           tokenizer={tokenizer}
+          hideFunctionSignatures={!uiShowFunctionDefinitions}
           functionDefinitions={functionDefinitions}
           isAnimating={true}
           gutter={true}

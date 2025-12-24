@@ -48,11 +48,6 @@ interface AppState {
   dropBuffer: (id: string) => void
 }
 
-const api = new API(async (input, init) => {
-  await new Promise(resolve => setTimeout(resolve, 3000))
-  return fetch(input, { ...init, credentials: 'include' })
-})
-
 const codeFiles = new Map<string, CodeFile>()
 const codeFileUnsubs = new Map<string, () => void>()
 const persistTimers = new Map<string, number>()
@@ -94,7 +89,14 @@ const schedulePersistSessionViews = () => {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      api,
+      api: new API(async (input, init) => {
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        const res = await fetch(input, { ...init, credentials: 'include' })
+        if (res.status === 401) {
+          queueMicrotask(() => get().setSessionData(null))
+        }
+        return res
+      }),
       sessionState: 'signedOut',
       sessionData: null,
       hasHydrated: false,

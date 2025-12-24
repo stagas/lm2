@@ -400,6 +400,7 @@ export function MinimapScrollbar({
     timelineLabels,
     timelineRefs,
     timelineWindowRef,
+    zeroBased,
   ])
 
   useEffect(() => {
