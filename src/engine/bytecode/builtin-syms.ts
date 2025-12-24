@@ -9,6 +9,7 @@ export const builtinSyms: Record<string, number> = {
   analyser: VmSym.Analyser,
   t: VmSym.T,
   play: VmSym.Play,
+  playPick: VmSym.PlayPick,
   timeline: VmSym.Timeline,
   sampler: VmSym.Sampler,
   slicer: VmSym.Slicer,

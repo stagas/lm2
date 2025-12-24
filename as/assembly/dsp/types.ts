@@ -28,6 +28,7 @@ export enum VmOp {
   Array = 21, // n
   GetIndex = 22,
   SetIndex = 23,
+  GetIndex2 = 25,
 }
 
 export enum VmTag {
@@ -77,6 +78,7 @@ export enum VmBuiltin {
   Analyser = VmSym.Analyser,
   T = VmSym.T,
   Play = VmSym.Play,
+  PlayPick = VmSym.PlayPick,
   Timeline = VmSym.Timeline,
   Sampler = VmSym.Sampler,
   Slicer = VmSym.Slicer,

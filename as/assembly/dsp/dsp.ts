@@ -1,7 +1,7 @@
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from '../globals'
 import { Program } from '../program'
 import { ProgramData } from '../program-data'
-import { clearAudio } from './audio-ops'
+import { clearAudio, selectAudio } from './audio-ops'
 import { VM_FUNC_HEADER, VM_MAGIC, VmBinary, VmOp, VmTag, VmUnary } from './types'
 import { VmArrays } from './vm-arrays'
 import { VmAudio } from './vm-audio'
@@ -16,7 +16,7 @@ export class Dsp {
 
   private stack: VmStack = new VmStack()
   private env: VmEnv = new VmEnv()
-  private arrays: VmArrays = new VmArrays()
+  arrays: VmArrays = new VmArrays()
   private audio: VmAudio = new VmAudio()
   private builtins: VmBuiltins = new VmBuiltins()
 
@@ -29,7 +29,58 @@ export class Dsp {
   private vmExec(pcStart: i32, pcEnd: i32, length: i32, left$: usize, right$: usize, stopOnReturn: bool): i32 {
     const ops = this.program.data.ops
     let pc = pcStart
+
+    // Audio-conditional `if` support:
+    // If the condition is `Audio`, we evaluate both branches (then + else) and merge their results at the join point.
+    // This preserves sample-accurate selection without requiring per-sample VM control flow.
+    const ifMaxDepth: i32 = 8
+    const ifEndPc: StaticArray<i32> = new StaticArray<i32>(ifMaxDepth)
+    const ifElsePc: StaticArray<i32> = new StaticArray<i32>(ifMaxDepth)
+    const ifCondAux: StaticArray<i32> = new StaticArray<i32>(ifMaxDepth)
+    const ifBaseSp: StaticArray<i32> = new StaticArray<i32>(ifMaxDepth)
+    const ifThenTag: StaticArray<i32> = new StaticArray<i32>(ifMaxDepth)
+    const ifThenNum: StaticArray<f64> = new StaticArray<f64>(ifMaxDepth)
+    const ifThenAux: StaticArray<i32> = new StaticArray<i32>(ifMaxDepth)
+    const ifThenHas: StaticArray<i32> = new StaticArray<i32>(ifMaxDepth)
+    let ifDepth: i32 = 0
+
     while (pc >= 0 && pc < pcEnd) {
+      if (ifDepth > 0 && pc === ifEndPc[ifDepth - 1]) {
+        const frame = ifDepth - 1
+        const condOutIndex = ifCondAux[frame]
+        const baseSp = ifBaseSp[frame]
+        ifDepth = frame
+
+        const cond$ = this.program.getOutBuffer(condOutIndex)
+        const elseIdx = baseSp
+
+        const thenTag = ifThenTag[frame] as VmTag
+        const thenNum = ifThenNum[frame]
+        const thenAux = ifThenAux[frame]
+        const elseTag = this.stack.tag[elseIdx] as VmTag
+        const elseNum = this.stack.num[elseIdx]
+        const elseAux = this.stack.aux[elseIdx]
+
+        const thenSignal = thenTag === VmTag.Audio || thenTag === VmTag.Num || thenTag === VmTag.Bool
+        const elseSignal = elseTag === VmTag.Audio || elseTag === VmTag.Num || elseTag === VmTag.Bool
+
+        if (thenSignal && elseSignal) {
+          const then$ = this.audio.toAudioPtr(thenTag, thenNum, thenAux, length, this.program)
+          const else$ = this.audio.toAudioPtr(elseTag, elseNum, elseAux, length, this.program)
+          const outIndex = this.audio.allocOut(this.program)
+          const out$ = this.program.getOutBuffer(outIndex)
+          selectAudio(out$, cond$, then$, else$, length)
+          this.stack.sp = baseSp
+          this.stack.push(VmTag.Audio, 0.0, outIndex)
+        }
+        else {
+          const c0 = load<f32>(cond$) != (0.0 as f32)
+          this.stack.sp = baseSp
+          if (c0) this.stack.push(thenTag, thenNum, thenAux)
+          else this.stack.push(elseTag, elseNum, elseAux)
+        }
+      }
+
       const ins = ops[pc++]
       const op = ins as VmOp
 
@@ -87,7 +138,7 @@ export class Dsp {
       }
       if (op === VmOp.Load) {
         const sym = ops[pc++]
-        this.env.load(sym, this.stack)
+        this.env.load(sym, this.stack, this.audio, this.program, length)
         continue
       }
       if (op === VmOp.Store) {
@@ -101,7 +152,11 @@ export class Dsp {
         continue
       }
       if (op === VmOp.GetIndex) {
-        this.arrays.getIndex(this.stack, this.program)
+        this.arrays.getIndex(this.stack, this.audio, this.program, length)
+        continue
+      }
+      if (op === VmOp.GetIndex2) {
+        this.arrays.getIndex2(this.stack, this.audio, this.program, length)
         continue
       }
       if (op === VmOp.SetIndex) {
@@ -147,7 +202,24 @@ export class Dsp {
         continue
       }
       if (op === VmOp.Jump) {
-        pc = ops[pc]
+        const target = ops[pc]
+        if (ifDepth > 0) {
+          const frame = ifDepth - 1
+          const elsePc = ifElsePc[frame]
+          // If this is the "skip else" jump of an audio-conditional if, fallthrough into else instead.
+          if ((pc - 1) === (elsePc - 2) && target === ifEndPc[frame]) {
+            if (ifThenHas[frame] === 0) {
+              const thenIdx = this.stack.pop()
+              ifThenTag[frame] = this.stack.tag[thenIdx]
+              ifThenNum[frame] = this.stack.num[thenIdx]
+              ifThenAux[frame] = this.stack.aux[thenIdx]
+              ifThenHas[frame] = 1
+            }
+            pc = elsePc
+            continue
+          }
+        }
+        pc = target
         continue
       }
       if (op === VmOp.JumpIfFalse) {
@@ -155,7 +227,26 @@ export class Dsp {
         const idx = this.stack.pop()
         const tag = this.stack.tag[idx] as VmTag
         const num = this.stack.num[idx]
-        if (!this.stack.truthy(tag, num)) pc = to
+        if (tag === VmTag.Audio) {
+          // Only apply audio-conditional `if` semantics for the shape produced by `compileIf`.
+          // Avoid `||` patterns, which have an immediate `JUMP` after the condition.
+          if (ifDepth < ifMaxDepth && ops[pc] !== VmOp.Jump && (to - 2) >= 0 && ops[to - 2] === VmOp.Jump) {
+            ifEndPc[ifDepth] = ops[to - 1]
+            ifElsePc[ifDepth] = to
+            ifCondAux[ifDepth] = this.stack.aux[idx]
+            ifBaseSp[ifDepth] = this.stack.sp
+            ifThenHas[ifDepth] = 0
+            ifDepth++
+          }
+          else {
+            // Fallback: use sample-0 truthiness for control flow.
+            const cond$ = this.program.getOutBuffer(this.stack.aux[idx])
+            if (load<f32>(cond$) == (0.0 as f32)) pc = to
+          }
+        }
+        else {
+          if (!this.stack.truthy(tag, num)) pc = to
+        }
         continue
       }
       if (op === VmOp.EnterScope) {

@@ -33,6 +33,13 @@ export class GenPool<T extends Gen> {
     return gen
   }
 
+  getFixed(i: i32): T {
+    while (i >= this.gens.length) {
+      this.gens.push(this.ctor())
+    }
+    return this.gens[i]
+  }
+
   copyFrom(source: GenPool<T>): void {
     this.index = source.index
     const needed = source.gens.length
@@ -56,6 +63,9 @@ export class GensPool {
   private slicers: GenPool<Slicer> = new GenPool<Slicer>(() => new Slicer())
   private every: GenPool<Every> = new GenPool<Every>(() => new Every())
   private ats: GenPool<At> = new GenPool<At>(() => new At())
+  private miniKeyCount: i32 = 0
+  private miniKeys: StaticArray<i32> = new StaticArray<i32>(64)
+  private miniKeyIndex: StaticArray<i32> = new StaticArray<i32>(64)
   resetIndices(): void {
     this.sines.resetIndex()
     this.ads.resetIndex()
@@ -106,6 +116,25 @@ export class GensPool {
     throw new Error(`Invalid gen op: ${op}`)
   }
 
+  getMiniByKey(key: i32): Mini {
+    const n = this.miniKeyCount
+    for (let i = 0; i < n; i++) {
+      if (this.miniKeys[i] === key) {
+        return this.minis.getFixed(this.miniKeyIndex[i])
+      }
+    }
+
+    if (n >= this.miniKeys.length) {
+      // Hard cap; keep things bounded on the audio thread.
+      return this.minis.getFixed(0)
+    }
+
+    this.miniKeys[n] = key
+    this.miniKeyIndex[n] = n
+    this.miniKeyCount = n + 1
+    return this.minis.getFixed(n)
+  }
+
   copyFrom(source: GensPool): void {
     this.sines.copyFrom(source.sines)
     this.ads.copyFrom(source.ads)
@@ -117,5 +146,9 @@ export class GensPool {
     this.slicers.copyFrom(source.slicers)
     this.every.copyFrom(source.every)
     this.ats.copyFrom(source.ats)
+
+    this.miniKeyCount = source.miniKeyCount
+    memory.copy(changetype<usize>(this.miniKeys), changetype<usize>(source.miniKeys), this.miniKeys.length << 2)
+    memory.copy(changetype<usize>(this.miniKeyIndex), changetype<usize>(source.miniKeyIndex), this.miniKeyIndex.length << 2)
   }
 }

@@ -2,6 +2,7 @@ import { ARRAY_HISTORY_ENTRY_SIZE, ARRAY_HISTORY_SIZE } from '../constants'
 import { setVmError } from '../globals'
 import { Program } from '../program'
 import { VmTag } from './types'
+import { VmAudio } from './vm-audio'
 import { VmStack } from './vm-stack'
 
 export class VmArrays {
@@ -10,6 +11,7 @@ export class VmArrays {
   start: StaticArray<i32> = new StaticArray<i32>(512)
   len: StaticArray<i32> = new StaticArray<i32>(512)
   createPc: StaticArray<i32> = new StaticArray<i32>(512)
+  elemType: StaticArray<i32> = new StaticArray<i32>(512)
   elemTag: StaticArray<i32> = new StaticArray<i32>(8192)
   elemNum: StaticArray<f64> = new StaticArray<f64>(8192)
   elemAux: StaticArray<i32> = new StaticArray<i32>(8192)
@@ -52,30 +54,44 @@ export class VmArrays {
       return
     }
 
-    this.start[arrId] = start
-    this.len[arrId] = n
-    this.createPc[arrId] = pc
-    this.count = arrId + 1
-    this.elemCount = end
-
+    let tag0: i32 = -1
+    let mixed: bool = false
     for (let i = n - 1; i >= 0; i--) {
       const idx = stack.pop()
-      this.elemTag[start + i] = stack.tag[idx]
+      const t = stack.tag[idx]
+      if (tag0 < 0) tag0 = t
+      else if (t !== tag0) mixed = true
+      this.elemTag[start + i] = t
       this.elemNum[start + i] = stack.num[idx]
       this.elemAux[start + i] = stack.aux[idx]
     }
+
+    if (mixed) {
+      // Mixed-type arrays are not supported; keep runtime predictable for audio-rate indexing.
+      setVmError(22, pc)
+      stack.push(VmTag.Undef)
+      return
+    }
+
+    this.start[arrId] = start
+    this.len[arrId] = n
+    this.createPc[arrId] = pc
+    this.elemType[arrId] = tag0
+    this.count = arrId + 1
+    this.elemCount = end
 
     stack.push(VmTag.Arr, 0.0, arrId)
   }
 
   @inline
-  getIndex(stack: VmStack, program: Program): void {
+  getIndex(stack: VmStack, audio: VmAudio, program: Program, length: i32): void {
     const indexIdx = stack.pop()
     const arrayIdx = stack.pop()
     const arrayTag = stack.tag[arrayIdx] as VmTag
     const arrayAux = stack.aux[arrayIdx]
     const indexTag = stack.tag[indexIdx] as VmTag
     const indexNum = stack.num[indexIdx]
+    const indexAux = stack.aux[indexIdx]
 
     if (arrayTag !== VmTag.Arr) {
       stack.push(VmTag.Undef)
@@ -95,11 +111,183 @@ export class VmArrays {
       return
     }
 
+    const elemType = this.elemType[arrId] as VmTag
+
+    if (indexTag === VmTag.Audio) {
+      if (length <= 0) {
+        stack.push(VmTag.Undef)
+        return
+      }
+      if (elemType !== VmTag.Num && elemType !== VmTag.Audio) {
+        stack.push(VmTag.Undef)
+        return
+      }
+
+      const index$ = audio.toAudioPtr(indexTag, indexNum, indexAux, length, program)
+      const outIndex = audio.allocOut(program)
+      const out$ = program.getOutBuffer(outIndex)
+
+      let p$ = out$
+      for (let s = 0; s < length; s++) {
+        const x = load<f32>(index$ + (s << 2)) as f64
+        let i = i32(x)
+        i = i % len
+        if (i < 0) i += len
+        const at = start + i
+
+        if (elemType === VmTag.Num) {
+          store<f32>(p$, this.elemNum[at] as f32)
+        }
+        else {
+          const srcIndex = this.elemAux[at]
+          const src$ = program.getOutBuffer(srcIndex)
+          store<f32>(p$, load<f32>(src$ + (s << 2)))
+        }
+        p$ += 4
+      }
+
+      // Record the sample-0 access for UI widgets.
+      const i0 = i32(load<f32>(index$)) % len
+      const i0w = i0 < 0 ? (i0 + len) : i0
+      this.recordAccess(program, this.createPc[arrId], i0w)
+
+      stack.push(VmTag.Audio, 0.0, outIndex)
+      return
+    }
+
     const i = this.wrapIndex(indexTag, indexNum, len)
     this.recordAccess(program, this.createPc[arrId], i)
 
     const at = start + i
     stack.push(this.elemTag[at] as VmTag, this.elemNum[at], this.elemAux[at])
+  }
+
+  @inline
+  getIndex2(stack: VmStack, audio: VmAudio, program: Program, length: i32): void {
+    const index2Idx = stack.pop()
+    const index1Idx = stack.pop()
+    const arrayIdx = stack.pop()
+
+    const arrayTag = stack.tag[arrayIdx] as VmTag
+    const arrayAux = stack.aux[arrayIdx]
+    const index1Tag = stack.tag[index1Idx] as VmTag
+    const index1Num = stack.num[index1Idx]
+    const index1Aux = stack.aux[index1Idx]
+    const index2Tag = stack.tag[index2Idx] as VmTag
+    const index2Num = stack.num[index2Idx]
+    const index2Aux = stack.aux[index2Idx]
+
+    if (arrayTag !== VmTag.Arr) {
+      stack.push(VmTag.Undef)
+      return
+    }
+
+    const outerId = arrayAux
+    if (outerId < 0 || outerId >= this.count) {
+      stack.push(VmTag.Undef)
+      return
+    }
+
+    const outerStart = this.start[outerId]
+    const outerLen = this.len[outerId]
+    if (outerLen <= 0) {
+      stack.push(VmTag.Undef)
+      return
+    }
+
+    const outerElemType = this.elemType[outerId] as VmTag
+    if (outerElemType !== VmTag.Arr) {
+      // Only handle arrays-of-arrays here; everything else should use normal GET_INDEX.
+      stack.push(VmTag.Undef)
+      return
+    }
+
+    const audio1 = index1Tag === VmTag.Audio
+    const audio2 = index2Tag === VmTag.Audio
+
+    if (!audio1 && !audio2) {
+      const i1 = this.wrapIndex(index1Tag, index1Num, outerLen)
+      const outerAt = outerStart + i1
+      const innerTag = this.elemTag[outerAt] as VmTag
+      const innerId = this.elemAux[outerAt]
+      if (innerTag !== VmTag.Arr || innerId < 0 || innerId >= this.count) {
+        stack.push(VmTag.Undef)
+        return
+      }
+      const innerStart = this.start[innerId]
+      const innerLen = this.len[innerId]
+      if (innerLen <= 0) {
+        stack.push(VmTag.Undef)
+        return
+      }
+      const i2 = this.wrapIndex(index2Tag, index2Num, innerLen)
+      const innerAt = innerStart + i2
+      stack.push(this.elemTag[innerAt] as VmTag, this.elemNum[innerAt], this.elemAux[innerAt])
+      return
+    }
+
+    if (length <= 0) {
+      stack.push(VmTag.Undef)
+      return
+    }
+
+    const index1$ = audio1 ? audio.toAudioPtr(index1Tag, index1Num, index1Aux, length, program) : 0
+    const index2$ = audio2 ? audio.toAudioPtr(index2Tag, index2Num, index2Aux, length, program) : 0
+
+    const outIndex = audio.allocOut(program)
+    const out$ = program.getOutBuffer(outIndex)
+
+    let p$ = out$
+    const fixed1 = audio1 ? 0 : this.wrapIndex(index1Tag, index1Num, outerLen)
+
+    for (let s: i32 = 0; s < length; s++) {
+      let i1: i32 = fixed1
+      if (audio1) {
+        const x1 = load<f32>(index1$ + (s << 2)) as f64
+        i1 = i32(x1)
+        i1 = i1 % outerLen
+        if (i1 < 0) i1 += outerLen
+      }
+
+      const outerAt = outerStart + i1
+      const innerId = this.elemAux[outerAt]
+      if (innerId < 0 || innerId >= this.count) {
+        store<f32>(p$, 0.0 as f32)
+        p$ += 4
+        continue
+      }
+
+      const innerLen = this.len[innerId]
+      if (innerLen <= 0) {
+        store<f32>(p$, 0.0 as f32)
+        p$ += 4
+        continue
+      }
+
+      // Only support numeric inner arrays for audio-rate nested indexing.
+      if ((this.elemType[innerId] as VmTag) !== VmTag.Num) {
+        store<f32>(p$, 0.0 as f32)
+        p$ += 4
+        continue
+      }
+
+      let i2: i32 = 0
+      if (audio2) {
+        const x2 = load<f32>(index2$ + (s << 2)) as f64
+        i2 = i32(x2)
+      }
+      else {
+        i2 = this.wrapIndex(index2Tag, index2Num, innerLen)
+      }
+      i2 = i2 % innerLen
+      if (i2 < 0) i2 += innerLen
+
+      const innerAt = this.start[innerId] + i2
+      store<f32>(p$, this.elemNum[innerAt] as f32)
+      p$ += 4
+    }
+
+    stack.push(VmTag.Audio, 0.0, outIndex)
   }
 
   @inline
@@ -146,4 +334,3 @@ export class VmArrays {
     this.elemCount = 0
   }
 }
-

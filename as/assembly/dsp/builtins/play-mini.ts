@@ -43,7 +43,7 @@ export function playMini(
     valOuts[v] = val
   }
 
-  const mini = program.gensPool.get(Op.Mini) as Mini
+  const mini = program.gensPool.getMiniByKey(arrayIndex)
   mini.bytecode$ = changetype<usize>(program.data.arrays[arrayIndex])
   mini.history$ = changetype<usize>(program.histories[arrayIndex])
   mini.outVoiceCount$ = program.getOutBuffer(voiceCountOut)

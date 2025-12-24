@@ -16,6 +16,7 @@ export enum VmSym {
   Slicer = 11,
   Every = 12,
   At = 13,
+  PlayPick = 14,
 
   // Named args (adsr)
   Attack = 100,

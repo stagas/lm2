@@ -33,6 +33,7 @@ export type Instr =
   | { op: 'GET_PROP'; key: number }
   | { op: 'SET_PROP'; key: number }
   | { op: 'GET_INDEX' }
+  | { op: 'GET_INDEX2' }
   | { op: 'SET_INDEX' }
   | { op: 'UNARY'; opName: string }
   | { op: 'BINARY'; opName: string }
@@ -481,17 +482,41 @@ class Compiler {
   }
 
   private compileMember(expr: MemberExpr): void {
-    this.compileExpr(expr.object)
     if (expr.computed === true) {
+      // Fused nested indexing: `A[i][j]` -> `GET_INDEX2` (enables audio-rate outer index without audio handles).
+      if (expr.object.kind === 'member' && expr.object.computed === true) {
+        this.compileExpr(expr.object.object)
+        this.compileExpr(expr.object.index)
+        this.compileExpr(expr.index)
+        this.emit({ op: 'GET_INDEX2' })
+        return
+      }
+
+      this.compileExpr(expr.object)
       this.compileExpr(expr.index)
       this.emit({ op: 'GET_INDEX' })
+      return
     }
-    else {
-      this.emit({ op: 'GET_PROP', key: this.k(expr.prop) })
-    }
+    this.compileExpr(expr.object)
+    this.emit({ op: 'GET_PROP', key: this.k(expr.prop) })
   }
 
   private compileCall(expr: CallExpr): void {
+    const calleeName = expr.callee.kind === 'ident' ? expr.callee.name : null
+    if (calleeName === 'play' && expr.args.length >= 2) {
+      const a0 = expr.args[0]!
+      const a1 = expr.args[1]!
+      if (a0.kind === 'pos' && a1.kind === 'pos' && a0.value.kind === 'member' && a0.value.computed === true) {
+        const m = a0.value
+        this.emit({ op: 'LOAD', name: this.nameConst('playPick') })
+        this.compileExpr(m.object)
+        this.compileExpr(m.index)
+        this.compileExpr(a1.value)
+        this.emit({ op: 'CALL', pos: 3, named: 0 })
+        return
+      }
+    }
+
     this.compileExpr(expr.callee)
     type TempArg =
       | { kind: 'pos'; temp: string; valueKind?: string; identName?: string; isImplicitNamedCandidate: boolean }
@@ -546,7 +571,6 @@ class Compiler {
       slicer: ['sample', 'speed', 'offset', 'slice', 'threshold', 'trig', 'repeat'],
     }
 
-    const calleeName = expr.callee.kind === 'ident' ? expr.callee.name : null
     const sig = calleeName ? sigs[calleeName] : undefined
 
     const emitUndef = () => this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
