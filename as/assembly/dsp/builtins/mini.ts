@@ -4,7 +4,7 @@ import { Dsp } from '../dsp'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
-import { playMini } from './play-mini'
+import { callPlay } from './play'
 
 // @ts-ignore
 @inline
@@ -32,16 +32,17 @@ export function callMini(
     return
   }
 
-  const arrayTag = posTags[0] as VmTag
-  const arrayNum = posNums[0]
-  if (arrayTag !== VmTag.Num) {
+  const seqTag = posTags[0] as VmTag
+  const seqNum = posNums[0]
+  const seqAux = posAux[0]
+  if (seqTag !== VmTag.Num && seqTag !== VmTag.Audio) {
     stack.push(VmTag.Undef)
     return
   }
 
   // mini(seq) -> seq
   if (posCount === 1) {
-    stack.push(VmTag.Num, arrayNum)
+    stack.push(seqTag, seqNum, seqAux)
     return
   }
 
@@ -52,7 +53,25 @@ export function callMini(
     return
   }
 
-  playMini(i32(arrayNum), cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
-    miniValOuts, cbArgTags, cbArgNums, cbArgAux)
+  // Delegate to play() implementation so `seq` can be a per-sample buffer (audio-rate selection).
+  callPlay(
+    2,
+    posTags,
+    posNums,
+    posAux,
+    stack,
+    audio,
+    program,
+    length,
+    left$,
+    right$,
+    dsp,
+    miniTrigOuts,
+    miniVelOuts,
+    miniValOuts,
+    cbArgTags,
+    cbArgNums,
+    cbArgAux,
+  )
 }
 

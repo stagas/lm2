@@ -508,12 +508,19 @@ class Compiler {
       const a1 = expr.args[1]!
       if (a0.kind === 'pos' && a1.kind === 'pos' && a0.value.kind === 'member' && a0.value.computed === true) {
         const m = a0.value
+        // Only rewrite the single-index form: play(seqs[idx], cb) -> playPick(seqs, idx, cb).
+        // Nested indexing like `progr[x][y]` is handled by the fused GET_INDEX2 path instead.
+        if (m.object.kind === 'member' && m.object.computed === true) {
+          // fall through to normal call compilation
+        }
+        else {
         this.emit({ op: 'LOAD', name: this.nameConst('playPick') })
         this.compileExpr(m.object)
         this.compileExpr(m.index)
         this.compileExpr(a1.value)
         this.emit({ op: 'CALL', pos: 3, named: 0 })
         return
+        }
       }
     }
 

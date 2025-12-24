@@ -1,4 +1,4 @@
-import { clamp01, seededRandom01 } from '../util'
+import { clamp01f64, seededRandom01 } from '../util'
 import { Gen } from './gen'
 
 export class At extends Gen {
@@ -10,16 +10,15 @@ export class At extends Gen {
   private baseSeed: u32 = 1234
   private lastSeedInput: i32 = 0x7fffffff
 
-  reset(): void {}
-
   copyFrom(other: Gen): void {
     const src = other as At
-    this.bar$ = src.bar$
-    this.every$ = src.every$
-    this.prob$ = src.prob$
-    this.seed$ = src.seed$
     this.baseSeed = src.baseSeed
     this.lastSeedInput = src.lastSeedInput
+  }
+
+  @inline
+  private static floorDivF64(a: f64, b: f64): i32 {
+    return i32(Math.floor(a / b))
   }
 
   process(out$: usize, length: i32): void {
@@ -41,36 +40,42 @@ export class At extends Gen {
     let o$ = out$
 
     for (let i: i32 = 0; i < length; i++) {
-      const barBars: f32 = load<f32>(bar$)
-      const everyBarsRaw: f32 = load<f32>(every$)
-      const probValue: f32 = clamp01(load<f32>(prob$))
+      const barBars: f64 = load<f32>(bar$) as f64
+      const everyBarsRaw: f64 = load<f32>(every$) as f64
+      const probValue: f64 = clamp01f64(load<f32>(prob$) as f64)
 
-      const safeBpm: f32 = Mathf.max(1.0, bpm)
-      const samplesPerBar: f64 = (60.0 / (safeBpm as f64)) * (sampleRate as f64) * 4.0
+      const safeBpm: f64 = Math.max(1.0, bpm as f64)
+      const samplesPerBar: f64 = (60.0 / safeBpm) * (sampleRate as f64) * 4.0
 
-      const startSample: i32 = i32(Math.round((barBars as f64) * samplesPerBar))
-      const globalSample: i32 = globalSampleCount + i
+      const startSample: f64 = barBars * samplesPerBar
+      const globalSample: f64 = (globalSampleCount + i) as f64
+      const prevSample: f64 = globalSample - 1.0
 
       let shouldTrigger: bool = false
       let cycle: i32 = 0
 
       if (everyBarsRaw > 0.0) {
-        let intervalSamples: i32 = i32(Math.round((everyBarsRaw as f64) * samplesPerBar))
-        if (intervalSamples < 1) intervalSamples = 1
+        let interval: f64 = everyBarsRaw * samplesPerBar
+        if (interval < 1.0) interval = 1.0
 
-        const delta: i32 = globalSample - startSample
-        if (delta >= 0 && (delta % intervalSamples) === 0) {
+        const delta: f64 = globalSample - startSample
+        const prevDelta: f64 = prevSample - startSample
+
+        const currentCycle: i32 = At.floorDivF64(delta, interval)
+        const prevCycle: i32 = At.floorDivF64(prevDelta, interval)
+
+        if (currentCycle >= 0 && currentCycle > prevCycle) {
           shouldTrigger = true
-          cycle = delta / intervalSamples
+          cycle = currentCycle
         }
       }
-      else if (globalSample === startSample) {
+      else if (globalSample >= startSample && prevSample < startSample) {
         shouldTrigger = true
         cycle = 0
       }
 
       if (shouldTrigger) {
-        const random: f32 = seededRandom01(baseSeed, cycle as f64, randKey) as f32
+        const random: f64 = seededRandom01(baseSeed, cycle as f64, randKey)
         store<f32>(o$, random < probValue ? 1.0 : 0.0)
       }
       else {

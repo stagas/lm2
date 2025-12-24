@@ -43,7 +43,7 @@ export function playMini(
     valOuts[v] = val
   }
 
-  const mini = program.gensPool.getMiniByKey(arrayIndex)
+  const mini = program.gensPool.get(Op.Mini) as Mini
   mini.bytecode$ = changetype<usize>(program.data.arrays[arrayIndex])
   mini.history$ = changetype<usize>(program.histories[arrayIndex])
   mini.outVoiceCount$ = program.getOutBuffer(voiceCountOut)
@@ -90,9 +90,16 @@ export function playMini(
     audio.outCursor = bodyBufBase
     stack.reset()
 
+    // Ensure `t` is allocated within this callback scope (so it respects buffer remapping).
+    const savedTHas = audio.tHas
+    const savedTOutIndex = audio.tOutIndex
+    audio.tHas = 0
+
     dsp.vmInvokeFunc(cbAux, 3, argTags, argNums, argAux, length, left$, right$)
 
     if (vmErrorCode !== 0) {
+      audio.tHas = savedTHas
+      audio.tOutIndex = savedTOutIndex
       program.popCallbackScope()
       return
     }
@@ -104,6 +111,8 @@ export function playMini(
     const voiceAudio$ = audio.toAudioPtr(outTag, outNum, outAux, length, program)
     addAudio(mixOut$, mixOut$, voiceAudio$, length)
 
+    audio.tHas = savedTHas
+    audio.tOutIndex = savedTOutIndex
     program.popCallbackScope()
   }
 

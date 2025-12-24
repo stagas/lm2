@@ -1,5 +1,4 @@
 // dprint-ignore-file
-import { globalSampleCount, vmErrorCode } from '../../globals'
 import { Program } from '../../program'
 import { playMini } from './play-mini'
 import { Dsp } from '../dsp'
@@ -62,105 +61,20 @@ export function callPlayPick(
     return
   }
 
-  const savedSample = globalSampleCount
-  const savedTHas = audio.tHas
-  const savedTOutIndex = audio.tOutIndex
-
-  const outIndex = audio.allocOut(program)
-  const out$ = program.getOutBuffer(outIndex)
-  memory.fill(out$, 0, (length << 2) as usize)
-
-  const maxSegs: i32 = 32
-  let segCount: i32 = 0
-
-  if (idxTag !== VmTag.Audio) {
-    const pick = i32(idxNum)
-    let i = pick % seqLen
-    if (i < 0) i += seqLen
-    const seqIndex = i32(dsp.arrays.elemNum[seqStart + i])
-
-    audio.tHas = 0
-    playMini(seqIndex, cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts, miniValOuts,
-      cbArgTags, cbArgNums, cbArgAux)
-    if (vmErrorCode !== 0) {
-      globalSampleCount = savedSample
-      audio.tHas = savedTHas
-      audio.tOutIndex = savedTOutIndex
-      return
-    }
-
-    const mixIdx = stack.pop()
-    const mixTag = stack.tag[mixIdx] as VmTag
-    const mixNum = stack.num[mixIdx]
-    const mixAux = stack.aux[mixIdx]
-    const mix$ = audio.toAudioPtr(mixTag, mixNum, mixAux, length, program)
-    memory.copy(out$, mix$, (length << 2) as usize)
-
-    globalSampleCount = savedSample
-    audio.tHas = savedTHas
-    audio.tOutIndex = savedTOutIndex
-    stack.push(VmTag.Audio, 0.0, outIndex)
-    return
+  // Segment-rate selection: use sample-0 of `idx` to pick the sequence for this VM segment.
+  let pick: i32 = i32(idxNum)
+  if (idxTag === VmTag.Audio) {
+    const idx$ = audio.toAudioPtr(idxTag, idxNum, idxAux, length, program)
+    pick = i32(load<f32>(idx$))
   }
 
-  const idx$ = audio.toAudioPtr(idxTag, idxNum, idxAux, length, program)
-  let segStart: i32 = 0
-  let prev: i32 = i32(load<f32>(idx$))
+  let i = pick % seqLen
+  if (i < 0) i += seqLen
+  const seqIndex = i32(dsp.arrays.elemNum[seqStart + i])
 
-  for (let i: i32 = 1; i < length; i++) {
-    const cur = i32(load<f32>(idx$ + (i << 2)))
-    if (cur === prev) continue
-    if (segCount++ >= maxSegs) break
-
-    const segLen: i32 = i - segStart
-    globalSampleCount = savedSample + segStart
-    audio.tHas = 0
-    let p = prev % seqLen
-    if (p < 0) p += seqLen
-    const seqIndex = i32(dsp.arrays.elemNum[seqStart + p])
-    playMini(seqIndex, cbAux, stack, audio, program, segLen, left$ + (segStart << 2), right$ + (segStart << 2), dsp, miniTrigOuts,
-      miniVelOuts, miniValOuts, cbArgTags, cbArgNums, cbArgAux)
-    if (vmErrorCode !== 0) break
-    const mixIdx = stack.pop()
-    const mixTag = stack.tag[mixIdx] as VmTag
-    const mixNum = stack.num[mixIdx]
-    const mixAux = stack.aux[mixIdx]
-    const mix$ = audio.toAudioPtr(mixTag, mixNum, mixAux, segLen, program)
-    memory.copy(out$ + (segStart << 2), mix$, (segLen << 2) as usize)
-
-    segStart = i
-    prev = cur
-  }
-
-  if (vmErrorCode === 0 && segStart < length) {
-    const segLen: i32 = length - segStart
-    globalSampleCount = savedSample + segStart
-    audio.tHas = 0
-    let p = prev % seqLen
-    if (p < 0) p += seqLen
-    const seqIndex = i32(dsp.arrays.elemNum[seqStart + p])
-    playMini(seqIndex, cbAux, stack, audio, program, segLen, left$ + (segStart << 2), right$ + (segStart << 2), dsp, miniTrigOuts,
-      miniVelOuts, miniValOuts, cbArgTags, cbArgNums, cbArgAux)
-    if (vmErrorCode !== 0) {
-      globalSampleCount = savedSample
-      audio.tHas = savedTHas
-      audio.tOutIndex = savedTOutIndex
-      return
-    }
-    const mixIdx = stack.pop()
-    const mixTag = stack.tag[mixIdx] as VmTag
-    const mixNum = stack.num[mixIdx]
-    const mixAux = stack.aux[mixIdx]
-    const mix$ = audio.toAudioPtr(mixTag, mixNum, mixAux, segLen, program)
-    memory.copy(out$ + (segStart << 2), mix$, (segLen << 2) as usize)
-  }
-
-  globalSampleCount = savedSample
-  audio.tHas = savedTHas
-  audio.tOutIndex = savedTOutIndex
-
-  if (vmErrorCode !== 0) return
-  stack.push(VmTag.Audio, 0.0, outIndex)
+  audio.tHas = 0
+  playMini(seqIndex, cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts, miniValOuts,
+    cbArgTags, cbArgNums, cbArgAux)
 }
 
 

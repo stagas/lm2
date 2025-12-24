@@ -32,17 +32,31 @@ export function callPlay(
     return
   }
 
-  const arrayTag = posTags[0] as VmTag
-  const arrayNum = posNums[0]
+  const seqTag = posTags[0] as VmTag
+  const seqNum = posNums[0]
+  const seqAux = posAux[0]
   const cbTag = posTags[1] as VmTag
   const cbAux = posAux[1]
 
-  if (arrayTag !== VmTag.Num || cbTag !== VmTag.Func) {
+  if ((seqTag !== VmTag.Num && seqTag !== VmTag.Audio) || cbTag !== VmTag.Func) {
     stack.push(VmTag.Undef)
     return
   }
 
-  playMini(i32(arrayNum), cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
+  const baseSp = stack.sp
+
+  if (seqTag === VmTag.Num) {
+    playMini(i32(seqNum), cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
+      miniValOuts, cbArgTags, cbArgNums, cbArgAux)
+    return
+  }
+
+  // Segment-rate selection: use sample-0 to pick the sequence for this VM segment.
+  const seq$ = audio.toAudioPtr(seqTag, seqNum, seqAux, length, program)
+  const picked: i32 = i32(load<f32>(seq$))
+  audio.tHas = 0
+  stack.sp = baseSp
+  playMini(picked, cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
     miniValOuts, cbArgTags, cbArgNums, cbArgAux)
 }
 

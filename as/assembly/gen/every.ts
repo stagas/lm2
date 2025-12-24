@@ -1,4 +1,4 @@
-import { clamp01, seededRandom01 } from '../util'
+import { clamp01f64, seededRandom01 } from '../util'
 import { Gen } from './gen'
 
 export class Every extends Gen {
@@ -11,25 +11,15 @@ export class Every extends Gen {
   private baseSeed: u32 = 1234
   private lastSeedInput: i32 = 0x7fffffff
 
-  reset(): void {
-    // no internal state
-  }
-
   copyFrom(other: Gen): void {
     const src = other as Every
-    this.bar$ = src.bar$
-    this.prob$ = src.prob$
-    this.seed$ = src.seed$
-    this.swing$ = src.swing$
-    this.offset$ = src.offset$
     this.baseSeed = src.baseSeed
     this.lastSeedInput = src.lastSeedInput
   }
 
   @inline
-  private static floorDiv(a: i32, b: i32): i32 {
-    if (a >= 0) return a / b
-    return (a - (b - 1)) / b
+  private static floorDivF64(a: f64, b: f64): i32 {
+    return i32(Math.floor(a / b))
   }
 
   process(out$: usize, length: i32): void {
@@ -47,40 +37,38 @@ export class Every extends Gen {
 
     const baseSeed: u32 = this.baseSeed
     const randKey: i32 = 1
-    const rate: f32 = sampleRate
-    const safeBpm: f32 = Mathf.max(1.0, bpm)
-    const samplesPerWholeNote: f32 = (60.0 / safeBpm) * rate * 4.0
-    const minBar: f32 = 1.0 / samplesPerWholeNote
+    const rate: f64 = sampleRate as f64
+    const safeBpm: f64 = Math.max(1.0, bpm as f64)
+    const samplesPerWholeNote: f64 = (60.0 / safeBpm) * rate * 4.0
+    const minBar: f64 = 1.0 / samplesPerWholeNote
 
     let o$ = out$
 
     for (let i: i32 = 0; i < length; i++) {
-      const rawBar: f32 = load<f32>(bar$)
-      const probValue: f32 = clamp01(load<f32>(prob$))
-      const swingValue: f32 = clamp01(load<f32>(swing$))
-      const offsetSeconds: f32 = load<f32>(offset$)
+      const rawBar: f64 = load<f32>(bar$) as f64
+      const probValue: f64 = clamp01f64(load<f32>(prob$) as f64)
+      const swingValue: f64 = clamp01f64(load<f32>(swing$) as f64)
+      const offsetSeconds: f64 = load<f32>(offset$) as f64
 
-      const barValue: f32 = Mathf.max(minBar, rawBar)
+      const barValue: f64 = Math.max(minBar, rawBar)
 
-      let intervalSamples: i32 = i32(Mathf.ceil(barValue * samplesPerWholeNote))
-      if (intervalSamples < 1) intervalSamples = 1
+      const interval: f64 = barValue * samplesPerWholeNote
+      const offsetSamples: f64 = offsetSeconds * rate
 
-      const offsetSamples: i32 = i32(Mathf.ceil(offsetSeconds * rate))
-
-      const globalSample: i32 = globalSampleCount + i
-      let sample: i32 = globalSample - offsetSamples
-      let prevSample: i32 = sample - 1
+      const globalSample: f64 = (globalSampleCount + i) as f64
+      let sample: f64 = globalSample - offsetSamples
+      let prevSample: f64 = sample - 1.0
 
       if (swingValue > 0.0) {
-        const swingOffset: i32 = i32(Mathf.round((intervalSamples as f32) * swingValue * 0.5))
-        const beatIndex: i32 = Every.floorDiv(sample, intervalSamples)
-        if ((beatIndex & 1) === 1) sample -= swingOffset
-        const prevBeatIndex: i32 = Every.floorDiv(prevSample, intervalSamples)
-        if ((prevBeatIndex & 1) === 1) prevSample -= swingOffset
+        const swingOffset: i32 = i32(Math.round(interval * swingValue * 0.5))
+        const beatIndex: i32 = Every.floorDivF64(sample, interval)
+        if ((beatIndex & 1) === 1) sample -= swingOffset as f64
+        const prevBeatIndex: i32 = Every.floorDivF64(prevSample, interval)
+        if ((prevBeatIndex & 1) === 1) prevSample -= swingOffset as f64
       }
 
-      const currentBeatCycle: i32 = Every.floorDiv(sample, intervalSamples)
-      const previousBeatCycle: i32 = Every.floorDiv(prevSample, intervalSamples)
+      const currentBeatCycle: i32 = Every.floorDivF64(sample, interval)
+      const previousBeatCycle: i32 = Every.floorDivF64(prevSample, interval)
 
       let shouldTrigger: bool = false
 
@@ -89,7 +77,7 @@ export class Every extends Gen {
       }
 
       if (shouldTrigger) {
-        const random: f32 = seededRandom01(baseSeed, currentBeatCycle as f64, randKey) as f32
+        const random: f64 = seededRandom01(baseSeed, currentBeatCycle as f64, randKey)
         store<f32>(o$, random < probValue ? 1.0 : 0.0)
       }
       else {
