@@ -59,6 +59,8 @@ export * from './types.ts'
 const BUILTIN_CALL_NAMES = new Set([
   'out',
   'sine',
+  'map',
+  'sum',
   'note',
   'degree',
   'ad',

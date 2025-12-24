@@ -123,6 +123,14 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Degree)
       return
     }
+    if (sym === VmSym.Map) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Map)
+      return
+    }
+    if (sym === VmSym.Sum) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Sum)
+      return
+    }
     if (sym === VmSym.T) {
       const outIndex = audio.getTRamp(length, program)
       stack.push(VmTag.Audio, 0.0, outIndex)

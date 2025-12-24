@@ -606,6 +606,122 @@ class Compiler {
       }
     }
 
+    // `array.map(fn)` is compiled as `map(array, fn)` to avoid GET_PROP in the VM encoder.
+    // The receiver is evaluated once and passed as the first positional argument.
+    if (expr.callee.kind === 'member' && expr.callee.computed === false && expr.callee.prop === 'map') {
+      const recvTemp = `%recv${this.callTempId++}`
+      this.compileExpr(expr.callee.object)
+      this.emit({ op: 'STORE', name: this.nameConst(recvTemp) })
+      this.emit({ op: 'POP' })
+
+      this.emit({ op: 'LOAD', name: this.nameConst('map') })
+
+      type TempArg =
+        | { kind: 'pos'; temp: string }
+        | { kind: 'named'; temp: string; name: string }
+
+      const temps: TempArg[] = []
+      const tmp = () => `%arg${this.callTempId++}`
+
+      // Evaluate args left-to-right, storing each into a temp so we can reorder stack layout later.
+      for (const a of expr.args) {
+        const t = tmp()
+        if (a.kind === 'pos') {
+          this.compileExpr(a.value)
+          this.emit({ op: 'STORE', name: this.nameConst(t) })
+          this.emit({ op: 'POP' })
+          temps.push({ kind: 'pos', temp: t })
+          continue
+        }
+        if (a.kind === 'named') {
+          this.compileExpr(a.value)
+          this.emit({ op: 'STORE', name: this.nameConst(t) })
+          this.emit({ op: 'POP' })
+          temps.push({ kind: 'named', temp: t, name: a.name })
+          continue
+        }
+        // shorthand: store the loaded value into a temp (keeps evaluation behavior consistent)
+        this.emit({ op: 'LOAD', name: this.nameConst(a.name) })
+        this.emit({ op: 'STORE', name: this.nameConst(t) })
+        this.emit({ op: 'POP' })
+        temps.push({ kind: 'named', temp: t, name: a.name })
+      }
+
+      const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
+
+      // Generic call layout: positional values first, then named pairs (reverse order so last wins).
+      const posTemps: string[] = [recvTemp]
+      const namedTemps: { name: string; temp: string }[] = []
+      for (const a of temps) {
+        if (a.kind === 'pos') posTemps.push(a.temp)
+        else namedTemps.push({ name: a.name, temp: a.temp })
+      }
+
+      for (const t of posTemps) emitLoadTemp(t)
+      for (let i = namedTemps.length - 1; i >= 0; i--) {
+        const a = namedTemps[i]!
+        this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
+        emitLoadTemp(a.temp)
+      }
+
+      this.emit({ op: 'CALL', pos: posTemps.length, named: namedTemps.length })
+      return
+    }
+
+    // `array.sum()` is compiled as `sum(array)` to avoid GET_PROP in the VM encoder.
+    if (expr.callee.kind === 'member' && expr.callee.computed === false && expr.callee.prop === 'sum') {
+      const recvTemp = `%recv${this.callTempId++}`
+      this.compileExpr(expr.callee.object)
+      this.emit({ op: 'STORE', name: this.nameConst(recvTemp) })
+      this.emit({ op: 'POP' })
+
+      this.emit({ op: 'LOAD', name: this.nameConst('sum') })
+
+      const temps: Array<{ kind: 'pos'; temp: string } | { kind: 'named'; temp: string; name: string }> = []
+      const tmp = () => `%arg${this.callTempId++}`
+
+      for (const a of expr.args) {
+        const t = tmp()
+        if (a.kind === 'pos') {
+          this.compileExpr(a.value)
+          this.emit({ op: 'STORE', name: this.nameConst(t) })
+          this.emit({ op: 'POP' })
+          temps.push({ kind: 'pos', temp: t })
+          continue
+        }
+        if (a.kind === 'named') {
+          this.compileExpr(a.value)
+          this.emit({ op: 'STORE', name: this.nameConst(t) })
+          this.emit({ op: 'POP' })
+          temps.push({ kind: 'named', temp: t, name: a.name })
+          continue
+        }
+        this.emit({ op: 'LOAD', name: this.nameConst(a.name) })
+        this.emit({ op: 'STORE', name: this.nameConst(t) })
+        this.emit({ op: 'POP' })
+        temps.push({ kind: 'named', temp: t, name: a.name })
+      }
+
+      const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
+
+      const posTemps: string[] = [recvTemp]
+      const namedTemps: { name: string; temp: string }[] = []
+      for (const a of temps) {
+        if (a.kind === 'pos') posTemps.push(a.temp)
+        else namedTemps.push({ name: a.name, temp: a.temp })
+      }
+
+      for (const t of posTemps) emitLoadTemp(t)
+      for (let i = namedTemps.length - 1; i >= 0; i--) {
+        const a = namedTemps[i]!
+        this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
+        emitLoadTemp(a.temp)
+      }
+
+      this.emit({ op: 'CALL', pos: posTemps.length, named: namedTemps.length })
+      return
+    }
+
     this.compileExpr(expr.callee)
     type TempArg =
       | { kind: 'pos'; temp: string; valueKind?: string; identName?: string; isImplicitNamedCandidate: boolean }

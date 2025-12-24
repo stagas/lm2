@@ -699,14 +699,16 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
         i++
       }
 
-      // Look ahead to see if next non-whitespace char is '(' or ':'
+      // Look ahead to see if next non-whitespace char is '(', ':', or '->'
       let lookAhead = i
       while (lookAhead < line.length && /\s/.test(line[lookAhead])) {
         lookAhead++
       }
       const nextChar = lookAhead < line.length ? line[lookAhead] : ''
+      const nextTwoChars = lookAhead + 1 < line.length ? line[lookAhead] + line[lookAhead + 1] : nextChar
       const isFollowedByParen = nextChar === '('
       const isFollowedByColon = nextChar === ':'
+      const isFollowedByArrow = nextTwoChars === '->'
 
       const inFunctionCall = functionCallDepth !== -1 && parenDepth > functionCallDepth
       const inArrowParams = arrowParamDepth !== -1 && parenDepth > arrowParamDepth
@@ -720,6 +722,10 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
           inMiniCall = parenDepth
           inMiniCallName = word
         }
+      }
+      else if (isFollowedByArrow) {
+        // Single identifier followed by '->' is an arrow function parameter
+        tokens.push({ type: 'argument', content: word, length: word.length })
       }
       else if (inArrowParams) {
         // Arrow function parameter
