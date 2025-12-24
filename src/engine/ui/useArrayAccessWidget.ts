@@ -5,6 +5,10 @@ import type { ArrayLiteralRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 
+function locKey(loc: ArrayLiteralRef['items'][number]): string {
+  return `${loc.line}:${loc.column}:${Math.max(1, loc.length)}`
+}
+
 type UseArrayAccessWidgetParams = {
   program1: ProgramInstance | undefined
   dspSource: string
@@ -37,12 +41,22 @@ export function useArrayAccessWidget({
       const groups = new Map<string, { loc: ArrayLiteralRef['items'][number]; idxs: number[] }>()
       for (let i = 0; i < lit.items.length; i++) {
         const loc = lit.items[i]!
-        const k = `${loc.line}:${loc.column}:${loc.length}`
+        const k = locKey(loc)
         const g = groups.get(k)
         if (g) g.idxs.push(i)
         else groups.set(k, { loc, idxs: [i] })
       }
       m.set(lit.pc, Array.from(groups.values()))
+    }
+    return m
+  }, [arrayLiterals])
+
+  const pcToLocKeyByIdx = useMemo(() => {
+    const m = new Map<number, string[]>()
+    for (const lit of arrayLiterals) {
+      const a = new Array<string>(lit.items.length)
+      for (let i = 0; i < lit.items.length; i++) a[i] = locKey(lit.items[i]!)
+      m.set(lit.pc, a)
     }
     return m
   }, [arrayLiterals])
@@ -81,8 +95,11 @@ export function useArrayAccessWidget({
           activeIndex.set(pc, idx)
         }
         else if (prev !== idx) {
-          // index changed -> start fading previous entry, activate new
-          fading.set(pc + ':' + prev, nowSec)
+          const locKeys = pcToLocKeyByIdx.get(pc)
+          if (locKeys?.[prev] !== locKeys?.[idx]) {
+            // index changed to a different loc -> start fading previous entry
+            fading.set(pc + ':' + prev, nowSec)
+          }
           activeIndex.set(pc, idx)
         }
         // if prev === idx => leave as active (no fade)
@@ -108,7 +125,7 @@ export function useArrayAccessWidget({
       const a = 1 - age / FADEOUT_SECONDS
       if (a > 0) frame.set(key, a)
     }
-  }, [showWidgets, program1, pcToItems])
+  }, [showWidgets, program1, pcToItems, pcToLocKeyByIdx])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
