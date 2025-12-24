@@ -31,6 +31,7 @@ export type Instr =
   | { op: 'STORE'; name: number }
   | { op: 'ARRAY'; n: number }
   | { op: 'OBJECT'; n: number }
+  | { op: 'LEN' }
   | { op: 'GET_PROP'; key: number }
   | { op: 'SET_PROP'; key: number }
   | { op: 'GET_INDEX' }
@@ -87,6 +88,7 @@ export function disassemble(chunk: Chunk): string {
     else if (ins.op === 'BRANCH') lines.push(head)
     else if (ins.op === 'LOAD') lines.push(`${head} ${ins.name} (${String(chunk.consts[ins.name])})`)
     else if (ins.op === 'STORE') lines.push(`${head} ${ins.name} (${String(chunk.consts[ins.name])})`)
+    else if (ins.op === 'LEN') lines.push(head)
     else if (ins.op === 'GET_PROP') lines.push(`${head} ${ins.key} (${String(chunk.consts[ins.key])})`)
     else if (ins.op === 'SET_PROP') lines.push(`${head} ${ins.key} (${String(chunk.consts[ins.key])})`)
     else if (ins.op === 'UNARY') lines.push(`${head} ${ins.opName}`)
@@ -508,6 +510,11 @@ class Compiler {
       this.compileExpr(expr.object)
       this.compileExpr(expr.index)
       this.emit({ op: 'GET_INDEX' })
+      return
+    }
+    if (expr.prop === 'length') {
+      this.compileExpr(expr.object)
+      this.emit({ op: 'LEN' })
       return
     }
     this.compileExpr(expr.object)

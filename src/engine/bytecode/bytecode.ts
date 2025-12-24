@@ -734,6 +734,7 @@ export function encodeLangToVmOps(
         case 'CATCH_BEGIN':
         case 'FINALLY_BEGIN':
         case 'TRY_END':
+        case 'LEN':
           pc += 1
           break
         case 'DUP2':
@@ -889,6 +890,10 @@ export function encodeLangToVmOps(
         case 'ARRAY': {
           target.ops[w++] = VmOp.Array
           target.ops[w++] = ins.n | 0
+          break
+        }
+        case 'LEN': {
+          target.ops[w++] = VmOp.Len
           break
         }
         case 'GET_INDEX': {
