@@ -1,5 +1,6 @@
-import type { Arg, Expr, Program, Stmt } from './ast.ts'
+import { parseChordSuffix, romanToDegree } from '../mini/chord-parser.ts'
 import { findScaleIndex } from '../mini/scales.ts'
+import type { Arg, Expr, Program, Stmt } from './ast.ts'
 
 function noteIdentToMidi(name: string): number | null {
   const m = name.match(/^([a-gA-G])([#b]?)(\d+)$/)
@@ -27,18 +28,6 @@ function noteIdentToMidi(name: string): number | null {
   if (acc === '#') midi += 1
   else if (acc === 'b') midi -= 1
   return midi
-}
-
-function romanToDegree(text: string): number | null {
-  const t = text.toLowerCase()
-  if (t === 'i') return 1
-  if (t === 'ii') return 2
-  if (t === 'iii') return 3
-  if (t === 'iv') return 4
-  if (t === 'v') return 5
-  if (t === 'vi') return 6
-  if (t === 'vii') return 7
-  return null
 }
 
 function desugarExpr(expr: Expr): Expr {
@@ -69,20 +58,43 @@ function desugarExpr(expr: Expr): Expr {
         }
       }
 
-      const base = romanToDegree(raw)
-      if (base !== null) {
-        const numLoc = (dx: number) => dx === 0 ? expr.loc : { ...expr.loc, line: 0, column: expr.loc.column + dx }
-        const mk = (n: number, dx: number) => ({
-          kind: 'call',
-          callee: { kind: 'ident', name: 'degree', loc: expr.loc },
-          args: [{
-            kind: 'pos',
-            value: { kind: 'number', value: n, raw: String(n), loc: numLoc(dx) },
-            loc: expr.loc,
-          }],
-          loc: expr.loc,
-        })
-        return { kind: 'array', items: [mk(base, 0), mk(base + 2, 1), mk(base + 4, 2)], loc: expr.loc }
+      const chordMatch = raw.match(/^([ivxlcdm]+)(.*)$/i)
+      if (chordMatch) {
+        const roman = chordMatch[1]
+        const suffix = chordMatch[2] ?? ''
+        const base = romanToDegree(roman)
+        if (base !== null) {
+          const tones = parseChordSuffix(suffix)
+          const numLoc = (dx: number) => dx === 0 ? expr.loc : { ...expr.loc, line: 0, column: expr.loc.column + dx }
+
+          const items = tones.map((tone, idx) => {
+            const scaleDegree = base + tone.degree
+            const args: Arg[] = [{
+              kind: 'pos' as const,
+              value: { kind: 'number' as const, value: scaleDegree, raw: String(scaleDegree), loc: numLoc(idx) },
+              loc: expr.loc,
+            }]
+
+            // Add semitone adjustment as second parameter if non-zero
+            if (tone.semitoneAdjust !== 0) {
+              args.push({
+                kind: 'pos' as const,
+                value: { kind: 'number' as const, value: tone.semitoneAdjust, raw: String(tone.semitoneAdjust),
+                  loc: numLoc(idx) },
+                loc: expr.loc,
+              })
+            }
+
+            return {
+              kind: 'call' as const,
+              callee: { kind: 'ident' as const, name: 'degree', loc: expr.loc },
+              args,
+              loc: expr.loc,
+            }
+          })
+
+          return { kind: 'array', items, loc: expr.loc }
+        }
       }
     }
 
@@ -120,7 +132,8 @@ function desugarExpr(expr: Expr): Expr {
       const name = v?.kind === 'string' ? String(v.value ?? '') : v?.kind === 'ident' ? String(v.name ?? '') : ''
       if (name) {
         const idx = findScaleIndex(name) ?? findScaleIndex(name.toLowerCase()) ?? 0
-        return { ...expr, target: desugarExpr(expr.target), value: { kind: 'number', value: idx, raw: String(idx), loc: v?.loc ?? expr.loc } as any }
+        return { ...expr, target: desugarExpr(expr.target),
+          value: { kind: 'number', value: idx, raw: String(idx), loc: v?.loc ?? expr.loc } as any }
       }
     }
     return { ...expr, target: desugarExpr(expr.target), value: desugarExpr(expr.value) }
@@ -136,7 +149,9 @@ function desugarExpr(expr: Expr): Expr {
   }
 
   if (expr.kind === 'array') return { ...expr, items: (expr.items ?? []).map(desugarExpr) }
-  if (expr.kind === 'object') return { ...expr, props: (expr.props ?? []).map(p => ({ ...p, value: desugarExpr(p.value) })) }
+  if (expr.kind === 'object') {
+    return { ...expr, props: (expr.props ?? []).map(p => ({ ...p, value: desugarExpr(p.value) })) }
+  }
   if (expr.kind === 'if') {
     const thenPart: any = expr.then?.kind === 'block' ? desugarStmt(expr.then) : desugarExpr(expr.then as any)
     const elsePart: any = expr.else?.kind === 'block' ? desugarStmt(expr.else) : desugarExpr(expr.else as any)
@@ -175,7 +190,9 @@ function desugarStmt(stmt: Stmt): Stmt {
     return {
       ...stmt,
       test: desugarExpr(stmt.test),
-      cases: (stmt.cases ?? []).map(c => ({ ...c, test: c.test ? desugarExpr(c.test) : undefined, body: (c.body ?? []).map(desugarStmt) })),
+      cases: (stmt.cases ?? []).map(c => ({ ...c, test: c.test ? desugarExpr(c.test) : undefined,
+        body: (c.body ?? []).map(desugarStmt) })
+      ),
     }
   }
   if (stmt.kind === 'try') {
@@ -196,5 +213,3 @@ function desugarStmt(stmt: Stmt): Stmt {
 export function desugarProgram(program: Program): Program {
   return { ...program, body: (program.body ?? []).map(desugarStmt) }
 }
-
-

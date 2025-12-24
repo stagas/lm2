@@ -819,10 +819,21 @@ export class MiniEvents {
               let valueHz: f64 = rawValue as f64
               if (rawValue < 0.0) {
                 if (!this.scaleActive) continue
-                const degree: i32 = i32(-rawValue)
+                // Extract degree and semitone adjustment from encoded value
+                // Format: -(scaleDegree + semitoneAdjust/100)
+                const absValue: f64 = -rawValue
+                const degree: i32 = i32(absValue)
+                const frac: f64 = absValue - f64(degree)
+                const semitoneAdjust: f64 = frac * 100.0
+
                 if (degree <= 0) continue
                 valueHz = degreeToFrequency(this.scaleRootMidi, this.scaleIndex, degree)
                 if (valueHz <= 0.0) continue
+
+                // Apply semitone adjustment
+                if (semitoneAdjust !== 0.0) {
+                  valueHz *= Math.pow(2.0, semitoneAdjust / 12.0)
+                }
               }
 
               valueHz *= pitch

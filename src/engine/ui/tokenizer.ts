@@ -114,7 +114,7 @@ function getMiniValueTokenType(value: string): string {
   if (/^[a-gA-G][#b]?-?\d+/.test(value)) return 'number'
   if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) return 'number'
   if (/^[0-9]+(?:,[0-9]+)+$/.test(value)) return 'number'
-  if (/^[ivxlcdm]+$/i.test(value)) return 'number'
+  if (/^[ivxlcdm]+[a-z0-9]*$/i.test(value)) return 'number'
   if (isHexColor(value)) return 'number'
   if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(value)) return 'parameter'
   return 'parameter'
