@@ -15,6 +15,7 @@ export const builtinSyms: Record<string, number> = {
   adsr: VmSym.Adsr,
   mini: VmSym.Mini,
   analyser: VmSym.Analyser,
+  compressor: VmSym.Compressor,
   t: VmSym.T,
   co: VmSym.Co,
   play: VmSym.Play,
@@ -70,6 +71,8 @@ export const builtinSyms: Record<string, number> = {
   repeat: VmSym.Repeat,
   slice: VmSym.Slice,
   threshold: VmSym.Threshold,
+  ratio: VmSym.Ratio,
+  knee: VmSym.Knee,
   // Named args for analyser()
   index: VmSym.Index,
   // Named args for timeline()
@@ -81,6 +84,7 @@ export const builtinSyms: Record<string, number> = {
   midi: VmSym.Midi,
   // Named args for analyser (alternative)
   signal: VmSym.Signal,
+  key: VmSym.Key,
   // Named args for mini/play
   hz: VmSym.Hz,
   seq: VmSym.Seq,

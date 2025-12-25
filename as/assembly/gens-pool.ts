@@ -5,6 +5,7 @@ import { At } from './gen/at'
 import { Lp } from './gen/biquad'
 import { Every } from './gen/every'
 import { Gen } from './gen/gen'
+import { Compressor } from './gen/compressor'
 import { Mini } from './gen/mini'
 import { Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
 import { Sampler } from './gen/sampler'
@@ -67,6 +68,7 @@ export class GensPool {
   private every: GenPool<Every> = new GenPool<Every>(() => new Every())
   private ats: GenPool<At> = new GenPool<At>(() => new At())
   private lps: GenPool<Lp> = new GenPool<Lp>(() => new Lp())
+  private compressors: GenPool<Compressor> = new GenPool<Compressor>(() => new Compressor())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -86,6 +88,7 @@ export class GensPool {
     this.every.resetIndex()
     this.ats.resetIndex()
     this.lps.resetIndex()
+    this.compressors.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -106,6 +109,7 @@ export class GensPool {
     this.every.reset()
     this.ats.reset()
     this.lps.reset()
+    this.compressors.reset()
   }
 
   get(op: Op): Gen {
@@ -146,6 +150,8 @@ export class GensPool {
         return this.ats.get()
       case Op.Lp:
         return this.lps.get()
+      case Op.Compressor:
+        return this.compressors.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -169,5 +175,6 @@ export class GensPool {
     this.every.copyFrom(source.every)
     this.ats.copyFrom(source.ats)
     this.lps.copyFrom(source.lps)
+    this.compressors.copyFrom(source.compressors)
   }
 }

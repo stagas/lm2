@@ -15,6 +15,12 @@ export const AnalyserOutsPoolStruct = Struct({
 })
 export type AnalyserOutsPool = typeof AnalyserOutsPoolStruct.type
 
+export const CompressorOutsPoolStruct = Struct({
+  levelDbOuts: 'usize',
+  grDbOuts: 'usize',
+})
+export type CompressorOutsPool = typeof CompressorOutsPoolStruct.type
+
 export const ProgramDataStruct = Struct({
   ops: 'usize',
   arrays: 'usize',
@@ -27,6 +33,7 @@ export const ProgramStruct = Struct({
   data: 'usize',
   histories: 'usize',
   analyserOutsPool: 'usize',
+  compressorOutsPool: 'usize',
   arrayAccessHistory: 'usize',
   branchHistory: 'usize',
   sampleNeedleHistory: 'usize',

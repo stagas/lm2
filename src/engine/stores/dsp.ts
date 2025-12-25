@@ -10,6 +10,7 @@ import { waitForNonZero } from '../../lib/atomics.ts'
 import type { SourceLocation } from '../../lib/mini-source-map.ts'
 import {
   type AnalyserRef,
+  type CompressorRef,
   type ArrayLiteralRef,
   type BranchMarkRef,
   encodeLangToVmOps,
@@ -55,6 +56,7 @@ export type EngineDspState = {
   timelineLabels: TimelineLabel[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
+  compressorRefs: CompressorRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
@@ -69,6 +71,7 @@ export type EngineDspState = {
   uiTimelineLabels: TimelineLabel[]
   uiMiniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   uiAnalyserRefs: AnalyserRef[]
+  uiCompressorRefs: CompressorRef[]
   uiArrayLiterals: ArrayLiteralRef[]
   uiBranchMarks: BranchMarkRef[]
   uiNumberParams: NumberWithParamsInfo[]
@@ -97,6 +100,7 @@ export type EngineDspState = {
     bars: number | undefined
     miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
     analyserRefs: AnalyserRef[]
+    compressorRefs: CompressorRef[]
     arrayLiterals: ArrayLiteralRef[]
     branchMarks: BranchMarkRef[]
     numberParams: NumberWithParamsInfo[]
@@ -362,6 +366,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const timelineLabels = buildTimelineLabels(primaryResult.timelineLabels, bars)
       const miniSourceMaps = primaryResult.miniSourceMaps
       const analyserRefs = primaryResult.analyserRefs
+      const compressorRefs = primaryResult.compressorRefs
       const arrayLiterals = primaryResult.arrayLiterals
       const branchMarks = primaryResult.branchMarks
       const numberParams = primaryResult.numberParams
@@ -384,6 +389,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           bars,
           miniSourceMaps,
           analyserRefs,
+          compressorRefs,
           arrayLiterals,
           branchMarks,
           numberParams,
@@ -398,6 +404,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiBars: bars,
           uiMiniSourceMaps: miniSourceMaps,
           uiAnalyserRefs: analyserRefs,
+          uiCompressorRefs: compressorRefs,
           uiArrayLiterals: arrayLiterals,
           uiBranchMarks: branchMarks,
           uiNumberParams: numberParams,
@@ -437,6 +444,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiBars: stagingBars,
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAnalyserRefs: stagingResult.analyserRefs,
+        uiCompressorRefs: stagingResult.compressorRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiBranchMarks: stagingResult.branchMarks,
         uiNumberParams: stagingResult.numberParams,
@@ -486,6 +494,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiBars: current.bars,
           uiMiniSourceMaps: current.miniSourceMaps,
           uiAnalyserRefs: current.analyserRefs,
+          uiCompressorRefs: current.compressorRefs,
           uiArrayLiterals: current.arrayLiterals,
           uiBranchMarks: current.branchMarks,
           uiNumberParams: current.numberParams,
@@ -509,6 +518,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         bars: committedBars,
         miniSourceMaps: stagingResult.miniSourceMaps,
         analyserRefs: stagingResult.analyserRefs,
+        compressorRefs: stagingResult.compressorRefs,
         arrayLiterals: stagingResult.arrayLiterals,
         branchMarks: stagingResult.branchMarks,
         numberParams: stagingResult.numberParams,
@@ -522,6 +532,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiBars: committedBars,
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAnalyserRefs: stagingResult.analyserRefs,
+        uiCompressorRefs: stagingResult.compressorRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiBranchMarks: stagingResult.branchMarks,
         uiNumberParams: stagingResult.numberParams,
@@ -652,6 +663,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     timelineLabels: [],
     miniSourceMaps: [],
     analyserRefs: [],
+    compressorRefs: [],
     arrayLiterals: [],
     branchMarks: [],
     numberParams: [],
@@ -666,6 +678,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiTimelineLabels: [],
     uiMiniSourceMaps: [],
     uiAnalyserRefs: [],
+    uiCompressorRefs: [],
     uiArrayLiterals: [],
     uiBranchMarks: [],
     uiNumberParams: [],
@@ -737,6 +750,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiBars: undefined,
         miniSourceMaps: [],
         analyserRefs: [],
+        compressorRefs: [],
         arrayLiterals: [],
         branchMarks: [],
         numberParams: [],
@@ -746,6 +760,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiTimelineLabels: [],
         uiMiniSourceMaps: [],
         uiAnalyserRefs: [],
+        uiCompressorRefs: [],
         uiArrayLiterals: [],
         uiBranchMarks: [],
         uiNumberParams: [],
@@ -850,6 +865,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const timelineLabels = buildTimelineLabels(stagingResult.timelineLabels, bars)
         const miniSourceMaps = stagingResult.miniSourceMaps
         const analyserRefs = stagingResult.analyserRefs
+        const compressorRefs = stagingResult.compressorRefs
         const arrayLiterals = stagingResult.arrayLiterals
         const branchMarks = stagingResult.branchMarks
         const numberParams = stagingResult.numberParams
@@ -879,6 +895,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           bars,
           miniSourceMaps,
           analyserRefs,
+          compressorRefs,
           arrayLiterals,
           branchMarks,
           numberParams,
@@ -893,6 +910,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiBars: bars,
           uiMiniSourceMaps: miniSourceMaps,
           uiAnalyserRefs: analyserRefs,
+          uiCompressorRefs: compressorRefs,
           uiArrayLiterals: arrayLiterals,
           uiBranchMarks: branchMarks,
           uiNumberParams: numberParams,
@@ -957,6 +975,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiBars: next.bars,
         uiMiniSourceMaps: next.miniSourceMaps,
         uiAnalyserRefs: next.analyserRefs,
+        uiCompressorRefs: next.compressorRefs,
         uiArrayLiterals: next.arrayLiterals,
         uiBranchMarks: next.branchMarks,
         uiNumberParams: next.numberParams,
