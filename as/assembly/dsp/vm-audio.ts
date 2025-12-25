@@ -11,7 +11,6 @@ export class VmAudio {
   tHas: i32 = 0
   tOutIndex: i32 = 0
 
-  @inline
   allocOut(program: Program): i32 {
     const idx = this.outCursor
     this.outCursor = idx + 1
@@ -23,7 +22,6 @@ export class VmAudio {
     return idx
   }
 
-  @inline
   getTRamp(length: i32, program: Program): i32 {
     if (this.tHas !== 0) return this.tOutIndex
     const outIndex = this.allocOut(program)
@@ -47,7 +45,6 @@ export class VmAudio {
     return outIndex
   }
 
-  @inline
   toAudioPtr(tag: VmTag, num: f64, aux: i32, length: i32, program: Program): usize {
     if (tag === VmTag.Audio) {
       return program.getOutBuffer(aux)
@@ -100,7 +97,6 @@ export class VmAudio {
     return out$
   }
 
-  @inline
   reset(): void {
     this.outCursor = 0
     this.tHas = 0
@@ -109,4 +105,3 @@ export class VmAudio {
     }
   }
 }
-

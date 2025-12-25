@@ -391,8 +391,6 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         description:
           'Normalized start offset (0=beginning, 1=end); defaults to 1 when speed is a constant negative number',
       },
-      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
-        description: 'Trigger that starts playback when positive' },
       {
         name: 'repeat',
         type: 'boolean',
@@ -400,6 +398,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         defaultValue: false,
         description: 'When true the sample loops; otherwise it stops at the end',
       },
+      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
+        description: 'Trigger that starts playback when positive' },
     ],
     returnType: 'number',
     description:
@@ -435,8 +435,6 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         defaultValue: 0.5,
         description: 'Slice detection threshold (0..1); higher values produce fewer slices',
       },
-      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
-        description: 'Trigger that launches the chosen slice' },
       {
         name: 'repeat',
         type: 'boolean',
@@ -444,6 +442,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         defaultValue: false,
         description: 'Loop the slice if true, otherwise stop when it ends',
       },
+      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
+        description: 'Trigger that launches the chosen slice' },
     ],
     returnType: 'number',
     description: 'Chooses one of the detected slices from a sample and plays it back with the requested speed/offset.',

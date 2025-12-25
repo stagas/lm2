@@ -8,7 +8,7 @@ import { VmStack } from '../vm-stack'
 import { playMini } from './play-mini'
 
 // @ts-ignore
-@inline
+
 export function callPlay(
   posCount: i32,
   nameSyms: StaticArray<i32>,

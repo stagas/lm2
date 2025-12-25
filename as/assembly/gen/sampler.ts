@@ -45,7 +45,6 @@ export class Sampler extends Gen {
     // reader is stateless across copies besides cached sample, which we can rebuild
   }
 
-  @inline
   private recordNeedle(posFrames: f64, playing: bool, length: i32): void {
     if (this.needleHistory$ === 0) return
     const hist = changetype<StaticArray<f32>>(this.needleHistory$)

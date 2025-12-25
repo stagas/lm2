@@ -8,7 +8,7 @@ import { VmStack } from '../vm-stack'
 import { addAudio } from '../audio-ops'
 
 // @ts-ignore
-@inline
+
 export function callOut(
   posCount: i32,
   nameSyms: StaticArray<i32>,

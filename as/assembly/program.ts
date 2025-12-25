@@ -81,7 +81,6 @@ export class Program {
     this.callbackDepth = depth + 1
   }
 
-  @inline
   bindScope(index: i32, out$: usize): void {
     const depth: i32 = this.callbackDepth - 1
     const bindingOffset: i32 = depth * CALLBACK_SCOPE_MAX_BINDINGS
@@ -121,7 +120,7 @@ export class Program {
   }
 
   // Get buffer with remapping applied when inside a callback scope
-  @inline
+
   getOutBuffer(index: i32): usize {
     const depth: i32 = this.callbackDepth
     if (depth === 0) return this.outsPool.get(index)

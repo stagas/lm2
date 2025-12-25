@@ -17,7 +17,6 @@ export class SampleReader {
     this.cache = new Float32Array(this.cacheLen)
   }
 
-  @inline
   setSample(index: i32): void {
     const ver = hostSampleVersion(index)
     if (index === this.sampleIndex && ver === this.sampleVer) return
@@ -27,17 +26,14 @@ export class SampleReader {
     this.cacheValid = 0
   }
 
-  @inline
   getLen(): i32 {
     return this.sampleLen
   }
 
-  @inline
   getVersion(): i32 {
     return this.sampleVer
   }
 
-  @inline
   private refill(start: i32): void {
     const len = this.sampleLen
     if (len <= 0) {
@@ -57,7 +53,6 @@ export class SampleReader {
     }
   }
 
-  @inline
   private at(pos: i32): f32 {
     const len = this.sampleLen
     if (len <= 0) return 0.0
@@ -77,7 +72,6 @@ export class SampleReader {
     return unchecked(this.cache[i])
   }
 
-  @inline
   sampleAt(pos: f64): f32 {
     const len = this.sampleLen
     if (len <= 0) return 0.0

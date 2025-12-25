@@ -8,7 +8,7 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-@inline
+
 export function callSlicer(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -24,7 +24,7 @@ export function callSlicer(
   program: Program,
   length: i32,
 ): void {
-  // slicer(sample, speed=1, offset=0, slice=0, threshold=0.5, trig=0, repeat=false)
+  // slicer(sample, speed=1, offset=0, slice=0, threshold=0.5, repeat=false, trig=0)
   if (posCount < 1 || posTags[0] !== VmTag.Num) {
     stack.push(VmTag.Undef)
     return
@@ -72,24 +72,24 @@ export function callSlicer(
     thresholdAux = posAux[4]
   }
 
-  // trig (default 0)
-  let trigTag: VmTag = VmTag.Num
-  let trigNum: f64 = 0.0
-  let trigAux: i32 = 0
-  if (posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null) {
-    trigTag = posTags[5] as VmTag
-    trigNum = posNums[5]
-    trigAux = posAux[5]
-  }
-
   // repeat (default false)
   let repeatTag: VmTag = VmTag.Bool
   let repeatNum: f64 = 0.0
   let repeatAux: i32 = 0
+  if (posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null) {
+    repeatTag = posTags[5] as VmTag
+    repeatNum = posNums[5]
+    repeatAux = posAux[5]
+  }
+
+  // trig (default 0)
+  let trigTag: VmTag = VmTag.Num
+  let trigNum: f64 = 0.0
+  let trigAux: i32 = 0
   if (posCount >= 7 && posTags[6] !== VmTag.Undef && posTags[6] !== VmTag.Null) {
-    repeatTag = posTags[6] as VmTag
-    repeatNum = posNums[6]
-    repeatAux = posAux[6]
+    trigTag = posTags[6] as VmTag
+    trigNum = posNums[6]
+    trigAux = posAux[6]
   }
 
   // Check for named parameters - iterate once through all named args
@@ -114,15 +114,15 @@ export function callSlicer(
       thresholdNum = nameNums[i]
       thresholdAux = nameAux[i]
     }
-    else if (nameSyms[i] === VmSym.Trig) {
-      trigTag = nameTags[i] as VmTag
-      trigNum = nameNums[i]
-      trigAux = nameAux[i]
-    }
     else if (nameSyms[i] === VmSym.Repeat) {
       repeatTag = nameTags[i] as VmTag
       repeatNum = nameNums[i]
       repeatAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Trig) {
+      trigTag = nameTags[i] as VmTag
+      trigNum = nameNums[i]
+      trigAux = nameAux[i]
     }
   }
 

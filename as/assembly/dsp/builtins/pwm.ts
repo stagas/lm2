@@ -8,7 +8,7 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-@inline
+
 export function callPwm(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -38,10 +38,15 @@ export function callPwm(
   let trigNum = posCount >= 4 ? posNums[3] : 0.0
   let trigAux = posCount >= 4 ? posAux[3] : 0
 
-  // Named overrides (width/offset/trig)
+  // Named overrides (hz/width/offset/trig)
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.Width) {
+    if (k === VmSym.Hz) {
+      hzTag = nameTags[i] as VmTag
+      hzNum = nameNums[i]
+      hzAux = nameAux[i]
+    }
+    else if (k === VmSym.Width) {
       widthTag = nameTags[i] as VmTag
       widthNum = nameNums[i]
       widthAux = nameAux[i]

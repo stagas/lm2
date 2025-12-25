@@ -70,7 +70,6 @@ export class Dsp {
     this.program.reset()
   }
 
-  @inline
   private recordBranch(ifPc: i32, branchPc: i32): void {
     if (ifPc <= 0 || branchPc <= 0) return
     // Best-effort ring buffer for UI widgets (no atomics needed).
@@ -397,7 +396,6 @@ export class Dsp {
     return ret
   }
 
-  @inline
   private vmCall(pos: i32, named: i32, length: i32, left$: usize, right$: usize): void {
     this.builtins.call(
       pos,
@@ -412,21 +410,18 @@ export class Dsp {
     )
   }
 
-  @inline
   vmInvokeFunc(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
   {
     this.vmInvokeFuncInternal(funcPc, argCount, argTags, argNums, argAux, length, left$, right$, true)
   }
 
-  @inline
   vmInvokeFuncKeepOuts(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
   {
     this.vmInvokeFuncInternal(funcPc, argCount, argTags, argNums, argAux, length, left$, right$, false)
   }
 
-  @inline
   private vmInvokeFuncInternal(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize, restoreOuts: bool): void
   {
@@ -515,7 +510,6 @@ export class Dsp {
     this.scaleIndex = savedScaleIndex
   }
 
-  @inline
   private runVmSegments(left$: usize, right$: usize, begin: i32, length: i32): void {
     const ops = this.program.data.ops
     const step = controlBlockSize > 0 && controlBlockSize < length ? controlBlockSize : length
@@ -688,7 +682,6 @@ export class Dsp {
     }
   }
 
-  @inline
   private processVm(left$: usize, right$: usize, begin: i32, length: i32): void {
     const startSampleCount = globalSampleCount
     const incoming = this.program.data
@@ -715,7 +708,6 @@ export class Dsp {
     this.runVmSegments(left$, right$, begin, length)
   }
 
-  @inline
   process(left$: usize, right$: usize, begin: i32, length: i32): void {
     const lockPtr = changetype<usize>(this.program) + offsetof<Program>('lock')
     while (true) {

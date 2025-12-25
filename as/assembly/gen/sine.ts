@@ -45,7 +45,6 @@ export class Sine extends Gen {
     this.phase = src.phase
   }
 
-  @inline
   private static wavetable(phase: f64): f32 {
     const t: f64 = phase * SINE_TABLE_SIZE_F64
     const i: i32 = t as i32
