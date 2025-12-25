@@ -28,14 +28,6 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n))
 }
 
-function fmtFixedTrim(v: number, decimals: number): string {
-  if (!Number.isFinite(v)) return String(v)
-  let s = v.toFixed(decimals)
-  s = s.replace(/\.?0+$/, '')
-  if (s === '-0') s = '0'
-  return s.replace(/^(-?)0\.(\d.*)$/, '$1.$2')
-}
-
 function compReductionDb(inputDb: number, th: number, ratio: number, knee: number): number {
   const r = clamp(ratio, 1, 20)
   const k = clamp(knee, 0, 40)
@@ -150,8 +142,8 @@ export function useCompressorWidget({
     const ratio = ref.params.ratio
     const knee = ref.params.knee
 
-    const curLevel = level && level.length > 0 ? level.at(-1)! : -80
-    const curGr = gr && gr.length > 0 ? gr.at(-1)! : 0
+    const curLevel = level && level.length > 0 ? Math.max(...level) : -80
+    const curGr = gr && gr.length > 0 ? Math.max(...gr) : 0
 
     const grMax = 24
     const grNorm = clamp(curGr / grMax, 0, 1)

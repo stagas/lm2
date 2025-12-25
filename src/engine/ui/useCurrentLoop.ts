@@ -3,6 +3,7 @@ import type { LoopData } from '../../../deno/types.ts'
 import { useLoopData } from '../../app/hooks/useLoopData.ts'
 import { useSessionData } from '../../app/hooks/useSessionData.ts'
 import { useAppStore } from '../../app/store.ts'
+import { useEngineRuntimeStore } from '../store.ts'
 import { Loop } from './loop.ts'
 
 const isLocalId = (id: string) => id.startsWith('local:')
@@ -113,6 +114,12 @@ export function useCurrentLoop(): Loop | null {
     return new Loop(loopData, codeFile)
   }, [codeFile, loopData])
 
+  const setCurrentLoop = useEngineRuntimeStore(state => state.setCurrentLoop)
+
+  useEffect(() => {
+    setCurrentLoop(loop)
+  }, [loop, setCurrentLoop])
+
   useEffect(() => {
     if (!selectedLoopId) return
     if (!codeFile) return
@@ -125,5 +132,3 @@ export function useCurrentLoop(): Loop | null {
 
   return loop
 }
-
-
