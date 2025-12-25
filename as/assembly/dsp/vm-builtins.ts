@@ -8,6 +8,7 @@ import { callAt } from './builtins/at'
 import { callCompressor } from './builtins/compressor'
 import { callDegree } from './builtins/degree'
 import { callEvery } from './builtins/every'
+import { callEuclid } from './builtins/euclid'
 import { callLp } from './builtins/lp'
 import { callMap } from './builtins/map'
 import { callMini } from './builtins/mini'
@@ -345,6 +346,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.At) {
       callAt(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Euclid) {
+      callEuclid(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

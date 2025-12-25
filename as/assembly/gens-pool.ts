@@ -4,6 +4,7 @@ import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Lp } from './gen/biquad'
 import { Every } from './gen/every'
+import { Euclid } from './gen/euclid'
 import { Gen } from './gen/gen'
 import { Compressor } from './gen/compressor'
 import { Mini } from './gen/mini'
@@ -67,6 +68,7 @@ export class GensPool {
   private slews: GenPool<Slew> = new GenPool<Slew>(() => new Slew())
   private every: GenPool<Every> = new GenPool<Every>(() => new Every())
   private ats: GenPool<At> = new GenPool<At>(() => new At())
+  private euclids: GenPool<Euclid> = new GenPool<Euclid>(() => new Euclid())
   private lps: GenPool<Lp> = new GenPool<Lp>(() => new Lp())
   private compressors: GenPool<Compressor> = new GenPool<Compressor>(() => new Compressor())
   resetIndices(): void {
@@ -87,6 +89,7 @@ export class GensPool {
     this.slews.resetIndex()
     this.every.resetIndex()
     this.ats.resetIndex()
+    this.euclids.resetIndex()
     this.lps.resetIndex()
     this.compressors.resetIndex()
   }
@@ -108,6 +111,7 @@ export class GensPool {
     this.slews.reset()
     this.every.reset()
     this.ats.reset()
+    this.euclids.reset()
     this.lps.reset()
     this.compressors.reset()
   }
@@ -148,6 +152,8 @@ export class GensPool {
         return this.every.get()
       case Op.At:
         return this.ats.get()
+      case Op.Euclid:
+        return this.euclids.get()
       case Op.Lp:
         return this.lps.get()
       case Op.Compressor:

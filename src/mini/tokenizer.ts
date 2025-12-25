@@ -1,3 +1,4 @@
+import { euclidHit } from '../../as/assembly/euclid.ts'
 import { parseChordSuffix, romanToDegree } from './chord-parser.ts'
 import { findScaleIndex, SCALE_KEY_TO_INDEX } from './scales.ts'
 import { midiToFrequency, noteNameToMidi } from './util.ts'
@@ -388,6 +389,31 @@ function parseDeltaToken(token: Token | undefined): number {
   return Number.isFinite(v) ? v : 0
 }
 
+function parseEuclidToken(raw: string): { pulses: number; steps: number; offset: number } | null {
+  if (!raw.startsWith('(')) return null
+  if (!raw.endsWith(')')) return null
+  const inner = raw.slice(1, -1).trim()
+  if (!/^\d+\s*,\s*\d+(?:\s*,\s*-?\d+)?$/.test(inner)) return null
+  const parts = inner.split(',').map(s => parseInt(s.trim(), 10))
+  const pulses = parts[0]
+  const steps = parts[1]
+  const offset = parts.length >= 3 ? parts[2] : 0
+  if (!Number.isFinite(pulses) || !Number.isFinite(steps) || !Number.isFinite(offset)) return null
+  return { pulses, steps, offset }
+}
+
+function cloneEventNode(node: Node, nextSource: NodeSource, values: number[]): Node {
+  return {
+    type: 'event',
+    angle: false,
+    parallel: false,
+    values,
+    children: [],
+    modifiers: cloneMods(node.modifiers),
+    source: nextSource,
+  }
+}
+
 function parseOctaveDelta(tokens: Token[]): number {
   return parseDeltaToken(tokens[1])
 }
@@ -664,6 +690,26 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
     }
 
     if (first === '(') {
+      // Euclidean rhythm suffix: `c4(3,8[,offset])`
+      // This expands the preceding event into `steps` timed events, where inactive steps are
+      // represented as value-less events (they consume time but emit nothing).
+      const euclid = parseEuclidToken(raw)
+      const last = nodes.at(-1)
+      if (euclid && last?.type === 'event') {
+        const pulses = Math.floor(euclid.pulses)
+        const steps = Math.floor(euclid.steps)
+        const offset = Math.floor(euclid.offset)
+        const spanSource = makeSource(input, last.source.start, token.end)
+
+        nodes.pop()
+        const safeSteps = Number.isFinite(steps) && steps > 0 ? steps : 0
+        for (let si = 0; si < safeSteps; si++) {
+          const on = euclidHit(pulses, steps, si, offset)
+          nodes.push(cloneEventNode(last, spanSource, on ? last.values.slice() : []))
+        }
+        continue
+      }
+
       const { inner, modText } = parseGroupedTokenText(raw, '(')
       const innerTokens = tokenize(inner)
       const adjustedInnerTokens = innerTokens.map(t => ({
