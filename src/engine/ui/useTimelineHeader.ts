@@ -213,7 +213,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
           for (let i = 0; i < labels.length; i++) {
             const label = labels[i]
             const color = label.color || defaultLabelColor
-            const labelSeconds = (label.bar - 1) * beatLengthSeconds
+            const labelSeconds = (label.bar) * beatLengthSeconds
 
             if (labelSeconds <= timeSeconds) lastLabelColor = color
 
@@ -309,7 +309,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
           c.font = '800 7.5pt Outfit'
           for (let i = 0; i < labels.length; i++) {
             const label = labels[i]
-            const labelSeconds = (label.bar - 1) * beatLengthSeconds
+            const labelSeconds = (label.bar) * beatLengthSeconds
             let labelX = (labelSeconds - windowStartTime) * pixelsPerSecond
             let origLabelX = labelX
             labelX = Math.max(playheadX, labelX)
@@ -317,7 +317,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
             // Check if next label would overlap, and if so, constrain this label's position
             if (i + 1 < labels.length) {
               const nextLabel = labels[i + 1]
-              const nextLabelSeconds = (nextLabel.bar - 1) * beatLengthSeconds
+              const nextLabelSeconds = (nextLabel.bar) * beatLengthSeconds
               let nextLabelX = (nextLabelSeconds - windowStartTime) * pixelsPerSecond
 
               const text = label.text

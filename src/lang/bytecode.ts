@@ -1,3 +1,4 @@
+import { functionDefinitions } from '../engine/ui/function-definitions.ts'
 import type {
   Arg,
   AssignExpr,
@@ -116,8 +117,8 @@ export function disassemble(chunk: Chunk): string {
     lines.push('')
     for (let i = 0; i < chunk.funcs.length; i++) {
       const f = chunk.funcs[i]!
-      lines.push(`FUNC #${i} (${f.params.map((p) => (p.isRest ? `...${p.name}` : p.name)).join(', ')})`)
-      lines.push(disassemble(f.chunk).split('\n').map((l) => `  ${l}`).join('\n'))
+      lines.push(`FUNC #${i} (${f.params.map(p => (p.isRest ? `...${p.name}` : p.name)).join(', ')})`)
+      lines.push(disassemble(f.chunk).split('\n').map(l => `  ${l}`).join('\n'))
       lines.push('')
     }
   }
@@ -596,12 +597,12 @@ class Compiler {
           // fall through to normal call compilation
         }
         else {
-        this.emit({ op: 'LOAD', name: this.nameConst('playPick') })
-        this.compileExpr(m.object)
-        this.compileExpr(m.index)
-        this.compileExpr(a1.value)
-        this.emit({ op: 'CALL', pos: 3, named: 0 })
-        return
+          this.emit({ op: 'LOAD', name: this.nameConst('playPick') })
+          this.compileExpr(m.object)
+          this.compileExpr(m.index)
+          this.compileExpr(a1.value)
+          this.emit({ op: 'CALL', pos: 3, named: 0 })
+          return
         }
       }
     }
@@ -763,18 +764,11 @@ class Compiler {
     }
 
     // Builtin signatures (compile-time arg binding for named + shorthand + mixed ordering).
-    const sigs: Record<string, string[]> = {
-      out: ['signal'],
-      sine: ['hz', 'trig'],
-      ad: ['attack', 'decay', 'trig'],
-      adsr: ['attack', 'decay', 'sustain', 'release', 'trig'],
-      every: ['bar', 'prob', 'seed', 'swing', 'offset'],
-      at: ['bar', 'every', 'prob', 'seed'],
-      mini: ['seq', 'cb'],
-      play: ['seq', 'cb'],
-      sampler: ['sample', 'speed', 'offset', 'trig', 'repeat'],
-      slicer: ['sample', 'speed', 'offset', 'slice', 'threshold', 'trig', 'repeat'],
-    }
+    const sigs: Record<string, string[]> = Object.fromEntries(
+      Object
+        .entries(functionDefinitions)
+        .map(([name, sig]) => [name, sig.parameters.map(p => p.name)]),
+    )
 
     const sig = calleeName ? sigs[calleeName] : undefined
 
@@ -1032,7 +1026,7 @@ class Compiler {
     else fn.compileExpr(body as Expr)
     fn.emit({ op: 'RETURN' })
     this.chunk.funcs.push({
-      params: expr.params.map((p) => ({ name: p.name, isRest: p.isRest })),
+      params: expr.params.map(p => ({ name: p.name, isRest: p.isRest })),
       chunk: fn.chunk,
     })
     this.emit({ op: 'FUNC', id })

@@ -26,9 +26,9 @@ function Intro({ isFadingOut = false, isFadingIn = true }: { isFadingOut?: boole
           <div
             className={`flex w-full h-full items-center justify-center transition-all ease-in-out ${
               isFadingOut
-                ? 'duration-[1000ms] scale-y-[1.15] scale-x-[1.25] -translate-y-2'
+                ? 'duration-[1000ms] scale-y-[1.15] scale-x-[1.25] -translate-y-2.5'
                 : isFadingIn && !isFadingOut
-                ? 'duration-[700ms] scale-y-[1.05] scale-x-[1.15] translate-y-1.5'
+                ? 'duration-[700ms] opacity-0 scale-y-[1.025] scale-x-[1.1] translate-y-1.5'
                 : 'duration-[700ms] opacity-100 scale-100 translate-0'
             }`}
           >

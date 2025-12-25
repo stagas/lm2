@@ -3,16 +3,11 @@ import { Op, SeqOp } from '../../../as/assembly/shared.ts'
 import type {
   Arg,
   BlockStmt,
-  CallExpr,
   DestructurePattern,
   Expr,
-  ForHead,
-  FuncExpr,
   Loc,
   Program,
   Stmt,
-  SwitchCase,
-  TryStmt,
 } from '../../lang/ast.ts'
 import { compile } from '../../lang/bytecode.ts'
 import { type LangError, lineText } from '../../lang/errors.ts'
@@ -21,6 +16,7 @@ import { parse } from '../../lang/parser.ts'
 import type { LexError, Token } from '../../lang/token.ts'
 import { parseChordSuffix, romanToDegree } from '../../mini/chord-parser.ts'
 import { findScaleIndex } from '../../mini/scales.ts'
+import { functionDefinitions } from '../ui/function-definitions.ts'
 import { builtinSyms } from './builtin-syms.ts'
 import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
@@ -56,27 +52,10 @@ export * from './extract-timeline-labels.ts'
 export * from './extract-timeline-sequences.ts'
 export * from './types.ts'
 
-const BUILTIN_CALL_NAMES = new Set([
-  'out',
-  'sine',
-  'map',
-  'sum',
-  'note',
-  'degree',
-  'ad',
-  'adsr',
-  'mini',
-  'play',
-  'timeline',
-  'analyser',
-  'sampler',
-  'slicer',
-  'every',
-  'at',
-  'freesound',
-  'label',
-  't',
-])
+const BUILTIN_CALL_NAMES = new Set(Object.keys(functionDefinitions).map(name => {
+  if (name.startsWith('.')) return name.slice(1)
+  return name
+}))
 
 const NOTE_OFFSETS: Record<string, number> = {
   c: 0,

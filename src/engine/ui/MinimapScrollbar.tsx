@@ -215,7 +215,7 @@ export function MinimapScrollbar({
     const labelStarts = timelineLabels && timelineLabels.length > 0
       ? Array.from(new Set(
         timelineLabels
-          .map(l => l.bar - 1)
+          .map(l => l.bar)
           .filter(barIndex => barIndex >= 0 && barIndex <= barCount),
       )).sort((a, b) => a - b)
       : []
@@ -256,10 +256,10 @@ export function MinimapScrollbar({
       const beatLengthSeconds = (60 * BEATS_PER_BAR) / bpm
       const labelPositions: { x: number; color: string }[] = []
       for (const label of timelineLabels) {
-        const labelSeconds = (label.bar - 1) * beatLengthSeconds
+        const labelSeconds = (label.bar) * beatLengthSeconds
         if (labelSeconds < 0 || labelSeconds > totalSeconds) continue
         const x = (labelSeconds / totalSeconds) * width + 1
-        const isMajor = (label.bar - 1) % MINIMAP_MAJOR_STEP === 0
+        const isMajor = (label.bar) % MINIMAP_MAJOR_STEP === 0
         const color = label.color || defaultColor
         // draw the vertical marker line
         ctx.strokeStyle = color

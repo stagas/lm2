@@ -8,6 +8,7 @@ import { Mini } from './gen/mini'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
 import { Slicer } from './gen/slicer'
+import { Slew } from './gen/slew'
 import { Timeline } from './gen/timeline'
 import { Op } from './shared'
 
@@ -54,6 +55,7 @@ export class GensPool {
   private analysers: GenPool<Analyser> = new GenPool<Analyser>(() => new Analyser())
   private samplers: GenPool<Sampler> = new GenPool<Sampler>(() => new Sampler())
   private slicers: GenPool<Slicer> = new GenPool<Slicer>(() => new Slicer())
+  private slews: GenPool<Slew> = new GenPool<Slew>(() => new Slew())
   private every: GenPool<Every> = new GenPool<Every>(() => new Every())
   private ats: GenPool<At> = new GenPool<At>(() => new At())
   resetIndices(): void {
@@ -65,6 +67,7 @@ export class GensPool {
     this.analysers.resetIndex()
     this.samplers.resetIndex()
     this.slicers.resetIndex()
+    this.slews.resetIndex()
     this.every.resetIndex()
     this.ats.resetIndex()
   }
@@ -77,6 +80,7 @@ export class GensPool {
     this.analysers.reset()
     this.samplers.reset()
     this.slicers.reset()
+    this.slews.reset()
     this.every.reset()
     this.ats.reset()
   }
@@ -99,6 +103,8 @@ export class GensPool {
         return this.samplers.get()
       case Op.Slicer:
         return this.slicers.get()
+      case Op.Slew:
+        return this.slews.get()
       case Op.Every:
         return this.every.get()
       case Op.At:
@@ -116,6 +122,7 @@ export class GensPool {
     this.analysers.copyFrom(source.analysers)
     this.samplers.copyFrom(source.samplers)
     this.slicers.copyFrom(source.slicers)
+    this.slews.copyFrom(source.slews)
     this.every.copyFrom(source.every)
     this.ats.copyFrom(source.ats)
   }

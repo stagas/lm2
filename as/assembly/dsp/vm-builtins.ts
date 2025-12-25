@@ -16,6 +16,7 @@ import { callPlayPick } from './builtins/play-pick'
 import { callSampler } from './builtins/sampler'
 import { callSine } from './builtins/sine'
 import { callSlicer } from './builtins/slicer'
+import { callSlew } from './builtins/slew'
 import { callTimeline } from './builtins/timeline'
 import { Dsp } from './dsp'
 import { VmBuiltin, VmTag } from './types'
@@ -196,6 +197,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.At) {
       callAt(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Slew) {
+      callSlew(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
         program, length)
       return
     }
