@@ -1,27 +1,31 @@
 import { SEQ_VOICES } from '../constants'
 import { Program } from '../program'
+import { addAudio, clearAudio } from './audio-ops'
 import { callAd } from './builtins/ad'
 import { callAdsr } from './builtins/adsr'
 import { callAnalyser } from './builtins/analyser'
 import { callAt } from './builtins/at'
-import { callEvery } from './builtins/every'
-import { callMini } from './builtins/mini'
 import { callDegree } from './builtins/degree'
+import { callEvery } from './builtins/every'
+import { callLp } from './builtins/lp'
 import { callMap } from './builtins/map'
-import { callSum } from './builtins/sum'
+import { callMini } from './builtins/mini'
 import { callNote } from './builtins/note'
 import { callOut } from './builtins/out'
+import { callPhasor } from './builtins/phasor'
 import { callPlay } from './builtins/play'
 import { callPlayPick } from './builtins/play-pick'
-import { callSampler } from './builtins/sampler'
-import { callPhasor } from './builtins/phasor'
+import { callPost } from './builtins/post'
 import { callPwm } from './builtins/pwm'
 import { callRamp } from './builtins/ramp'
+import { callSampler } from './builtins/sampler'
 import { callSaw } from './builtins/saw'
 import { callSine } from './builtins/sine'
-import { callSlicer } from './builtins/slicer'
 import { callSlew } from './builtins/slew'
+import { callSlicer } from './builtins/slicer'
+import { callSolo } from './builtins/solo'
 import { callSqr } from './builtins/sqr'
+import { callSum } from './builtins/sum'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { Dsp } from './dsp'
@@ -51,6 +55,73 @@ export class VmBuiltins {
   mapArgAux: StaticArray<i32> = new StaticArray<i32>(3)
 
   analyserRingBase: i32 = 0
+
+  @inline
+  private coerceArrayToScalar(
+    tags: StaticArray<i32>,
+    nums: StaticArray<f64>,
+    aux: StaticArray<i32>,
+    index: i32,
+    audio: VmAudio,
+    program: Program,
+    length: i32,
+    dsp: Dsp,
+  ): void {
+    if ((tags[index] as VmTag) !== VmTag.Arr) return
+
+    const arrId: i32 = aux[index]
+    if (arrId < 0 || arrId >= dsp.arrays.count) {
+      tags[index] = VmTag.Num
+      nums[index] = 0.0
+      aux[index] = 0
+      return
+    }
+
+    const n: i32 = dsp.arrays.len[arrId]
+    if (n <= 0) {
+      tags[index] = VmTag.Num
+      nums[index] = 0.0
+      aux[index] = 0
+      return
+    }
+
+    const elemType = dsp.arrays.elemType[arrId] as VmTag
+
+    if (elemType === VmTag.Num) {
+      const start: i32 = dsp.arrays.start[arrId]
+      let sum: f64 = 0.0
+      for (let i: i32 = 0; i < n; i++) {
+        sum += dsp.arrays.elemNum[start + i]
+      }
+      tags[index] = VmTag.Num
+      nums[index] = sum
+      aux[index] = 0
+      return
+    }
+
+    if (elemType === VmTag.Audio) {
+      const start: i32 = dsp.arrays.start[arrId]
+      const outIndex: i32 = audio.allocOut(program)
+      const out$ = program.getOutBuffer(outIndex)
+      clearAudio(out$, length)
+
+      for (let i: i32 = 0; i < n; i++) {
+        const srcIndex: i32 = dsp.arrays.elemAux[start + i]
+        if (srcIndex < 0) continue
+        const src$ = program.getOutBuffer(srcIndex)
+        addAudio(out$, out$, src$, length)
+      }
+
+      tags[index] = VmTag.Audio
+      nums[index] = 0.0
+      aux[index] = outIndex
+      return
+    }
+
+    tags[index] = VmTag.Num
+    nums[index] = 0.0
+    aux[index] = 0
+  }
 
   @inline
   call(
@@ -115,8 +186,29 @@ export class VmBuiltins {
       return
     }
 
+    // Coerce arrays-of-nums / arrays-of-audio to a scalar by summing (like `array.sum()`),
+    // so passing `[a,b,c]` into a numeric/audio parameter works naturally.
+    if (calleeAux !== VmBuiltin.Map && calleeAux !== VmBuiltin.Sum) {
+      for (let i = 0; i < posCount; i++) {
+        this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
+      }
+      for (let i = 0; i < namedCount; i++) {
+        this.coerceArrayToScalar(nameTags, nameNums, nameAux, i, audio, program, length, dsp)
+      }
+    }
+
     if (calleeAux === VmBuiltin.Out) {
-      callOut(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$)
+      callOut(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Solo) {
+      callSolo(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Post) {
+      callPost(posCount, posTags, posNums, posAux, stack, dsp)
       return
     }
 
@@ -211,8 +303,8 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.PlayPick) {
-      callPlayPick(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp, this.miniTrigOuts,
-        this.miniVelOuts, this.miniValOuts, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      callPlayPick(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp,
+        this.miniTrigOuts, this.miniVelOuts, this.miniValOuts, this.cbArgTags, this.cbArgNums, this.cbArgAux)
       return
     }
 
@@ -234,6 +326,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.At) {
       callAt(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Lp) {
+      callLp(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
         program, length)
       return
     }

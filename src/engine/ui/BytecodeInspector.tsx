@@ -61,7 +61,7 @@ export function BytecodeInspector() {
 
   return (
     <div ref={rootRef} className="flex flex-col gap-2 w-full" onClick={e => {
-      navigator.clipboard.writeText(rootRef.current?.textContent || '')
+      navigator.clipboard.writeText(analysis.bytecodeText)
     }}>
       {analysis.errors.length > 0 && (
         <div className="bg-red-900 text-red-200 p-2 rounded-md text-xs">

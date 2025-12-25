@@ -1,8 +1,8 @@
 // dprint-ignore-file
-import { Saw } from '../../gen/saw'
+import { Saw } from '../../gen/osc'
 import { Program } from '../../program'
 import { Op } from '../../shared'
-import { VmSym } from '../../syms'
+import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'

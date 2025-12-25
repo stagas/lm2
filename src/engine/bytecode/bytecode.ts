@@ -508,7 +508,7 @@ export function encodeLangToVmOps(
       const isPlay = calleeName === 'play'
       const isTimeline = calleeName === 'timeline'
       const isAnalyser = calleeName === 'analyser'
-      const isOut = calleeName === 'out'
+      const isOut = calleeName === 'out' || calleeName === 'solo'
       const isLabel = calleeName === 'label'
       const isFreesound = calleeName === 'freesound'
 

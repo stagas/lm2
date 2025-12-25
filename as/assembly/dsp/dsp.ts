@@ -2,8 +2,7 @@ import { BRANCH_HISTORY_ENTRY_SIZE, BRANCH_HISTORY_SIZE } from '../constants'
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from '../globals'
 import { Program } from '../program'
 import { ProgramData } from '../program-data'
-import { VmSym } from '../syms'
-import { clearAudio, selectAudio } from './audio-ops'
+import { addAudio, clearAudio, copyAudio, selectAudio } from './audio-ops'
 import { VM_FUNC_HEADER, VM_MAGIC, VmBinary, VmOp, VmTag, VmUnary } from './types'
 import { VmArrays } from './vm-arrays'
 import { VmAudio } from './vm-audio'
@@ -11,6 +10,7 @@ import { vmBinaryOp } from './vm-binary'
 import { VmBuiltins } from './vm-builtins'
 import { VmEnv } from './vm-env'
 import { VmStack } from './vm-stack'
+import { VmSym } from './vm-sym'
 
 export class Dsp {
   program: Program = new Program()
@@ -36,6 +36,22 @@ export class Dsp {
   transposeAux: i32 = 0
 
   scaleIndex: i32 = 0
+
+  // Output mix buses (segment-scoped)
+  outLeft$: usize = 0
+  outRight$: usize = 0
+
+  // Output routing state (segment-scoped)
+  soloHas: i32 = 0
+  soloLeft$: usize = 0
+  soloRight$: usize = 0
+
+  postCount: i32 = 0
+  postPcs: StaticArray<i32> = new StaticArray<i32>(8)
+  postRunning: i32 = 0
+  private postArgTags: StaticArray<i32> = new StaticArray<i32>(2)
+  private postArgNums: StaticArray<f64> = new StaticArray<f64>(2)
+  private postArgAux: StaticArray<i32> = new StaticArray<i32>(2)
 
   // Audio-conditional `if` support. Must not allocate inside `vmExec`.
   private ifStackDepth: i32 = 0
@@ -462,9 +478,31 @@ export class Dsp {
 
     this.vmExec(bodyPc, ops.length, length, left$, right$, true)
 
+    // If the function returns audio, materialize it into a stable out buffer before restoring outs.
+    // The compiler evaluates call arguments via temps, so returned audio must survive subsequent
+    // evaluations that may reuse internal scratch out buffers.
+    let restoreTo: i32 = savedOut
+    if (restoreOuts && this.stack.sp > 0) {
+      const top = this.stack.peek()
+      const tag = this.stack.tag[top] as VmTag
+      if (tag === VmTag.Audio) {
+        const srcIndex: i32 = this.stack.aux[top]
+        if (srcIndex >= savedOut) {
+          const dstIndex: i32 = savedOut
+          if (srcIndex !== dstIndex) {
+            const src$ = this.program.getOutBuffer(srcIndex)
+            const dst$ = this.program.getOutBuffer(dstIndex)
+            copyAudio(dst$, src$, length)
+          }
+          this.stack.aux[top] = dstIndex
+          restoreTo = savedOut + 1
+        }
+      }
+    }
+
     this.env.count = savedEnv
     this.env.scopeDepth = savedDepth
-    if (restoreOuts) this.audio.outCursor = savedOut
+    if (restoreOuts) this.audio.outCursor = restoreTo
     this.tuneTag = savedTuneTag
     this.tuneNum = savedTuneNum
     this.tuneAux = savedTuneAux
@@ -509,11 +547,144 @@ export class Dsp {
       const leftBlock$ = left$ + (offset * 4) as usize
       const rightBlock$ = right$ + (offset * 4) as usize
 
+      // Pre-post output buses
+      const outLIndex: i32 = this.audio.allocOut(this.program)
+      const outRIndex: i32 = this.audio.allocOut(this.program)
+      const outL$: usize = this.program.getOutBuffer(outLIndex)
+      const outR$: usize = this.program.getOutBuffer(outRIndex)
+      clearAudio(outL$, block)
+      clearAudio(outR$, block)
+      this.outLeft$ = outL$
+      this.outRight$ = outR$
+
+      const soloLIndex: i32 = this.audio.allocOut(this.program)
+      const soloRIndex: i32 = this.audio.allocOut(this.program)
+      const soloL$: usize = this.program.getOutBuffer(soloLIndex)
+      const soloR$: usize = this.program.getOutBuffer(soloRIndex)
+      clearAudio(soloL$, block)
+      clearAudio(soloR$, block)
+
+      this.soloHas = 0
+      this.soloLeft$ = soloL$
+      this.soloRight$ = soloR$
+      this.postCount = 0
+      this.postRunning = 0
+
       // Track ring write base for analyser() calls (begin is the ring base in samples)
       this.builtins.analyserRingBase = begin + offset
-      this.vmExec(1, ops.length, block, leftBlock$, rightBlock$, false)
+      this.vmExec(1, ops.length, block, outL$, outR$, false)
 
       if (vmErrorCode !== 0) return
+
+      let curLIndex: i32 = outLIndex
+      let curRIndex: i32 = outRIndex
+      let curL$: usize = outL$
+      let curR$: usize = outR$
+
+      if (this.soloHas !== 0) {
+        curLIndex = soloLIndex
+        curRIndex = soloRIndex
+        curL$ = soloL$
+        curR$ = soloR$
+      }
+
+      const postCount: i32 = this.postCount
+      if (postCount <= 0) {
+        copyAudio(leftBlock$, curL$, block)
+        copyAudio(rightBlock$, curR$, block)
+        continue
+      }
+
+      // Ping-pong post buses so multiple post() calls chain.
+      const postL0Index: i32 = this.audio.allocOut(this.program)
+      const postR0Index: i32 = this.audio.allocOut(this.program)
+      const postL1Index: i32 = this.audio.allocOut(this.program)
+      const postR1Index: i32 = this.audio.allocOut(this.program)
+      const postL0$: usize = this.program.getOutBuffer(postL0Index)
+      const postR0$: usize = this.program.getOutBuffer(postR0Index)
+      const postL1$: usize = this.program.getOutBuffer(postL1Index)
+      const postR1$: usize = this.program.getOutBuffer(postR1Index)
+
+      const argTags = this.postArgTags
+      const argNums = this.postArgNums
+      const argAux = this.postArgAux
+      argTags[0] = VmTag.Audio
+      argNums[0] = 0.0
+      argTags[1] = VmTag.Audio
+      argNums[1] = 0.0
+
+      this.postRunning = 1
+      for (let i: i32 = 0; i < postCount; i++) {
+        const targetEven: bool = (i & 1) === 0
+        const targetLIndex: i32 = targetEven ? postL0Index : postL1Index
+        const targetRIndex: i32 = targetEven ? postR0Index : postR1Index
+        const targetL$: usize = targetEven ? postL0$ : postL1$
+        const targetR$: usize = targetEven ? postR0$ : postR1$
+
+        clearAudio(targetL$, block)
+        clearAudio(targetR$, block)
+
+        // Route out() inside post to the post output bus (optional; post should return [L,R]).
+        this.outLeft$ = targetL$
+        this.outRight$ = targetR$
+
+        // Let solo() behave like out() during post (both route into the post bus).
+        this.soloLeft$ = targetL$
+        this.soloRight$ = targetR$
+        this.soloHas = 0
+
+        argAux[0] = curLIndex
+        argAux[1] = curRIndex
+
+        const postPc: i32 = this.postPcs[i]
+        this.stack.reset()
+        this.vmInvokeFunc(postPc, 2, argTags, argNums, argAux, block, targetL$, targetR$)
+
+        if (vmErrorCode !== 0) return
+
+        const resIdx = this.stack.pop()
+        const resTag = this.stack.tag[resIdx] as VmTag
+
+        if (resTag === VmTag.Arr) {
+          const arrId: i32 = this.stack.aux[resIdx]
+          if (arrId >= 0 && arrId < this.arrays.count) {
+            const n: i32 = this.arrays.len[arrId]
+            if (n >= 2) {
+              const start: i32 = this.arrays.start[arrId]
+
+              const lTag = this.arrays.elemTag[start + 0] as VmTag
+              const lNum = this.arrays.elemNum[start + 0]
+              const lAux = this.arrays.elemAux[start + 0]
+
+              const rTag = this.arrays.elemTag[start + 1] as VmTag
+              const rNum = this.arrays.elemNum[start + 1]
+              const rAux = this.arrays.elemAux[start + 1]
+
+              const lPtr$ = this.audio.toAudioPtr(lTag, lNum, lAux, block, this.program)
+              const rPtr$ = this.audio.toAudioPtr(rTag, rNum, rAux, block, this.program)
+              addAudio(targetL$, targetL$, lPtr$, block)
+              addAudio(targetR$, targetR$, rPtr$, block)
+            }
+          }
+        }
+        else {
+          // Allow mono returns for convenience: post((L,R)->mix(L)) or post((L,R)->L)
+          const mNum = this.stack.num[resIdx]
+          const mAux = this.stack.aux[resIdx]
+          const mPtr$ = this.audio.toAudioPtr(resTag, mNum, mAux, block, this.program)
+          addAudio(targetL$, targetL$, mPtr$, block)
+          addAudio(targetR$, targetR$, mPtr$, block)
+        }
+
+        curLIndex = targetLIndex
+        curRIndex = targetRIndex
+        curL$ = targetL$
+        curR$ = targetR$
+      }
+      this.postRunning = 0
+
+      copyAudio(leftBlock$, curL$, block)
+      copyAudio(rightBlock$, curR$, block)
     }
   }
 

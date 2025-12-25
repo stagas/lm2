@@ -25,8 +25,8 @@
       "threads"
     ],
     "importMemory": true,
-    "initialMemory": 4096,
-    "maximumMemory": 4096,
+    "initialMemory": 1024,
+    "maximumMemory": 1024,
     "sharedMemory": true,
     "bindings": "esm",
     "runtime": "stub",

@@ -1,9 +1,9 @@
 import { setVmError } from '../globals'
 import { Program } from '../program'
-import { VmSym } from '../syms'
 import { VmTag } from './types'
 import { VmAudio } from './vm-audio'
 import { VmStack } from './vm-stack'
+import { VmSym } from './vm-sym'
 
 export class VmEnv {
   count: i32 = 0
@@ -65,6 +65,14 @@ export class VmEnv {
     // Builtins are implicit globals
     if (sym === VmSym.Out) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Out)
+      return
+    }
+    if (sym === VmSym.Solo) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Solo)
+      return
+    }
+    if (sym === VmSym.Post) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Post)
       return
     }
     if (sym === VmSym.Sine) {
@@ -137,6 +145,10 @@ export class VmEnv {
     }
     if (sym === VmSym.At) {
       stack.push(VmTag.Builtin, 0.0, VmSym.At)
+      return
+    }
+    if (sym === VmSym.Lp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Lp)
       return
     }
     if (sym === VmSym.Note) {

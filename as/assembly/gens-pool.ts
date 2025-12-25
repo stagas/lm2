@@ -2,20 +2,16 @@ import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
+import { Lp } from './gen/biquad'
 import { Every } from './gen/every'
 import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
-import { Phasor } from './gen/phasor'
-import { Pwm } from './gen/pwm'
-import { Ramp } from './gen/ramp'
-import { Saw } from './gen/saw'
+import { Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
-import { Slicer } from './gen/slicer'
 import { Slew } from './gen/slew'
-import { Sqr } from './gen/sqr'
+import { Slicer } from './gen/slicer'
 import { Timeline } from './gen/timeline'
-import { Tri } from './gen/tri'
 import { Op } from './shared'
 
 export class GenPool<T extends Gen> {
@@ -70,6 +66,7 @@ export class GensPool {
   private slews: GenPool<Slew> = new GenPool<Slew>(() => new Slew())
   private every: GenPool<Every> = new GenPool<Every>(() => new Every())
   private ats: GenPool<At> = new GenPool<At>(() => new At())
+  private lps: GenPool<Lp> = new GenPool<Lp>(() => new Lp())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -88,6 +85,7 @@ export class GensPool {
     this.slews.resetIndex()
     this.every.resetIndex()
     this.ats.resetIndex()
+    this.lps.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -107,6 +105,7 @@ export class GensPool {
     this.slews.reset()
     this.every.reset()
     this.ats.reset()
+    this.lps.reset()
   }
 
   get(op: Op): Gen {
@@ -145,6 +144,8 @@ export class GensPool {
         return this.every.get()
       case Op.At:
         return this.ats.get()
+      case Op.Lp:
+        return this.lps.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -167,5 +168,6 @@ export class GensPool {
     this.slews.copyFrom(source.slews)
     this.every.copyFrom(source.every)
     this.ats.copyFrom(source.ats)
+    this.lps.copyFrom(source.lps)
   }
 }

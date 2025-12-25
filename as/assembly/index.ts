@@ -26,7 +26,7 @@ export function createFloat32Buffer(size: i32): usize {
 }
 
 export function createDsp(): usize {
-  console.warn('createDsp')
+  console.log('createDsp')
   return changetype<usize>(new Dsp())
 }
 
@@ -37,7 +37,7 @@ export function resetDsp(dsp$: usize): void {
 }
 
 export function createProgram(): usize {
-  console.warn('createProgram')
+  console.log('createProgram')
   return changetype<usize>(new Program())
 }
 
