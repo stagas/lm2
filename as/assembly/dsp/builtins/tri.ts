@@ -24,29 +24,29 @@ export function callTri(
   program: Program,
   length: i32,
 ): void {
-  // Positional fallback: (hz, trig, offset)
+  // Positional fallback: (hz, offset, trig)
   let hzTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
   let hzNum = posCount >= 1 ? posNums[0] : 0.0
   let hzAux = posCount >= 1 ? posAux[0] : 0
-  let trigTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
-  let trigNum = posCount >= 2 ? posNums[1] : 0.0
-  let trigAux = posCount >= 2 ? posAux[1] : 0
-  let offsetTag = posCount >= 3 ? (posTags[2] as VmTag) : VmTag.Num
-  let offsetNum = posCount >= 3 ? posNums[2] : 0.0
-  let offsetAux = posCount >= 3 ? posAux[2] : 0
+  let offsetTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
+  let offsetNum = posCount >= 2 ? posNums[1] : 0.0
+  let offsetAux = posCount >= 2 ? posAux[1] : 0
+  let trigTag = posCount >= 3 ? (posTags[2] as VmTag) : VmTag.Num
+  let trigNum = posCount >= 3 ? posNums[2] : 0.0
+  let trigAux = posCount >= 3 ? posAux[2] : 0
 
-  // Named overrides (trig/offset)
+  // Named overrides (offset/trig)
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.Trig) {
-      trigTag = nameTags[i] as VmTag
-      trigNum = nameNums[i]
-      trigAux = nameAux[i]
-    }
-    else if (k === VmSym.Offset) {
+    if (k === VmSym.Offset) {
       offsetTag = nameTags[i] as VmTag
       offsetNum = nameNums[i]
       offsetAux = nameAux[i]
+    }
+    else if (k === VmSym.Trig) {
+      trigTag = nameTags[i] as VmTag
+      trigNum = nameNums[i]
+      trigAux = nameAux[i]
     }
   }
 

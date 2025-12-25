@@ -7,7 +7,7 @@ This project exposes audio generators (“gens”) through a small chain:
 - Shared wiring so the TS bytecode encoder and AS VM agree on builtin ids and dispatch.
 - `src/engine/ui/function-definitions.ts`: UI/editor docs + “is this call name defined?” list.
 
-#### 1) Add the DSP node
+#### 1. Add the DSP node
 
 - Create `as/assembly/gen/<name>.ts`
   - Export a `class <Name> extends Gen`
@@ -17,7 +17,7 @@ This project exposes audio generators (“gens”) through a small chain:
     - `reset(): void` (reset state)
     - `copyFrom(other: Gen): void` (copy state for hot-swaps)
 
-#### 2) Add the VM builtin wrapper
+#### 2. Add the VM builtin wrapper
 
 - Create `as/assembly/dsp/builtins/<name>.ts`
   - Export `call<Name>(...)` (match the signature style used by `callSlew`, `callAt`, etc.)
@@ -25,7 +25,7 @@ This project exposes audio generators (“gens”) through a small chain:
   - Convert args to audio pointers via `audio.toAudioPtr(...)`
   - Allocate output via `audio.allocOut(program)` and call the gen from `program.gensPool.get(Op.<Name>)`
 
-#### 3) Add / extend shared ids (stable)
+#### 3. Add / extend shared ids (stable)
 
 These ids must be stable across TS+AS. Always **append** new enum entries.
 
@@ -36,7 +36,7 @@ These ids must be stable across TS+AS. Always **append** new enum entries.
 - Update `as/assembly/shared.ts`
   - Add `Op.<Name>` for the gen pool switch (`program.gensPool.get(Op.<Name>)`)
 
-#### 4) Register the gen in the pool
+#### 4. Register the gen in the pool
 
 - Update `as/assembly/gens-pool.ts`
   - Import the new gen class
@@ -47,7 +47,7 @@ These ids must be stable across TS+AS. Always **append** new enum entries.
     - `get(op: Op)` switch
     - `copyFrom(...)`
 
-#### 5) Make the VM treat it as a builtin
+#### 5. Make the VM treat it as a builtin
 
 - Update `as/assembly/dsp/vm-env.ts`
   - Add a `VmSym.<Name>` case to push `VmTag.Builtin`
@@ -59,13 +59,13 @@ These ids must be stable across TS+AS. Always **append** new enum entries.
   - Import `call<Name>` from `./builtins/<name>`
   - Add a dispatch case `if (calleeAux === VmBuiltin.<Name>) { call<Name>(...); return }`
 
-#### 6) Make the TS encoder emit the right symbol ids
+#### 6. Make the TS encoder emit the right symbol ids
 
 - Update `src/engine/bytecode/builtin-syms.ts`
   - Add `<name>: VmSym.<Name>` so the compiler emits the stable builtin id
   - Add any named arg keys too (example: `width: VmSym.Width`)
 
-#### 7) Expose it in the UI / editor
+#### 7. Expose it in the UI / editor
 
 - Update `src/engine/ui/function-definitions.ts`
   - Add a `functionDefinitions.<name>` entry (signature + docs + examples)
