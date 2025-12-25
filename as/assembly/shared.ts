@@ -43,6 +43,7 @@ export enum Op {
   Sqr,
   Pwm,
   Phasor,
+  Lp,
 }
 
 export enum SeqOp {

@@ -1,3 +1,12 @@
+[types.ts](as/assembly/dsp/types.ts)
+[vm-builtins.ts](as/assembly/dsp/vm-builtins.ts)
+[vm-env.ts](as/assembly/dsp/vm-env.ts)
+[gens-pool.ts](as/assembly/gens-pool.ts)
+[shared.ts](as/assembly/shared.ts)
+[syms.ts](as/assembly/syms.ts)
+[builtin-syms.ts](src/engine/bytecode/builtin-syms.ts)
+[function-definitions.ts](src/engine/ui/function-definitions.ts)
+
 ### Adding a new `@as/assembly/gen/*` node (end-to-end checklist)
 
 This project exposes audio generators (“gens”) through a small chain:

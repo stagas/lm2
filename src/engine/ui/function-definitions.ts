@@ -1,19 +1,71 @@
 import type { FunctionSignature } from 'mini-code'
 
 const miniCallbackType = '(trig: audio, velocity: audio, hz: audio) -> audio'
+const postCallbackType = '(L: audio, R: audio) -> array'
 
 export const functionDefinitions: Record<string, FunctionSignature> = {
   out: {
     name: 'out',
     parameters: [
-      { name: 'signal', type: 'number',
-        description: 'Audio-rate signal that should be mixed into both output channels' },
+      {
+        name: 'L',
+        type: 'number',
+        description: 'Audio-rate signal to be mixed into the left output channel (and right as well if R is omitted)',
+      },
+      {
+        name: 'R',
+        type: 'number',
+        optional: true,
+        description: 'Audio-rate signal to be mixed into the right output channel (defaults to L)',
+      },
     ],
     returnType: 'number',
-    description: 'Routes a signal to the stereo output bus so that `... |> out($)` becomes the final mix-down stage.',
+    description: 'Routes signals to the stereo output bus so that `... |> out($)` becomes the final mix-down stage.',
     examples: [
       'sine(440) |> out($)',
+      'out(sine(440), sine(441))',
       'play(seq, (trig, _, hz) -> sine(hz, trig)) |> analyser($) |> out($)',
+    ],
+  },
+  solo: {
+    name: 'solo',
+    parameters: [
+      {
+        name: 'L',
+        type: 'number',
+        description:
+          'Audio-rate signal to be mixed into the left output channel (and right as well if R is omitted); mutes non-solo outs when any solo exists',
+      },
+      {
+        name: 'R',
+        type: 'number',
+        optional: true,
+        description: 'Audio-rate signal to be mixed into the right output channel (defaults to L)',
+      },
+    ],
+    returnType: 'number',
+    description:
+      'Like `out`, but when there is at least one `solo` call, all regular `out` calls are muted and all `solo` signals are summed to the output.',
+    examples: [
+      'sine(440) |> solo($)',
+      'solo(sine(440), sine(441))',
+    ],
+  },
+  post: {
+    name: 'post',
+    parameters: [
+      {
+        name: 'callback',
+        type: postCallbackType,
+        description: 'Post-processing callback that receives the final (L,R) mix and must return [L,R]',
+      },
+    ],
+    returnType: 'number',
+    description:
+      'Registers a post-processing stage that runs after all `out`/`solo` mixing; multiple `post` calls chain in order.',
+    examples: [
+      'post((L, R) -> [L, R])',
+      'post((L, R) -> [L * .5, R * .5])',
     ],
   },
   sine: {
@@ -574,6 +626,19 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'label(0, \'intro\')',
       'label(64, \'groove\', \'#f00\')',
+    ],
+  },
+  lp: {
+    name: 'lp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be low-passed' },
+      { name: 'cut', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Low-passes a signal with a biquad filter.',
+    examples: [
+      'saw(hz) |> lp($, cut:500, q:0.75) |> out($)',
     ],
   },
 }

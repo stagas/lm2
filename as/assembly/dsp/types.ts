@@ -1,4 +1,4 @@
-import { VmSym } from '../syms'
+import { VmSym } from './vm-sym'
 
 export const VM_MAGIC: i32 = -1
 
@@ -73,6 +73,8 @@ export enum VmBinary {
 
 export enum VmBuiltin {
   Out = VmSym.Out,
+  Solo = VmSym.Solo,
+  Post = VmSym.Post,
   Sine = VmSym.Sine,
   Tri = VmSym.Tri,
   Saw = VmSym.Saw,
@@ -97,6 +99,7 @@ export enum VmBuiltin {
   Map = VmSym.Map,
   Sum = VmSym.Sum,
   Slew = VmSym.Slew,
+  Lp = VmSym.Lp,
 }
 
 export const VM_FUNC_HEADER: i32 = -2

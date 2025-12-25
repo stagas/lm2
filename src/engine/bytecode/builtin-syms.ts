@@ -1,7 +1,9 @@
-import { VmSym } from '../../../as/assembly/syms.ts'
+import { VmSym } from '../../../as/assembly/dsp/vm-sym.ts'
 
 export const builtinSyms: Record<string, number> = {
   out: VmSym.Out,
+  solo: VmSym.Solo,
+  post: VmSym.Post,
   sine: VmSym.Sine,
   tri: VmSym.Tri,
   saw: VmSym.Saw,
@@ -27,6 +29,7 @@ export const builtinSyms: Record<string, number> = {
   map: VmSym.Map,
   sum: VmSym.Sum,
   slew: VmSym.Slew,
+  lp: VmSym.Lp,
   // Runtime directive globals (stable ids so VM can provide defaults)
   tune: VmSym.Tune,
   octave: VmSym.Octave,

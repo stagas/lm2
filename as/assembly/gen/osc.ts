@@ -1,6 +1,12 @@
 import { clamp11, clampNyquist } from '../util'
+import { Gen } from './gen'
 
-export class Osc {
+export class Osc extends Gen {
+  hz$: usize = 0
+  width$: usize = 0
+  offset$: usize = 0
+  trig$: usize = 0
+
   phase: f32 = 0.0
   lastTrig: f32 = 0.0
   lastOutput: f32 = 0.0
@@ -13,12 +19,15 @@ export class Osc {
     this.phasorDone = 0.0
   }
 
-  copyFrom(other: Osc): void {
-    this.phase = other.phase
-    this.lastTrig = other.lastTrig
-    this.lastOutput = other.lastOutput
-    this.phasorDone = other.phasorDone
+  copyFrom(other: Gen): void {
+    const src = other as Osc
+    this.phase = src.phase
+    this.lastTrig = src.lastTrig
+    this.lastOutput = src.lastOutput
+    this.phasorDone = src.phasorDone
   }
+
+  process(out$: usize, length: i32): void {}
 
   @inline
   private polyBlep(phase: f32, phaseInc: f32): f32 {
@@ -37,7 +46,11 @@ export class Osc {
     return 0.0
   }
 
-  sin(out$: usize, hz$: usize, trig$: usize, offset$: usize, length: i32): void {
+  sin(out$: usize, length: i32): void {
+    let hz$ = this.hz$
+    let offset$ = this.offset$
+    let trig$ = this.trig$
+
     let phase: f32 = this.phase
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
@@ -71,7 +84,11 @@ export class Osc {
     this.lastOutput = lastOutput
   }
 
-  tri(out$: usize, hz$: usize, trig$: usize, offset$: usize, length: i32): void {
+  tri(out$: usize, length: i32): void {
+    let hz$ = this.hz$
+    let offset$ = this.offset$
+    let trig$ = this.trig$
+
     let phase: f32 = this.phase
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
@@ -114,7 +131,11 @@ export class Osc {
     this.lastOutput = lastOutput
   }
 
-  saw(out$: usize, hz$: usize, trig$: usize, offset$: usize, length: i32): void {
+  saw(out$: usize, length: i32): void {
+    let hz$ = this.hz$
+    let offset$ = this.offset$
+    let trig$ = this.trig$
+
     let phase: f32 = this.phase
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
@@ -152,8 +173,8 @@ export class Osc {
     this.lastOutput = lastOutput
   }
 
-  ramp(out$: usize, hz$: usize, trig$: usize, offset$: usize, length: i32): void {
-    this.saw(out$, hz$, trig$, offset$, length)
+  ramp(out$: usize, length: i32): void {
+    this.saw(out$, length)
 
     let p$ = out$
     for (let i = 0; i < length; i++) {
@@ -162,7 +183,11 @@ export class Osc {
     }
   }
 
-  sqr(out$: usize, hz$: usize, trig$: usize, offset$: usize, length: i32): void {
+  sqr(out$: usize, length: i32): void {
+    let hz$ = this.hz$
+    let offset$ = this.offset$
+    let trig$ = this.trig$
+
     let phase: f32 = this.phase
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
@@ -201,7 +226,12 @@ export class Osc {
     this.lastOutput = lastOutput
   }
 
-  pwm(out$: usize, hz$: usize, width$: usize, offset$: usize, trig$: usize, length: i32): void {
+  pwm(out$: usize, length: i32): void {
+    let hz$ = this.hz$
+    let width$ = this.width$
+    let offset$ = this.offset$
+    let trig$ = this.trig$
+
     let phase: f32 = this.phase
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
@@ -263,7 +293,11 @@ export class Osc {
     this.lastOutput = lastOutput
   }
 
-  phasor(out$: usize, hz$: usize, trig$: usize, offset$: usize, length: i32): void {
+  phasor(out$: usize, length: i32): void {
+    let hz$ = this.hz$
+    let offset$ = this.offset$
+    let trig$ = this.trig$
+
     let phase: f32 = this.phase
     let lastTrig: f32 = this.lastTrig
     let phasorDone: f32 = this.phasorDone
@@ -302,5 +336,41 @@ export class Osc {
     this.phase = phase
     this.lastTrig = lastTrig
     this.phasorDone = phasorDone
+  }
+}
+
+export class Tri extends Osc {
+  process(out$: usize, length: i32): void {
+    this.tri(out$, length)
+  }
+}
+
+export class Saw extends Osc {
+  process(out$: usize, length: i32): void {
+    this.saw(out$, length)
+  }
+}
+
+export class Ramp extends Osc {
+  process(out$: usize, length: i32): void {
+    this.ramp(out$, length)
+  }
+}
+
+export class Sqr extends Osc {
+  process(out$: usize, length: i32): void {
+    this.sqr(out$, length)
+  }
+}
+
+export class Pwm extends Osc {
+  process(out$: usize, length: i32): void {
+    this.pwm(out$, length)
+  }
+}
+
+export class Phasor extends Osc {
+  process(out$: usize, length: i32): void {
+    this.phasor(out$, length)
   }
 }

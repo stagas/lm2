@@ -53,7 +53,7 @@ export function extractAnalysersFromProgramWithRefs(program: Program): AnalyserR
     if (!expr) return
 
     if (expr.kind === 'call') {
-      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'out') {
+      if (expr.callee?.kind === 'ident' && (expr.callee?.name === 'out' || expr.callee?.name === 'solo')) {
         visitOutCall(expr)
         return
       }
