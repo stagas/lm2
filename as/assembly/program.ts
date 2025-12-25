@@ -14,6 +14,9 @@ import {
   SAMPLE_NEEDLE_DATA_OFFSET,
   SAMPLE_NEEDLE_ENTRY_SIZE,
   SAMPLE_NEEDLE_HISTORY_SIZE,
+  LP_CUT_DATA_OFFSET,
+  LP_CUT_ENTRY_SIZE,
+  LP_CUT_HISTORY_SIZE,
 } from './constants'
 import { GensPool } from './gens-pool'
 import { Smoothed } from './lib/smoothed'
@@ -30,6 +33,9 @@ export class Program {
   branchHistory: StaticArray<f32> = new StaticArray<f32>(1 + BRANCH_HISTORY_SIZE * BRANCH_HISTORY_ENTRY_SIZE)
   sampleNeedleHistory: StaticArray<f32> = new StaticArray<f32>(
     SAMPLE_NEEDLE_DATA_OFFSET + SAMPLE_NEEDLE_HISTORY_SIZE * SAMPLE_NEEDLE_ENTRY_SIZE,
+  )
+  lpCutHistory: StaticArray<f32> = new StaticArray<f32>(
+    LP_CUT_DATA_OFFSET + LP_CUT_HISTORY_SIZE * LP_CUT_ENTRY_SIZE,
   )
 
   gensPool: GensPool = new GensPool()

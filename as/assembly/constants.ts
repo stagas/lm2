@@ -23,6 +23,13 @@ export const SAMPLE_NEEDLE_HISTORY_SIZE = 512
 export const SAMPLE_NEEDLE_ENTRY_SIZE = 4
 export const SAMPLE_NEEDLE_WRITE_POS_OFFSET = 0
 export const SAMPLE_NEEDLE_DATA_OFFSET = 1
+
+// Best-effort LP cutoff/Q history for UI widgets.
+// entry: lpIndex, cutHz, q, sampleCountMod
+export const LP_CUT_HISTORY_SIZE = 2048
+export const LP_CUT_ENTRY_SIZE = 4
+export const LP_CUT_WRITE_POS_OFFSET = 0
+export const LP_CUT_DATA_OFFSET = 1
 export const ARRAYS_COUNT = 1024
 export const LITERALS_COUNT = 1024
 export const OPS_COUNT = 8192

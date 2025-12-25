@@ -15,6 +15,9 @@ import {
   HISTORY_HEADER_SIZE,
   HISTORY_SIZE,
   HISTORY_WRITE_POS_OFFSET,
+  LP_CUT_DATA_OFFSET,
+  LP_CUT_ENTRY_SIZE,
+  LP_CUT_HISTORY_SIZE,
   LITERALS_COUNT,
   OPS_COUNT,
   RING_BUFFER_SIZE,
@@ -29,6 +32,7 @@ import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import {
   type AnalyserRef,
   type CompressorRef,
+  type LpRef,
   type ArrayLiteralRef,
   type BranchMarkRef,
   encodeLangToVmOps,
@@ -66,6 +70,11 @@ export type VmBranchHistory = {
 }
 
 export type VmSampleNeedleHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
+export type VmLpCutHistory = {
   writePos: number
   raw: Float32Array
 }
@@ -120,6 +129,7 @@ function buildProgram(
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  lpRefs: LpRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
@@ -128,7 +138,7 @@ function buildProgram(
   bpm?: number
   bars?: number
 } {
-  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
+  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs,
     arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
@@ -145,6 +155,7 @@ function buildProgram(
     timelineLabels: timelineLabels ?? [],
     analyserRefs: analyserRefs ?? [],
     compressorRefs: compressorRefs ?? [],
+    lpRefs: lpRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
     branchMarks: branchMarks ?? [],
     numberParams: numberParams ?? [],
@@ -176,6 +187,7 @@ export type ProgramBuildResult = {
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  lpRefs: LpRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   timelineSequences: TimelineSequenceDef[]
   arrayLiterals: ArrayLiteralRef[]
@@ -344,6 +356,19 @@ async function createProgram(
     ),
   }
 
+  const lpCutHistory$ = program.lpCutHistory
+  const lpCutWritePos = new Float32Array(wasmMemory.buffer, lpCutHistory$, LP_CUT_DATA_OFFSET)
+  const lpCutHistory: VmLpCutHistory = {
+    get writePos() {
+      return lpCutWritePos[0] || 0
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      lpCutHistory$,
+      LP_CUT_DATA_OFFSET + LP_CUT_HISTORY_SIZE * LP_CUT_ENTRY_SIZE,
+    ),
+  }
+
   function nextProgramData() {
     const data = programDataPool[programDataPoolIndex]
     programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length
@@ -375,6 +400,7 @@ async function createProgram(
     arrayAccessHistory,
     branchHistory,
     sampleNeedleHistory,
+    lpCutHistory,
     get data() {
       return programData
     },
@@ -386,7 +412,7 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs,
           arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
@@ -437,6 +463,7 @@ async function createProgram(
           timelineLabels,
           analyserRefs,
           compressorRefs,
+          lpRefs,
           miniSourceMaps,
           timelineSequences,
           arrayLiterals,

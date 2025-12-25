@@ -1,40 +1,36 @@
 import type { Loc, Program } from '../../lang/ast.ts'
-import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault,
-  getPosArg } from './extract-call-utils.ts'
 import { tryEvalConstNumber } from './helpers.ts'
-import type { CompressorRef } from './types.ts'
+import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault, getPosArg } from './extract-call-utils.ts'
+import type { LpRef } from './types.ts'
 
-const MAX_COMPRESSOR_INDEX = 63
+const MAX_LP_INDEX = 63
 
-function clampCompressorIndex(n: any): number {
+function clampLpIndex(n: any): number {
   const v = Math.floor(Number(n ?? 0))
   if (!Number.isFinite(v)) return 0
   if (v < 0) return 0
-  if (v > MAX_COMPRESSOR_INDEX) return MAX_COMPRESSOR_INDEX
+  if (v > MAX_LP_INDEX) return MAX_LP_INDEX
   return v
 }
 
-function getCompressorIndexFromCall(call: any): number {
+function getLpIndexFromCall(call: any): number {
   const namedIdx = findNamedArg(call, 'index')
-  if (namedIdx?.value) return clampCompressorIndex(tryEvalConstNumber(namedIdx.value))
+  if (namedIdx?.value) return clampLpIndex(tryEvalConstNumber(namedIdx.value))
   return 0
 }
 
-function isKnobParamName(name: string): name is 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' {
-  return name === 'attack' || name === 'release' || name === 'threshold' || name === 'ratio' || name === 'knee'
+function isKnobParamName(name: string): name is 'cut' | 'q' {
+  return name === 'cut' || name === 'q'
 }
 
-function posIndexToKnobName(posIndex: number): 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' | null {
-  if (posIndex === 1) return 'attack'
-  if (posIndex === 2) return 'release'
-  if (posIndex === 3) return 'threshold'
-  if (posIndex === 4) return 'ratio'
-  if (posIndex === 5) return 'knee'
+function posIndexToKnobName(posIndex: number): 'cut' | 'q' | null {
+  if (posIndex === 1) return 'cut'
+  if (posIndex === 2) return 'q'
   return null
 }
 
-function visit(src: string, program: Program): CompressorRef[] {
-  const refs: CompressorRef[] = []
+function visit(src: string, program: Program): LpRef[] {
+  const refs: LpRef[] = []
   const lineStarts = buildLineStartsForLocs(src)
 
   function visitExpr(expr: any): void {
@@ -42,19 +38,16 @@ function visit(src: string, program: Program): CompressorRef[] {
 
     if (expr.kind === 'call') {
       const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
-      if (calleeName === 'compressor') {
+      if (calleeName === 'lp') {
         const pos0 = getPosArg(expr, 0)
         const namedIn = findNamedArg(expr, 'in')
-        const namedKey = findNamedArg(expr, 'key')
-        const posKey = getPosArg(expr, 6)
+        const namedCut = findNamedArg(expr, 'cut')
+        const namedQ = findNamedArg(expr, 'q')
 
-        const attackExpr = findNamedArg(expr, 'attack')?.value ?? getPosArg(expr, 1)?.value
-        const releaseExpr = findNamedArg(expr, 'release')?.value ?? getPosArg(expr, 2)?.value
-        const thresholdExpr = findNamedArg(expr, 'threshold')?.value ?? getPosArg(expr, 3)?.value
-        const ratioExpr = findNamedArg(expr, 'ratio')?.value ?? getPosArg(expr, 4)?.value
-        const kneeExpr = findNamedArg(expr, 'knee')?.value ?? getPosArg(expr, 5)?.value
+        const cutExpr = namedCut?.value ?? getPosArg(expr, 1)?.value
+        const qExpr = namedQ?.value ?? getPosArg(expr, 2)?.value
 
-        const knobParams: CompressorRef['knobParams'] = []
+        const knobParams: LpRef['knobParams'] = []
         const seen = new Set<string>()
         let posIndex = 0
         for (const a of expr.args ?? []) {
@@ -86,19 +79,17 @@ function visit(src: string, program: Program): CompressorRef[] {
         const aboveLoc = computeAboveLoc(src, lineStarts, calleeLoc)
 
         refs.push({
-          compressorIndex: getCompressorIndexFromCall(expr),
+          lpIndex: getLpIndexFromCall(expr),
           loc: calleeLoc,
           aboveLoc,
           callLoc: expr.loc,
           inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
-          keyArgLoc: (namedKey?.loc ?? posKey?.loc ?? null),
+          cutArgLoc: (namedCut?.loc ?? getPosArg(expr, 1)?.loc ?? null),
+          qArgLoc: (namedQ?.loc ?? getPosArg(expr, 2)?.loc ?? null),
           knobParams,
           params: {
-            attack: getNumberOrDefault(attackExpr, 0.01),
-            release: getNumberOrDefault(releaseExpr, 0.1),
-            threshold: getNumberOrDefault(thresholdExpr, -24),
-            ratio: getNumberOrDefault(ratioExpr, 4),
-            knee: getNumberOrDefault(kneeExpr, 6),
+            cut: getNumberOrDefault(cutExpr, 500),
+            q: getNumberOrDefault(qExpr, 0.75),
           },
         })
       }
@@ -224,6 +215,8 @@ function visit(src: string, program: Program): CompressorRef[] {
   return refs
 }
 
-export function extractCompressorsFromProgramWithRefs(src: string, program: Program): CompressorRef[] {
+export function extractLpsFromProgramWithRefs(src: string, program: Program): LpRef[] {
   return visit(src, program)
 }
+
+

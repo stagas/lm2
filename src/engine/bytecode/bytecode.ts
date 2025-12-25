@@ -21,6 +21,7 @@ import { builtinSyms } from './builtin-syms.ts'
 import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
 import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
+import { extractLpsFromProgramWithRefs } from './extract-lp.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
@@ -33,6 +34,7 @@ import {
   ArrayLiteralRef,
   BranchMarkRef,
   CompressorRef,
+  LpRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
@@ -49,6 +51,7 @@ export * from './builtin-syms.ts'
 export * from './extract-analysers.ts'
 export * from './extract-bpm-bars.ts'
 export * from './extract-compressors.ts'
+export * from './extract-lp.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
 export * from './extract-samples.ts'
@@ -332,6 +335,7 @@ export function encodeLangToVmOps(
   timelineLabels?: TimelineLabel[]
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
+  lpRefs?: LpRef[]
   arrayLiterals?: ArrayLiteralRef[]
   branchMarks?: BranchMarkRef[]
   numberParams?: NumberWithParamsInfo[]
@@ -390,6 +394,7 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
   let analyserRefs: AnalyserRef[] = []
   let compressorRefs: CompressorRef[] = []
+  let lpRefs: LpRef[] = []
   const numberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
   const numberLiterals = extractNumberLiteralsFromProgram(parsed.program).filter(p => p.line > 0)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
@@ -432,6 +437,19 @@ export function encodeLangToVmOps(
     const idx = nextCompressorIndex
     usedCompressorIndices.add(idx)
     nextCompressorIndex = Math.min(MAX_COMPRESSOR_INDEX, idx + 1)
+    return idx
+  }
+
+  const MAX_LP_INDEX = 63
+  const clampLpIndex = (n: number) => Math.max(0, Math.min(MAX_LP_INDEX, Math.floor(Number(n || 0))))
+  const usedLpIndices = new Set<number>([0])
+  let nextLpIndex = 1
+  const allocLpIndex = (): number => {
+    if (nextLpIndex > MAX_LP_INDEX) return MAX_LP_INDEX
+    while (usedLpIndices.has(nextLpIndex) && nextLpIndex < MAX_LP_INDEX) nextLpIndex++
+    const idx = nextLpIndex
+    usedLpIndices.add(idx)
+    nextLpIndex = Math.min(MAX_LP_INDEX, idx + 1)
     return idx
   }
 
@@ -532,6 +550,7 @@ export function encodeLangToVmOps(
       const isTimeline = calleeName === 'timeline'
       const isAnalyser = calleeName === 'analyser'
       const isCompressor = calleeName === 'compressor'
+      const isLp = calleeName === 'lp'
       const isOut = calleeName === 'out' || calleeName === 'solo'
       const isLabel = calleeName === 'label'
       const isFreesound = calleeName === 'freesound'
@@ -583,6 +602,27 @@ export function encodeLangToVmOps(
 
         if (!namedIndexArg) {
           const idx = allocCompressorIndex()
+          return {
+            ...expr,
+            callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }],
+          }
+        }
+      }
+
+      if (isLp) {
+        const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
+        const idxVal = namedIndexArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = clampLpIndex(Number(idxVal.value ?? 0))
+          usedLpIndices.add(idx)
+          namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (!namedIndexArg) {
+          const idx = allocLpIndex()
           return {
             ...expr,
             callee,
@@ -818,6 +858,7 @@ export function encodeLangToVmOps(
   const transformedProgram = { ...parsed.program, body: parsed.program.body.map(transformStmt).filter(Boolean) } as any
   analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
   compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
+  lpRefs = extractLpsFromProgramWithRefs(src, transformedProgram)
   const compiled = compile(src, transformedProgram)
   errors.push(...compiled.errors)
   if (errors.length) return { errors }
@@ -1201,6 +1242,7 @@ export function encodeLangToVmOps(
       timelineLabels,
       analyserRefs,
       compressorRefs,
+      lpRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,
@@ -1218,6 +1260,7 @@ export function encodeLangToVmOps(
       timelineLabels,
       analyserRefs,
       compressorRefs,
+      lpRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,

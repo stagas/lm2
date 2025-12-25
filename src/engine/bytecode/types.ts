@@ -108,6 +108,33 @@ export type CompressorRef = {
   }
 }
 
+export type LpRef = {
+  lpIndex: number
+  /** Location of the `lp` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the input arg (positional or `in:`). */
+  inArgLoc: Loc | null
+  /** Location of the cutoff arg (positional or `cut:`). */
+  cutArgLoc: Loc | null
+  /** Location of the Q arg (positional or `q:`). */
+  qArgLoc: Loc | null
+  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
+  knobParams: Array<{
+    name: 'cut' | 'q'
+    value: number
+    valueLoc: Loc
+  }>
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: {
+    cut: number
+    q: number
+  }
+}
+
 export type MiniSequenceRef = {
   seqIndex: number
   sequence: string

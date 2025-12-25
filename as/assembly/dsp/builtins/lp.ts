@@ -1,5 +1,7 @@
 // dprint-ignore-file
 import { Lp } from '../../gen/biquad'
+import { LP_CUT_DATA_OFFSET, LP_CUT_ENTRY_SIZE, LP_CUT_HISTORY_SIZE, LP_CUT_WRITE_POS_OFFSET } from '../../constants'
+import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmSym } from '../vm-sym'
@@ -30,6 +32,8 @@ export function callLp(
     return
   }
 
+  let lpIndex: i32 = 0
+
   let inTag = posTags[0] as VmTag
   let inNum = posNums[0]
   let inAux = posAux[0]
@@ -45,7 +49,11 @@ export function callLp(
   // Named overrides (cut/q)
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.In) {
+    if (k === VmSym.Index) {
+      const v = i32(Math.floor(nameNums[i]))
+      lpIndex = v < 0 ? 0 : v > 63 ? 63 : v
+    }
+    else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
       inNum = nameNums[i]
       inAux = nameAux[i]
@@ -74,6 +82,19 @@ export function callLp(
   lp.cut$ = cut$
   lp.q$ = q$
   lp.process(out$, length)
+
+  // Best-effort history for UI widgets (no atomics needed).
+  {
+    const hist = program.lpCutHistory
+    const writePos = i32(hist[LP_CUT_WRITE_POS_OFFSET])
+    const slot = writePos % LP_CUT_HISTORY_SIZE
+    const base = LP_CUT_DATA_OFFSET + slot * LP_CUT_ENTRY_SIZE
+    hist[base] = f32(lpIndex)
+    hist[base + 1] = load<f32>(cut$)
+    hist[base + 2] = load<f32>(q$)
+    hist[base + 3] = f32((globalSampleCount + length) & 0xfffff)
+    hist[LP_CUT_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
+  }
 
   stack.push(VmTag.Audio, 0.0, outIndex)
 }

@@ -3,6 +3,7 @@ import { type SourceLocation } from '../lib/mini-source-map.ts'
 import {
   type AnalyserRef,
   type CompressorRef,
+  type LpRef,
   type ArrayLiteralRef,
   type BranchMarkRef,
   type MiniSequenceRef,
@@ -25,6 +26,7 @@ export type WidgetCompileResult = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  lpRefs: LpRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
