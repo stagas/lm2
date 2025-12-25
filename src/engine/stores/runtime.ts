@@ -7,12 +7,15 @@ import type { ProgramInstance } from '../dsp/program.ts'
 import type { VisualWasm } from '../dsp/visual-wasm.ts'
 import { ControlOp } from '../dsp/worklet-shared.ts'
 import type { DspProcessor } from '../dsp/worklet.ts'
+import type { Loop } from '../ui/loop.ts'
 import { useEngineUiStore } from './ui.ts'
 
 export type PlaybackState = 'stopped' | 'running' | 'paused'
 
 export type EngineRuntimeState = {
   playingLoopId: string | null
+  currentLoop: Loop | null
+  currentLoopId: string | null
   wasmMemory?: WebAssembly.Memory
   wasmDsp?: Dsp
   wasmDspPtr: number
@@ -35,6 +38,8 @@ export type EngineRuntimeState = {
   isInitialized: boolean
   isProgramReady: boolean
   playbackState: PlaybackState
+
+  setCurrentLoop: (loop: Loop | null) => void
 
   setPlayingLoopId: (loopId: string | null) => void
   start: () => void
@@ -98,9 +103,18 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
     isInitialized: false,
     isProgramReady: false,
     playbackState: 'stopped',
+    currentLoop: null,
+    currentLoopId: null,
 
     setPlayingLoopId: (loopId: string | null) => {
       set({ playingLoopId: loopId })
+    },
+
+    setCurrentLoop: loop => {
+      set({
+        currentLoop: loop,
+        currentLoopId: loop?.data.id ?? null,
+      })
     },
 
     start: () => {

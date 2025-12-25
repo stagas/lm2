@@ -12,7 +12,7 @@ import {
   evalCompiledTimelineAtBeat,
   parseCompiledTimeline,
 } from '../dsp/timeline-history.ts'
-import { useEngineRuntimeStore } from '../store.ts'
+import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
 import { useTheme } from './theme.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
@@ -48,9 +48,10 @@ export function MinimapScrollbar({
   timelineWindowRef,
   canControlPlayback = true,
 }: MinimapScrollbarProps) {
-  const { loop, setLoop, clearLoop, animationManager } = useEngineRuntimeStore()
+  const { loop, setLoop, clearLoop, animationManager, currentLoop } = useEngineRuntimeStore()
   const seekToSampleImmediate = useSeekToSampleImmediate()
   const restartLoop = useRestartLoop()
+  const playLoop = useEngineDspStore(state => state.playLoop)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
@@ -450,9 +451,11 @@ export function MinimapScrollbar({
         className="min-w-[17px] w-[17px] bg-neutral-800 text-white"
         onPointerDown={() => {
           if (!canControlPlayback) {
-            seekToSampleImmediate(0)
-            const runtime = useEngineRuntimeStore.getState()
-            if (runtime.playbackState !== 'running') runtime.start()
+            if (currentLoop) {
+              seekToSampleImmediate(0)
+              void playLoop(currentLoop.data.id, currentLoop.codeFile.value, 0)
+              return
+            }
             return
           }
           void restartLoop()

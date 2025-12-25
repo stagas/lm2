@@ -10,9 +10,9 @@ import { waitForNonZero } from '../../lib/atomics.ts'
 import type { SourceLocation } from '../../lib/mini-source-map.ts'
 import {
   type AnalyserRef,
-  type CompressorRef,
   type ArrayLiteralRef,
   type BranchMarkRef,
+  type CompressorRef,
   encodeLangToVmOps,
   extractBarsFromSource,
   extractBpmFromSource,
@@ -90,7 +90,7 @@ export type EngineDspState = {
   updateWasmBinary: () => Promise<void>
   updateDspSource: (source: string) => Promise<string[] | undefined>
   preloadSamples: (source: string) => void
-  playLoop: (loopId: string, source: string) => Promise<void>
+  playLoop: (loopId: string, source: string, startSample?: number) => Promise<void>
   setUiCompilePreview: (next: {
     source: string
     sequences: string[]
@@ -800,11 +800,11 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       scheduleSampleLoad(result.sampleDefs ?? [], { uploadToWorklet: false })
     },
 
-    playLoop: async (loopId: string, source: string) => {
+    playLoop: async (loopId: string, source: string, startSample?: number) => {
       const runtime = useEngineRuntimeStore.getState()
       const ui = useEngineUiStore.getState()
       const prevId = runtime.playingLoopId
-      const startSample = ui.viewSampleCountByLoopId[loopId] ?? 0
+      startSample ??= ui.viewSampleCountByLoopId[loopId] ?? 0
 
       // If the source has compile errors, don't start playback and don't surface it as a runtime error.
       compilePreviewTarget.ops.fill(0)
