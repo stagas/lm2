@@ -4,7 +4,7 @@ export class Slew extends Gen {
   in$: usize = 0
   up$: usize = 0
   down$: usize = 0
-  exponent$: usize = 0
+  exp$: usize = 0
 
   private current: f32 = 0.0
 
@@ -21,13 +21,13 @@ export class Slew extends Gen {
     let in$ = this.in$
     let up$ = this.up$
     let down$ = this.down$
-    let exponent$ = this.exponent$
+    let exp$ = this.exp$
 
     for (let i = 0; i < length; i++) {
       const target: f32 = load<f32>(in$)
       const upVal: f32 = load<f32>(up$)
       const downVal: f32 = load<f32>(down$) <= 0.0 ? upVal : load<f32>(down$)
-      const exp: f32 = load<f32>(exponent$)
+      const exp: f32 = load<f32>(exp$)
 
       const diff: f32 = target - this.current
 
@@ -92,7 +92,7 @@ export class Slew extends Gen {
       in$ += 4
       up$ += 4
       down$ += 4
-      exponent$ += 4
+      exp$ += 4
     }
   }
 }

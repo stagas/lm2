@@ -82,7 +82,7 @@ export function SidebarSettings(
       <SidebarSettingsSwitch onClick={setUiShowFunctionDefinitions} checked={uiShowFunctionDefinitions}
         onChange={setUiShowFunctionDefinitions}
       >
-        Show Function Definitions Popup
+        Show Function Popup
       </SidebarSettingsSwitch>
     </>
   )
