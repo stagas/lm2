@@ -23,7 +23,9 @@ function compileNode(
     return currentOffset
   }
   else if (node.type === 'rest') {
-    return writeRestOp(bytecode, offset)
+    // Encode rests as value-less events so they still consume a timed slot in MiniEvents.
+    // `OP_REST` does not currently participate in timing, while `OP_EVENT` always does.
+    return writeEventOp(bytecode, offset, [], node.modifiers)
   }
   else if (node.type === 'octave') {
     return writeOctaveOp(bytecode, offset, node.values[0] ?? 0)

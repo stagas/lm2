@@ -755,7 +755,7 @@ export class MiniEvents {
         if (density <= 0.0 || density > 8.0) break
 
         const valueCount: i32 = i32(event.valueCount)
-        if (valueCount <= 0) break
+        const isSilent: bool = valueCount <= 0
 
         const eventIndex: i32 = reader.getOpIndex(opOffset)
         const strum: f64 = this.combineStrum(strumMul, event.strum as f64)
@@ -807,6 +807,26 @@ export class MiniEvents {
                 pass++
                 continue
               }
+            }
+
+            if (isSilent) {
+              // Silent events still occupy a timed slot and should show up in UI history.
+              let jitterOffset: f64 = 0.0
+              if (eventJitter !== 0.0) {
+                const r: f64 = seededRandom01(this.randomSeed, eventCycle, eventIndex, 0)
+                jitterOffset = (r - 0.5) * 2.0 * eventJitter * slotDuration
+              }
+              emitter.emit(
+                opOffset,
+                groupVelocity,
+                groupStartTime + relativeTime + (baseTime + jitterOffset),
+                slotDurationScaled,
+                hold,
+                0,
+                0.0,
+              )
+              pass++
+              continue
             }
 
             // emit one voice per value to support chords

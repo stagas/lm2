@@ -253,8 +253,6 @@ export class EventEmitter {
       if (endSample <= startSample) endSample = startSample + 1
     }
 
-    if (value <= 0.0) return
-
     // Windowed history generation should include any event that intersects the requested window.
     if (endSample > this.windowStart && startSample < this.windowEnd) {
       this.buffer!.write(

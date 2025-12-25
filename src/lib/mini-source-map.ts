@@ -37,7 +37,14 @@ function buildSourceMapFromNodes(
       currentOffset += OP_EVENT_BASE_SIZE
     }
     else if (node.type === 'rest') {
-      currentOffset += OP_REST_SIZE
+      // Rests are encoded as value-less events so they still occupy a timed slot.
+      const opIndex = currentOffset
+      map.set(opIndex, {
+        text: node.source.text,
+        start: node.source.start,
+        end: node.source.start + node.source.length,
+      })
+      currentOffset += OP_EVENT_BASE_SIZE
     }
     else if (node.type === 'octave') {
       const opIndex = currentOffset

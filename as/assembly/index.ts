@@ -91,7 +91,7 @@ export function generateMiniHistoryWindow(
 
   const cycleLength: f32 = 1.0
   const secondsPerBeat: f64 = 60.0 / (bpmValue as f64)
-  const cycleSamplesF: f64 = secondsPerBeat * (sampleRateValue as f64)
+  const cycleSamplesF: f64 = (secondsPerBeat * 4.0) * (sampleRateValue as f64)
   if (cycleSamplesF <= 0.0) return
   const cycleSamples: f32 = cycleSamplesF as f32
 
