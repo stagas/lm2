@@ -380,7 +380,7 @@ export class Mini extends Gen {
 
     const cycleLength = 1.0 as f32
     const secondsPerBeat = 60.0 / bpm
-    const cycleSeconds = cycleLength * secondsPerBeat
+    const cycleSeconds = 4.0 * secondsPerBeat
     const cycleSamples = (cycleSeconds * sampleRate) as f32
     if (cycleSamples <= 0.0) return
     const barLengthSeconds = 60.0 * 4.0 / bpm
