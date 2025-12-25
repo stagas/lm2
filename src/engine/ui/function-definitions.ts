@@ -318,7 +318,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     name: 'slew',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be slewed (limited)' },
-      { name: 'up', type: 'number', description: 'Rise rate (samples per second) when signal increases' },
+      { name: 'up', type: 'number', description: 'Rise rate factor when signal increases' },
       {
         name: 'down',
         type: 'number',
@@ -326,7 +326,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         description: 'Fall rate when signal decreases (defaults to up rate if ≤ 0)',
       },
       {
-        name: 'exponent',
+        name: 'exp',
         type: 'number',
         optional: true,
         defaultValue: 1,
@@ -337,8 +337,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description:
       'Rate-limits a signal to prevent sudden jumps. Useful for smoothing control signals, portamento effects, or creating more natural parameter changes.',
     examples: [
-      'slew(input: lfo, up: 100, down: 200) |> out($)',
-      'slew(freq, 50, 100, 2) |> sine($) |> out($)',
+      'sine(freq |> slew($,up:.01,down:.03)) |> out($)',
     ],
   },
   freesound: {
@@ -357,13 +356,12 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   '.map': {
     name: '.map',
     parameters: [
-      { name: 'array', type: 'array', description: 'Array to be mapped over' },
       { name: 'callback', type: 'function', description: 'Callback to be called for each element' },
     ],
     returnType: 'array',
     description: 'Maps over an array and returns a new array with the results.',
     examples: [
-      'array.map(x -> x * 2) |> out($)',
+      '[1,2,3].map(x -> x * 2)',
     ],
   },
   '.sum': {

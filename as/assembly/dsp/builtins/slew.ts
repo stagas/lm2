@@ -58,7 +58,7 @@ export function callSlew(
   slew.in$ = input$
   slew.up$ = up$
   slew.down$ = down$
-  slew.exponent$ = exponent$
+  slew.exp$ = exponent$
   slew.process(out$, length)
 
   stack.push(VmTag.Audio, 0.0, outIndex)
