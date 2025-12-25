@@ -550,6 +550,42 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'if (at(bar: 16, every: 8)) sine(880) |> analyser($) |> out($)',
     ],
   },
+  euclid: {
+    name: 'euclid',
+    parameters: [
+      {
+        name: 'pulses',
+        type: 'number',
+        description: 'Number of hits (beats) to distribute across the step grid',
+      },
+      {
+        name: 'steps',
+        type: 'number',
+        description: 'Number of steps in the grid',
+      },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Rotation offset in steps (positive values shift the pattern left)',
+      },
+      {
+        name: 'bar',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Duration in bars for a full cycle of the pattern',
+      },
+    ],
+    returnType: 'number',
+    description: 'Generates trigger impulses using a Euclidean rhythm (Tidal-style).',
+    examples: [
+      'trig = euclid(3, 8)',
+      'trig = euclid(3, 8, 1)',
+      'trig = euclid(5, 16, 0, 1/2)',
+    ],
+  },
   slew: {
     name: 'slew',
     parameters: [

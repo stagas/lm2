@@ -101,6 +101,7 @@ export enum VmBuiltin {
   Sum = VmSym.Sum,
   Slew = VmSym.Slew,
   Lp = VmSym.Lp,
+  Euclid = VmSym.Euclid,
 }
 
 export const VM_FUNC_HEADER: i32 = -2

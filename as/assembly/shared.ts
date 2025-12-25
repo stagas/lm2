@@ -45,6 +45,7 @@ export enum Op {
   Phasor,
   Lp,
   Compressor,
+  Euclid,
 }
 
 export enum SeqOp {

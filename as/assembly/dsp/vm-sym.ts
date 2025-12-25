@@ -82,4 +82,5 @@ export enum VmSym {
   Ratio,
   Knee,
   Key,
+  Euclid,
 }
