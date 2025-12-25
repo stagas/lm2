@@ -35,6 +35,11 @@ export const builtinSyms: Record<string, number> = {
   octave: VmSym.Octave,
   transpose: VmSym.Transpose,
   scale: VmSym.Scale,
+  // Named args for out() and solo()
+  L: VmSym.L,
+  R: VmSym.R,
+  // Named args for post()
+  cb: VmSym.Cb,
   // Named args for adsr()
   attack: VmSym.Attack,
   decay: VmSym.Decay,
@@ -52,4 +57,31 @@ export const builtinSyms: Record<string, number> = {
   // Named args for at()
   bar: VmSym.Bar,
   // NOTE: `every` key for at() reuses the builtin `every` symbol id (12).
+  // Named args for lp()
+  cut: VmSym.Cut,
+  q: VmSym.Q,
+  in: VmSym.In,
+  // Named args for slew()
+  up: VmSym.Up,
+  down: VmSym.Down,
+  exp: VmSym.Exp,
+  // Named args for sampler() and slicer()
+  speed: VmSym.Speed,
+  repeat: VmSym.Repeat,
+  slice: VmSym.Slice,
+  threshold: VmSym.Threshold,
+  // Named args for analyser()
+  index: VmSym.Index,
+  // Named args for timeline()
+  pattern: VmSym.Pattern,
+  color: VmSym.Color,
+  // Named args for sampler()
+  sample: VmSym.Sample,
+  // Named args for note()
+  midi: VmSym.Midi,
+  // Named args for analyser (alternative)
+  signal: VmSym.Signal,
+  // Named args for mini/play
+  hz: VmSym.Hz,
+  seq: VmSym.Seq,
 }

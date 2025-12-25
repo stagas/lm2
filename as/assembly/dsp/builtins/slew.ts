@@ -11,14 +11,14 @@ import { VmStack } from '../vm-stack'
 @inline
 export function callSlew(
   posCount: i32,
-  namedCount: i32,
-  posTags: StaticArray<i32>,
-  posNums: StaticArray<f64>,
-  posAux: StaticArray<i32>,
   nameSyms: StaticArray<i32>,
   nameTags: StaticArray<i32>,
   nameNums: StaticArray<f64>,
   nameAux: StaticArray<i32>,
+  namedCount: i32,
+  posTags: StaticArray<i32>,
+  posNums: StaticArray<f64>,
+  posAux: StaticArray<i32>,
   stack: VmStack,
   audio: VmAudio,
   program: Program,

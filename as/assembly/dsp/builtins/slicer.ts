@@ -3,6 +3,7 @@ import { Slicer } from '../../gen/slicer'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmTag } from '../types'
+import { VmSym } from '../vm-sym'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
@@ -10,6 +11,11 @@ import { VmStack } from '../vm-stack'
 @inline
 export function callSlicer(
   posCount: i32,
+  nameSyms: StaticArray<i32>,
+  nameTags: StaticArray<i32>,
+  nameNums: StaticArray<f64>,
+  nameAux: StaticArray<i32>,
+  namedCount: i32,
   posTags: StaticArray<i32>,
   posNums: StaticArray<f64>,
   posAux: StaticArray<i32>,
@@ -26,35 +32,99 @@ export function callSlicer(
 
   const sampleIndex: i32 = i32(posNums[0])
 
-  const speedIsSet = posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null
-  const speedTag: VmTag = speedIsSet ? (posTags[1] as VmTag) : VmTag.Num
-  const speedNum: f64 = speedIsSet ? posNums[1] : 1.0
-  const speedAux: i32 = speedIsSet ? posAux[1] : 0
+  // speed (default 1.0)
+  let speedTag: VmTag = VmTag.Num
+  let speedNum: f64 = 1.0
+  let speedAux: i32 = 0
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    speedTag = posTags[1] as VmTag
+    speedNum = posNums[1]
+    speedAux = posAux[1]
+  }
 
-  const offsetIsSet = posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null
-  const offsetTag: VmTag = offsetIsSet ? (posTags[2] as VmTag) : VmTag.Num
-  const offsetNum: f64 = offsetIsSet ? posNums[2] : 0.0
-  const offsetAux: i32 = offsetIsSet ? posAux[2] : 0
+  // offset (default 0)
+  let offsetTag: VmTag = VmTag.Num
+  let offsetNum: f64 = 0.0
+  let offsetAux: i32 = 0
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
+    offsetTag = posTags[2] as VmTag
+    offsetNum = posNums[2]
+    offsetAux = posAux[2]
+  }
 
-  const sliceIsSet = posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null
-  const sliceTag: VmTag = sliceIsSet ? (posTags[3] as VmTag) : VmTag.Num
-  const sliceNum: f64 = sliceIsSet ? posNums[3] : 0.0
-  const sliceAux: i32 = sliceIsSet ? posAux[3] : 0
+  // slice (default 0)
+  let sliceTag: VmTag = VmTag.Num
+  let sliceNum: f64 = 0.0
+  let sliceAux: i32 = 0
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    sliceTag = posTags[3] as VmTag
+    sliceNum = posNums[3]
+    sliceAux = posAux[3]
+  }
 
-  const thresholdIsSet = posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null
-  const thresholdTag: VmTag = thresholdIsSet ? (posTags[4] as VmTag) : VmTag.Num
-  const thresholdNum: f64 = thresholdIsSet ? posNums[4] : 0.5
-  const thresholdAux: i32 = thresholdIsSet ? posAux[4] : 0
+  // threshold (default 0.5)
+  let thresholdTag: VmTag = VmTag.Num
+  let thresholdNum: f64 = 0.5
+  let thresholdAux: i32 = 0
+  if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
+    thresholdTag = posTags[4] as VmTag
+    thresholdNum = posNums[4]
+    thresholdAux = posAux[4]
+  }
 
-  const trigIsSet = posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null
-  const trigTag: VmTag = trigIsSet ? (posTags[5] as VmTag) : VmTag.Num
-  const trigNum: f64 = trigIsSet ? posNums[5] : 0.0
-  const trigAux: i32 = trigIsSet ? posAux[5] : 0
+  // trig (default 0)
+  let trigTag: VmTag = VmTag.Num
+  let trigNum: f64 = 0.0
+  let trigAux: i32 = 0
+  if (posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null) {
+    trigTag = posTags[5] as VmTag
+    trigNum = posNums[5]
+    trigAux = posAux[5]
+  }
 
-  const repeatIsSet = posCount >= 7 && posTags[6] !== VmTag.Undef && posTags[6] !== VmTag.Null
-  const repeatTag: VmTag = repeatIsSet ? (posTags[6] as VmTag) : VmTag.Bool
-  const repeatNum: f64 = repeatIsSet ? posNums[6] : 0.0
-  const repeatAux: i32 = repeatIsSet ? posAux[6] : 0
+  // repeat (default false)
+  let repeatTag: VmTag = VmTag.Bool
+  let repeatNum: f64 = 0.0
+  let repeatAux: i32 = 0
+  if (posCount >= 7 && posTags[6] !== VmTag.Undef && posTags[6] !== VmTag.Null) {
+    repeatTag = posTags[6] as VmTag
+    repeatNum = posNums[6]
+    repeatAux = posAux[6]
+  }
+
+  // Check for named parameters - iterate once through all named args
+  for (let i = 0; i < namedCount; i++) {
+    if (nameSyms[i] === VmSym.Speed) {
+      speedTag = nameTags[i] as VmTag
+      speedNum = nameNums[i]
+      speedAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Offset) {
+      offsetTag = nameTags[i] as VmTag
+      offsetNum = nameNums[i]
+      offsetAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Slice) {
+      sliceTag = nameTags[i] as VmTag
+      sliceNum = nameNums[i]
+      sliceAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Threshold) {
+      thresholdTag = nameTags[i] as VmTag
+      thresholdNum = nameNums[i]
+      thresholdAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Trig) {
+      trigTag = nameTags[i] as VmTag
+      trigNum = nameNums[i]
+      trigAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Repeat) {
+      repeatTag = nameTags[i] as VmTag
+      repeatNum = nameNums[i]
+      repeatAux = nameAux[i]
+    }
+  }
 
   const speed$: usize = audio.toAudioPtr(speedTag, speedNum, speedAux, length, program)
   const offset$: usize = audio.toAudioPtr(offsetTag, offsetNum, offsetAux, length, program)
@@ -79,4 +149,3 @@ export function callSlicer(
 
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
-
