@@ -5,11 +5,17 @@ import { At } from './gen/at'
 import { Every } from './gen/every'
 import { Gen } from './gen/gen'
 import { Mini } from './gen/mini'
+import { Phasor } from './gen/phasor'
+import { Pwm } from './gen/pwm'
+import { Ramp } from './gen/ramp'
+import { Saw } from './gen/saw'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
 import { Slicer } from './gen/slicer'
 import { Slew } from './gen/slew'
+import { Sqr } from './gen/sqr'
 import { Timeline } from './gen/timeline'
+import { Tri } from './gen/tri'
 import { Op } from './shared'
 
 export class GenPool<T extends Gen> {
@@ -48,6 +54,12 @@ export class GenPool<T extends Gen> {
 
 export class GensPool {
   private sines: GenPool<Sine> = new GenPool<Sine>(() => new Sine())
+  private tris: GenPool<Tri> = new GenPool<Tri>(() => new Tri())
+  private saws: GenPool<Saw> = new GenPool<Saw>(() => new Saw())
+  private ramps: GenPool<Ramp> = new GenPool<Ramp>(() => new Ramp())
+  private sqrs: GenPool<Sqr> = new GenPool<Sqr>(() => new Sqr())
+  private pwms: GenPool<Pwm> = new GenPool<Pwm>(() => new Pwm())
+  private phasors: GenPool<Phasor> = new GenPool<Phasor>(() => new Phasor())
   private ads: GenPool<Ad> = new GenPool<Ad>(() => new Ad())
   private adsrs: GenPool<Adsr> = new GenPool<Adsr>(() => new Adsr())
   private minis: GenPool<Mini> = new GenPool<Mini>(() => new Mini())
@@ -60,6 +72,12 @@ export class GensPool {
   private ats: GenPool<At> = new GenPool<At>(() => new At())
   resetIndices(): void {
     this.sines.resetIndex()
+    this.tris.resetIndex()
+    this.saws.resetIndex()
+    this.ramps.resetIndex()
+    this.sqrs.resetIndex()
+    this.pwms.resetIndex()
+    this.phasors.resetIndex()
     this.ads.resetIndex()
     this.adsrs.resetIndex()
     this.minis.resetIndex()
@@ -73,6 +91,12 @@ export class GensPool {
   }
   reset(): void {
     this.sines.reset()
+    this.tris.reset()
+    this.saws.reset()
+    this.ramps.reset()
+    this.sqrs.reset()
+    this.pwms.reset()
+    this.phasors.reset()
     this.ads.reset()
     this.adsrs.reset()
     this.minis.reset()
@@ -89,6 +113,18 @@ export class GensPool {
     switch (op) {
       case Op.Sine:
         return this.sines.get()
+      case Op.Tri:
+        return this.tris.get()
+      case Op.Saw:
+        return this.saws.get()
+      case Op.Ramp:
+        return this.ramps.get()
+      case Op.Sqr:
+        return this.sqrs.get()
+      case Op.Pwm:
+        return this.pwms.get()
+      case Op.Phasor:
+        return this.phasors.get()
       case Op.Ad:
         return this.ads.get()
       case Op.Adsr:
@@ -115,6 +151,12 @@ export class GensPool {
 
   copyFrom(source: GensPool): void {
     this.sines.copyFrom(source.sines)
+    this.tris.copyFrom(source.tris)
+    this.saws.copyFrom(source.saws)
+    this.ramps.copyFrom(source.ramps)
+    this.sqrs.copyFrom(source.sqrs)
+    this.pwms.copyFrom(source.pwms)
+    this.phasors.copyFrom(source.phasors)
     this.ads.copyFrom(source.ads)
     this.adsrs.copyFrom(source.adsrs)
     this.minis.copyFrom(source.minis)

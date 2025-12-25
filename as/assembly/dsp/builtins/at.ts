@@ -57,7 +57,7 @@ export function callAt(
       barNum = nameNums[i]
       barAux = nameAux[i]
     }
-    else if (k === VmBuiltin.Every || k === VmSym.AtEveryLegacy) {
+    else if (k === VmBuiltin.Every) {
       everyTag = nameTags[i] as VmTag
       everyNum = nameNums[i]
       everyAux = nameAux[i]

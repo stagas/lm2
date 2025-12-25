@@ -3,6 +3,12 @@ import { VmSym } from '../../../as/assembly/syms.ts'
 export const builtinSyms: Record<string, number> = {
   out: VmSym.Out,
   sine: VmSym.Sine,
+  tri: VmSym.Tri,
+  saw: VmSym.Saw,
+  ramp: VmSym.Ramp,
+  sqr: VmSym.Sqr,
+  pwm: VmSym.Pwm,
+  phasor: VmSym.Phasor,
   ad: VmSym.Ad,
   adsr: VmSym.Adsr,
   mini: VmSym.Mini,
@@ -37,6 +43,8 @@ export const builtinSyms: Record<string, number> = {
   prob: VmSym.Prob,
   swing: VmSym.Swing,
   offset: VmSym.Offset,
+  // Named args for pwm()
+  width: VmSym.Width,
   seed: VmSym.Seed,
   // Named args for at()
   bar: VmSym.Bar,

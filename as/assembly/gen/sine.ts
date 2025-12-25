@@ -1,4 +1,4 @@
-import { fract } from '../util'
+import { clampNyquist, fract } from '../util'
 import { Gen } from './gen'
 
 const SINE_TABLE_BITS: i32 = 11
@@ -24,6 +24,7 @@ function initSineTable(): void {
 export class Sine extends Gen {
   hz$: usize = 0
   trig$: usize = 0
+  offset$: usize = 0
 
   private lastTrig: f32 = 0
   private phase: f64 = 0
@@ -59,6 +60,7 @@ export class Sine extends Gen {
 
     let hz$ = this.hz$
     let trig$ = this.trig$
+    let offset$ = this.offset$
 
     let phase: f64 = this.phase
     let lastTrig: f32 = this.lastTrig
@@ -66,11 +68,13 @@ export class Sine extends Gen {
     for (let i = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        phase = 0
+        const hz = clampNyquist(load<f32>(hz$))
+        const offsetSeconds = load<f32>(offset$)
+        phase = fract((offsetSeconds as f64) * (hz as f64))
       }
       lastTrig = trig
 
-      const hz = Mathf.max(0, load<f32>(hz$))
+      const hz = clampNyquist(load<f32>(hz$))
       const sample = Sine.wavetable(phase)
 
       phase += (hz as f64) / (sampleRate as f64)
@@ -83,6 +87,7 @@ export class Sine extends Gen {
       out$ += 4
       hz$ += 4
       trig$ += 4
+      offset$ += 4
     }
 
     this.phase = phase

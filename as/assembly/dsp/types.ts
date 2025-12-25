@@ -74,6 +74,12 @@ export enum VmBinary {
 export enum VmBuiltin {
   Out = VmSym.Out,
   Sine = VmSym.Sine,
+  Tri = VmSym.Tri,
+  Saw = VmSym.Saw,
+  Ramp = VmSym.Ramp,
+  Sqr = VmSym.Sqr,
+  Pwm = VmSym.Pwm,
+  Phasor = VmSym.Phasor,
   Ad = VmSym.Ad,
   Adsr = VmSym.Adsr,
   Mini = VmSym.Mini,

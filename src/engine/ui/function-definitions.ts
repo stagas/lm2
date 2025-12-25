@@ -26,12 +26,170 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         optional: true,
         description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
       },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+      },
     ],
     returnType: 'number',
     description: 'Phase-continuous sine oscillator; the optional trigger lets you restart the wave from zero.',
     examples: [
       'sine(440) |> out($)',
       'env = adsr(attack:.01, decay:.1, sustain:.4, release:.3, trig)\nsine(hz, trig) * env |> out($)',
+      'sine(hz, trig, offset:.05) * env |> out($)',
+    ],
+  },
+  tri: {
+    name: 'tri',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+      },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+      },
+    ],
+    returnType: 'number',
+    description: 'Band-limited triangle oscillator (polyBLEP).',
+    examples: [
+      'tri(220) |> out($)',
+      'tri(hz, trig, offset:.01) * .2 |> out($)',
+    ],
+  },
+  saw: {
+    name: 'saw',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+      },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+      },
+    ],
+    returnType: 'number',
+    description: 'Band-limited saw oscillator (polyBLEP).',
+    examples: [
+      'saw(110) |> out($)',
+      'saw(hz, trig, offset:.02) * .2 |> out($)',
+    ],
+  },
+  ramp: {
+    name: 'ramp',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+      },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+      },
+    ],
+    returnType: 'number',
+    description: 'Band-limited ramp oscillator (inverted saw, polyBLEP).',
+    examples: [
+      'ramp(110) |> out($)',
+      'ramp(hz, trig, offset:.02) * .2 |> out($)',
+    ],
+  },
+  sqr: {
+    name: 'sqr',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+      },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+      },
+    ],
+    returnType: 'number',
+    description: 'Band-limited square oscillator (polyBLEP).',
+    examples: [
+      'sqr(55) |> out($)',
+      'sqr(hz, trig, offset:.01) * .2 |> out($)',
+    ],
+  },
+  pwm: {
+    name: 'pwm',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      {
+        name: 'width',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Pulse width control (-1..1); 0 is centered, positive shifts the duty cycle',
+      },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        description: 'Trigger that resets the phase back to 0 when it crosses from ≤0 to >0',
+      },
+    ],
+    returnType: 'number',
+    description: 'Band-limited PWM oscillator (polyBLEP).',
+    examples: [
+      'pwm(110, width:.2) * .2 |> out($)',
+      'pwm(hz, width:saw(.1), trig) * .2 |> out($)',
+    ],
+  },
+  phasor: {
+    name: 'phasor',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        description: 'Trigger that resets the ramp and starts it again when it crosses from ≤0 to >0',
+      },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Start offset in seconds applied when the trigger fires (0 = start at 0)',
+      },
+    ],
+    returnType: 'number',
+    description: 'One-shot 0..1 ramp that stops at 1.0 after it completes (retriggerable).',
+    examples: [
+      'phasor(1, trig) |> out($)',
+      'phasor(1, trig, offset:.25) |> out($)',
     ],
   },
   ad: {

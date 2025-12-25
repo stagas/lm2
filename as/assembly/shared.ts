@@ -37,6 +37,12 @@ export enum Op {
   Every,
   At,
   Slew,
+  Tri,
+  Saw,
+  Ramp,
+  Sqr,
+  Pwm,
+  Phasor,
 }
 
 export enum SeqOp {
