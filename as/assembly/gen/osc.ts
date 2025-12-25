@@ -201,7 +201,7 @@ export class Osc {
     this.lastOutput = lastOutput
   }
 
-  pwm(out$: usize, hz$: usize, width$: usize, trig$: usize, length: i32): void {
+  pwm(out$: usize, hz$: usize, width$: usize, offset$: usize, trig$: usize, length: i32): void {
     let phase: f32 = this.phase
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
@@ -211,7 +211,10 @@ export class Osc {
       const trig: f32 = load<f32>(trig$)
 
       if (trig > 0.0 && lastTrig <= 0.0) {
-        phase = 0.0
+        const offsetSeconds: f32 = load<f32>(offset$)
+        let phaseOffset: f32 = (offsetSeconds * hz) % 1.0
+        if (phaseOffset < 0.0) phaseOffset += 1.0
+        phase = phaseOffset
         lastOutput = 0.0
       }
       lastTrig = trig
@@ -251,6 +254,7 @@ export class Osc {
       out$ += 4
       hz$ += 4
       width$ += 4
+      offset$ += 4
       trig$ += 4
     }
 

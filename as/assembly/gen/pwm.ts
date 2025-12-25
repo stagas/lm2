@@ -4,6 +4,7 @@ import { Osc } from './osc'
 export class Pwm extends Gen {
   hz$: usize = 0
   width$: usize = 0
+  offset$: usize = 0
   trig$: usize = 0
 
   private osc: Osc = new Osc()
@@ -18,6 +19,6 @@ export class Pwm extends Gen {
   }
 
   process(out$: usize, length: i32): void {
-    this.osc.pwm(out$, this.hz$, this.width$, this.trig$, length)
+    this.osc.pwm(out$, this.hz$, this.width$, this.offset$, this.trig$, length)
   }
 }
