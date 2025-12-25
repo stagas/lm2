@@ -57,7 +57,6 @@ export class Slicer extends Gen {
     // slices content is cheap to refresh; keep empty if needed
   }
 
-  @inline
   private recordNeedle(posFrames: f64, playing: bool, length: i32): void {
     if (this.needleHistory$ === 0) return
     const hist = changetype<StaticArray<f32>>(this.needleHistory$)
@@ -71,7 +70,6 @@ export class Slicer extends Gen {
     hist[SAMPLE_NEEDLE_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
-  @inline
   private refreshSlices(threshold: f32): void {
     const count = hostSampleSlices(this.sampleIndex, threshold, this.slices.dataStart, MAX_SLICES)
     this.slicesCount = count > 0 ? count : 0

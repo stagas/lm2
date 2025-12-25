@@ -8,7 +8,7 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-@inline
+
 export function callRamp(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -35,10 +35,15 @@ export function callRamp(
   let trigNum = posCount >= 3 ? posNums[2] : 0.0
   let trigAux = posCount >= 3 ? posAux[2] : 0
 
-  // Named overrides (offset/trig)
+  // Named overrides (hz/offset/trig)
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.Offset) {
+    if (k === VmSym.Hz) {
+      hzTag = nameTags[i] as VmTag
+      hzNum = nameNums[i]
+      hzAux = nameAux[i]
+    }
+    else if (k === VmSym.Offset) {
       offsetTag = nameTags[i] as VmTag
       offsetNum = nameNums[i]
       offsetAux = nameAux[i]
@@ -51,8 +56,8 @@ export function callRamp(
   }
 
   const hz$ = audio.toAudioPtr(hzTag, hzNum, hzAux, length, program)
-  const trig$ = audio.toAudioPtr(trigTag, trigNum, trigAux, length, program)
   const offset$ = audio.toAudioPtr(offsetTag, offsetNum, offsetAux, length, program)
+  const trig$ = audio.toAudioPtr(trigTag, trigNum, trigAux, length, program)
 
   const outIndex = audio.allocOut(program)
   const out$ = program.getOutBuffer(outIndex)

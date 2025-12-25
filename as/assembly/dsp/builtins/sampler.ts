@@ -8,7 +8,7 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-@inline
+
 export function callSampler(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -24,7 +24,7 @@ export function callSampler(
   program: Program,
   length: i32,
 ): void {
-  // sampler(sample, speed=1, offset=0, trig=0, repeat=false)
+  // sampler(sample, speed=1, offset=0, repeat=false, trig=0)
   if (posCount < 1 || posTags[0] !== VmTag.Num) {
     stack.push(VmTag.Undef)
     return
@@ -52,24 +52,24 @@ export function callSampler(
     offsetAux = posAux[2]
   }
 
-  // trig (default 0)
-  let trigTag: VmTag = VmTag.Num
-  let trigNum: f64 = 0.0
-  let trigAux: i32 = 0
-  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
-    trigTag = posTags[3] as VmTag
-    trigNum = posNums[3]
-    trigAux = posAux[3]
-  }
-
   // repeat (default false)
   let repeatTag: VmTag = VmTag.Bool
   let repeatNum: f64 = 0.0
   let repeatAux: i32 = 0
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    repeatTag = posTags[3] as VmTag
+    repeatNum = posNums[3]
+    repeatAux = posAux[3]
+  }
+
+  // trig (default 0)
+  let trigTag: VmTag = VmTag.Num
+  let trigNum: f64 = 0.0
+  let trigAux: i32 = 0
   if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
-    repeatTag = posTags[4] as VmTag
-    repeatNum = posNums[4]
-    repeatAux = posAux[4]
+    trigTag = posTags[4] as VmTag
+    trigNum = posNums[4]
+    trigAux = posAux[4]
   }
 
   // Check for named parameters - iterate once through all named args
@@ -84,15 +84,15 @@ export function callSampler(
       offsetNum = nameNums[i]
       offsetAux = nameAux[i]
     }
-    else if (nameSyms[i] === VmSym.Trig) {
-      trigTag = nameTags[i] as VmTag
-      trigNum = nameNums[i]
-      trigAux = nameAux[i]
-    }
     else if (nameSyms[i] === VmSym.Repeat) {
       repeatTag = nameTags[i] as VmTag
       repeatNum = nameNums[i]
       repeatAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Trig) {
+      trigTag = nameTags[i] as VmTag
+      trigNum = nameNums[i]
+      trigAux = nameAux[i]
     }
   }
 

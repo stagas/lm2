@@ -29,7 +29,6 @@ export class Osc extends Gen {
 
   process(out$: usize, length: i32): void {}
 
-  @inline
   private polyBlep(phase: f32, phaseInc: f32): f32 {
     if (phaseInc <= 0.0) return 0.0
 

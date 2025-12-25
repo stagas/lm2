@@ -60,7 +60,6 @@ export class Biquad extends Gen {
 
   process(out$: usize, length: i32): void {}
 
-  @inline
   processSample(input: f32): f32 {
     const a0inv = f32(1.0) / this.a0
     const output: f32 = f32(this.b0 * a0inv * input)
@@ -77,7 +76,6 @@ export class Biquad extends Gen {
     return output
   }
 
-  @inline
   calculateLowpass(cutoff: f32, q: f32): void {
     if (cutoff === this.lastFreq && q === this.lastQ && sampleRate === this.lastSampleRate) return
 
@@ -101,7 +99,6 @@ export class Biquad extends Gen {
     this.a2 = 1 - alpha
   }
 
-  @inline
   calculateHighpass(cutoff: f32, q: f32): void {
     if (cutoff === this.lastFreq && q === this.lastQ && sampleRate === this.lastSampleRate) return
 
@@ -125,7 +122,6 @@ export class Biquad extends Gen {
     this.a2 = 1 - alpha
   }
 
-  @inline
   calculateBandpass(cutoff: f32, q: f32): void {
     if (cutoff === this.lastFreq && q === this.lastQ && sampleRate === this.lastSampleRate) return
 
@@ -149,7 +145,6 @@ export class Biquad extends Gen {
     this.a2 = 1 - alpha
   }
 
-  @inline
   calculateBandstop(cutoff: f32, q: f32): void {
     if (cutoff === this.lastFreq && q === this.lastQ && sampleRate === this.lastSampleRate) return
 
@@ -173,7 +168,6 @@ export class Biquad extends Gen {
     this.a2 = 1 - alpha
   }
 
-  @inline
   calculateLowshelf(cutoff: f32, gainDb: f32): void {
     if (cutoff === this.lastFreq && gainDb === this.lastGain && sampleRate === this.lastSampleRate) return
 
@@ -198,7 +192,6 @@ export class Biquad extends Gen {
     this.a2 = A + 1 + (A - 1) * cs - beta * sn
   }
 
-  @inline
   calculateHighshelf(cutoff: f32, gainDb: f32): void {
     if (cutoff === this.lastFreq && gainDb === this.lastGain && sampleRate === this.lastSampleRate) return
 
@@ -223,7 +216,6 @@ export class Biquad extends Gen {
     this.a2 = A + 1 - (A - 1) * cs - beta * sn
   }
 
-  @inline
   calculatePeak(cutoff: f32, q: f32, gainDb: f32): void {
     if (cutoff === this.lastFreq && q === this.lastQ && gainDb === this.lastGain
       && sampleRate === this.lastSampleRate)
@@ -254,7 +246,6 @@ export class Biquad extends Gen {
     this.a2 = 1 - alpha / A
   }
 
-  @inline
   calculateAllpass(cutoff: f32, q: f32): void {
     if (cutoff === this.lastFreq && q === this.lastQ && sampleRate === this.lastSampleRate) return
 

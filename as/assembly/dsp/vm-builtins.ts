@@ -56,7 +56,6 @@ export class VmBuiltins {
 
   analyserRingBase: i32 = 0
 
-  @inline
   private coerceArrayToScalar(
     tags: StaticArray<i32>,
     nums: StaticArray<f64>,
@@ -123,7 +122,6 @@ export class VmBuiltins {
     aux[index] = 0
   }
 
-  @inline
   call(
     pos: i32,
     named: i32,

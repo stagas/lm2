@@ -16,7 +16,6 @@ export class VmArrays {
   elemNum: StaticArray<f64> = new StaticArray<f64>(8192)
   elemAux: StaticArray<i32> = new StaticArray<i32>(8192)
 
-  @inline
   recordAccess(program: Program, createPc: i32, index: i32): void {
     // Best-effort ring buffer for UI widgets (no atomics needed).
     const hist = program.arrayAccessHistory
@@ -28,7 +27,6 @@ export class VmArrays {
     hist[0] = f32((writePos + 1) & 0xfffff)
   }
 
-  @inline
   wrapIndex(indexTag: VmTag, indexNum: f64, len: i32): i32 {
     // Wrap for JS-like negative indexing and keep index in-bounds without branching in the language.
     let i = i32(indexTag === VmTag.Bool ? (indexNum != 0.0 ? 1 : 0) : indexNum)
@@ -37,7 +35,6 @@ export class VmArrays {
     return i
   }
 
-  @inline
   create(n: i32, stack: VmStack, pc: i32): void {
     const arrId = this.count
     const start = this.elemCount
@@ -83,7 +80,6 @@ export class VmArrays {
     stack.push(VmTag.Arr, 0.0, arrId)
   }
 
-  @inline
   getIndex(stack: VmStack, audio: VmAudio, program: Program, length: i32): void {
     const indexIdx = stack.pop()
     const arrayIdx = stack.pop()
@@ -167,7 +163,6 @@ export class VmArrays {
     stack.push(this.elemTag[at] as VmTag, this.elemNum[at], this.elemAux[at])
   }
 
-  @inline
   getIndex2(stack: VmStack, audio: VmAudio, program: Program, length: i32): void {
     const index2Idx = stack.pop()
     const index1Idx = stack.pop()
@@ -310,7 +305,6 @@ export class VmArrays {
     stack.push(VmTag.Audio, 0.0, outIndex)
   }
 
-  @inline
   setIndex(stack: VmStack): void {
     const valueIdx = stack.pop()
     const indexIdx = stack.pop()
@@ -348,7 +342,6 @@ export class VmArrays {
     stack.push(stack.tag[valueIdx] as VmTag, stack.num[valueIdx], stack.aux[valueIdx])
   }
 
-  @inline
   reset(): void {
     this.count = 0
     this.elemCount = 0

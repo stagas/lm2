@@ -14,7 +14,6 @@ export class VmEnv {
   scopeDepth: i32 = 0
   scopeStart: StaticArray<i32> = new StaticArray<i32>(64)
 
-  @inline
   enter(): void {
     const d = this.scopeDepth
     if (d < 0 || d >= this.scopeStart.length) {
@@ -25,14 +24,12 @@ export class VmEnv {
     this.scopeDepth = d + 1
   }
 
-  @inline
   exit(): void {
     if (this.scopeDepth <= 0) return
     this.scopeDepth--
     this.count = this.scopeStart[this.scopeDepth]
   }
 
-  @inline
   find(sym: i32): i32 {
     for (let i = this.count - 1; i >= 0; i--) {
       if (this.sym[i] === sym) return i
@@ -40,7 +37,6 @@ export class VmEnv {
     return -1
   }
 
-  @inline
   define(sym: i32, tag: VmTag, num: f64, aux: i32): void {
     const at = this.count
     if (at < 0 || at >= this.sym.length) {
@@ -54,7 +50,6 @@ export class VmEnv {
     this.count = at + 1
   }
 
-  @inline
   load(sym: i32, stack: VmStack, audio: VmAudio, program: Program, length: i32): void {
     const idx = this.find(sym)
     if (idx >= 0) {
@@ -202,7 +197,6 @@ export class VmEnv {
     stack.push(VmTag.Undef)
   }
 
-  @inline
   store(sym: i32, stack: VmStack): void {
     const top = stack.peek()
     const tag = stack.tag[top] as VmTag
@@ -225,7 +219,6 @@ export class VmEnv {
     this.count = at + 1
   }
 
-  @inline
   reset(): void {
     this.count = 0
     this.scopeDepth = 0
