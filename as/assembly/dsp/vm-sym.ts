@@ -77,4 +77,9 @@ export enum VmSym {
   Signal,
   Hz,
   Seq,
+  // --- Added at end to keep stable ids for existing symbols ---
+  Compressor,
+  Ratio,
+  Knee,
+  Key,
 }

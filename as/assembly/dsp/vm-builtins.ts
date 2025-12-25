@@ -5,6 +5,7 @@ import { callAd } from './builtins/ad'
 import { callAdsr } from './builtins/adsr'
 import { callAnalyser } from './builtins/analyser'
 import { callAt } from './builtins/at'
+import { callCompressor } from './builtins/compressor'
 import { callDegree } from './builtins/degree'
 import { callEvery } from './builtins/every'
 import { callLp } from './builtins/lp'
@@ -55,6 +56,7 @@ export class VmBuiltins {
   mapArgAux: StaticArray<i32> = new StaticArray<i32>(3)
 
   analyserRingBase: i32 = 0
+  compressorRingBase: i32 = 0
 
   private coerceArrayToScalar(
     tags: StaticArray<i32>,
@@ -221,6 +223,12 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Analyser) {
       callAnalyser(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, this.analyserRingBase)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Compressor) {
+      callCompressor(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, this.compressorRingBase)
       return
     }
 

@@ -28,6 +28,7 @@ import { compileMiniNotation } from '../../mini/compiler.ts'
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import {
   type AnalyserRef,
+  type CompressorRef,
   type ArrayLiteralRef,
   type BranchMarkRef,
   encodeLangToVmOps,
@@ -40,7 +41,7 @@ import {
   type TimelineSequenceRef,
 } from '../bytecode/bytecode.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
-import { AnalyserOutsPoolStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
+import { AnalyserOutsPoolStruct, CompressorOutsPoolStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
 import type { DspProcessor } from './worklet.ts'
 
 export type VmArray = {
@@ -118,6 +119,7 @@ function buildProgram(
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
+  compressorRefs: CompressorRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
@@ -126,8 +128,8 @@ function buildProgram(
   bpm?: number
   bars?: number
 } {
-  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
-    branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
+  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
+    arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
     })
@@ -142,6 +144,7 @@ function buildProgram(
     timelineRefs: timelineRefs ?? [],
     timelineLabels: timelineLabels ?? [],
     analyserRefs: analyserRefs ?? [],
+    compressorRefs: compressorRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
     branchMarks: branchMarks ?? [],
     numberParams: numberParams ?? [],
@@ -172,6 +175,7 @@ export type ProgramBuildResult = {
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
+  compressorRefs: CompressorRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   timelineSequences: TimelineSequenceDef[]
   arrayLiterals: ArrayLiteralRef[]
@@ -352,12 +356,21 @@ async function createProgram(
     toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
   )
 
+  const compressorOutsPool = CompressorOutsPoolStruct(wasmMemory.buffer, program.compressorOutsPool)
+  const levelDbOuts$ = new Uint32Array(wasmMemory.buffer, compressorOutsPool.levelDbOuts, 64)
+  const grDbOuts$ = new Uint32Array(wasmMemory.buffer, compressorOutsPool.grDbOuts, 64)
+  const compressorOuts = {
+    levelDb: [...levelDbOuts$].map(out$ => toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)),
+    grDb: [...grDbOuts$].map(out$ => toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)),
+  }
+
   let programData: ProgramDataView | undefined
 
   const out = {
     ptr$: program$,
     lock,
     analyserOuts,
+    compressorOuts,
     histories,
     arrayAccessHistory,
     branchHistory,
@@ -373,8 +386,8 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, arrayLiterals,
-          branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
+          arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -423,6 +436,7 @@ async function createProgram(
           timelineRefs,
           timelineLabels,
           analyserRefs,
+          compressorRefs,
           miniSourceMaps,
           timelineSequences,
           arrayLiterals,

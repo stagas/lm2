@@ -20,16 +20,19 @@ import { functionDefinitions } from '../ui/function-definitions.ts'
 import { builtinSyms } from './builtin-syms.ts'
 import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
+import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
 import { extractTimelineLabelsFromProgram } from './extract-timeline-labels.ts'
 import { extractTimelineSequencesFromProgramWithRefs } from './extract-timeline-sequences.ts'
 import { binaryCode, encoderError, tryEvalConstNumber, unaryCode } from './helpers.ts'
+import { PRELUDE } from './prelude.ts'
 import {
   AnalyserRef,
   ArrayLiteralRef,
   BranchMarkRef,
+  CompressorRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
@@ -45,6 +48,7 @@ import {
 export * from './builtin-syms.ts'
 export * from './extract-analysers.ts'
 export * from './extract-bpm-bars.ts'
+export * from './extract-compressors.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
 export * from './extract-samples.ts'
@@ -315,7 +319,7 @@ export { Op, SEQ_VOICES, SeqOp }
 export function encodeLangToVmOps(
   src: string,
   target: VmTarget,
-  prelude = 'bpm=60;',
+  prelude = PRELUDE,
 ): {
   errors: LangError[]
   bpm?: number
@@ -326,6 +330,7 @@ export function encodeLangToVmOps(
   timelineRefs?: TimelineSequenceRef[]
   timelineLabels?: TimelineLabel[]
   analyserRefs?: AnalyserRef[]
+  compressorRefs?: CompressorRef[]
   arrayLiterals?: ArrayLiteralRef[]
   branchMarks?: BranchMarkRef[]
   numberParams?: NumberWithParamsInfo[]
@@ -382,6 +387,7 @@ export function encodeLangToVmOps(
   const samplesExtracted = extractSamplesFromProgramWithRefs(src, parsed.program, errors)
   if (errors.length) return { errors }
   let analyserRefs: AnalyserRef[] = []
+  let compressorRefs: CompressorRef[] = []
   const numberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
   const numberLiterals = extractNumberLiteralsFromProgram(parsed.program).filter(p => p.line > 0)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
@@ -409,6 +415,21 @@ export function encodeLangToVmOps(
     const idx = nextAnalyserIndex
     usedAnalyserIndices.add(idx)
     nextAnalyserIndex = Math.min(MAX_ANALYSER_INDEX, idx + 1)
+    return idx
+  }
+
+  const MAX_COMPRESSOR_INDEX = 63
+  const clampCompressorIndex = (n: number) => Math.max(0, Math.min(MAX_COMPRESSOR_INDEX, Math.floor(Number(n || 0))))
+  const usedCompressorIndices = new Set<number>([0])
+  let nextCompressorIndex = 1
+  const allocCompressorIndex = (): number => {
+    if (nextCompressorIndex > MAX_COMPRESSOR_INDEX) return MAX_COMPRESSOR_INDEX
+    while (usedCompressorIndices.has(nextCompressorIndex) && nextCompressorIndex < MAX_COMPRESSOR_INDEX) {
+      nextCompressorIndex++
+    }
+    const idx = nextCompressorIndex
+    usedCompressorIndices.add(idx)
+    nextCompressorIndex = Math.min(MAX_COMPRESSOR_INDEX, idx + 1)
     return idx
   }
 
@@ -508,6 +529,7 @@ export function encodeLangToVmOps(
       const isPlay = calleeName === 'play'
       const isTimeline = calleeName === 'timeline'
       const isAnalyser = calleeName === 'analyser'
+      const isCompressor = calleeName === 'compressor'
       const isOut = calleeName === 'out' || calleeName === 'solo'
       const isLabel = calleeName === 'label'
       const isFreesound = calleeName === 'freesound'
@@ -543,6 +565,27 @@ export function encodeLangToVmOps(
         if (posArgs.length === 1) {
           const idx = allocAnalyserIndex()
           return { ...expr, callee, args: [...args, { kind: 'pos', value: toSeqIndexExpr(expr.loc, idx) }] }
+        }
+      }
+
+      if (isCompressor) {
+        const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
+        const idxVal = namedIndexArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = clampCompressorIndex(Number(idxVal.value ?? 0))
+          usedCompressorIndices.add(idx)
+          namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (!namedIndexArg) {
+          const idx = allocCompressorIndex()
+          return {
+            ...expr,
+            callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }],
+          }
         }
       }
 
@@ -772,6 +815,7 @@ export function encodeLangToVmOps(
 
   const transformedProgram = { ...parsed.program, body: parsed.program.body.map(transformStmt).filter(Boolean) } as any
   analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
+  compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
   const compiled = compile(src, transformedProgram)
   errors.push(...compiled.errors)
   if (errors.length) return { errors }
@@ -1154,6 +1198,7 @@ export function encodeLangToVmOps(
       timelineRefs,
       timelineLabels,
       analyserRefs,
+      compressorRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,
@@ -1170,6 +1215,7 @@ export function encodeLangToVmOps(
       timelineRefs,
       timelineLabels,
       analyserRefs,
+      compressorRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,

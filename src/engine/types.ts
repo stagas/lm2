@@ -2,6 +2,7 @@ import type { LangError } from '../lang/errors.ts'
 import { type SourceLocation } from '../lib/mini-source-map.ts'
 import {
   type AnalyserRef,
+  type CompressorRef,
   type ArrayLiteralRef,
   type BranchMarkRef,
   type MiniSequenceRef,
@@ -23,6 +24,7 @@ export type WidgetCompileResult = {
   timelineRefs: TimelineSequenceRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
+  compressorRefs: CompressorRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]

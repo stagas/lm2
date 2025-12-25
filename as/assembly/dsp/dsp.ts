@@ -566,6 +566,7 @@ export class Dsp {
 
       // Track ring write base for analyser() calls (begin is the ring base in samples)
       this.builtins.analyserRingBase = begin + offset
+      this.builtins.compressorRingBase = begin + offset
       this.vmExec(1, ops.length, block, outL$, outR$, false)
 
       if (vmErrorCode !== 0) return

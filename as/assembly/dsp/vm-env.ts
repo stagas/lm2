@@ -110,6 +110,10 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Analyser)
       return
     }
+    if (sym === VmSym.Compressor) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Compressor)
+      return
+    }
     if (sym === VmSym.Mini) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Mini)
       return

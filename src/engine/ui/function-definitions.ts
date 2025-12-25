@@ -310,6 +310,25 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'playing |> analyser($, 1) |> out($)',
     ],
   },
+  compressor: {
+    name: 'compressor',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
+      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
+      { name: 'ratio', type: 'number', description: 'Compression ratio (1 .. 20)' },
+      { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
+      { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
+    ],
+    returnType: 'number',
+    description:
+      'Compresses the input signal. When `key` is provided, gain reduction is driven by the key signal (sidechain) but applied to `in`.',
+    examples: [
+      'compressor(saw(hz), .01, .1, -24, 4, 6) |> out($)',
+      'compressor(in:$, attack:.005, release:.2, threshold:-18, ratio:6, knee:8) |> out($)',
+    ],
+  },
   mini: {
     name: 'mini',
     parameters: [

@@ -1,4 +1,5 @@
 import { AnalyserOutsPool } from './analyser-outs-pool'
+import { CompressorOutsPool } from './compressor-outs-pool'
 import {
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
@@ -24,6 +25,7 @@ export class Program {
   data: ProgramData = new ProgramData()
   histories: StaticArray<usize> = new StaticArray<usize>(HISTORIES_COUNT)
   analyserOutsPool: AnalyserOutsPool = new AnalyserOutsPool()
+  compressorOutsPool: CompressorOutsPool = new CompressorOutsPool()
   arrayAccessHistory: StaticArray<f32> = new StaticArray<f32>(1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE)
   branchHistory: StaticArray<f32> = new StaticArray<f32>(1 + BRANCH_HISTORY_SIZE * BRANCH_HISTORY_ENTRY_SIZE)
   sampleNeedleHistory: StaticArray<f32> = new StaticArray<f32>(
@@ -161,6 +163,17 @@ export class Program {
       const src$ = changetype<usize>(source.analyserOutsPool.outs[i])
       const dst$ = changetype<usize>(this.analyserOutsPool.outs[i])
       memory.copy(dst$, src$, analyserBytes)
+    }
+
+    const compressorBytes = RING_BUFFER_SIZE << 2
+    for (let i = 0; i < 64; i++) {
+      const srcLevel$ = source.compressorOutsPool.getLevelDb(i)
+      const dstLevel$ = this.compressorOutsPool.getLevelDb(i)
+      memory.copy(dstLevel$, srcLevel$, compressorBytes)
+
+      const srcGr$ = source.compressorOutsPool.getGrDb(i)
+      const dstGr$ = this.compressorOutsPool.getGrDb(i)
+      memory.copy(dstGr$, srcGr$, compressorBytes)
     }
 
     this.callbackDepth = source.callbackDepth

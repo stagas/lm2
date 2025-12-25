@@ -80,6 +80,34 @@ export type AnalyserRef = {
   loc: Loc
 }
 
+export type CompressorRef = {
+  compressorIndex: number
+  /** Location of the `compressor` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the input arg (positional or `in:`). */
+  inArgLoc: Loc | null
+  /** Location of the sidechain arg (positional or `key:`). */
+  keyArgLoc: Loc | null
+  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
+  knobParams: Array<{
+    name: 'attack' | 'release' | 'threshold' | 'ratio' | 'knee'
+    value: number
+    valueLoc: Loc
+  }>
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: {
+    attack: number
+    release: number
+    threshold: number
+    ratio: number
+    knee: number
+  }
+}
+
 export type MiniSequenceRef = {
   seqIndex: number
   sequence: string
