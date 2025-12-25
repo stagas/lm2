@@ -103,3 +103,19 @@ export enum VmBuiltin {
 }
 
 export const VM_FUNC_HEADER: i32 = -2
+
+export class NamedArgs {
+  syms: StaticArray<i32>
+  tags: StaticArray<i32>
+  nums: StaticArray<f64>
+  aux: StaticArray<i32>
+  count: i32
+
+  constructor(syms: StaticArray<i32>, tags: StaticArray<i32>, nums: StaticArray<f64>, aux: StaticArray<i32>, count: i32) {
+    this.syms = syms
+    this.tags = tags
+    this.nums = nums
+    this.aux = aux
+    this.count = count
+  }
+}

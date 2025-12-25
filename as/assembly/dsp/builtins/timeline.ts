@@ -3,6 +3,7 @@ import { Timeline } from '../../gen/timeline'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmTag } from '../types'
+import { VmSym } from '../vm-sym'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
@@ -10,6 +11,11 @@ import { VmStack } from '../vm-stack'
 @inline
 export function callTimeline(
   posCount: i32,
+  nameSyms: StaticArray<i32>,
+  nameTags: StaticArray<i32>,
+  nameNums: StaticArray<f64>,
+  nameAux: StaticArray<i32>,
+  namedCount: i32,
   posTags: StaticArray<i32>,
   posNums: StaticArray<f64>,
   stack: VmStack,
@@ -17,7 +23,7 @@ export function callTimeline(
   program: Program,
   length: i32,
 ): void {
-  // timeline(seq)
+  // timeline(pattern, color)
   if (posCount < 1) {
     stack.push(VmTag.Undef)
     return
@@ -26,8 +32,18 @@ export function callTimeline(
   // Backwards compatibility: timeline(beatDiv, seq) is accepted, but beatDiv
   // is compile-time only (durations are compiled to absolute beats).
   const seqPos: i32 = posCount >= 2 ? 1 : 0
-  const arrayTag: VmTag = posTags[seqPos] as VmTag
-  const arrayNum: f64 = posNums[seqPos]
+  let arrayTag: VmTag = posTags[seqPos] as VmTag
+  let arrayNum: f64 = posNums[seqPos]
+
+  // Check for named 'pattern' parameter
+  for (let i = 0; i < namedCount; i++) {
+    if (nameSyms[i] === VmSym.Pattern) {
+      arrayTag = nameTags[i] as VmTag
+      arrayNum = nameNums[i]
+      break
+    }
+  }
+
   if (arrayTag !== VmTag.Num) {
     stack.push(VmTag.Undef)
     return
@@ -45,4 +61,3 @@ export function callTimeline(
 
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
-

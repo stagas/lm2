@@ -29,7 +29,7 @@ import { callSum } from './builtins/sum'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { Dsp } from './dsp'
-import { VmBuiltin, VmTag } from './types'
+import { NamedArgs, VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
 import { VmStack } from './vm-stack'
 
@@ -198,146 +198,159 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.Out) {
-      callOut(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      callOut(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
       return
     }
 
     if (calleeAux === VmBuiltin.Solo) {
-      callSolo(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      callSolo(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
       return
     }
 
     if (calleeAux === VmBuiltin.Post) {
-      callPost(posCount, posTags, posNums, posAux, stack, dsp)
+      callPost(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, dsp)
       return
     }
 
     if (calleeAux === VmBuiltin.Timeline) {
-      callTimeline(posCount, posTags, posNums, stack, audio, program, length)
+      callTimeline(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, stack, audio, program,
+        length)
       return
     }
 
     if (calleeAux === VmBuiltin.Analyser) {
-      callAnalyser(posCount, posTags, posNums, posAux, stack, audio, program, length, this.analyserRingBase)
+      callAnalyser(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, this.analyserRingBase)
       return
     }
 
     if (calleeAux === VmBuiltin.Sine) {
-      callSine(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callSine(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
     if (calleeAux === VmBuiltin.Tri) {
-      callTri(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callTri(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
     if (calleeAux === VmBuiltin.Saw) {
-      callSaw(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callSaw(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
     if (calleeAux === VmBuiltin.Ramp) {
-      callRamp(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callRamp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
     if (calleeAux === VmBuiltin.Sqr) {
-      callSqr(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callSqr(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
     if (calleeAux === VmBuiltin.Pwm) {
-      callPwm(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callPwm(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
     if (calleeAux === VmBuiltin.Phasor) {
-      callPhasor(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callPhasor(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.Note) {
-      callNote(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      callNote(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
       return
     }
 
     if (calleeAux === VmBuiltin.Degree) {
-      callDegree(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      callDegree(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
       return
     }
 
     if (calleeAux === VmBuiltin.Map) {
-      callMap(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp, this.mapArgTags,
-        this.mapArgNums, this.mapArgAux)
+      callMap(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.mapArgTags, this.mapArgNums, this.mapArgAux)
       return
     }
 
     if (calleeAux === VmBuiltin.Sum) {
-      callSum(posCount, posTags, posNums, posAux, stack, audio, program, length, dsp)
+      callSum(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
       return
     }
 
     if (calleeAux === VmBuiltin.Ad) {
-      callAd(posCount, posTags, posNums, posAux, stack, audio, program, length)
+      callAd(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.Adsr) {
-      callAdsr(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callAdsr(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.Mini) {
-      callMini(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp, this.miniTrigOuts,
-        this.miniVelOuts, this.miniValOuts, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      callMini(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.miniTrigOuts, this.miniVelOuts, this.miniValOuts, this.cbArgTags,
+        this.cbArgNums, this.cbArgAux)
       return
     }
 
     if (calleeAux === VmBuiltin.Play) {
-      callPlay(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp, this.miniTrigOuts,
-        this.miniVelOuts, this.miniValOuts, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      callPlay(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.miniTrigOuts, this.miniVelOuts, this.miniValOuts, this.cbArgTags,
+        this.cbArgNums, this.cbArgAux)
       return
     }
 
     if (calleeAux === VmBuiltin.PlayPick) {
-      callPlayPick(posCount, posTags, posNums, posAux, stack, audio, program, length, left$, right$, dsp,
-        this.miniTrigOuts, this.miniVelOuts, this.miniValOuts, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      callPlayPick(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.miniTrigOuts, this.miniVelOuts, this.miniValOuts, this.cbArgTags,
+        this.cbArgNums, this.cbArgAux)
       return
     }
 
     if (calleeAux === VmBuiltin.Sampler) {
-      callSampler(posCount, posTags, posNums, posAux, stack, audio, program, length)
+      callSampler(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.Slicer) {
-      callSlicer(posCount, posTags, posNums, posAux, stack, audio, program, length)
+      callSlicer(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.Every) {
-      callEvery(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callEvery(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.At) {
-      callAt(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callAt(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.Lp) {
-      callLp(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callLp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.Slew) {
-      callSlew(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+      callSlew(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

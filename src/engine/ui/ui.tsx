@@ -105,7 +105,7 @@ export function EngineUI() {
           continue
         }
         const resPromise = fetch('./cowbell.ogg')
-        await useEngineDspStore.getState().playLoop('1', '.001 |> out($)')
+        // await useEngineDspStore.getState().playLoop('1', '.001 |> out($)')
         await new Promise<void>(resolve => setTimeout(resolve, 1500))
         const res = await resPromise
         const arrayBuffer = await res.arrayBuffer()

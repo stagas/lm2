@@ -2,6 +2,7 @@
 import { Program } from '../../program'
 import { Dsp } from '../dsp'
 import { VmTag } from '../types'
+import { VmSym } from '../vm-sym'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 import { callPlay } from './play'
@@ -10,6 +11,11 @@ import { callPlay } from './play'
 @inline
 export function callMini(
   posCount: i32,
+  nameSyms: StaticArray<i32>,
+  nameTags: StaticArray<i32>,
+  nameNums: StaticArray<f64>,
+  nameAux: StaticArray<i32>,
+  namedCount: i32,
   posTags: StaticArray<i32>,
   posNums: StaticArray<f64>,
   posAux: StaticArray<i32>,
@@ -32,9 +38,20 @@ export function callMini(
     return
   }
 
-  const seqTag = posTags[0] as VmTag
-  const seqNum = posNums[0]
-  const seqAux = posAux[0]
+  let seqTag = posTags[0] as VmTag
+  let seqNum = posNums[0]
+  let seqAux = posAux[0]
+
+  // Check for named 'seq' parameter
+  for (let i = 0; i < namedCount; i++) {
+    if (nameSyms[i] === VmSym.Seq) {
+      seqTag = nameTags[i] as VmTag
+      seqNum = nameNums[i]
+      seqAux = nameAux[i]
+      break
+    }
+  }
+
   if (seqTag !== VmTag.Num && seqTag !== VmTag.Audio) {
     stack.push(VmTag.Undef)
     return
@@ -46,8 +63,18 @@ export function callMini(
     return
   }
 
-  const cbTag = posTags[1] as VmTag
-  const cbAux = posAux[1]
+  let cbTag = posTags[1] as VmTag
+  let cbAux = posAux[1]
+
+  // Check for named 'cb' parameter
+  for (let i = 0; i < namedCount; i++) {
+    if (nameSyms[i] === VmSym.Cb) {
+      cbTag = nameTags[i] as VmTag
+      cbAux = nameAux[i]
+      break
+    }
+  }
+
   if (cbTag !== VmTag.Func) {
     stack.push(VmTag.Undef)
     return
@@ -56,6 +83,11 @@ export function callMini(
   // Delegate to play() implementation so `seq` can be a per-sample buffer (audio-rate selection).
   callPlay(
     2,
+    nameSyms,
+    nameTags,
+    nameNums,
+    nameAux,
+    namedCount,
     posTags,
     posNums,
     posAux,

@@ -3,10 +3,11 @@
     "debug": {
       "outFile": "as/build/index.wasm",
       "textFile": "as/build/index.wat",
-      "optimizeLevel": 0,
+      "optimizeLevel": 1,
       "converge": false,
       "sourceMap": true,
-      "debug": true
+      "debug": false,
+      "noAssert": true
     },
     "release": {
       "outFile": "as/build/index.wasm",
@@ -25,8 +26,8 @@
       "threads"
     ],
     "importMemory": true,
-    "initialMemory": 1024,
-    "maximumMemory": 1024,
+    "initialMemory": 8192,
+    "maximumMemory": 8192,
     "sharedMemory": true,
     "bindings": "esm",
     "runtime": "stub",

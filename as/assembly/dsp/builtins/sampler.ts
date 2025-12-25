@@ -3,6 +3,7 @@ import { Sampler } from '../../gen/sampler'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmTag } from '../types'
+import { VmSym } from '../vm-sym'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
@@ -10,6 +11,11 @@ import { VmStack } from '../vm-stack'
 @inline
 export function callSampler(
   posCount: i32,
+  nameSyms: StaticArray<i32>,
+  nameTags: StaticArray<i32>,
+  nameNums: StaticArray<f64>,
+  nameAux: StaticArray<i32>,
+  namedCount: i32,
   posTags: StaticArray<i32>,
   posNums: StaticArray<f64>,
   posAux: StaticArray<i32>,
@@ -26,27 +32,69 @@ export function callSampler(
 
   const sampleIndex: i32 = i32(posNums[0])
 
-  const speedIsSet = posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null
-  const speedTag: VmTag = speedIsSet ? (posTags[1] as VmTag) : VmTag.Num
-  const speedNum: f64 = speedIsSet ? posNums[1] : 1.0
-  const speedAux: i32 = speedIsSet ? posAux[1] : 0
+  // speed (default 1.0)
+  let speedTag: VmTag = VmTag.Num
+  let speedNum: f64 = 1.0
+  let speedAux: i32 = 0
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    speedTag = posTags[1] as VmTag
+    speedNum = posNums[1]
+    speedAux = posAux[1]
+  }
 
-  const offsetIsSet = posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null
-  // If offset is omitted and speed is a constant negative number, default to "end".
-  const defaultOffset: f64 = (!offsetIsSet && speedTag === VmTag.Num && speedNum < 0.0) ? 1.0 : 0.0
-  const offsetTag: VmTag = offsetIsSet ? (posTags[2] as VmTag) : VmTag.Num
-  const offsetNum: f64 = offsetIsSet ? posNums[2] : defaultOffset
-  const offsetAux: i32 = offsetIsSet ? posAux[2] : 0
+  // offset (default 0, but 1 if speed is negative constant)
+  let offsetTag: VmTag = VmTag.Num
+  let offsetNum: f64 = (speedTag === VmTag.Num && speedNum < 0.0) ? 1.0 : 0.0
+  let offsetAux: i32 = 0
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
+    offsetTag = posTags[2] as VmTag
+    offsetNum = posNums[2]
+    offsetAux = posAux[2]
+  }
 
-  const trigIsSet = posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null
-  const trigTag: VmTag = trigIsSet ? (posTags[3] as VmTag) : VmTag.Num
-  const trigNum: f64 = trigIsSet ? posNums[3] : 0.0
-  const trigAux: i32 = trigIsSet ? posAux[3] : 0
+  // trig (default 0)
+  let trigTag: VmTag = VmTag.Num
+  let trigNum: f64 = 0.0
+  let trigAux: i32 = 0
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    trigTag = posTags[3] as VmTag
+    trigNum = posNums[3]
+    trigAux = posAux[3]
+  }
 
-  const repeatIsSet = posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null
-  const repeatTag: VmTag = repeatIsSet ? (posTags[4] as VmTag) : VmTag.Bool
-  const repeatNum: f64 = repeatIsSet ? posNums[4] : 0.0
-  const repeatAux: i32 = repeatIsSet ? posAux[4] : 0
+  // repeat (default false)
+  let repeatTag: VmTag = VmTag.Bool
+  let repeatNum: f64 = 0.0
+  let repeatAux: i32 = 0
+  if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
+    repeatTag = posTags[4] as VmTag
+    repeatNum = posNums[4]
+    repeatAux = posAux[4]
+  }
+
+  // Check for named parameters - iterate once through all named args
+  for (let i = 0; i < namedCount; i++) {
+    if (nameSyms[i] === VmSym.Speed) {
+      speedTag = nameTags[i] as VmTag
+      speedNum = nameNums[i]
+      speedAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Offset) {
+      offsetTag = nameTags[i] as VmTag
+      offsetNum = nameNums[i]
+      offsetAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Trig) {
+      trigTag = nameTags[i] as VmTag
+      trigNum = nameNums[i]
+      trigAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Repeat) {
+      repeatTag = nameTags[i] as VmTag
+      repeatNum = nameNums[i]
+      repeatAux = nameAux[i]
+    }
+  }
 
   const speed$: usize = audio.toAudioPtr(speedTag, speedNum, speedAux, length, program)
   const offset$: usize = audio.toAudioPtr(offsetTag, offsetNum, offsetAux, length, program)
@@ -67,4 +115,3 @@ export function callSampler(
 
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
-

@@ -339,9 +339,9 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   play: {
     name: 'play',
     parameters: [
-      { name: 'sequence', type: 'sequence', description: 'Reference returned by `mini(pattern)`' },
+      { name: 'seq', type: 'sequence', description: 'Reference returned by `mini(pattern)`' },
       {
-        name: 'callback',
+        name: 'cb',
         type: miniCallbackType,
         description: 'Callback that runs for each voice (trig, velocity, hz) and must return audio',
       },
