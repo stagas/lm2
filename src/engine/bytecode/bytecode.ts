@@ -27,7 +27,7 @@ import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
 import { extractTimelineLabelsFromProgram } from './extract-timeline-labels.ts'
 import { extractTimelineSequencesFromProgramWithRefs } from './extract-timeline-sequences.ts'
 import { binaryCode, encoderError, tryEvalConstNumber, unaryCode } from './helpers.ts'
-import { PRELUDE } from './prelude.ts'
+import { POSTLUDE, PRELUDE } from './prelude.ts'
 import {
   AnalyserRef,
   ArrayLiteralRef,
@@ -320,6 +320,7 @@ export function encodeLangToVmOps(
   src: string,
   target: VmTarget,
   prelude = PRELUDE,
+  postlude = POSTLUDE,
 ): {
   errors: LangError[]
   bpm?: number
@@ -353,7 +354,8 @@ export function encodeLangToVmOps(
 
   const p = normalizePrelude(prelude)
   const pLines = countNewlines(p)
-  const fullSrc = `${p}${src}`
+  const po = normalizePrelude(postlude)
+  const fullSrc = `${p}${src}${po}`
 
   const mapToken = (t: Token): Token => {
     const line = t.line - pLines
