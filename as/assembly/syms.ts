@@ -22,6 +22,7 @@ export enum VmSym {
   Degree = 17,
   Map = 18,
   Sum = 19,
+  Slew = 20,
 
   // Named args (adsr)
   Attack = 100,

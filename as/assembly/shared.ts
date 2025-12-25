@@ -36,6 +36,7 @@ export enum Op {
   Slicer,
   Every,
   At,
+  Slew,
 }
 
 export enum SeqOp {

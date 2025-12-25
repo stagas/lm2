@@ -20,6 +20,7 @@ export const builtinSyms: Record<string, number> = {
   degree: VmSym.Degree,
   map: VmSym.Map,
   sum: VmSym.Sum,
+  slew: VmSym.Slew,
   // Runtime directive globals (stable ids so VM can provide defaults)
   tune: VmSym.Tune,
   octave: VmSym.Octave,

@@ -314,6 +314,33 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'if (at(bar: 16, every: 8)) sine(880) |> analyser($) |> out($)',
     ],
   },
+  slew: {
+    name: 'slew',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be slewed (limited)' },
+      { name: 'up', type: 'number', description: 'Rise rate (samples per second) when signal increases' },
+      {
+        name: 'down',
+        type: 'number',
+        optional: true,
+        description: 'Fall rate when signal decreases (defaults to up rate if ≤ 0)',
+      },
+      {
+        name: 'exponent',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic',
+      },
+    ],
+    returnType: 'number',
+    description:
+      'Rate-limits a signal to prevent sudden jumps. Useful for smoothing control signals, portamento effects, or creating more natural parameter changes.',
+    examples: [
+      'slew(input: lfo, up: 100, down: 200) |> out($)',
+      'slew(freq, 50, 100, 2) |> sine($) |> out($)',
+    ],
+  },
   freesound: {
     name: 'freesound',
     parameters: [
@@ -325,6 +352,65 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'kick = freesound(id: 123456)',
       'sampler(sample: kick, trig)',
+    ],
+  },
+  '.map': {
+    name: '.map',
+    parameters: [
+      { name: 'array', type: 'array', description: 'Array to be mapped over' },
+      { name: 'callback', type: 'function', description: 'Callback to be called for each element' },
+    ],
+    returnType: 'array',
+    description: 'Maps over an array and returns a new array with the results.',
+    examples: [
+      'array.map(x -> x * 2) |> out($)',
+    ],
+  },
+  '.sum': {
+    name: '.sum',
+    parameters: [
+      { name: 'array', type: 'array', description: 'Array to be summed' },
+    ],
+    returnType: 'number',
+    description: 'Sums an array and returns the result.',
+    examples: [
+      'array.sum() |> out($)',
+    ],
+  },
+  'note': {
+    name: 'note',
+    parameters: [
+      { name: 'midi', type: 'number', description: 'MIDI note number' },
+    ],
+    returnType: 'number',
+    description: 'Converts a MIDI note number to a frequency.',
+    examples: [
+      'note(60) |> out($)',
+    ],
+  },
+  'degree': {
+    name: 'degree',
+    parameters: [
+      { name: 'degree', type: 'number', description: 'Degree of the scale' },
+    ],
+    returnType: 'number',
+    description: 'Converts a degree of the scale to a frequency.',
+    examples: [
+      'degree(1) |> out($)',
+    ],
+  },
+  'label': {
+    name: 'label',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Bar position of the label' },
+      { name: 'text', type: 'string', description: 'Label text' },
+      { name: 'color', type: 'string', optional: true, defaultValue: '#ff0', description: 'Color of the label' },
+    ],
+    returnType: 'number',
+    description: 'Creates a label in the timeline (0-based).',
+    examples: [
+      'label(0, \'intro\')',
+      'label(64, \'groove\', \'#f00\')',
     ],
   },
 }

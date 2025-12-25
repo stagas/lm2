@@ -1,3 +1,4 @@
+// dprint-ignore-file
 import { Program } from '../../program'
 import { clearAudio, addAudio } from '../audio-ops'
 import { Dsp } from '../dsp'

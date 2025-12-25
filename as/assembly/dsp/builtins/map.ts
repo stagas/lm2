@@ -1,3 +1,4 @@
+// dprint-ignore-file
 import { setVmError } from '../../globals'
 import { Program } from '../../program'
 import { Dsp } from '../dsp'
