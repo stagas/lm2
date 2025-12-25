@@ -1,5 +1,5 @@
 // dprint-ignore-file
-import { Sine } from '../../gen/sine'
+import { Phasor } from '../../gen/phasor'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmSym } from '../../syms'
@@ -9,7 +9,7 @@ import { VmStack } from '../vm-stack'
 
 // @ts-ignore
 @inline
-export function callSine(
+export function callPhasor(
   posCount: i32,
   namedCount: i32,
   posTags: StaticArray<i32>,
@@ -57,12 +57,13 @@ export function callSine(
   const outIndex = audio.allocOut(program)
   const out$ = program.getOutBuffer(outIndex)
 
-  const sin = program.gensPool.get(Op.Sine) as Sine
-  sin.hz$ = hz$
-  sin.trig$ = trig$
-  sin.offset$ = offset$
-  sin.process(out$, length)
+  const phasor = program.gensPool.get(Op.Phasor) as Phasor
+  phasor.hz$ = hz$
+  phasor.trig$ = trig$
+  phasor.offset$ = offset$
+  phasor.process(out$, length)
 
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
+
 

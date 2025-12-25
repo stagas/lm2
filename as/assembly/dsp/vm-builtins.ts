@@ -14,10 +14,16 @@ import { callOut } from './builtins/out'
 import { callPlay } from './builtins/play'
 import { callPlayPick } from './builtins/play-pick'
 import { callSampler } from './builtins/sampler'
+import { callPhasor } from './builtins/phasor'
+import { callPwm } from './builtins/pwm'
+import { callRamp } from './builtins/ramp'
+import { callSaw } from './builtins/saw'
 import { callSine } from './builtins/sine'
 import { callSlicer } from './builtins/slicer'
 import { callSlew } from './builtins/slew'
+import { callSqr } from './builtins/sqr'
 import { callTimeline } from './builtins/timeline'
+import { callTri } from './builtins/tri'
 import { Dsp } from './dsp'
 import { VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
@@ -125,7 +131,38 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.Sine) {
-      callSine(posCount, posTags, posNums, posAux, stack, audio, program, length)
+      callSine(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Tri) {
+      callTri(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Saw) {
+      callSaw(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Ramp) {
+      callRamp(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Sqr) {
+      callSqr(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Pwm) {
+      callPwm(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Phasor) {
+      callPhasor(posCount, namedCount, posTags, posNums, posAux, nameSyms, nameTags, nameNums, nameAux, stack, audio,
+        program, length)
       return
     }
 
