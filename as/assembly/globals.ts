@@ -10,7 +10,7 @@ export let sampleRate: f32 = 48000
 
 // @ts-ignore
 @global
-export let nyquist: f32 = sampleRate / 2.0
+export let nyquist: f32 = sampleRate * 0.5 - sampleRate * 0.1
 
 // @ts-ignore
 @global

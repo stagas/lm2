@@ -37,5 +37,6 @@ export const ProgramStruct = Struct({
   arrayAccessHistory: 'usize',
   branchHistory: 'usize',
   sampleNeedleHistory: 'usize',
+  lpCutHistory: 'usize',
 })
 export type Program = typeof ProgramStruct.type

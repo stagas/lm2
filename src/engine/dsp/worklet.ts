@@ -229,6 +229,10 @@ export class DspProcessor extends AudioWorkletProcessor {
         }
       },
     })
+
+    this.core.wasm.sampleRate.value = sampleRate
+    this.core.wasm.nyquist.value = sampleRate * 0.5 - sampleRate * 0.1
+
     this.dsps = []
     this.addDsp()
 

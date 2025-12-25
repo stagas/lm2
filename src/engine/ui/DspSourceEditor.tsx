@@ -28,6 +28,7 @@ import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
 import { useCompressorWidget } from './useCompressorWidget.ts'
+import { useLpWidget } from './useLpWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useBranchWidget } from './useBranchWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
@@ -112,6 +113,7 @@ function DspSourceEditorReady(
     uiMiniSourceMaps,
     uiAnalyserRefs,
     uiCompressorRefs,
+    uiLpRefs,
     uiArrayLiterals,
     uiBranchMarks,
     uiNumberParams,
@@ -204,6 +206,7 @@ function DspSourceEditorReady(
         miniSourceMaps: uiMiniSourceMaps,
         analyserRefs: uiAnalyserRefs,
         compressorRefs: uiCompressorRefs,
+        lpRefs: uiLpRefs,
         arrayLiterals: uiArrayLiterals,
         branchMarks: uiBranchMarks,
         numberParams: uiNumberParams,
@@ -221,6 +224,7 @@ function DspSourceEditorReady(
         miniSourceMaps: uiMiniSourceMaps,
         analyserRefs: uiAnalyserRefs,
         compressorRefs: uiCompressorRefs,
+        lpRefs: uiLpRefs,
         arrayLiterals: uiArrayLiterals,
         branchMarks: uiBranchMarks,
         numberParams: uiNumberParams,
@@ -243,6 +247,7 @@ function DspSourceEditorReady(
       miniSourceMaps,
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
+      lpRefs: previewCompile.lpRefs ?? [],
       arrayLiterals: previewCompile.arrayLiterals ?? [],
       branchMarks: previewCompile.branchMarks ?? [],
       numberParams: previewCompile.numberParams ?? [],
@@ -259,6 +264,7 @@ function DspSourceEditorReady(
     uiMiniSourceMaps,
     uiAnalyserRefs,
     uiCompressorRefs,
+    uiLpRefs,
     uiArrayLiterals,
     uiBranchMarks,
     uiNumberParams,
@@ -306,6 +312,7 @@ function DspSourceEditorReady(
       miniSourceMaps,
       analyserRefs: result.analyserRefs ?? [],
       compressorRefs: result.compressorRefs ?? [],
+      lpRefs: result.lpRefs ?? [],
       arrayLiterals: result.arrayLiterals ?? [],
       branchMarks: result.branchMarks ?? [],
       numberParams: result.numberParams ?? [],
@@ -427,6 +434,17 @@ function DspSourceEditorReady(
     sampleRate: audioContext?.sampleRate,
   })
 
+  const { widgets: lpWidgets, onBeforeDraw: onBeforeDrawLp } = useLpWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    lpRefs: widgetCompileState.lpRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isPlayingLoop,
+    playbackState,
+  })
+
   const { widgets: arrayAccessWidgets, onBeforeDraw: onBeforeDrawArrayAccess } = useArrayAccessWidget({
     program1: runtimeProgram,
     dspSource: widgetCompileState.dspSource,
@@ -458,8 +476,9 @@ function DspSourceEditorReady(
     codeFile: currentLoop?.codeFile,
   })
 
-  const compressorKnobs = useMemo(() => {
+  const knobs = useMemo(() => {
     const out: KnobInfo[] = []
+
     for (const ref of widgetCompileState.compressorRefs ?? []) {
       for (const p of ref.knobParams ?? []) {
         if (p.name === 'attack') out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length,
@@ -474,12 +493,29 @@ function DspSourceEditorReady(
           value: p.value, min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
       }
     }
+
+    for (const ref of widgetCompileState.lpRefs ?? []) {
+      for (const p of ref.knobParams ?? []) {
+        if (p.name !== 'cut') continue
+        out.push({
+          line: p.valueLoc.line,
+          column: p.valueLoc.column,
+          length: p.valueLoc.length,
+          value: p.value,
+          min: 20,
+          max: 20000,
+          precision: 0,
+          mode: 'exp2',
+        })
+      }
+    }
+
     return out
-  }, [widgetCompileState.compressorRefs])
+  }, [widgetCompileState.compressorRefs, widgetCompileState.lpRefs])
 
   const { widgets: knobWidgets } = useKnobWidget({
     showWidgets,
-    knobs: compressorKnobs,
+    knobs,
     theme,
     codeFile: currentLoop?.codeFile,
   })
@@ -491,6 +527,7 @@ function DspSourceEditorReady(
     onBeforeDrawTimelineSequence()
     onBeforeDrawAnalyser()
     onBeforeDrawCompressor()
+    onBeforeDrawLp()
     onBeforeDrawArrayAccess()
     onBeforeDrawBranch()
     onBeforeDrawSample()
@@ -501,6 +538,7 @@ function DspSourceEditorReady(
     onBeforeDrawTimelineSequence,
     onBeforeDrawAnalyser,
     onBeforeDrawCompressor,
+    onBeforeDrawLp,
     onBeforeDrawArrayAccess,
     onBeforeDrawBranch,
     onBeforeDrawSample,
@@ -512,6 +550,7 @@ function DspSourceEditorReady(
       ...sampleWidgets,
       ...analyserWidgets,
       ...compressorWidgets,
+      ...lpWidgets,
       ...timelineWidgets,
       ...timelineSequenceWidgets,
       ...pianorollWidgets,
@@ -522,7 +561,7 @@ function DspSourceEditorReady(
       ...knobWidgets,
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, knobWidgets, viewSampleCount])
+    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, lpWidgets, knobWidgets, viewSampleCount])
 
   const codeEditorKey = useMemo(() => {
     const codeFile = currentLoop?.codeFile
