@@ -305,6 +305,7 @@ function DspSourceEditorReady(
       bars,
       miniSourceMaps,
       analyserRefs: result.analyserRefs ?? [],
+      compressorRefs: result.compressorRefs ?? [],
       arrayLiterals: result.arrayLiterals ?? [],
       branchMarks: result.branchMarks ?? [],
       numberParams: result.numberParams ?? [],

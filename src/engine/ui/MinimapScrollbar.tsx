@@ -451,6 +451,8 @@ export function MinimapScrollbar({
         onPointerDown={() => {
           if (!canControlPlayback) {
             seekToSampleImmediate(0)
+            const runtime = useEngineRuntimeStore.getState()
+            if (runtime.playbackState !== 'running') runtime.start()
             return
           }
           void restartLoop()
