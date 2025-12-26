@@ -55,6 +55,7 @@ function BrowseItem(
 ) {
   const playLoop = useEngineDspStore(state => state.playLoop)
   const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
+  const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const getLoopComments = useAppStore(state => state.getLoopComments)
   const cachedComments = useAppStore(state => state.loopCommentsCache[loop.id])
 
@@ -63,6 +64,7 @@ function BrowseItem(
 
   const handlePlay = () => {
     void (async () => {
+      setSelectedLoopId(loop.id)
       const code = await getPublicLoopCode(loop.id)
       await playLoop(loop.id, code)
     })()

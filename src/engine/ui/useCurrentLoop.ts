@@ -13,6 +13,8 @@ export function useCurrentLoop(): Loop | null {
   const hasHydrated = useAppStore(state => state.hasHydrated)
   const serverLoopsCache = useAppStore(state => state.serverLoopsCache)
   const serverLoopsUserId = useAppStore(state => state.serverLoopsUserId)
+  const publicLoopsCache = useAppStore(state => state.publicLoopsCache)
+  const likedLoopsCache = useAppStore(state => state.likedLoopsCache)
   const bases = useAppStore(state => state.bases)
 
   const localLoops = useAppStore(state => state.localLoops)
@@ -27,6 +29,22 @@ export function useCurrentLoop(): Loop | null {
     if (serverLoopsUserId == null) return []
     return serverLoopsCache
   }, [isSessionLoading, serverLoopsCache, serverLoopsUserId, sessionData])
+
+  const publicLoops = useMemo(() => {
+    const seen = new Set<string>()
+    const out: LoopData[] = []
+    for (const l of likedLoopsCache) {
+      if (seen.has(l.id)) continue
+      seen.add(l.id)
+      out.push(l)
+    }
+    for (const l of publicLoopsCache) {
+      if (seen.has(l.id)) continue
+      seen.add(l.id)
+      out.push(l)
+    }
+    return out
+  }, [likedLoopsCache, publicLoopsCache])
 
   const didEnsureInitialLoopRef = useRef(false)
 
@@ -72,24 +90,33 @@ export function useCurrentLoop(): Loop | null {
     if (!hasHydrated) return
     const localIds = new Set(localLoops.map(l => l.id))
     const sessionIds = new Set(serverLoops.map(l => l.id))
-    const has = (id: string | null | undefined) => id != null && (localIds.has(id) || sessionIds.has(id))
+    const publicIds = new Set(publicLoops.map(l => l.id))
+    const has = (id: string | null | undefined) =>
+      id != null && (localIds.has(id) || sessionIds.has(id) || publicIds.has(id))
     if (has(selectedLoopId)) return
     const first = localLoops[0]?.id ?? serverLoops[0]?.id ?? null
     if (first) setSelectedLoopId(first)
-  }, [hasHydrated, localLoops, selectedLoopId, serverLoops, setSelectedLoopId])
+  }, [hasHydrated, localLoops, publicLoops, selectedLoopId, serverLoops, setSelectedLoopId])
 
   const baseLoopData = useMemo((): LoopData | null => {
     if (!selectedLoopId) return null
     const local = localLoops.find(l => l.id === selectedLoopId)
     if (local) return local
     const server = serverLoops.find(l => l.id === selectedLoopId)
-    if (!server) return null
+    if (server) {
+      const base = bases[selectedLoopId]?.code
+      const code = server.code ?? base
+      if (code == null) return server
+      return { ...server, code }
+    }
 
+    const pub = publicLoops.find(l => l.id === selectedLoopId)
+    if (!pub) return null
     const base = bases[selectedLoopId]?.code
-    const code = server.code ?? base
-    if (code == null) return server
-    return { ...server, code }
-  }, [bases, localLoops, selectedLoopId, serverLoops])
+    const code = pub.code ?? base
+    if (code == null) return pub
+    return { ...pub, code }
+  }, [bases, localLoops, publicLoops, selectedLoopId, serverLoops])
 
   const codeFile = useMemo(() => {
     if (!baseLoopData) return null

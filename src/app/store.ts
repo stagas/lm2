@@ -66,6 +66,7 @@ const codeFileUnsubs = new Map<string, () => void>()
 const persistTimers = new Map<string, number>()
 const initialValues = new Map<string, string>()
 const publicLoopPrefetching = new Set<string>()
+const publicLoopFetching = new Map<string, Promise<string>>()
 
 const SESSION_VIEWS_KEY = 'app:views:v1'
 
@@ -317,19 +318,32 @@ export const useAppStore = create<AppState>()(
       getPublicLoopCode: async loopId => {
         const cached = get().publicLoopCodeCache[loopId]
         if (cached != null) return cached
-        const data = await get().api.fetchPublicLoopData(loopId)
-        const code = data.code ?? ''
-        set(state => ({
-          publicLoopCodeCache: { ...state.publicLoopCodeCache, [loopId]: code },
-          publicLoopsCache: (() => {
-            const idx = state.publicLoopsCache.findIndex(l => l.id === loopId)
-            if (idx === -1) return state.publicLoopsCache
-            const prev = state.publicLoopsCache[idx]!
-            const { code: _code, comments: _comments, ...rest } = data
-            return state.publicLoopsCache.map((l, i) => i === idx ? { ...prev, ...rest } : l)
-          })(),
-        }))
-        return code
+        const inflight = publicLoopFetching.get(loopId)
+        if (inflight) return inflight
+
+        const promise = (async () => {
+          const data = await get().api.fetchPublicLoopData(loopId)
+          const code = data.code ?? ''
+          set(state => ({
+            publicLoopCodeCache: { ...state.publicLoopCodeCache, [loopId]: code },
+            publicLoopsCache: (() => {
+              const idx = state.publicLoopsCache.findIndex(l => l.id === loopId)
+              if (idx === -1) return state.publicLoopsCache
+              const prev = state.publicLoopsCache[idx]!
+              const { code: _code, comments: _comments, ...rest } = data
+              return state.publicLoopsCache.map((l, i) => i === idx ? { ...prev, ...rest } : l)
+            })(),
+          }))
+          return code
+        })()
+
+        publicLoopFetching.set(loopId, promise)
+        try {
+          return await promise
+        }
+        finally {
+          publicLoopFetching.delete(loopId)
+        }
       },
 
       getLoopComments: async loopId => {
