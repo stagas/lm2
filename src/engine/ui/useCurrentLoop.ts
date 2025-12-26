@@ -3,15 +3,9 @@ import type { LoopData } from '../../../deno/types.ts'
 import { useLoopData } from '../../app/hooks/useLoopData.ts'
 import { useSessionData } from '../../app/hooks/useSessionData.ts'
 import { useAppStore } from '../../app/store.ts'
+import { isLocalId, makeLocalId } from '../../utils/id.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 import { Loop } from './loop.ts'
-
-const isLocalId = (id: string) => id.startsWith('local:')
-
-const makeLocalId = (title: string) => {
-  const suffix = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
-  return `local:${title}:${Date.now()}:${suffix}`
-}
 
 export function useCurrentLoop(): Loop | null {
   const { isLoading: isSessionLoading, sessionData } = useSessionData()
@@ -45,7 +39,7 @@ export function useCurrentLoop(): Loop | null {
     didEnsureInitialLoopRef.current = true
 
     const title = 'Untitled'
-    const id = makeLocalId(title)
+    const id = makeLocalId()
     const userName = sessionData?.user.name ?? 'local'
     const userId = sessionData?.user.id ?? 'local'
     const data: LoopData = {

@@ -4,6 +4,7 @@ import type { LoopData } from '../../../deno/types.ts'
 import { useSessionData } from '../../app/hooks/useSessionData.ts'
 import { useAppStore } from '../../app/store.ts'
 import { Spinner } from '../../components/Spinner.tsx'
+import { isLocalId, makeLocalId, newId } from '../../utils/id.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { AuthForm } from './AuthForm.tsx'
 import { Loop } from './loop.ts'
@@ -61,15 +62,6 @@ export function SidebarLoops(
       document.querySelector('textarea')?.focus({ preventScroll: true })
     }, 0)
   }, [currentLoopId, loops])
-
-  const isLocalId = (id: string) => id.startsWith('local:')
-
-  const makeLocalId = (title: string) => {
-    const suffix = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
-    return `local:${title}:${Date.now()}:${suffix}`
-  }
-
-  const makeServerId = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
 
   const stopIfPlaying = (loopId: string) => {
     const runtime = useEngineRuntimeStore.getState()
@@ -212,7 +204,7 @@ export function SidebarLoops(
       newLoopTitle = `Untitled ${untitledCount + 1}`
     }
 
-    const id = makeLocalId(newLoopTitle)
+    const id = makeLocalId()
     const userName = sessionData?.user.name ?? 'local'
     const userId = sessionData?.user.id ?? 'local'
     const data: LoopData = {
@@ -252,7 +244,7 @@ export function SidebarLoops(
     }
     count = count + 1
     const title = `${baseTitle} ${count}`
-    const id = makeLocalId(title)
+    const id = makeLocalId()
     const data: LoopData = { ...currentLoop.data, id, title, code: '', timestamp: 0 }
 
     const codeFile = getCodeFile(id, currentLoop.codeFile.value)
@@ -333,7 +325,7 @@ export function SidebarLoops(
 
       if (sessionData && isLocalId(loop.data.id)) {
         const localId = loop.data.id
-        const serverId = makeServerId()
+        const serverId = newId(6)
         const state = loop.codeFile.getState()
         const code = state.value
         void (async () => {
@@ -410,7 +402,7 @@ export function SidebarLoops(
   const handleSaveAsNew = (loop: Loop, details: Partial<LoopData>) => {
     const state = loop.codeFile.getState()
     const title = details.title ?? loop.data.title
-    const id = makeLocalId(title)
+    const id = makeLocalId()
     const codeFile = getCodeFile(id, state.value)
     codeFile.setState(state)
 

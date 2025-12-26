@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LoopData } from '../../../deno/types.ts'
 import type { Loop } from '../../engine/ui/loop.ts'
 import { useAppStore } from '../store.ts'
+import { isLocalId } from '../../utils/id.ts'
 
 export function useLoopData(loopId: string | null, currentLoop: Loop | undefined) {
   const api = useAppStore(state => state.api)
@@ -11,7 +12,6 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   const setLoopLoading = useAppStore(state => state.setLoopLoading)
   const upsertServerLoopCache = useAppStore(state => state.upsertServerLoopCache)
   const didFetchIdRef = useRef<string | null>(null)
-  const isLocalId = (id: string) => id.startsWith('local:')
 
   const withLoading = useCallback((fn: () => Promise<void>) => {
     setIsLoading(true)

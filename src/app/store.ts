@@ -2,6 +2,7 @@ import { CodeFile, type CodeFileState, type InputState } from 'mini-code'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { CommentData, LoopData, SessionData } from '../../deno/types.ts'
+import { isLocalId } from '../utils/id.ts'
 import { API } from './api.ts'
 
 type EditorViewState = {
@@ -10,8 +11,6 @@ type EditorViewState = {
   scrollX: number
   scrollY: number
 }
-
-const isLocalId = (id: string) => id.startsWith('local:')
 
 const shouldPersistBuffer = (id: string, snapshot: CodeFileState, base: string) => {
   const isDirty = snapshot.value !== base
@@ -41,6 +40,7 @@ interface AppState {
   upsertPublicLoopCache: (loop: LoopData) => void
   removePublicLoopCache: (id: string) => void
   toggleLike: (loopId: string) => Promise<void>
+  prefetchPublicLoopCodes: (loopIds: string[]) => Promise<void>
   getPublicLoopCode: (loopId: string) => Promise<string>
   getLoopComments: (loopId: string) => Promise<CommentData[]>
   buffers: Record<string, CodeFileState>
@@ -65,6 +65,7 @@ const codeFiles = new Map<string, CodeFile>()
 const codeFileUnsubs = new Map<string, () => void>()
 const persistTimers = new Map<string, number>()
 const initialValues = new Map<string, string>()
+const publicLoopPrefetching = new Set<string>()
 
 const SESSION_VIEWS_KEY = 'app:views:v1'
 
@@ -291,6 +292,25 @@ export const useAppStore = create<AppState>()(
               return state.likedLoopsCache.filter(l => l.id !== loopId)
             })(),
           }))
+        }
+      },
+
+      prefetchPublicLoopCodes: async loopIds => {
+        const cache = get().publicLoopCodeCache
+        const ids = loopIds
+          .filter(id => cache[id] == null)
+          .filter(id => !publicLoopPrefetching.has(id))
+        if (ids.length === 0) return
+
+        for (const id of ids) publicLoopPrefetching.add(id)
+        try {
+          const codes = await get().api.prefetchPublicLoopCodes(ids)
+          set(state => ({
+            publicLoopCodeCache: { ...state.publicLoopCodeCache, ...codes },
+          }))
+        }
+        finally {
+          for (const id of ids) publicLoopPrefetching.delete(id)
         }
       },
 

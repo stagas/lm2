@@ -1,4 +1,4 @@
-import type { CommentData, LoopData, LoopUpsertRequest, SessionData } from '../../deno/types.ts'
+import type { CommentData, LoopData, LoopUpsertRequest, PublicLoopListEntry, SessionData } from '../../deno/types.ts'
 
 export class API {
   constructor(private fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {}
@@ -35,11 +35,26 @@ export class API {
   }
 
   async fetchPublicLoops(): Promise<LoopData[]> {
-    return await this.requestJson<LoopData[]>('/api/public-loops')
+    const rows = await this.requestJson<PublicLoopListEntry[]>('/api/public-loops')
+    return rows.map(r => ({
+      id: r[0],
+      artist: r[1],
+      artistId: r[2],
+      likesCount: r[3],
+      commentsCount: r[4],
+      title: r[5],
+      timestamp: r[6],
+      isPublic: true,
+    }))
   }
 
   async fetchPublicLoopData(id: string): Promise<LoopData> {
     return await this.requestJson<LoopData>(`/api/public-loop/${encodeURIComponent(id)}`)
+  }
+
+  async prefetchPublicLoopCodes(ids: string[]): Promise<Record<string, string>> {
+    const q = ids.map(encodeURIComponent).join(',')
+    return await this.requestJson<Record<string, string>>(`/api/prefetch?ids=${q}`)
   }
 
   async fetchLikedLoops(): Promise<LoopData[]> {

@@ -4,15 +4,17 @@ import type { Context } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { ZodError, ZodIssue } from 'zod'
 import { clearSessionCookie, getSessionKvByToken, getSessionToken, setSessionCookie } from './auth.ts'
+import { newId } from './id.ts'
 import { getKv, k, type LoopKv, type LoopSummaryKv, type PublicLoopKv, type SessionKv, type UserKv } from './kv.ts'
 import {
   AuthLoginRequestSchema,
   AuthRegisterRequestSchema,
-  ErrorResponseSchema,
   type CommentData,
+  ErrorResponseSchema,
   type LoopData,
   LoopDataSchema,
   LoopUpsertRequestSchema,
+  type PublicLoopListEntry,
   type SessionData,
   SessionDataSchema,
 } from './types.ts'
@@ -107,16 +109,64 @@ function loopToApi(loop: LoopKv, user: { id: string; name: string }): LoopData {
   })
 }
 
+function publicLoopKv(v: unknown): PublicLoopKv | null {
+  if (Array.isArray(v) && v.length === 7) {
+    const id = v[0]
+    const artist = v[1]
+    const artistId = v[2]
+    const likesCount = v[3]
+    const commentsCount = v[4]
+    const title = v[5]
+    const timestamp = v[6]
+    if (
+      typeof id === 'string'
+      && typeof artist === 'string'
+      && typeof artistId === 'string'
+      && typeof likesCount === 'number'
+      && typeof commentsCount === 'number'
+      && typeof title === 'string'
+      && typeof timestamp === 'number'
+    ) {
+      return [id, artist, artistId, likesCount, commentsCount, title, timestamp]
+    }
+  }
+
+  if (v && typeof v === 'object') {
+    const o = v as {
+      id?: unknown
+      artist?: unknown
+      artistId?: unknown
+      likesCount?: unknown
+      commentsCount?: unknown
+      title?: unknown
+      timestamp?: unknown
+    }
+    if (
+      typeof o.id === 'string'
+      && typeof o.artist === 'string'
+      && typeof o.artistId === 'string'
+      && typeof o.likesCount === 'number'
+      && typeof o.commentsCount === 'number'
+      && typeof o.title === 'string'
+      && typeof o.timestamp === 'number'
+    ) {
+      return [o.id, o.artist, o.artistId, o.likesCount, o.commentsCount, o.title, o.timestamp]
+    }
+  }
+
+  return null
+}
+
 function publicLoopToApi(loop: PublicLoopKv): LoopData {
   return LoopDataSchema.parse({
-    id: loop.id,
-    title: loop.title,
-    artist: loop.artist,
-    artistId: loop.artistId,
-    likesCount: loop.likesCount,
-    commentsCount: loop.commentsCount,
+    id: loop[0],
+    title: loop[5],
+    artist: loop[1],
+    artistId: loop[2],
+    likesCount: loop[3],
+    commentsCount: loop[4],
     isPublic: true,
-    timestamp: loop.timestamp,
+    timestamp: loop[6],
   })
 }
 
@@ -146,12 +196,13 @@ app.get('/api/session', async c => {
 
 app.get('/api/public-loops', async c => {
   const kv = await getKv()
-  const loops: PublicLoopKv[] = []
-  for await (const entry of kv.list<PublicLoopKv>({ prefix: k.publicLoops() })) {
-    if (entry.value) loops.push(entry.value)
+  const loops: PublicLoopListEntry[] = []
+  for await (const entry of kv.list<unknown>({ prefix: k.publicLoops() })) {
+    const v = publicLoopKv(entry.value)
+    if (v) loops.push(v)
   }
-  loops.sort((a, b) => b.timestamp - a.timestamp)
-  return c.json(loops.map(publicLoopToApi))
+  loops.sort((a, b) => b[6] - a[6])
+  return c.json(loops)
 })
 
 app.get('/api/public-loop/:id', async c => {
@@ -162,12 +213,41 @@ app.get('/api/public-loop/:id', async c => {
     k.publicLoop(id),
   ] as const)
   const loop = loopEntry.value as LoopKv | null
-  const pub = publicEntry.value as PublicLoopKv | null
+  const pub = publicLoopKv(publicEntry.value)
   if (!loop || !pub || loop.isPublic !== true) {
     const err = jsonError('Loop not found', 404)
     return c.json(err.body, err.status)
   }
   return c.json(LoopDataSchema.parse({ ...publicLoopToApi(pub), code: loop.code }))
+})
+
+app.get('/api/prefetch', async c => {
+  const idsParam = c.req.query('ids') ?? ''
+  const ids = Array.from(
+    new Set(
+      idsParam
+        .split(',')
+        .map(x => x.trim())
+        .filter(Boolean)
+        .map(x => decodeURIComponent(x)),
+    ),
+  )
+  if (ids.length === 0) return c.json({})
+
+  const kv = await getKv()
+  const keys = ids.flatMap(id => [k.loop(id), k.publicLoop(id)])
+  const entries = await kv.getMany(keys as unknown as readonly Deno.KvKey[])
+
+  const codes: Record<string, string> = {}
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]!
+    const loop = (entries[i * 2]?.value ?? null) as LoopKv | null
+    const pub = publicLoopKv(entries[i * 2 + 1]?.value ?? null)
+    if (!loop || !pub || loop.isPublic !== true) continue
+    codes[id] = loop.code
+  }
+
+  return c.json(codes)
 })
 
 app.get('/api/liked-loops', async c => {
@@ -184,10 +264,10 @@ app.get('/api/liked-loops', async c => {
   const entries = await kv.getMany(ids.map(id => k.publicLoop(id)) as unknown as readonly Deno.KvKey[])
   const loops: PublicLoopKv[] = []
   for (const e of entries) {
-    const v = e.value as PublicLoopKv | null
+    const v = publicLoopKv(e.value)
     if (v) loops.push(v)
   }
-  loops.sort((a, b) => b.timestamp - a.timestamp)
+  loops.sort((a, b) => b[6] - a[6])
   return c.json(loops.map(publicLoopToApi))
 })
 
@@ -213,9 +293,9 @@ app.post('/api/loop/:id/like', async c => {
   const currentSession = sessionEntry.value as SessionKv | null
   const user = userEntry.value as UserKv | null
   const loop = loopEntry.value as LoopKv | null
-  const pub = publicEntry.value as PublicLoopKv | null
+  const pub = publicLoopKv(publicEntry.value)
   const hasLike = likeEntry.value === true
-  const likeCount = (likeCountEntry.value as number | null) ?? pub?.likesCount ?? 0
+  const likeCount = (likeCountEntry.value as number | null) ?? pub?.[3] ?? 0
 
   if (!currentSession || !user) {
     const err = jsonError('Not authenticated', 401)
@@ -231,7 +311,7 @@ app.post('/api/loop/:id/like', async c => {
   }
 
   if (loop.userId === session.userId) {
-    const err = jsonError("You can't like your own loop", 403)
+    const err = jsonError('You can\'t like your own loop', 403)
     return c.json(err.body, err.status)
   }
 
@@ -243,7 +323,7 @@ app.post('/api/loop/:id/like', async c => {
 
   const nextUser: UserKv = { ...user, likes: nextLikes }
   const nextSession: SessionKv = { ...currentSession, likes: nextLikes }
-  const nextPublic: PublicLoopKv = { ...pub, likesCount: nextCount }
+  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], nextCount, pub[4], pub[5], pub[6]]
 
   const a = kv.atomic()
     .set(k.user(session.userId), nextUser)
@@ -293,27 +373,38 @@ app.post('/api/auth/register', async c => {
   const name = parsed.data.artistName.trim()
   const email = parsed.data.email.trim().toLowerCase()
   const password = parsed.data.password
-  const userId = crypto.randomUUID()
   const pw = await hash(password)
-  const user: UserKv = { id: userId, name, email, passwordHash: pw, loops: [], likes: [] }
-  const token = crypto.randomUUID()
-  const session: SessionKv = { userId, name, email, loops: user.loops, likes: user.likes }
+  for (let i = 0; i < 5; i++) {
+    const userId = newId(6)
+    const token = newId(6)
+    const user: UserKv = { id: userId, name, email, passwordHash: pw, loops: [], likes: [] }
+    const session: SessionKv = { userId, name, email, loops: user.loops, likes: user.likes }
 
-  const commit = await kv.atomic()
-    .check({ key: k.userByEmail(email), versionstamp: null })
-    .set(k.user(userId), user)
-    .set(k.userByEmail(email), userId)
-    .set(k.session(token), session)
-    .set(k.sessionByUserId(userId), token)
-    .commit()
+    const commit = await kv.atomic()
+      .check({ key: k.userByEmail(email), versionstamp: null })
+      .check({ key: k.user(userId), versionstamp: null })
+      .check({ key: k.session(token), versionstamp: null })
+      .set(k.user(userId), user)
+      .set(k.userByEmail(email), userId)
+      .set(k.session(token), session)
+      .set(k.sessionByUserId(userId), token)
+      .commit()
 
-  if (!commit.ok) {
-    const err = jsonError('Email is already registered', 409)
-    return c.json(err.body, err.status)
+    if (!commit.ok) {
+      const existing = (await kv.get<string>(k.userByEmail(email))).value ?? null
+      if (existing) {
+        const err = jsonError('Email is already registered', 409)
+        return c.json(err.body, err.status)
+      }
+      continue
+    }
+
+    setSessionCookie(c, token)
+    return c.json(sessionToApi(session))
   }
 
-  setSessionCookie(c, token)
-  return c.json(sessionToApi(session))
+  const err = jsonError('Failed to register', 500)
+  return c.json(err.body, err.status)
 })
 
 app.post('/api/auth/login', async c => {
@@ -355,20 +446,27 @@ app.post('/api/auth/login', async c => {
   const prevTokenEntry = await kv.get<string>(k.sessionByUserId(userId))
   const prevToken = prevTokenEntry.value ?? null
 
-  const token = crypto.randomUUID()
   const likes = Array.isArray((user as unknown as { likes?: unknown }).likes)
     ? (user as unknown as { likes: string[] }).likes
     : []
   const session: SessionKv = { userId: user.id, name: user.name, email: user.email, loops: user.loops, likes }
 
-  const a = kv.atomic()
-  if (prevToken) a.delete(k.session(prevToken))
-  a.set(k.session(token), session)
-  a.set(k.sessionByUserId(userId), token)
-  await a.commit()
+  for (let i = 0; i < 5; i++) {
+    const token = newId(6)
+    const a = kv.atomic()
+      .check({ key: k.session(token), versionstamp: null })
+    if (prevToken) a.delete(k.session(prevToken))
+    a.set(k.session(token), session)
+    a.set(k.sessionByUserId(userId), token)
+    const commit = await a.commit()
+    if (!commit.ok) continue
 
-  setSessionCookie(c, token)
-  return c.json(sessionToApi(session))
+    setSessionCookie(c, token)
+    return c.json(sessionToApi(session))
+  }
+
+  const err = jsonError('Failed to login', 500)
+  return c.json(err.body, err.status)
 })
 
 app.post('/api/auth/logout', async c => {
@@ -477,16 +575,7 @@ app.put('/api/loop/:id', async c => {
     .set(k.user(session.userId), nextUser)
     .set(k.session(token), nextSession)
   if (loop.isPublic) {
-    const pub: PublicLoopKv = {
-      id,
-      title: loop.title,
-      artist: user.name,
-      artistId: session.userId,
-      timestamp: loop.timestamp,
-      isPublic: true,
-      likesCount,
-      commentsCount,
-    }
+    const pub: PublicLoopKv = [id, user.name, session.userId, likesCount, commentsCount, loop.title, loop.timestamp]
     a.set(k.publicLoop(id), pub)
   }
   else {

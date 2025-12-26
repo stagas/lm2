@@ -30,6 +30,16 @@ export type LoopData = {
   comments?: CommentData[]
 }
 
+export type PublicLoopListEntry = readonly [
+  loopId: string,
+  artist: string,
+  artistId: string,
+  likesCount: number,
+  commentsCount: number,
+  title: string,
+  timestamp: number,
+]
+
 export const LoopDataSchema: z.ZodType<LoopData> = z.lazy(() =>
   z.object({
     id: z.string(),
