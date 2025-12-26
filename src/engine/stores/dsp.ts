@@ -15,6 +15,7 @@ import {
   type BranchMarkRef,
   type CompressorRef,
   encodeLangToVmOps,
+  type EuclidRef,
   type EveryRef,
   extractBarsFromSource,
   extractBpmFromSource,
@@ -88,6 +89,7 @@ export type EngineDspState = {
   uiLfoRefs: LfoRef[]
   uiEveryRefs: EveryRef[]
   uiAtRefs: AtRef[]
+  uiEuclidRefs: EuclidRef[]
   uiArrayLiterals: ArrayLiteralRef[]
   uiBranchMarks: BranchMarkRef[]
   uiNumberParams: NumberWithParamsInfo[]
@@ -447,7 +449,6 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiEveryRefs: everyRefs,
           uiAtRefs: atRefs,
           uiEuclidRefs: euclidRefs,
-          uiEuclidRefs: euclidRefs,
           uiArrayLiterals: arrayLiterals,
           uiBranchMarks: branchMarks,
           uiNumberParams: numberParams,
@@ -493,7 +494,6 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
         uiAtRefs: stagingResult.atRefs,
-        uiEuclidRefs: stagingResult.euclidRefs,
         uiEuclidRefs: stagingResult.euclidRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiBranchMarks: stagingResult.branchMarks,
@@ -600,7 +600,6 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
         uiAtRefs: stagingResult.atRefs,
-        uiEuclidRefs: stagingResult.euclidRefs,
         uiEuclidRefs: stagingResult.euclidRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiBranchMarks: stagingResult.branchMarks,
@@ -759,6 +758,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiLfoRefs: [],
     uiEveryRefs: [],
     uiAtRefs: [],
+    uiEuclidRefs: [],
     uiArrayLiterals: [],
     uiBranchMarks: [],
     uiNumberParams: [],
@@ -1025,7 +1025,6 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
           uiAtRefs: atRefs,
-          uiEuclidRefs: euclidRefs,
           uiEuclidRefs: euclidRefs,
           uiArrayLiterals: arrayLiterals,
           uiBranchMarks: branchMarks,

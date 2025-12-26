@@ -50,19 +50,18 @@ export function EngineUI() {
   const isProgramReady = useEngineRuntimeStore(state => state.isProgramReady)
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
   const preloadSamples = useEngineDspStore(state => state.preloadSamples)
-  const isPreloadingSamples = useEngineDspStore(state => state.isPreloadingSamples)
   const currentLoop = useCurrentLoop()
   const code = useCodeFileValue(currentLoop?.codeFile)
   const isAwaitingCode = currentLoop != null && currentLoop.data.code == null && code.length === 0
   const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || isLoopLoading || isAwaitingCode
     || !audioContext
-    || isPreloadingSamples
     || !currentLoop
 
   const [showIntro, setShowIntro] = useState(true)
   const [isFadingIn, setIsFadingIn] = useState(true)
   const [isFadingOut, setIsFadingOut] = useState(false)
   const animationIntroTimeRef = useRef<number>(0)
+  const didStartIntroExitRef = useRef(false)
 
   const [dspError, setDspError] = useState<string>()
   const { timelineHeader, timelineWindowRef } = useTimelineHeader(currentLoop?.data.id ?? null)
@@ -93,13 +92,17 @@ export function EngineUI() {
 
   useEffect(() => {
     if (shouldWait || !showIntro) return
+    if (didStartIntroExitRef.current) return
+    didStartIntroExitRef.current = true
+
     const deltaTime = performance.now() - animationIntroTimeRef.current
-    setTimeout(() => {
+    const t1 = window.setTimeout(() => {
       setIsFadingOut(true)
-      setTimeout(() => {
+      const t2 = window.setTimeout(() => {
         setIsFadingOut(false)
         setShowIntro(false)
       }, 2000)
+      return () => window.clearTimeout(t2)
     }, deltaTime < 700 ? (700 - deltaTime) + (1700 - 700) : 1700)
     ;(async () => {
       for (let i = 0; i < 100; i++) {
@@ -122,6 +125,7 @@ export function EngineUI() {
         break
       }
     })()
+    return () => window.clearTimeout(t1)
   }, [shouldWait, showIntro])
 
   if (!isInitialized && showIntro) {
