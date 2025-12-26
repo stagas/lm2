@@ -2,8 +2,8 @@ import { ChatIcon, HeartIcon, PlayIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CommentData, LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
-import { useEngineDspStore } from '../store.ts'
-import { PlayGradientIcon } from './Icons.tsx'
+import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
+import { PauseGradientIcon, PlayGradientIcon } from './Icons.tsx'
 
 function formatAge(timestamp: number | undefined) {
   if (!timestamp) return ''
@@ -54,6 +54,9 @@ function BrowseItem(
   },
 ) {
   const playLoop = useEngineDspStore(state => state.playLoop)
+  const pause = useEngineRuntimeStore(state => state.pause)
+  const playbackState = useEngineRuntimeStore(state => state.playbackState)
+  const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
   const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const getLoopComments = useAppStore(state => state.getLoopComments)
@@ -62,8 +65,18 @@ function BrowseItem(
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isCommentsLoading, setIsCommentsLoading] = useState(false)
 
-  const handlePlay = () => {
+  const isLive = playbackState === 'running' && playingLoopId === loop.id
+
+  const handleOpen = () => {
+    setSelectedLoopId(loop.id)
+  }
+
+  const handleTogglePlay = () => {
     void (async () => {
+      if (isLive) {
+        pause()
+        return
+      }
       setSelectedLoopId(loop.id)
       const code = await getPublicLoopCode(loop.id)
       await playLoop(loop.id, code)
@@ -88,8 +101,8 @@ function BrowseItem(
     <>
       <div
         data-loop-id={loop.id}
-        onPointerDown={handlePlay}
-        className="flex flex-row px-3 py-2 border-b border-neutral-700 cursor-pointer hover:bg-neutral-900 gap-2 justify-between group"
+        className="flex flex-row px-3 py-2 border-b border-neutral-700 hover:bg-neutral-900 gap-2 justify-between"
+        onPointerDown={handleOpen}
       >
         <div className="flex flex-col">
           <div className="flex flex-row gap-2">
@@ -125,14 +138,34 @@ function BrowseItem(
             {isCommentsLoading && <div className="text-xs text-neutral-600">Loading…</div>}
           </div>
         </div>
-        <div className="flex flex-col items-center justify-center">
-          <div className="block group-hover:hidden text-neutral-700">
-            <PlayIcon weight="fill" size={24} />
-          </div>
-          <div className="hidden group-hover:block">
-            <PlayGradientIcon size={24} />
-          </div>
-        </div>
+        {isLive
+          ? (
+            <div
+              className="flex flex-col items-center justify-center cursor-pointer"
+              onPointerDown={e => {
+                e.stopPropagation()
+                handleTogglePlay()
+              }}
+            >
+              <PauseGradientIcon size={24} />
+            </div>
+          )
+          : (
+            <div
+              className="flex flex-col items-center justify-center group cursor-pointer"
+              onPointerDown={e => {
+                e.stopPropagation()
+                handleTogglePlay()
+              }}
+            >
+              <div className="block group-hover:hidden text-neutral-700">
+                <PlayIcon weight="fill" size={24} />
+              </div>
+              <div className="hidden group-hover:block">
+                <PlayGradientIcon size={24} />
+              </div>
+            </div>
+          )}
       </div>
       {isCommentsOpen && <CommentsPanel comments={cachedComments ?? []} />}
     </>
@@ -219,5 +252,3 @@ export function SidebarBrowseList({ loops, emptyLabel }: { loops: LoopData[]; em
     </div>
   )
 }
-
-

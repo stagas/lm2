@@ -31,10 +31,10 @@ import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useBranchWidget } from './useBranchWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useCompressorWidget } from './useCompressorWidget.ts'
+import { useFilterWidget } from './useFilterWidget.ts'
 import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
 import { useLfoWidget } from './useLfoWidget.ts'
 import { useLoopView } from './useLoopView.ts'
-import { useFilterWidget } from './useFilterWidget.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
 import { useSampleWidget } from './useSampleWidget.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
@@ -130,6 +130,7 @@ function DspSourceEditorReady(
     uiBranchMarks,
     uiNumberParams,
     uiSampleDefs,
+    loadedSamples,
     isProgramSwapPending,
     isUpdatingDsp,
   } = useEngineDspStore()
@@ -246,6 +247,7 @@ function DspSourceEditorReady(
         lfoRefs: uiLfoRefs,
         everyRefs: uiEveryRefs,
         atRefs: uiAtRefs,
+        euclidRefs: uiEuclidRefs,
         arrayLiterals: uiArrayLiterals,
         branchMarks: uiBranchMarks,
         numberParams: uiNumberParams,
@@ -301,6 +303,16 @@ function DspSourceEditorReady(
     uiSampleDefs,
   ])
 
+  const isAwaitingSamples = useMemo(() => {
+    if (hasCompileErrors) return false
+    const defs = widgetCompileState.sampleDefs ?? []
+    if (defs.length === 0) return false
+    for (const d of defs) {
+      if (loadedSamples[d.sampleIndex]?.url !== d.url) return true
+    }
+    return false
+  }, [hasCompileErrors, loadedSamples, widgetCompileState.sampleDefs])
+
   const runtimeProgram = isProgramSwapPending ? program2 : program1
 
   useLayoutEffect(() => {
@@ -347,6 +359,7 @@ function DspSourceEditorReady(
       lfoRefs: result.lfoRefs ?? [],
       everyRefs: result.everyRefs ?? [],
       atRefs: result.atRefs ?? [],
+      euclidRefs: result.euclidRefs ?? [],
       arrayLiterals: result.arrayLiterals ?? [],
       branchMarks: result.branchMarks ?? [],
       numberParams: result.numberParams ?? [],
@@ -657,6 +670,14 @@ function DspSourceEditorReady(
     codeFileKeyByFileRef.current.set(codeFile, next)
     return next
   }, [currentLoop?.codeFile])
+
+  if (isAwaitingSamples) {
+    return (
+      <RadialGradient>
+        <SpinnerLarge />
+      </RadialGradient>
+    )
+  }
 
   return (
     <div className="flex flex-row gap-2 w-full h-full relative">
