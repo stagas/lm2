@@ -1,4 +1,4 @@
-import type { LoopData, LoopUpsertRequest, SessionData } from '../../deno/types.ts'
+import type { CommentData, LoopData, LoopUpsertRequest, SessionData } from '../../deno/types.ts'
 
 export class API {
   constructor(private fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {}
@@ -32,6 +32,28 @@ export class API {
       throw new Error('Failed to fetch loop: ' + json.message)
     }
     return json
+  }
+
+  async fetchPublicLoops(): Promise<LoopData[]> {
+    return await this.requestJson<LoopData[]>('/api/public-loops')
+  }
+
+  async fetchPublicLoopData(id: string): Promise<LoopData> {
+    return await this.requestJson<LoopData>(`/api/public-loop/${encodeURIComponent(id)}`)
+  }
+
+  async fetchLikedLoops(): Promise<LoopData[]> {
+    return await this.requestJson<LoopData[]>('/api/liked-loops')
+  }
+
+  async toggleLike(loopId: string): Promise<SessionData> {
+    return await this.requestJson<SessionData>(`/api/loop/${encodeURIComponent(loopId)}/like`, {
+      method: 'POST',
+    })
+  }
+
+  async fetchLoopComments(loopId: string): Promise<CommentData[]> {
+    return await this.requestJson<CommentData[]>(`/api/loop/${encodeURIComponent(loopId)}/comments`)
   }
 
   async login(email: string, password: string): Promise<SessionData> {

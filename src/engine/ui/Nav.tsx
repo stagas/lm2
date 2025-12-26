@@ -62,6 +62,13 @@ export function Nav({
     currentLoop?.data.id ?? null,
   )
 
+  const loopData = currentLoop?.data
+  const title = loopData?.title ?? ''
+  const artist = loopData?.artist ?? ''
+  const remixOf = loopData?.remixOf
+  const likesCount = loopData?.likesCount ?? 0
+  const commentsCount = loopData?.commentsCount ?? 0
+
   return (
     <div className="h-[60px] flex items-center justify-center gap-2 pl-3 border-b-2 border-orange-600">
       <Logo />
@@ -72,20 +79,22 @@ export function Nav({
       <div className="whitespace-nowrap text-2xl mr-3 ml-1 pl-5 h-full gap-4 flex items-center justify-center border-l-2 border-orange-600 font-[Turret_Road] font-bold">
         <div className="flex flex-col items-end">
           <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent">
-            stagas - Deep Shadows in the Dark
+            {artist} - {title}
           </span>
-          <span className="-mt-1 bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-sm">
-            remix of: raver - Shadows
-          </span>
+          {remixOf && (
+            <span className="-mt-1 bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-sm">
+              remix of: {remixOf.artist} - {remixOf.title}
+            </span>
+          )}
         </div>
         <div className="flex flex-col">
           <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
             <HeartIcon size={16} />
-            <span className="relative top-[1.35px] left-[1px]">42</span>
+            <span className="relative top-[1.35px] left-[1px]">{likesCount}</span>
           </div>
           <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
             <ChatIcon size={16} />
-            <span className="relative top-[1.35px] left-[1px]">42</span>
+            <span className="relative top-[1.35px] left-[1px]">{commentsCount}</span>
           </div>
         </div>
       </div>

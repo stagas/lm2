@@ -1,7 +1,7 @@
 import { CodeFile, type CodeFileState, type InputState } from 'mini-code'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { LoopData, SessionData } from '../../deno/types.ts'
+import type { CommentData, LoopData, SessionData } from '../../deno/types.ts'
 import { API } from './api.ts'
 
 type EditorViewState = {
@@ -32,6 +32,17 @@ interface AppState {
   serverLoopsUserId: string | null
   serverLoopsCache: LoopData[]
   upsertServerLoopCache: (loop: LoopData) => void
+  publicLoopsCache: LoopData[]
+  likedLoopsCache: LoopData[]
+  publicLoopCodeCache: Record<string, string>
+  loopCommentsCache: Record<string, CommentData[]>
+  refreshPublicLoops: () => Promise<void>
+  refreshLikedLoops: () => Promise<void>
+  upsertPublicLoopCache: (loop: LoopData) => void
+  removePublicLoopCache: (id: string) => void
+  toggleLike: (loopId: string) => Promise<void>
+  getPublicLoopCode: (loopId: string) => Promise<string>
+  getLoopComments: (loopId: string) => Promise<CommentData[]>
   buffers: Record<string, CodeFileState>
   bases: Record<string, { code: string; ts?: number }>
   dirtyById: Record<string, boolean>
@@ -106,6 +117,10 @@ export const useAppStore = create<AppState>()(
       setHasHydrated: hasHydrated => set({ hasHydrated }),
       serverLoopsUserId: null,
       serverLoopsCache: [],
+      publicLoopsCache: [],
+      likedLoopsCache: [],
+      publicLoopCodeCache: {},
+      loopCommentsCache: {},
 
       setSessionData: sessionData => {
         if (!sessionData) {
@@ -114,21 +129,26 @@ export const useAppStore = create<AppState>()(
             sessionData: null,
             serverLoopsUserId: null,
             serverLoopsCache: [],
+            likedLoopsCache: [],
           })
           return
         }
 
-        set({ sessionState: 'signedIn', sessionData })
+        const likedLoopIds = Array.isArray((sessionData as unknown as { likedLoopIds?: unknown }).likedLoopIds)
+          ? (sessionData as unknown as { likedLoopIds: string[] }).likedLoopIds
+          : []
+        const nextSessionData: SessionData = { ...sessionData, likedLoopIds }
+        set({ sessionState: 'signedIn', sessionData: nextSessionData })
 
         const prevUserId = get().serverLoopsUserId
         const prevCache = get().serverLoopsCache
 
-        const userId = sessionData.user.id
+        const userId = nextSessionData.user.id
         const prevById = new Map<string, LoopData>(
           prevUserId === userId ? prevCache.map(l => [l.id, l]) : [],
         )
 
-        const merged = sessionData.loops.map(loop => {
+        const merged = nextSessionData.loops.map(loop => {
           const prev = prevById.get(loop.id)
           if (!prev) return loop
           if (loop.code != null) return loop
@@ -173,7 +193,23 @@ export const useAppStore = create<AppState>()(
             : state.serverLoopsCache.map((l, i) => i === idx ? nextLoop : l)
 
           const sessionData = state.sessionData
-          if (!sessionData) return { serverLoopsCache: nextCache } as AppState
+          if (!sessionData) {
+            return {
+              serverLoopsCache: nextCache,
+              publicLoopsCache: (() => {
+                if (!ownId) return state.publicLoopsCache
+                if (nextLoop.isPublic) {
+                  const idx = state.publicLoopsCache.findIndex(l => l.id === nextLoop.id)
+                  const { code: _code, comments: _comments, ...summary } = nextLoop
+                  const nextSummary = summary as LoopData
+                  return idx === -1
+                    ? [nextSummary, ...state.publicLoopsCache]
+                    : state.publicLoopsCache.map((l, i) => i === idx ? { ...l, ...nextSummary } : l)
+                }
+                return state.publicLoopsCache.filter(l => l.id !== nextLoop.id)
+              })(),
+            } as AppState
+          }
 
           const { code: _, ...sessionLoop } = nextLoop
           const nextSessionLoops = (() => {
@@ -181,15 +217,109 @@ export const useAppStore = create<AppState>()(
             if (sidx === -1) return ownId ? [sessionLoop, ...sessionData.loops] : sessionData.loops
             return sessionData.loops.map(l => l.id === loop.id ? sessionLoop : l)
           })()
+
           return {
             serverLoopsCache: nextCache,
             sessionData: { ...sessionData, loops: nextSessionLoops },
+            publicLoopsCache: (() => {
+              if (!ownId) return state.publicLoopsCache
+              if (nextLoop.isPublic) {
+                const idx = state.publicLoopsCache.findIndex(l => l.id === nextLoop.id)
+                const { code: _code, comments: _comments, ...summary } = nextLoop
+                const nextSummary = summary as LoopData
+                return idx === -1
+                  ? [nextSummary, ...state.publicLoopsCache]
+                  : state.publicLoopsCache.map((l, i) => i === idx ? { ...l, ...nextSummary } : l)
+              }
+              return state.publicLoopsCache.filter(l => l.id !== nextLoop.id)
+            })(),
           } as AppState
         })
 
         if (loop.code != null) {
           get().setLoopBase(loop.id, loop.code, loop.timestamp)
         }
+      },
+
+      refreshPublicLoops: async () => {
+        const api = get().api
+        const loops = await api.fetchPublicLoops()
+        set({ publicLoopsCache: loops })
+      },
+
+      refreshLikedLoops: async () => {
+        const api = get().api
+        const loops = await api.fetchLikedLoops()
+        set({ likedLoopsCache: loops })
+      },
+
+      upsertPublicLoopCache: loop => {
+        set(state => {
+          const idx = state.publicLoopsCache.findIndex(l => l.id === loop.id)
+          const nextLoop = idx === -1 ? loop : { ...state.publicLoopsCache[idx]!, ...loop }
+          const next = idx === -1
+            ? [nextLoop, ...state.publicLoopsCache]
+            : state.publicLoopsCache.map((l, i) => i === idx ? nextLoop : l)
+          return { publicLoopsCache: next } as AppState
+        })
+      },
+
+      removePublicLoopCache: id => {
+        set(state => ({ publicLoopsCache: state.publicLoopsCache.filter(l => l.id !== id) }))
+      },
+
+      toggleLike: async loopId => {
+        const prevSession = get().sessionData
+        const wasLiked = prevSession?.likedLoopIds.includes(loopId) ?? false
+        const nextSession = await get().api.toggleLike(loopId)
+        get().setSessionData(nextSession)
+        const isLiked = nextSession.likedLoopIds.includes(loopId)
+        const delta = (isLiked ? 1 : 0) - (wasLiked ? 1 : 0)
+
+        if (delta !== 0) {
+          set(state => ({
+            publicLoopsCache: state.publicLoopsCache.map(l =>
+              l.id === loopId ? { ...l, likesCount: Math.max(0, l.likesCount + delta) } : l
+            ),
+            likedLoopsCache: (() => {
+              if (isLiked) {
+                const item = state.publicLoopsCache.find(l => l.id === loopId)
+                if (!item) return state.likedLoopsCache
+                if (state.likedLoopsCache.some(l => l.id === loopId)) return state.likedLoopsCache
+                return [item, ...state.likedLoopsCache]
+              }
+              return state.likedLoopsCache.filter(l => l.id !== loopId)
+            })(),
+          }))
+        }
+      },
+
+      getPublicLoopCode: async loopId => {
+        const cached = get().publicLoopCodeCache[loopId]
+        if (cached != null) return cached
+        const data = await get().api.fetchPublicLoopData(loopId)
+        const code = data.code ?? ''
+        set(state => ({
+          publicLoopCodeCache: { ...state.publicLoopCodeCache, [loopId]: code },
+          publicLoopsCache: (() => {
+            const idx = state.publicLoopsCache.findIndex(l => l.id === loopId)
+            if (idx === -1) return state.publicLoopsCache
+            const prev = state.publicLoopsCache[idx]!
+            const { code: _code, comments: _comments, ...rest } = data
+            return state.publicLoopsCache.map((l, i) => i === idx ? { ...prev, ...rest } : l)
+          })(),
+        }))
+        return code
+      },
+
+      getLoopComments: async loopId => {
+        const cached = get().loopCommentsCache[loopId]
+        if (cached != null) return cached
+        const comments = await get().api.fetchLoopComments(loopId)
+        set(state => ({
+          loopCommentsCache: { ...state.loopCommentsCache, [loopId]: comments },
+        }))
+        return comments
       },
 
       buffers: {},
@@ -499,12 +629,18 @@ export const useAppStore = create<AppState>()(
         localLoops: state.localLoops,
         selectedLoopId: state.selectedLoopId,
       }),
-      version: 10,
+      version: 11,
       onRehydrateStorage: () => (_state, _err) => {
         _state?.setHasHydrated?.(true)
       },
       migrate: (persisted, version) => {
-        return persisted
+        if (!persisted || typeof persisted !== 'object') return persisted
+        const p = persisted as any
+        const sd = p.sessionData
+        if (sd && typeof sd === 'object') {
+          if (!Array.isArray(sd.likedLoopIds)) sd.likedLoopIds = []
+        }
+        return p
       },
     },
   ),
