@@ -49,6 +49,7 @@ export const LoopDataSchema: z.ZodType<LoopData> = z.lazy(() =>
 export const SessionDataSchema = z.object({
   user: UserDataSchema,
   loops: z.array(LoopDataSchema),
+  likedLoopIds: z.array(z.string()),
 }).strict()
 export type SessionData = z.infer<typeof SessionDataSchema>
 
