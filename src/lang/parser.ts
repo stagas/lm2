@@ -15,6 +15,7 @@ import type {
 import { type LangError, lineText } from './errors.ts'
 import type { Token, TokenKind } from './token.ts'
 import { decimalsOf } from '../utils/number.ts'
+import { functionDefinitions } from '../engine/ui/function-definitions.ts'
 
 const locFrom = (a: { line: number; column: number; length: number },
   b?: { line: number; column: number; length: number }): Loc =>
@@ -621,6 +622,20 @@ class Parser {
         const args = this.parseArgs()
         const end = this.expect('r_paren', 'Expected \')\'')
         expr = { kind: 'call', callee: expr, args, loc: locFrom(expr.loc, end) }
+
+        // Validate named parameters against function definitions
+        if (expr.callee.kind === 'ident') {
+          const funcDef = functionDefinitions[expr.callee.name]
+          if (funcDef) {
+            const validParamNames = new Set(funcDef.parameters.map(p => p.name))
+            for (const arg of args) {
+              if (arg.kind === 'named' && !validParamNames.has(arg.name)) {
+                this.error(arg.loc, `Unknown parameter '${arg.name}' for function '${expr.callee.name}'. Valid parameters are: ${[...validParamNames].join(', ')}`)
+              }
+            }
+          }
+        }
+
         continue
       }
       if (this.match('dot')) {
