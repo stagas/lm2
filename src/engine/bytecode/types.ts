@@ -121,7 +121,7 @@ export type FilterRef = {
   callLoc: Loc
   /** Location of the input arg (positional or `in:`). */
   inArgLoc: Loc | null
-  /** Location of the cutoff arg (positional or `cut:`). */
+  /** Location of the cutoff arg (positional or `cutoff:`). */
   cutArgLoc: Loc | null
   /** Location of the Q arg (positional or `q:`). */
   qArgLoc: Loc | null
@@ -129,7 +129,7 @@ export type FilterRef = {
   gainArgLoc: Loc | null
   /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
   knobParams: Array<{
-    name: 'cut' | 'q' | 'gain'
+    name: 'cutoff' | 'q' | 'gain'
     value: number
     valueLoc: Loc
   }>

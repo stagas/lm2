@@ -627,10 +627,24 @@ class Parser {
         if (expr.callee.kind === 'ident') {
           const funcDef = functionDefinitions[expr.callee.name]
           if (funcDef) {
-            const validParamNames = new Set(funcDef.parameters.map(p => p.name))
             for (const arg of args) {
-              if (arg.kind === 'named' && !validParamNames.has(arg.name)) {
-                this.error(arg.loc, `Unknown parameter '${arg.name}' for function '${expr.callee.name}'. Valid parameters are: ${[...validParamNames].join(', ')}`)
+              if (arg.kind === 'named') {
+                const paramNames = funcDef.parameters.map(p => p.name)
+
+                // First check for exact match
+                const exactMatch = paramNames.find(p => p === arg.name)
+                if (exactMatch) continue
+
+                // If no exact match, check for prefix matches
+                const prefixMatches = paramNames.filter(p => p.startsWith(arg.name))
+                if (prefixMatches.length === 1) {
+                  // Update the argument name to the full parameter name
+                  (arg as any).name = prefixMatches[0]
+                } else if (prefixMatches.length === 0) {
+                  this.error(arg.loc, `Unknown parameter '${arg.name}' for function '${expr.callee.name}'. Valid parameters are: ${paramNames.join(', ')}`)
+                } else {
+                  this.error(arg.loc, `Ambiguous parameter '${arg.name}' for function '${expr.callee.name}'. It matches: ${prefixMatches.join(', ')}`)
+                }
               }
             }
           }

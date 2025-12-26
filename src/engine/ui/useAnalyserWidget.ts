@@ -553,10 +553,10 @@ export function useAnalyserWidget({
       out.push({
         type: 'above',
         line: ref.loc.line,
-        column: 1,
-        length: 1,
+        column: ref.loc.column,
+        length: ref.loc.length,
         height: 40,
-        render: (ctx, _x, y, _w, h, vx, vw) => {
+        render: (ctx, x, y, _w, h, vx, vw) => {
           drawAnalyser(ctx, ref.analyserIndex, y, h, vx, vw)
         },
       })

@@ -567,7 +567,7 @@ function DspSourceEditorReady(
 
     for (const ref of widgetCompileState.lpRefs ?? []) {
       for (const p of ref.knobParams ?? []) {
-        if (p.name !== 'cut') continue
+        if (p.name !== 'cutoff') continue
         out.push({
           line: p.valueLoc.line,
           column: p.valueLoc.column,
