@@ -185,12 +185,12 @@ export function useLpWidget({
     c.fillRect(0, 0, w, h)
 
     const pad = 6
-    const leftLabelW = 28
+    const leftLabelW = 20
     const bottomLabelH = 14
-    const chartX = leftLabelW + pad
+    const chartX = leftLabelW
     const chartY = pad
-    const chartW = Math.max(1, w - chartX - pad)
-    const chartH = Math.max(1, h - chartY - bottomLabelH - pad)
+    const chartW = Math.max(1, w - chartX)
+    const chartH = Math.max(1, h - chartY - bottomLabelH)
 
     const sr = audioContext?.sampleRate ?? 48000
     const nyquist = Math.max(1, sr / 2)
@@ -243,6 +243,7 @@ export function useLpWidget({
 
     for (const v of dbMarks) {
       const yy = dbToY(v)
+      if (stepDb === 24 && v === -48) continue
       c.fillText(String(v), -6, yy)
       if (v === 24 || v === -60) continue
       c.beginPath()
@@ -251,7 +252,11 @@ export function useLpWidget({
       c.stroke()
     }
 
-    const freqMarks = [50, 100, 200, 500, 1000, 2000, 5000, 10000]
+    const freqMarks = w < 250
+      ? w < 200
+        ? [50, 300, 1000, 3000, 10000]
+        : [50, 100, 300, 1000, 3000, 10000]
+      : [50, 100, 200, 500, 1000, 2000, 5000, 10000]
     c.textAlign = 'center'
     c.textBaseline = 'top'
     c.strokeStyle = 'rgba(180,180,180,0.14)'
@@ -290,7 +295,7 @@ export function useLpWidget({
     c.stroke()
 
     c.fillStyle = 'rgba(180,180,180,0.9)'
-    c.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+    c.font = '10px "Space Mono"'
     c.textBaseline = 'bottom'
     c.textAlign = 'left'
     const cutTxt = cut >= 1000 ? `${(cut / 1000).toFixed(cut % 1000 === 0 ? 0 : 2)}kHz` : `${cut.toFixed(0)}Hz`

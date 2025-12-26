@@ -7,9 +7,15 @@ import {
   ARRAY_HISTORY_SIZE,
   ARRAY_SIZE,
   ARRAYS_COUNT,
+  AT_TRIG_DATA_OFFSET,
+  AT_TRIG_ENTRY_SIZE,
+  AT_TRIG_HISTORY_SIZE,
   BRANCH_HISTORY_ENTRY_SIZE,
   BRANCH_HISTORY_SIZE,
   CHUNK_SIZE,
+  EVERY_TRIG_DATA_OFFSET,
+  EVERY_TRIG_ENTRY_SIZE,
+  EVERY_TRIG_HISTORY_SIZE,
   HISTORIES_COUNT,
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
@@ -34,7 +40,9 @@ import { compileMiniNotation } from '../../mini/compiler.ts'
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import {
   type AnalyserRef,
+  type AtRef,
   type CompressorRef,
+  type EveryRef,
   type LfoRef,
   type LpRef,
   type ArrayLiteralRef,
@@ -84,6 +92,16 @@ export type VmLpCutHistory = {
 }
 
 export type VmLfoHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
+export type VmEveryTrigHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
+export type VmAtTrigHistory = {
   writePos: number
   raw: Float32Array
 }
@@ -140,6 +158,8 @@ function buildProgram(
   compressorRefs: CompressorRef[]
   lpRefs: LpRef[]
   lfoRefs: LfoRef[]
+  everyRefs: EveryRef[]
+  atRefs: AtRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
@@ -149,7 +169,7 @@ function buildProgram(
   bars?: number
 } {
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs, lfoRefs,
-    arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
+    everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
     })
@@ -167,6 +187,8 @@ function buildProgram(
     compressorRefs: compressorRefs ?? [],
     lpRefs: lpRefs ?? [],
     lfoRefs: lfoRefs ?? [],
+    everyRefs: everyRefs ?? [],
+    atRefs: atRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
     branchMarks: branchMarks ?? [],
     numberParams: numberParams ?? [],
@@ -200,6 +222,8 @@ export type ProgramBuildResult = {
   compressorRefs: CompressorRef[]
   lpRefs: LpRef[]
   lfoRefs: LfoRef[]
+  everyRefs: EveryRef[]
+  atRefs: AtRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   timelineSequences: TimelineSequenceDef[]
   arrayLiterals: ArrayLiteralRef[]
@@ -394,6 +418,32 @@ async function createProgram(
     ),
   }
 
+  const everyTrigHistory$ = program.everyTrigHistory
+  const everyTrigWritePos = new Float32Array(wasmMemory.buffer, everyTrigHistory$, EVERY_TRIG_DATA_OFFSET)
+  const everyTrigHistory: VmEveryTrigHistory = {
+    get writePos() {
+      return everyTrigWritePos[0] || 0
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      everyTrigHistory$,
+      EVERY_TRIG_DATA_OFFSET + EVERY_TRIG_HISTORY_SIZE * EVERY_TRIG_ENTRY_SIZE,
+    ),
+  }
+
+  const atTrigHistory$ = program.atTrigHistory
+  const atTrigWritePos = new Float32Array(wasmMemory.buffer, atTrigHistory$, AT_TRIG_DATA_OFFSET)
+  const atTrigHistory: VmAtTrigHistory = {
+    get writePos() {
+      return atTrigWritePos[0] || 0
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      atTrigHistory$,
+      AT_TRIG_DATA_OFFSET + AT_TRIG_HISTORY_SIZE * AT_TRIG_ENTRY_SIZE,
+    ),
+  }
+
   function nextProgramData() {
     const data = programDataPool[programDataPoolIndex]
     programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length
@@ -427,6 +477,8 @@ async function createProgram(
     sampleNeedleHistory,
     lpCutHistory,
     lfoHistory,
+    everyTrigHistory,
+    atTrigHistory,
     get data() {
       return programData
     },
@@ -439,7 +491,7 @@ async function createProgram(
 
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs, lfoRefs,
-          arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
+          everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -491,6 +543,8 @@ async function createProgram(
           compressorRefs,
           lpRefs,
           lfoRefs,
+          everyRefs,
+          atRefs,
           miniSourceMaps,
           timelineSequences,
           arrayLiterals,

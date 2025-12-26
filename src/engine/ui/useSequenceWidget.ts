@@ -68,6 +68,7 @@ const SIGN_REGEX = /[+-]/
 const DIGIT_REGEX = /[0-9]/
 const NOTE_REGEX = /^[a-gA-G](?:#|b)?[0-9]+/
 const NAME_REGEX = /^[a-zA-Z]+/
+const EUCLID_SUFFIX_REGEX = /\(\s*\d+\s*,\s*\d+(?:\s*,\s*-?\d+)?\s*\)/
 
 function getControlKind(text: string): 'octave' | 'transpose' | 'scale' | 'swing' | null {
   const match = text.match(CONTROL_REGEX)
@@ -303,6 +304,7 @@ export function useSequenceWidget({
       for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
         const opIndex = Math.floor(historyRaw[idx])
         const voiceIndex = Math.floor(historyRaw[idx + 1])
+        const value = historyRaw[idx + 2] as number
         const velocity = historyRaw[idx + 3]
         const startSample = historyRaw[idx + 4] as number
         const endSample = historyRaw[idx + 5] as number
@@ -311,6 +313,10 @@ export function useSequenceWidget({
 
         const toleranceSamples = sampleRate * 0.001
         if (startSample > currentSampleCount + toleranceSamples) continue
+        if (voiceIndex >= 0 && value <= 0) {
+          const txt = map.get(opIndex)?.text ?? ''
+          if (EUCLID_SUFFIX_REGEX.test(txt)) continue
+        }
 
         if (voiceIndex < 0) {
           const op = -voiceIndex

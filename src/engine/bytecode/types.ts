@@ -155,6 +155,22 @@ export type LfoRef = {
   }
 }
 
+export type EveryRef = {
+  everyIndex: number
+  /** Location of the `every` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+}
+
+export type AtRef = {
+  atIndex: number
+  /** Location of the `at` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+}
+
 export type MiniSequenceRef = {
   seqIndex: number
   sequence: string

@@ -174,15 +174,12 @@ export function useLfoWidget({
 
     c.save()
     c.translate(x, widgetY)
-    c.beginPath()
-    c.rect(0, 0, w, h)
-    c.clip()
 
     const theme = getCurrentTheme()
     c.fillStyle = theme.background
     c.fillRect(0, 0, w, h)
 
-    const pad = 6
+    const pad = 0
     const chartX = pad
     const chartY = pad
     const chartW = Math.max(1, w - pad * 2)
@@ -193,9 +190,6 @@ export function useLfoWidget({
     const offset = st?.offset ?? ref.params.offset
     const phase01 = st?.phase01 ?? 0
     const value = st?.value ?? 0
-
-    void bar
-    void offset
 
     const yToPx = (y: number) => chartY + (1 - clamp(y, 0, 1)) * chartH
 
@@ -283,7 +277,7 @@ export function useLfoWidget({
         line: ref.aboveLoc.line,
         column: ref.aboveLoc.column,
         length: Math.max(1, ref.aboveLoc.length),
-        height: 56,
+        height: 40,
         render: (ctx, x, y, w, h, _vx, _vw) => {
           drawLfo(ctx, ref, y, h, x, w)
         },

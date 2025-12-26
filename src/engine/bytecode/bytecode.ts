@@ -26,6 +26,7 @@ import { extractLpsFromProgramWithRefs } from './extract-lp.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
+import { extractAtsFromProgramWithRefs, extractEveriesFromProgramWithRefs } from './extract-trigs.ts'
 import { extractTimelineLabelsFromProgram } from './extract-timeline-labels.ts'
 import { extractTimelineSequencesFromProgramWithRefs } from './extract-timeline-sequences.ts'
 import { binaryCode, encoderError, tryEvalConstNumber, unaryCode } from './helpers.ts'
@@ -33,8 +34,10 @@ import { POSTLUDE, PRELUDE } from './prelude.ts'
 import {
   AnalyserRef,
   ArrayLiteralRef,
+  AtRef,
   BranchMarkRef,
   CompressorRef,
+  EveryRef,
   LfoRef,
   LpRef,
   type MiniSequenceRef,
@@ -58,6 +61,7 @@ export * from './extract-lp.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
 export * from './extract-samples.ts'
+export * from './extract-trigs.ts'
 export * from './extract-timeline-labels.ts'
 export * from './extract-timeline-sequences.ts'
 export * from './types.ts'
@@ -340,6 +344,8 @@ export function encodeLangToVmOps(
   compressorRefs?: CompressorRef[]
   lpRefs?: LpRef[]
   lfoRefs?: LfoRef[]
+  everyRefs?: EveryRef[]
+  atRefs?: AtRef[]
   arrayLiterals?: ArrayLiteralRef[]
   branchMarks?: BranchMarkRef[]
   numberParams?: NumberWithParamsInfo[]
@@ -400,6 +406,8 @@ export function encodeLangToVmOps(
   let compressorRefs: CompressorRef[] = []
   let lpRefs: LpRef[] = []
   let lfoRefs: LfoRef[] = []
+  let everyRefs: EveryRef[] = []
+  let atRefs: AtRef[] = []
   const numberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
   const numberLiterals = extractNumberLiteralsFromProgram(parsed.program).filter(p => p.line > 0)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
@@ -455,6 +463,31 @@ export function encodeLangToVmOps(
     const idx = nextLpIndex
     usedLpIndices.add(idx)
     nextLpIndex = Math.min(MAX_LP_INDEX, idx + 1)
+    return idx
+  }
+
+  const MAX_TRIG_INDEX = 255
+  const clampTrigIndex = (n: number) => Math.max(0, Math.min(MAX_TRIG_INDEX, Math.floor(Number(n || 0))))
+
+  const usedEveryIndices = new Set<number>([0])
+  let nextEveryIndex = 1
+  const allocEveryIndex = (): number => {
+    if (nextEveryIndex > MAX_TRIG_INDEX) return MAX_TRIG_INDEX
+    while (usedEveryIndices.has(nextEveryIndex) && nextEveryIndex < MAX_TRIG_INDEX) nextEveryIndex++
+    const idx = nextEveryIndex
+    usedEveryIndices.add(idx)
+    nextEveryIndex = Math.min(MAX_TRIG_INDEX, idx + 1)
+    return idx
+  }
+
+  const usedAtIndices = new Set<number>([0])
+  let nextAtIndex = 1
+  const allocAtIndex = (): number => {
+    if (nextAtIndex > MAX_TRIG_INDEX) return MAX_TRIG_INDEX
+    while (usedAtIndices.has(nextAtIndex) && nextAtIndex < MAX_TRIG_INDEX) nextAtIndex++
+    const idx = nextAtIndex
+    usedAtIndices.add(idx)
+    nextAtIndex = Math.min(MAX_TRIG_INDEX, idx + 1)
     return idx
   }
 
@@ -628,6 +661,48 @@ export function encodeLangToVmOps(
 
         if (!namedIndexArg) {
           const idx = allocLpIndex()
+          return {
+            ...expr,
+            callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }],
+          }
+        }
+      }
+
+      if (calleeName === 'every') {
+        const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
+        const idxVal = namedIndexArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = clampTrigIndex(Number(idxVal.value ?? 0))
+          usedEveryIndices.add(idx)
+          namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (!namedIndexArg) {
+          const idx = allocEveryIndex()
+          return {
+            ...expr,
+            callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }],
+          }
+        }
+      }
+
+      if (calleeName === 'at') {
+        const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
+        const idxVal = namedIndexArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = clampTrigIndex(Number(idxVal.value ?? 0))
+          usedAtIndices.add(idx)
+          namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (!namedIndexArg) {
+          const idx = allocAtIndex()
           return {
             ...expr,
             callee,
@@ -865,6 +940,8 @@ export function encodeLangToVmOps(
   compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
   lpRefs = extractLpsFromProgramWithRefs(src, transformedProgram)
   lfoRefs = extractLfosFromProgramWithRefs(src, transformedProgram)
+  everyRefs = extractEveriesFromProgramWithRefs(src, transformedProgram)
+  atRefs = extractAtsFromProgramWithRefs(src, transformedProgram)
   const compiled = compile(src, transformedProgram)
   errors.push(...compiled.errors)
   if (errors.length) return { errors }
@@ -1250,6 +1327,8 @@ export function encodeLangToVmOps(
       compressorRefs,
       lpRefs,
       lfoRefs,
+      everyRefs,
+      atRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,
@@ -1269,6 +1348,8 @@ export function encodeLangToVmOps(
       compressorRefs,
       lpRefs,
       lfoRefs,
+      everyRefs,
+      atRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,
