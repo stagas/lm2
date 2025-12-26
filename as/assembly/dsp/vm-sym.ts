@@ -83,4 +83,10 @@ export enum VmSym {
   Knee,
   Key,
   Euclid,
+  LfoSine,
+  LfoTri,
+  LfoSaw,
+  LfoRamp,
+  LfoSqr,
+  LfoSah,
 }

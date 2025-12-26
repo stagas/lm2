@@ -102,6 +102,12 @@ export enum VmBuiltin {
   Slew = VmSym.Slew,
   Lp = VmSym.Lp,
   Euclid = VmSym.Euclid,
+  LfoSine = VmSym.LfoSine,
+  LfoTri = VmSym.LfoTri,
+  LfoSaw = VmSym.LfoSaw,
+  LfoRamp = VmSym.LfoRamp,
+  LfoSqr = VmSym.LfoSqr,
+  LfoSah = VmSym.LfoSah,
 }
 
 export const VM_FUNC_HEADER: i32 = -2

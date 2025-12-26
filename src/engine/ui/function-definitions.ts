@@ -696,4 +696,118 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'saw(hz) |> lp($, cut:500, q:0.75) |> out($)',
     ],
   },
+  lfosine: {
+    name: 'lfosine',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Beat offset in whole-note units',
+      },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0',
+      },
+    ],
+    returnType: 'number',
+    description: 'Beat-locked sine LFO in 0..1 synced to the global sample clock.',
+    examples: [
+      'lfosine(1/16)',
+      'lfosine(1/16, 0, trig)',
+      'lfosine(bar:1/16, offset:1/64, trig)',
+    ],
+  },
+  lfotri: {
+    name: 'lfotri',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units' },
+      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
+        description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0' },
+    ],
+    returnType: 'number',
+    description: 'Beat-locked triangle LFO in 0..1 synced to the global sample clock.',
+    examples: [
+      'lfotri(1/8)',
+      'lfotri(1/8, 0, trig)',
+      'lfotri(bar:1/8, offset:-1/32, trig)',
+    ],
+  },
+  lfosaw: {
+    name: 'lfosaw',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units' },
+      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
+        description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0' },
+    ],
+    returnType: 'number',
+    description: 'Beat-locked saw LFO in 0..1 synced to the global sample clock.',
+    examples: [
+      'lfosaw(1/4)',
+      'lfosaw(1/4, 0, trig)',
+      'lfosaw(bar:1/4, offset:1/16, trig)',
+    ],
+  },
+  lforamp: {
+    name: 'lforamp',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units' },
+      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
+        description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0' },
+    ],
+    returnType: 'number',
+    description: 'Beat-locked ramp LFO in 0..1 synced to the global sample clock.',
+    examples: [
+      'lforamp(1/4)',
+      'lforamp(1/4, 0, trig)',
+      'lforamp(bar:1/4, offset:-1/16, trig)',
+    ],
+  },
+  lfosqr: {
+    name: 'lfosqr',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units' },
+      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
+        description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0' },
+    ],
+    returnType: 'number',
+    description: 'Beat-locked square LFO in 0..1 synced to the global sample clock.',
+    examples: [
+      'lfosqr(1/8)',
+      'lfosqr(1/8, 0, trig)',
+      'lfosqr(bar:1/8, offset:1/32, trig)',
+    ],
+  },
+  lfosah: {
+    name: 'lfosah',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Hold interval in whole-note units (e.g. 1/16)' },
+      {
+        name: 'seed',
+        type: 'number',
+        optional: true,
+        defaultValue: 1234,
+        description: 'Deterministic seed used for the held random values',
+      },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units' },
+      { name: 'trig', type: 'number', optional: true, defaultValue: 0,
+        description: 'Trigger that resets the cycle alignment to the offset position when it crosses from ≤0 to >0' },
+    ],
+    returnType: 'number',
+    description: 'Beat-locked sample-and-hold LFO in 0..1, deterministic per (seed, cycle).',
+    examples: [
+      'lfosah(1/16)',
+      'lfosah(1/16, 1234, 0, trig)',
+      'lfosah(bar:1/16, seed:42, offset:1/64, trig)',
+    ],
+  },
 }

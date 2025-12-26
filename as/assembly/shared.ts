@@ -46,6 +46,12 @@ export enum Op {
   Lp,
   Compressor,
   Euclid,
+  LfoSine,
+  LfoTri,
+  LfoSaw,
+  LfoRamp,
+  LfoSqr,
+  LfoSah,
 }
 
 export enum SeqOp {

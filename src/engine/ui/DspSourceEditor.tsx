@@ -28,6 +28,7 @@ import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
 import { useCompressorWidget } from './useCompressorWidget.ts'
+import { useLfoWidget } from './useLfoWidget.ts'
 import { useLpWidget } from './useLpWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useBranchWidget } from './useBranchWidget.ts'
@@ -114,6 +115,7 @@ function DspSourceEditorReady(
     uiAnalyserRefs,
     uiCompressorRefs,
     uiLpRefs,
+    uiLfoRefs,
     uiArrayLiterals,
     uiBranchMarks,
     uiNumberParams,
@@ -207,6 +209,7 @@ function DspSourceEditorReady(
         analyserRefs: uiAnalyserRefs,
         compressorRefs: uiCompressorRefs,
         lpRefs: uiLpRefs,
+        lfoRefs: uiLfoRefs,
         arrayLiterals: uiArrayLiterals,
         branchMarks: uiBranchMarks,
         numberParams: uiNumberParams,
@@ -225,6 +228,7 @@ function DspSourceEditorReady(
         analyserRefs: uiAnalyserRefs,
         compressorRefs: uiCompressorRefs,
         lpRefs: uiLpRefs,
+        lfoRefs: uiLfoRefs,
         arrayLiterals: uiArrayLiterals,
         branchMarks: uiBranchMarks,
         numberParams: uiNumberParams,
@@ -248,6 +252,7 @@ function DspSourceEditorReady(
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
       lpRefs: previewCompile.lpRefs ?? [],
+      lfoRefs: previewCompile.lfoRefs ?? [],
       arrayLiterals: previewCompile.arrayLiterals ?? [],
       branchMarks: previewCompile.branchMarks ?? [],
       numberParams: previewCompile.numberParams ?? [],
@@ -265,6 +270,7 @@ function DspSourceEditorReady(
     uiAnalyserRefs,
     uiCompressorRefs,
     uiLpRefs,
+    uiLfoRefs,
     uiArrayLiterals,
     uiBranchMarks,
     uiNumberParams,
@@ -313,6 +319,7 @@ function DspSourceEditorReady(
       analyserRefs: result.analyserRefs ?? [],
       compressorRefs: result.compressorRefs ?? [],
       lpRefs: result.lpRefs ?? [],
+      lfoRefs: result.lfoRefs ?? [],
       arrayLiterals: result.arrayLiterals ?? [],
       branchMarks: result.branchMarks ?? [],
       numberParams: result.numberParams ?? [],
@@ -445,6 +452,18 @@ function DspSourceEditorReady(
     playbackState,
   })
 
+  const { widgets: lfoWidgets, onBeforeDraw: onBeforeDrawLfo } = useLfoWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    lfoRefs: widgetCompileState.lfoRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isPlayingLoop,
+    playbackState,
+  })
+
   const { widgets: arrayAccessWidgets, onBeforeDraw: onBeforeDrawArrayAccess } = useArrayAccessWidget({
     program1: runtimeProgram,
     dspSource: widgetCompileState.dspSource,
@@ -528,6 +547,7 @@ function DspSourceEditorReady(
     onBeforeDrawAnalyser()
     onBeforeDrawCompressor()
     onBeforeDrawLp()
+    onBeforeDrawLfo()
     onBeforeDrawArrayAccess()
     onBeforeDrawBranch()
     onBeforeDrawSample()
@@ -539,6 +559,7 @@ function DspSourceEditorReady(
     onBeforeDrawAnalyser,
     onBeforeDrawCompressor,
     onBeforeDrawLp,
+    onBeforeDrawLfo,
     onBeforeDrawArrayAccess,
     onBeforeDrawBranch,
     onBeforeDrawSample,
@@ -551,6 +572,7 @@ function DspSourceEditorReady(
       ...analyserWidgets,
       ...compressorWidgets,
       ...lpWidgets,
+      ...lfoWidgets,
       ...timelineWidgets,
       ...timelineSequenceWidgets,
       ...pianorollWidgets,
@@ -561,7 +583,7 @@ function DspSourceEditorReady(
       ...knobWidgets,
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, lpWidgets, knobWidgets, viewSampleCount])
+    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, lpWidgets, lfoWidgets, knobWidgets, viewSampleCount])
 
   const codeEditorKey = useMemo(() => {
     const codeFile = currentLoop?.codeFile

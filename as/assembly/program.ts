@@ -17,6 +17,9 @@ import {
   LP_CUT_DATA_OFFSET,
   LP_CUT_ENTRY_SIZE,
   LP_CUT_HISTORY_SIZE,
+  LFO_DATA_OFFSET,
+  LFO_ENTRY_SIZE,
+  LFO_HISTORY_SIZE,
 } from './constants'
 import { GensPool } from './gens-pool'
 import { Smoothed } from './lib/smoothed'
@@ -36,6 +39,9 @@ export class Program {
   )
   lpCutHistory: StaticArray<f32> = new StaticArray<f32>(
     LP_CUT_DATA_OFFSET + LP_CUT_HISTORY_SIZE * LP_CUT_ENTRY_SIZE,
+  )
+  lfoHistory: StaticArray<f32> = new StaticArray<f32>(
+    LFO_DATA_OFFSET + LFO_HISTORY_SIZE * LFO_ENTRY_SIZE,
   )
 
   gensPool: GensPool = new GensPool()

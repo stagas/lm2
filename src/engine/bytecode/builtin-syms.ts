@@ -32,6 +32,12 @@ export const builtinSyms: Record<string, number> = {
   slew: VmSym.Slew,
   lp: VmSym.Lp,
   euclid: VmSym.Euclid,
+  lfosine: VmSym.LfoSine,
+  lfotri: VmSym.LfoTri,
+  lfosaw: VmSym.LfoSaw,
+  lforamp: VmSym.LfoRamp,
+  lfosqr: VmSym.LfoSqr,
+  lfosah: VmSym.LfoSah,
   // Runtime directive globals (stable ids so VM can provide defaults)
   tune: VmSym.Tune,
   octave: VmSym.Octave,

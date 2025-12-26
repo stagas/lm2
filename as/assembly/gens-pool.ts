@@ -7,6 +7,7 @@ import { Every } from './gen/every'
 import { Euclid } from './gen/euclid'
 import { Gen } from './gen/gen'
 import { Compressor } from './gen/compressor'
+import { LfoRamp, LfoSah, LfoSaw, LfoSine, LfoSqr, LfoTri } from './gen/lfo'
 import { Mini } from './gen/mini'
 import { Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
 import { Sampler } from './gen/sampler'
@@ -71,6 +72,12 @@ export class GensPool {
   private euclids: GenPool<Euclid> = new GenPool<Euclid>(() => new Euclid())
   private lps: GenPool<Lp> = new GenPool<Lp>(() => new Lp())
   private compressors: GenPool<Compressor> = new GenPool<Compressor>(() => new Compressor())
+  private lfoSines: GenPool<LfoSine> = new GenPool<LfoSine>(() => new LfoSine())
+  private lfoTris: GenPool<LfoTri> = new GenPool<LfoTri>(() => new LfoTri())
+  private lfoSaws: GenPool<LfoSaw> = new GenPool<LfoSaw>(() => new LfoSaw())
+  private lfoRamps: GenPool<LfoRamp> = new GenPool<LfoRamp>(() => new LfoRamp())
+  private lfoSqrs: GenPool<LfoSqr> = new GenPool<LfoSqr>(() => new LfoSqr())
+  private lfoSahs: GenPool<LfoSah> = new GenPool<LfoSah>(() => new LfoSah())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -92,6 +99,12 @@ export class GensPool {
     this.euclids.resetIndex()
     this.lps.resetIndex()
     this.compressors.resetIndex()
+    this.lfoSines.resetIndex()
+    this.lfoTris.resetIndex()
+    this.lfoSaws.resetIndex()
+    this.lfoRamps.resetIndex()
+    this.lfoSqrs.resetIndex()
+    this.lfoSahs.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -114,6 +127,12 @@ export class GensPool {
     this.euclids.reset()
     this.lps.reset()
     this.compressors.reset()
+    this.lfoSines.reset()
+    this.lfoTris.reset()
+    this.lfoSaws.reset()
+    this.lfoRamps.reset()
+    this.lfoSqrs.reset()
+    this.lfoSahs.reset()
   }
 
   get(op: Op): Gen {
@@ -158,6 +177,18 @@ export class GensPool {
         return this.lps.get()
       case Op.Compressor:
         return this.compressors.get()
+      case Op.LfoSine:
+        return this.lfoSines.get()
+      case Op.LfoTri:
+        return this.lfoTris.get()
+      case Op.LfoSaw:
+        return this.lfoSaws.get()
+      case Op.LfoRamp:
+        return this.lfoRamps.get()
+      case Op.LfoSqr:
+        return this.lfoSqrs.get()
+      case Op.LfoSah:
+        return this.lfoSahs.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -182,5 +213,11 @@ export class GensPool {
     this.ats.copyFrom(source.ats)
     this.lps.copyFrom(source.lps)
     this.compressors.copyFrom(source.compressors)
+    this.lfoSines.copyFrom(source.lfoSines)
+    this.lfoTris.copyFrom(source.lfoTris)
+    this.lfoSaws.copyFrom(source.lfoSaws)
+    this.lfoRamps.copyFrom(source.lfoRamps)
+    this.lfoSqrs.copyFrom(source.lfoSqrs)
+    this.lfoSahs.copyFrom(source.lfoSahs)
   }
 }

@@ -1,11 +1,15 @@
 We define the spec for `lfo<x>` gens.
 Those will be: `lfosine` `lfotri` `lfosaw` `lforamp` `lfosqr` `lfosah`(sample and hold).
 
-They all have the API `(bar)` e.g `lfosine(bar:1/16)` or `lfosaw(4/1)` that determines a global sample count beat-locked period where they oscillate.
+They all have the API `(bar, offset?, trig?)` e.g `lfosine(bar:1/16, offset:0, trig:0)` or `lfosaw(4/1, 0, trig)` that determines a global sample count beat-locked period where they oscillate.
+
+`trig` resets the phase when it crosses from `<= 0` to `> 0` (phase restarts at the `offset` position).
 
 They should be in sync regardless of when they were inserted, they all sync to the global sample count(they are stateless).
 
-`lfosah(bar,seed)` receives an optional seed for its rng.
+`lfosah(bar, seed, offset?, trig?)` receives an optional seed for its rng.
+
+All `lfo*` outputs are in the range `0..1` (not `-1..1`).
 
 We also create UI widgets in the same appearance as the `useLpWidget.ts`, where they draw their main curve (a single full period sine wave, a single full period sawtooth wave, or a diagonal line in the case of SAH.) We then publish history depending where that value is in time we show a straight vertical "playhead" similar to the `useLpWidget.ts`'s cutoff vertical line. For SAH we show again where in the diagonal line the value is now, all with latency compensation (without any extra alpha smoothing).
 We do not need to draw any text or axis markers.
