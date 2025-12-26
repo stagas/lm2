@@ -9,6 +9,7 @@ import { callCompressor } from './builtins/compressor'
 import { callDegree } from './builtins/degree'
 import { callEvery } from './builtins/every'
 import { callEuclid } from './builtins/euclid'
+import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLp } from './builtins/lp'
 import { callMap } from './builtins/map'
 import { callMini } from './builtins/mini'
@@ -352,6 +353,37 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Euclid) {
       callEuclid(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.LfoSine) {
+      callLfoSine(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.LfoTri) {
+      callLfoTri(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.LfoSaw) {
+      callLfoSaw(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.LfoRamp) {
+      callLfoRamp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.LfoSqr) {
+      callLfoSqr(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.LfoSah) {
+      callLfoSah(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

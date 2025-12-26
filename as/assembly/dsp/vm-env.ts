@@ -150,6 +150,30 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Euclid)
       return
     }
+    if (sym === VmSym.LfoSine) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.LfoSine)
+      return
+    }
+    if (sym === VmSym.LfoTri) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.LfoTri)
+      return
+    }
+    if (sym === VmSym.LfoSaw) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.LfoSaw)
+      return
+    }
+    if (sym === VmSym.LfoRamp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.LfoRamp)
+      return
+    }
+    if (sym === VmSym.LfoSqr) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.LfoSqr)
+      return
+    }
+    if (sym === VmSym.LfoSah) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.LfoSah)
+      return
+    }
     if (sym === VmSym.Lp) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Lp)
       return

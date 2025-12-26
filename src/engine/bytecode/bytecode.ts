@@ -21,6 +21,7 @@ import { builtinSyms } from './builtin-syms.ts'
 import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
 import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
+import { extractLfosFromProgramWithRefs } from './extract-lfo.ts'
 import { extractLpsFromProgramWithRefs } from './extract-lp.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
@@ -34,6 +35,7 @@ import {
   ArrayLiteralRef,
   BranchMarkRef,
   CompressorRef,
+  LfoRef,
   LpRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
@@ -51,6 +53,7 @@ export * from './builtin-syms.ts'
 export * from './extract-analysers.ts'
 export * from './extract-bpm-bars.ts'
 export * from './extract-compressors.ts'
+export * from './extract-lfo.ts'
 export * from './extract-lp.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
@@ -336,6 +339,7 @@ export function encodeLangToVmOps(
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
   lpRefs?: LpRef[]
+  lfoRefs?: LfoRef[]
   arrayLiterals?: ArrayLiteralRef[]
   branchMarks?: BranchMarkRef[]
   numberParams?: NumberWithParamsInfo[]
@@ -395,6 +399,7 @@ export function encodeLangToVmOps(
   let analyserRefs: AnalyserRef[] = []
   let compressorRefs: CompressorRef[] = []
   let lpRefs: LpRef[] = []
+  let lfoRefs: LfoRef[] = []
   const numberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
   const numberLiterals = extractNumberLiteralsFromProgram(parsed.program).filter(p => p.line > 0)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
@@ -859,6 +864,7 @@ export function encodeLangToVmOps(
   analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
   compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
   lpRefs = extractLpsFromProgramWithRefs(src, transformedProgram)
+  lfoRefs = extractLfosFromProgramWithRefs(src, transformedProgram)
   const compiled = compile(src, transformedProgram)
   errors.push(...compiled.errors)
   if (errors.length) return { errors }
@@ -1243,6 +1249,7 @@ export function encodeLangToVmOps(
       analyserRefs,
       compressorRefs,
       lpRefs,
+      lfoRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,
@@ -1261,6 +1268,7 @@ export function encodeLangToVmOps(
       analyserRefs,
       compressorRefs,
       lpRefs,
+      lfoRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,

@@ -135,6 +135,26 @@ export type LpRef = {
   }
 }
 
+export type LfoRef = {
+  lfoIndex: number
+  lfoType: 'sine' | 'tri' | 'saw' | 'ramp' | 'sqr' | 'sah'
+  /** Location of the `lfo*` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  barArgLoc: Loc | null
+  offsetArgLoc: Loc | null
+  trigArgLoc: Loc | null
+  seedArgLoc: Loc | null
+  params: {
+    bar: number
+    offset: number
+    seed: number
+  }
+}
+
 export type MiniSequenceRef = {
   seqIndex: number
   sequence: string

@@ -1,83 +1,108 @@
-[types.ts](as/assembly/dsp/types.ts)
-[vm-builtins.ts](as/assembly/dsp/vm-builtins.ts)
-[vm-env.ts](as/assembly/dsp/vm-env.ts)
-[gens-pool.ts](as/assembly/gens-pool.ts)
-[shared.ts](as/assembly/shared.ts)
-[syms.ts](as/assembly/syms.ts)
-[builtin-syms.ts](src/engine/bytecode/builtin-syms.ts)
-[function-definitions.ts](src/engine/ui/function-definitions.ts)
+## Adding a new gen (end-to-end)
 
-### Adding a new `@as/assembly/gen/*` node (end-to-end checklist)
+### Files you will touch (links)
 
-This project exposes audio generators (“gens”) through a small chain:
+- **DSP gen implementation**: [`as/assembly/gen/<name>.ts`](as/assembly/gen)
+- **VM builtin wrapper**: [`as/assembly/dsp/builtins/<name>.ts`](as/assembly/dsp/builtins)
+- **Stable symbol ids (TS+AS shared)**: [`as/assembly/dsp/vm-sym.ts`](as/assembly/dsp/vm-sym.ts)
+- **Stable op ids (gen pool dispatch)**: [`as/assembly/shared.ts`](as/assembly/shared.ts)
+- **Gen pool registration**: [`as/assembly/gens-pool.ts`](as/assembly/gens-pool.ts)
+- **VM “builtin name” globals**: [`as/assembly/dsp/vm-env.ts`](as/assembly/dsp/vm-env.ts)
+- **VM builtin id mapping**: [`as/assembly/dsp/types.ts`](as/assembly/dsp/types.ts)
+- **VM builtin dispatch**: [`as/assembly/dsp/vm-builtins.ts`](as/assembly/dsp/vm-builtins.ts)
+- **TS encoder builtin name → id**: [`src/engine/bytecode/builtin-syms.ts`](src/engine/bytecode/builtin-syms.ts)
+- **Editor docs/known calls**: [`src/engine/ui/function-definitions.ts`](src/engine/ui/function-definitions.ts)
 
-- `as/assembly/gen/<name>.ts`: DSP node (`Gen`) implementation (stateful, runs `process(out$, length)`).
-- `as/assembly/dsp/builtins/<name>.ts`: VM builtin wrapper that reads args from the VM stack, allocates audio buffers, and calls the gen.
-- Shared wiring so the TS bytecode encoder and AS VM agree on builtin ids and dispatch.
-- `src/engine/ui/function-definitions.ts`: UI/editor docs + “is this call name defined?” list.
+### Checklist
 
-#### 1. Add the DSP node
-
-- Create `as/assembly/gen/<name>.ts`
-  - Export a `class <Name> extends Gen`
-  - Add input pointer fields like `hz$: usize`, etc.
+- **Implement the gen**
+  - Add `as/assembly/gen/<name>.ts` exporting `class <Name> extends Gen`.
+  - Add `*: usize` input pointers (example: `hz$: usize`).
   - Implement:
     - `process(out$: usize, length: i32): void`
-    - `reset(): void` (reset state)
-    - `copyFrom(other: Gen): void` (copy state for hot-swaps)
+    - `reset(): void` (only if the gen is stateful)
+    - `copyFrom(other: Gen): void` (for hot-swaps; copy internal state only)
 
-#### 2. Add the VM builtin wrapper
+- **Add the VM builtin wrapper**
+  - Add `as/assembly/dsp/builtins/<name>.ts` exporting `call<Name>(...)`.
+  - Parse positional + named args into `(tag, num, aux)`.
+  - Convert args with `audio.toAudioPtr(...)`.
+  - Allocate output with `audio.allocOut(program)` + `program.getOutBuffer(outIndex)`.
+  - Get the gen with `program.gensPool.get(Op.<Name>)` and call `process(...)`.
+  - Push result with `stack.push(VmTag.Audio, 0.0, outIndex)`.
 
-- Create `as/assembly/dsp/builtins/<name>.ts`
-  - Export `call<Name>(...)` (match the signature style used by `callSlew`, `callAt`, etc.)
-  - Read positional + named args (`VmSym.*`) into `(tag, num, aux)` triples
-  - Convert args to audio pointers via `audio.toAudioPtr(...)`
-  - Allocate output via `audio.allocOut(program)` and call the gen from `program.gensPool.get(Op.<Name>)`
+- **Append stable ids (do not reorder)**
+  - Append `VmSym.<Name>` (and any `VmSym.<ArgKey>` named-arg keys) to `as/assembly/dsp/vm-sym.ts`.
+  - Append `Op.<Name>` to `as/assembly/shared.ts`.
 
-#### 3. Add / extend shared ids (stable)
+- **Register in the gen pool**
+  - Import the class + add a `GenPool` field in `as/assembly/gens-pool.ts`.
+  - Wire it into `resetIndices()`, `reset()`, `get(op)`, and `copyFrom(...)`.
 
-These ids must be stable across TS+AS. Always **append** new enum entries.
+- **Make the VM treat it as a builtin**
+  - In `as/assembly/dsp/vm-env.ts`, add a `VmSym.<Name>` case that pushes `VmTag.Builtin`.
+  - In `as/assembly/dsp/types.ts`, add `VmBuiltin.<Name> = VmSym.<Name>`.
+  - In `as/assembly/dsp/vm-builtins.ts`, import `call<Name>` and add a dispatch `if (calleeAux === VmBuiltin.<Name>) { ... }`.
 
-- Update `as/assembly/syms.ts`
-  - Add a `VmSym.<Name>` entry for the builtin name
-  - Add any `VmSym.<ArgName>` entries used for **named arguments** (example: `Width` for `width:`)
+- **Make the TS encoder emit the builtin id**
+  - Add `<callName>: VmSym.<Name>` to `src/engine/bytecode/builtin-syms.ts`.
+  - Add any named-arg keys (e.g. `width: VmSym.Width`) if the call accepts named args.
 
-- Update `as/assembly/shared.ts`
-  - Add `Op.<Name>` for the gen pool switch (`program.gensPool.get(Op.<Name>)`)
+- **Expose it in the editor**
+  - Add/extend the entry in `src/engine/ui/function-definitions.ts` (this also makes the name “defined” for diagnostics).
 
-#### 4. Register the gen in the pool
 
-- Update `as/assembly/gens-pool.ts`
-  - Import the new gen class
-  - Add a `GenPool` field
-  - Add it to:
-    - `resetIndices()`
-    - `reset()`
-    - `get(op: Op)` switch
-    - `copyFrom(...)`
+## Adding a widget for a gen (with history ring buffer)
 
-#### 5. Make the VM treat it as a builtin
+This is the pattern used by widgets like LP/LFO: the DSP builtin writes a best-effort history ring buffer in WASM memory, and the UI reads it to render a widget with latency-compensated time.
 
-- Update `as/assembly/dsp/vm-env.ts`
-  - Add a `VmSym.<Name>` case to push `VmTag.Builtin`
+### Files you will touch (links)
 
-- Update `as/assembly/dsp/types.ts`
-  - Add `VmBuiltin.<Name> = VmSym.<Name>`
+- **History layout constants**: [`as/assembly/constants.ts`](as/assembly/constants.ts)
+- **Program memory (history buffer storage)**: [`as/assembly/program.ts`](as/assembly/program.ts)
+- **Builtin writes history**: [`as/assembly/dsp/builtins/<name>.ts`](as/assembly/dsp/builtins)
+- **Expose history pointer to TS via struct**: [`src/engine/dsp/assembly.ts`](src/engine/dsp/assembly.ts)
+- **Create a typed view over the history buffer**: [`src/engine/dsp/program.ts`](src/engine/dsp/program.ts)
+- **TS-side call-site refs (where to place widgets)**:
+  - [`src/engine/bytecode/extract-<name>.ts`](src/engine/bytecode)
+  - [`src/engine/bytecode/types.ts`](src/engine/bytecode/types.ts)
+  - [`src/engine/bytecode/bytecode.ts`](src/engine/bytecode/bytecode.ts)
+- **Thread the refs through state**:
+  - [`src/engine/dsp/program.ts`](src/engine/dsp/program.ts) (compile result shape)
+  - [`src/engine/stores/dsp.ts`](src/engine/stores/dsp.ts)
+  - [`src/engine/types.ts`](src/engine/types.ts)
+  - [`src/engine/ui/DspSourceEditor.tsx`](src/engine/ui/DspSourceEditor.tsx)
+- **Implement the widget hook**:
+  - [`src/engine/ui/use<Thing>Widget.ts`](src/engine/ui)
+  - Useful examples: [`src/engine/ui/useLpWidget.ts`](src/engine/ui/useLpWidget.ts)
+  - Latency-compensated time helper: [`src/engine/ui/update-predicted-sample-count.ts`](src/engine/ui/update-predicted-sample-count.ts)
 
-- Update `as/assembly/dsp/vm-builtins.ts`
-  - Import `call<Name>` from `./builtins/<name>`
-  - Add a dispatch case `if (calleeAux === VmBuiltin.<Name>) { call<Name>(...); return }`
+### Checklist
 
-#### 6. Make the TS encoder emit the right symbol ids
+- **Define the history ring format**
+  - In `as/assembly/constants.ts`, add `*_HISTORY_SIZE`, `*_ENTRY_SIZE`, and offsets like `*_WRITE_POS_OFFSET` / `*_DATA_OFFSET`.
 
-- Update `src/engine/bytecode/builtin-syms.ts`
-  - Add `<name>: VmSym.<Name>` so the compiler emits the stable builtin id
-  - Add any named arg keys too (example: `width: VmSym.Width`)
+- **Allocate the ring buffer in the WASM `Program`**
+  - In `as/assembly/program.ts`, add a `StaticArray<f32>` sized as `DATA_OFFSET + HISTORY_SIZE * ENTRY_SIZE`.
 
-#### 7. Expose it in the UI / editor
+- **Write history from the builtin**
+  - In `as/assembly/dsp/builtins/<name>.ts`, after calling the gen, write one entry:
+    - `writePos` → slot → base offset
+    - store any params needed for UI + a `sampleCountMod` (commonly `& 0xfffff`)
+    - increment `writePos` modulo the same mask
 
-- Update `src/engine/ui/function-definitions.ts`
-  - Add a `functionDefinitions.<name>` entry (signature + docs + examples)
-  - This also updates the set of “known calls” used for undefined-name errors.
+- **Expose the pointer to TS**
+  - Add the new field to `ProgramStruct` in `src/engine/dsp/assembly.ts`.
+  - In `src/engine/dsp/program.ts`, create a typed `Float32Array` view and export a small `{ writePos, raw }` object.
+
+- **Extract call refs for widget anchoring**
+  - Add `extract-<name>.ts` + a `*Ref` type that includes `loc`, `aboveLoc`, and any arg locs you want for future widgets/knobs.
+  - Wire that extraction into `src/engine/bytecode/bytecode.ts` so `encodeLangToVmOps` returns the refs.
+
+- **Render the widget**
+  - Implement `use<Thing>Widget.ts`:
+    - On `onBeforeDraw`, read new history entries and update per-index state.
+    - In `render`, draw the static curve and a playhead/value marker using predicted sample count.
+  - Wire it into `src/engine/ui/DspSourceEditor.tsx` (and thread refs through `src/engine/stores/dsp.ts` / `src/engine/types.ts` as needed).
 
 

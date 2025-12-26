@@ -30,6 +30,13 @@ export const LP_CUT_HISTORY_SIZE = 2048
 export const LP_CUT_ENTRY_SIZE = 4
 export const LP_CUT_WRITE_POS_OFFSET = 0
 export const LP_CUT_DATA_OFFSET = 1
+
+// Best-effort LFO history for UI widgets.
+// entry: lfoIndex, lfoType, bar, offset, phase01, value, sampleCountMod
+export const LFO_HISTORY_SIZE = 2048
+export const LFO_ENTRY_SIZE = 7
+export const LFO_WRITE_POS_OFFSET = 0
+export const LFO_DATA_OFFSET = 1
 export const ARRAYS_COUNT = 1024
 export const LITERALS_COUNT = 1024
 export const OPS_COUNT = 8192
