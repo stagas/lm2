@@ -7,6 +7,11 @@ import { isLocalId } from '../../utils/id.ts'
 export function useLoopData(loopId: string | null, currentLoop: Loop | undefined) {
   const api = useAppStore(state => state.api)
   const base = useAppStore(state => (loopId ? state.bases[loopId]?.code : undefined))
+  const publicLoopsCache = useAppStore(state => state.publicLoopsCache)
+  const likedLoopsCache = useAppStore(state => state.likedLoopsCache)
+  const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
+  const setLoopBase = useAppStore(state => state.setLoopBase)
+  const getCodeFile = useAppStore(state => state.getCodeFile)
   const [loopData, setLoopData] = useState<LoopData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const setLoopLoading = useAppStore(state => state.setLoopLoading)
@@ -31,6 +36,31 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
       setIsLoading(false)
       return
     }
+
+    const isPublicLoop = publicLoopsCache.some(l => l.id === loopId) || likedLoopsCache.some(l => l.id === loopId)
+    if (isPublicLoop) {
+      if (base != null || currentLoop?.data.code != null) {
+        didFetchIdRef.current = loopId
+        setLoopData(null)
+        setIsLoading(false)
+        return
+      }
+      if (didFetchIdRef.current === loopId) return
+      didFetchIdRef.current = loopId
+
+      const fetch = async () => {
+        const code = await getPublicLoopCode(loopId)
+        setLoopBase(loopId, code, currentLoop?.data.timestamp)
+        const codeFile = getCodeFile(loopId, code)
+        if (codeFile.value.length === 0 && code.length > 0) {
+          codeFile.value = code
+        }
+      }
+
+      withLoading(fetch)
+      return
+    }
+
     if (base != null || currentLoop?.data.code != null) {
       didFetchIdRef.current = loopId
       setLoopData(null)
@@ -47,7 +77,20 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
     }
 
     withLoading(fetch)
-  }, [api, base, currentLoop?.data.code, loopId, upsertServerLoopCache, withLoading])
+  }, [
+    api,
+    base,
+    currentLoop?.data.code,
+    currentLoop?.data.timestamp,
+    getCodeFile,
+    getPublicLoopCode,
+    likedLoopsCache,
+    loopId,
+    publicLoopsCache,
+    setLoopBase,
+    upsertServerLoopCache,
+    withLoading,
+  ])
 
   useEffect(() => {
     requestAnimationFrame(() => {
