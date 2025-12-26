@@ -45,6 +45,7 @@ import {
   type EveryRef,
   type LfoRef,
   type LpRef,
+  type SlicerRef,
   type ArrayLiteralRef,
   type BranchMarkRef,
   encodeLangToVmOps,
@@ -160,6 +161,7 @@ function buildProgram(
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
+  slicerRefs: SlicerRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
@@ -169,7 +171,7 @@ function buildProgram(
   bars?: number
 } {
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs, lfoRefs,
-    everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
+    slicerRefs, everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
     })
@@ -186,6 +188,7 @@ function buildProgram(
     analyserRefs: analyserRefs ?? [],
     compressorRefs: compressorRefs ?? [],
     lpRefs: lpRefs ?? [],
+    slicerRefs: slicerRefs ?? [],
     lfoRefs: lfoRefs ?? [],
     everyRefs: everyRefs ?? [],
     atRefs: atRefs ?? [],
@@ -221,6 +224,7 @@ export type ProgramBuildResult = {
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   lpRefs: LpRef[]
+  slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
@@ -490,7 +494,7 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs, lfoRefs,
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs, slicerRefs, lfoRefs,
           everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
@@ -542,6 +546,7 @@ async function createProgram(
           analyserRefs,
           compressorRefs,
           lpRefs,
+          slicerRefs,
           lfoRefs,
           everyRefs,
           atRefs,

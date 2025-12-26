@@ -62,9 +62,9 @@ export function callSlicer(
     sliceAux = posAux[3]
   }
 
-  // threshold (default 0.5)
+  // threshold (default 0.0)
   let thresholdTag: VmTag = VmTag.Num
-  let thresholdNum: f64 = 0.5
+  let thresholdNum: f64 = 0.0
   let thresholdAux: i32 = 0
   if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
     thresholdTag = posTags[4] as VmTag

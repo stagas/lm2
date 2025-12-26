@@ -51,7 +51,6 @@ export class Slicer extends Gen {
     this.sliceEnd = src.sliceEnd
     this.lastSampleIndex = src.lastSampleIndex
     this.lastSampleVersion = src.lastSampleVersion
-    this.lastThreshold = src.lastThreshold
     this.slicesCount = src.slicesCount
     this.needleHistory$ = src.needleHistory$
     // slices content is cheap to refresh; keep empty if needed
@@ -126,10 +125,9 @@ export class Slicer extends Gen {
       if (trig > 0.0 && lastTrig <= 0.0) {
         if (sampleLen > 0 && slicesCount > 0) {
           let s = load<f32>(slice$)
-          if (s < -1.0) s = -1.0
+          if (s < 0.0) s = 0.0
           if (s > 1.0) s = 1.0
-          const t: f32 = (s + 1.0) * 0.5
-          const idx = i32(Mathf.floor(t * f32(slicesCount - 1) + 0.5))
+          const idx = i32(Mathf.floor(s * f32(slicesCount - 1) + 0.5))
           let si = idx
           if (si < 0) si = 0
           if (si >= slicesCount) si = slicesCount - 1
@@ -173,7 +171,7 @@ export class Slicer extends Gen {
         const sp = load<f32>(speed$)
         const rep: bool = load<f32>(repeat$) > 0.0
         const startF: f64 = sliceStart as f64
-        const endF: f64 = sliceEnd as f64
+        const endF: f64 = rep ? (sliceEnd as f64) : (sampleLen as f64)
         if (pos < startF || pos >= endF) {
           if (rep && sliceEnd > sliceStart) {
             pos = sp >= 0.0 ? startF : ((sliceEnd - 1) as f64)

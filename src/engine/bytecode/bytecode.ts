@@ -26,6 +26,7 @@ import { extractLpsFromProgramWithRefs } from './extract-lp.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
+import { extractSlicersFromProgramWithRefs } from './extract-slicers.ts'
 import { extractAtsFromProgramWithRefs, extractEveriesFromProgramWithRefs } from './extract-trigs.ts'
 import { extractTimelineLabelsFromProgram } from './extract-timeline-labels.ts'
 import { extractTimelineSequencesFromProgramWithRefs } from './extract-timeline-sequences.ts'
@@ -40,6 +41,7 @@ import {
   EveryRef,
   LfoRef,
   LpRef,
+  SlicerRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
@@ -61,6 +63,7 @@ export * from './extract-lp.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
 export * from './extract-samples.ts'
+export * from './extract-slicers.ts'
 export * from './extract-trigs.ts'
 export * from './extract-timeline-labels.ts'
 export * from './extract-timeline-sequences.ts'
@@ -343,6 +346,7 @@ export function encodeLangToVmOps(
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
   lpRefs?: LpRef[]
+  slicerRefs?: SlicerRef[]
   lfoRefs?: LfoRef[]
   everyRefs?: EveryRef[]
   atRefs?: AtRef[]
@@ -405,6 +409,7 @@ export function encodeLangToVmOps(
   let analyserRefs: AnalyserRef[] = []
   let compressorRefs: CompressorRef[] = []
   let lpRefs: LpRef[] = []
+  let slicerRefs: SlicerRef[] = []
   let lfoRefs: LfoRef[] = []
   let everyRefs: EveryRef[] = []
   let atRefs: AtRef[] = []
@@ -939,6 +944,7 @@ export function encodeLangToVmOps(
   analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
   compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
   lpRefs = extractLpsFromProgramWithRefs(src, transformedProgram)
+  slicerRefs = extractSlicersFromProgramWithRefs(src, transformedProgram)
   lfoRefs = extractLfosFromProgramWithRefs(src, transformedProgram)
   everyRefs = extractEveriesFromProgramWithRefs(src, transformedProgram)
   atRefs = extractAtsFromProgramWithRefs(src, transformedProgram)
@@ -1326,6 +1332,7 @@ export function encodeLangToVmOps(
       analyserRefs,
       compressorRefs,
       lpRefs,
+      slicerRefs,
       lfoRefs,
       everyRefs,
       atRefs,
@@ -1347,6 +1354,7 @@ export function encodeLangToVmOps(
       analyserRefs,
       compressorRefs,
       lpRefs,
+      slicerRefs,
       lfoRefs,
       everyRefs,
       atRefs,

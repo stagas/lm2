@@ -707,6 +707,10 @@ export class Dsp {
     globalSampleCount = startSampleCount
     clearVmError()
     this.runVmSegments(left$, right$, begin, length)
+
+    // Don't "lock" the engine to the fallback program: keep the incoming program selected so
+    // edits can recover automatically on the next block once they stop producing VM errors.
+    this.program.data = incoming
   }
 
   process(left$: usize, right$: usize, begin: i32, length: i32): void {

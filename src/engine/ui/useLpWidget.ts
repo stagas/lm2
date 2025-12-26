@@ -295,7 +295,7 @@ export function useLpWidget({
     c.stroke()
 
     c.fillStyle = 'rgba(180,180,180,0.9)'
-    c.font = '10px "Space Mono"'
+    c.font = '7pt "Space Mono"'
     c.textBaseline = 'bottom'
     c.textAlign = 'left'
     const cutTxt = cut >= 1000 ? `${(cut / 1000).toFixed(cut % 1000 === 0 ? 0 : 2)}kHz` : `${cut.toFixed(0)}Hz`

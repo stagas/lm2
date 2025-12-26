@@ -236,8 +236,8 @@ export function useLfoWidget({
       c.strokeStyle = 'rgba(255,255,0,0.9)'
       c.lineWidth = 1.35
       c.beginPath()
-      c.moveTo(px - 0.35, chartY)
-      c.lineTo(px - 0.35, chartY + chartH)
+      c.moveTo(px, chartY)
+      c.lineTo(px, chartY + chartH)
       c.stroke()
 
       c.fillStyle = 'rgba(255,255,0,0.9)'
@@ -250,8 +250,8 @@ export function useLfoWidget({
       c.strokeStyle = 'rgba(255,255,0,0.9)'
       c.lineWidth = 1.35
       c.beginPath()
-      c.moveTo(playX - 0.35, chartY)
-      c.lineTo(playX - 0.35, chartY + chartH)
+      c.moveTo(playX, chartY)
+      c.lineTo(playX, chartY + chartH)
       c.stroke()
 
       const yy = lfoValue(ref.lfoType, phase01)

@@ -7,6 +7,7 @@ import {
   type EveryRef,
   type LfoRef,
   type LpRef,
+  type SlicerRef,
   type ArrayLiteralRef,
   type BranchMarkRef,
   type MiniSequenceRef,
@@ -30,6 +31,7 @@ export type WidgetCompileResult = {
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   lpRefs: LpRef[]
+  slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
