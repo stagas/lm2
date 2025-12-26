@@ -19,8 +19,8 @@ function getFilterIndexFromCall(call: any): number {
   return 0
 }
 
-function isKnobParamName(name: string): name is 'cut' | 'q' | 'gain' {
-  return name === 'cut' || name === 'q' || name === 'gain'
+function isKnobParamName(name: string): name is 'cutoff' | 'q' | 'gain' {
+  return name === 'cutoff' || name === 'q' || name === 'gain'
 }
 
 function getFilterType(calleeName: string): FilterType | null {
@@ -38,7 +38,7 @@ function getFilterType(calleeName: string): FilterType | null {
 }
 
 function getDefaultParams(filterType: FilterType) {
-  const baseParams = { cut: 1000, q: 1 }
+  const baseParams = { cutoff: 1000, q: 1 }
   switch (filterType) {
     case 'ls':
     case 'hs':
@@ -49,25 +49,25 @@ function getDefaultParams(filterType: FilterType) {
   }
 }
 
-function getPosArgsForFilter(filterType: FilterType): ('cut' | 'q' | 'gain')[] {
+function getPosArgsForFilter(filterType: FilterType): ('cutoff' | 'q' | 'gain')[] {
   switch (filterType) {
     case 'lp':
     case 'hp':
     case 'bp':
     case 'bs':
     case 'ap':
-      return ['cut', 'q']
+      return ['cutoff', 'q']
     case 'ls':
     case 'hs':
-      return ['cut', 'gain']
+      return ['cutoff', 'gain']
     case 'peak':
-      return ['cut', 'q', 'gain']
+      return ['cutoff', 'q', 'gain']
     default:
       return []
   }
 }
 
-function posIndexToKnobName(filterType: FilterType, posIndex: number): 'cut' | 'q' | 'gain' | null {
+function posIndexToKnobName(filterType: FilterType, posIndex: number): 'cutoff' | 'q' | 'gain' | null {
   const posArgs = getPosArgsForFilter(filterType)
   return posArgs[posIndex - 1] || null
 }
@@ -85,11 +85,11 @@ function visit(src: string, program: Program): FilterRef[] {
       if (filterType) {
         const pos0 = getPosArg(expr, 0)
         const namedIn = findNamedArg(expr, 'in')
-        const namedCut = findNamedArg(expr, 'cut')
+        const namedCutoff = findNamedArg(expr, 'cutoff')
         const namedQ = findNamedArg(expr, 'q')
         const namedGain = findNamedArg(expr, 'gain')
 
-        const cutExpr = namedCut?.value ?? getPosArg(expr, 1)?.value
+        const cutExpr = namedCutoff?.value ?? getPosArg(expr, 1)?.value
         const qExpr = namedQ?.value ?? getPosArg(expr, 2)?.value
         const gainExpr = namedGain?.value ?? getPosArg(expr, 3)?.value
 
@@ -132,12 +132,12 @@ function visit(src: string, program: Program): FilterRef[] {
           aboveLoc,
           callLoc: expr.loc,
           inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
-          cutArgLoc: (namedCut?.loc ?? getPosArg(expr, 1)?.loc ?? null),
+          cutArgLoc: (namedCutoff?.loc ?? getPosArg(expr, 1)?.loc ?? null),
           qArgLoc: (namedQ?.loc ?? getPosArg(expr, 2)?.loc ?? null),
           gainArgLoc: (namedGain?.loc ?? getPosArg(expr, 3)?.loc ?? null),
           knobParams,
           params: {
-            cut: getNumberOrDefault(cutExpr, defaultParams.cut),
+            cut: getNumberOrDefault(cutExpr, defaultParams.cutoff),
             q: getNumberOrDefault(qExpr, defaultParams.q),
             ...(defaultParams.gain !== undefined ? { gain: getNumberOrDefault(gainExpr, defaultParams.gain) } : {}),
           },

@@ -183,8 +183,8 @@ export function useFilterWidget({
 }: UseFilterWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const refs = filterRefs ?? []
 
-  type Pt = { tsMod: number; cut: number; q?: number; gain?: number }
-  type St = { pts: Pt[]; cut: number; q?: number; gain?: number }
+  type Pt = { tsMod: number; cutoff: number; q?: number; gain?: number }
+  type St = { pts: Pt[]; cutoff: number; q?: number; gain?: number }
 
   const lastWritePosRef = useRef<number>(0)
   const stRef = useRef<Array<St | undefined>>([])
@@ -249,7 +249,7 @@ export function useFilterWidget({
         const base = FILTER_DATA_OFFSET + slot * FILTER_ENTRY_SIZE
 
         const idx = Math.floor(raw[base] ?? 0)
-        const cut = raw[base + 1] ?? 0
+        const cutoff = raw[base + 1] ?? 0
         const p2 = raw[base + 2] ?? 0
         const gate = Math.floor(raw[base + 3] ?? 0)
         const tsMod = (Math.floor(raw[base + 4] ?? 0) >>> 0) & (MOD - 1)
@@ -264,7 +264,7 @@ export function useFilterWidget({
         if (!st) {
           st = {
             pts: [],
-            cut: cut || 0,
+            cutoff: cutoff || 0,
             ...(!isShelf ? { q: (p2 || 0.707) } : {}),
             ...(isShelf ? { gain: p2 || 0 } : {}),
           }
@@ -274,7 +274,7 @@ export function useFilterWidget({
         const pts = st.pts
         pts.push({
           tsMod,
-          cut,
+          cutoff,
           ...(isShelf ? { gain: p2 } : {}),
           ...(!isShelf ? { q: p2 } : {}),
           ...(isPeak ? { q: p2 } : {}),
@@ -301,8 +301,8 @@ export function useFilterWidget({
       }
       best ??= pts[0]!
 
-      const targetCut = best.cut
-      st.cut = st.cut + (targetCut - st.cut) * a
+      const targetCutoff = best.cutoff
+      st.cutoff = st.cutoff + (targetCutoff - st.cutoff) * a
       if (best.q !== undefined) {
         st.q = (st.q ?? best.q) + (best.q - (st.q ?? best.q)) * a
       }
@@ -348,7 +348,7 @@ export function useFilterWidget({
     const maxHz = Math.min(20000, nyquist)
 
     const st = stRef.current[ref.filterIndex | 0]
-    const cut = clamp(st?.cut ?? ref.params.cut, minHz, maxHz)
+    const cutoff = clamp(st?.cutoff ?? ref.params.cut, minHz, maxHz)
     const q = clamp(st?.q ?? ref.params.q, 0.01, 20)
     const gain = st?.gain ?? ref.params.gain ?? 0
 
@@ -422,7 +422,7 @@ export function useFilterWidget({
       c.fillText(lbl, xx, chartY + chartH + 2)
     }
 
-    const cutX = hzToX(cut, minHz, maxHz, chartW)
+    const cutX = hzToX(cutoff, minHz, maxHz, chartW)
     c.strokeStyle = 'rgba(255,255,0,0.9)'
     c.lineWidth = 1.35
     c.beginPath()
@@ -437,7 +437,7 @@ export function useFilterWidget({
     for (let i = 0; i <= steps; i++) {
       const t = i / steps
       const hz = minHz * Math.exp(Math.log(maxHz / minHz) * t)
-      const db = biquadMagDb(ref.filterType, hz, cut, q, gain, sr)
+      const db = biquadMagDb(ref.filterType, hz, cutoff, q, gain, sr)
       const px = t * chartW
       const py = dbToY(db)
       if (i === 0) c.moveTo(px, py)
@@ -449,20 +449,22 @@ export function useFilterWidget({
     c.font = '7pt "Space Mono"'
     c.textBaseline = 'bottom'
     c.textAlign = 'left'
-    const cutTxt = cut >= 1000 ? `${(cut / 1000).toFixed(cut % 1000 === 0 ? 0 : 2)}kHz` : `${cut.toFixed(0)}Hz`
+    const cutTxt = cutoff >= 1000
+      ? `${(cutoff / 1000).toFixed(cutoff % 1000 === 0 ? 0 : 2)}kHz`
+      : `${cutoff.toFixed(0)}Hz`
 
     if (ref.filterType === 'peak') {
-      c.fillText(`cut ${cutTxt}`, 6, chartH - 20)
+      c.fillText(`cutoff ${cutTxt}`, 6, chartH - 20)
       c.fillText(`gain ${gain >= 0 ? '+' : ''}${gain.toFixed(1)}dB`, 6, chartH - 10)
-      c.fillText(`q   ${q.toFixed(2)}`, 6, chartH)
+      c.fillText(`q ${q.toFixed(2)}`, 6, chartH)
     }
     else if (ref.filterType === 'ls' || ref.filterType === 'hs') {
-      c.fillText(`cut ${cutTxt}`, 6, chartH - 10)
+      c.fillText(`cutoff ${cutTxt}`, 6, chartH - 10)
       c.fillText(`gain ${gain >= 0 ? '+' : ''}${gain.toFixed(1)}dB`, 6, chartH)
     }
     else {
-      c.fillText(`cut ${cutTxt}`, 6, chartH - 10)
-      c.fillText(`q   ${q.toFixed(2)}`, 6, chartH)
+      c.fillText(`cutoff ${cutTxt}`, 6, chartH - 10)
+      c.fillText(`q ${q.toFixed(2)}`, 6, chartH)
     }
 
     c.restore()

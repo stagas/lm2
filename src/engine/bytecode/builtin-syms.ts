@@ -73,7 +73,7 @@ export const builtinSyms: Record<string, number> = {
   bar: VmSym.Bar,
   // NOTE: `every` key for at() reuses the builtin `every` symbol id (12).
   // Named args for lp()
-  cut: VmSym.Cut,
+  cutoff: VmSym.Cut,
   q: VmSym.Q,
   in: VmSym.In,
   // Named args for slew()
