@@ -6,8 +6,8 @@ import {
   TRIG_ENTRY_SIZE,
   TRIG_HISTORY_SIZE,
 } from '../../../as/assembly/constants.ts'
-import type { AtRef, EveryRef } from '../bytecode/bytecode.ts'
-import type { ProgramInstance, VmAtTrigHistory, VmEveryTrigHistory } from '../dsp/program.ts'
+import type { AtRef, EuclidRef, EveryRef } from '../bytecode/bytecode.ts'
+import type { ProgramInstance, VmTrigHistory } from '../dsp/program.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
@@ -17,6 +17,7 @@ type UseTrigWidgetParams = {
   globalSampleCount: Int32Array<SharedArrayBuffer> | undefined
   everyRefs: EveryRef[] | undefined
   atRefs: AtRef[] | undefined
+  euclidRefs: EuclidRef[] | undefined
   dspSource: string
   showWidgets: boolean
   isLive: boolean
@@ -33,7 +34,7 @@ function clamp01(n: number): number {
 }
 
 function readTrigHistory(
-  history: VmEveryTrigHistory | VmAtTrigHistory,
+  history: VmTrigHistory,
   lastWritePosRef: React.MutableRefObject<number>,
   stRef: React.MutableRefObject<Array<St | undefined>>,
   dataOffset: number,
@@ -116,6 +117,7 @@ export function useTrigWidget({
   globalSampleCount,
   everyRefs,
   atRefs,
+  euclidRefs,
   dspSource,
   showWidgets,
   isLive,
@@ -123,11 +125,14 @@ export function useTrigWidget({
 }: UseTrigWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const everies = everyRefs ?? []
   const ats = atRefs ?? []
+  const euclids = euclidRefs ?? []
 
   const lastWritePosEveryRef = useRef(0)
   const lastWritePosAtRef = useRef(0)
+  const lastWritePosEuclidRef = useRef(0)
   const everyStRef = useRef<Array<St | undefined>>([])
   const atStRef = useRef<Array<St | undefined>>([])
+  const euclidStRef = useRef<Array<St | undefined>>([])
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
@@ -135,8 +140,10 @@ export function useTrigWidget({
   useEffect(() => {
     lastWritePosEveryRef.current = 0
     lastWritePosAtRef.current = 0
+    lastWritePosEuclidRef.current = 0
     everyStRef.current.length = 0
     atStRef.current.length = 0
+    euclidStRef.current.length = 0
     predictedSampleCountRef.current = null
     lastWallTimeRef.current = null
     isFirstFrameRef.current = true
@@ -145,18 +152,17 @@ export function useTrigWidget({
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (!isLive) return
-    if (everies.length === 0 && ats.length === 0) return
+    if (everies.length === 0 && ats.length === 0 && euclids.length === 0) return
 
-    const everyHistory = program1?.program.everyTrigHistory
-    const atHistory = program1?.program.atTrigHistory
-    if (!everyHistory && !atHistory) return
+    const trigHistory = program1?.program.trigHistory
+    if (!trigHistory) return
 
-    const everyWritePos = everyHistory ? Math.floor(everyHistory.writePos) >>> 0 : 0
-    const atWritePos = atHistory ? Math.floor(atHistory.writePos) >>> 0 : 0
+    const trigWritePos = Math.floor(trigHistory.writePos) >>> 0
 
     if (playbackState !== 'running') {
-      if (everyHistory) lastWritePosEveryRef.current = everyWritePos
-      if (atHistory) lastWritePosAtRef.current = atWritePos
+      lastWritePosEveryRef.current = trigWritePos
+      lastWritePosAtRef.current = trigWritePos
+      lastWritePosEuclidRef.current = trigWritePos
       predictedSampleCountRef.current = null
       lastWallTimeRef.current = null
       isFirstFrameRef.current = true
@@ -174,34 +180,40 @@ export function useTrigWidget({
     const nowMod = (Math.floor(pred.sampleCount) >>> 0) & (MOD - 1)
     const fadeSeconds = 0.25
 
-    if (everyHistory) {
-      readTrigHistory(
-        everyHistory,
-        lastWritePosEveryRef,
-        everyStRef,
-        TRIG_DATA_OFFSET,
-        TRIG_ENTRY_SIZE,
-        TRIG_HISTORY_SIZE,
-      )
-      updateTrigStates(everyStRef, nowMod, pred.sampleRate, fadeSeconds)
-    }
+    readTrigHistory(
+      trigHistory,
+      lastWritePosEveryRef,
+      everyStRef,
+      TRIG_DATA_OFFSET,
+      TRIG_ENTRY_SIZE,
+      TRIG_HISTORY_SIZE,
+    )
+    updateTrigStates(everyStRef, nowMod, pred.sampleRate, fadeSeconds)
 
-    if (atHistory) {
-      readTrigHistory(
-        atHistory,
-        lastWritePosAtRef,
-        atStRef,
-        TRIG_DATA_OFFSET,
-        TRIG_ENTRY_SIZE,
-        TRIG_HISTORY_SIZE,
-      )
-      updateTrigStates(atStRef, nowMod, pred.sampleRate, fadeSeconds)
-    }
-  }, [showWidgets, isLive, playbackState, everies.length, ats.length, program1, audioContext, globalSampleCount])
+    readTrigHistory(
+      trigHistory,
+      lastWritePosAtRef,
+      atStRef,
+      TRIG_DATA_OFFSET,
+      TRIG_ENTRY_SIZE,
+      TRIG_HISTORY_SIZE,
+    )
+    updateTrigStates(atStRef, nowMod, pred.sampleRate, fadeSeconds)
+
+    readTrigHistory(
+      trigHistory,
+      lastWritePosEuclidRef,
+      euclidStRef,
+      TRIG_DATA_OFFSET,
+      TRIG_ENTRY_SIZE,
+      TRIG_HISTORY_SIZE,
+    )
+    updateTrigStates(euclidStRef, nowMod, pred.sampleRate, fadeSeconds)
+  }, [showWidgets, isLive, playbackState, everies.length, ats.length, euclids.length, program1?.program.trigHistory, audioContext, globalSampleCount])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
-    if (everies.length === 0 && ats.length === 0) return []
+    if (everies.length === 0 && ats.length === 0 && euclids.length === 0) return []
 
     const lineStarts = buildLineStarts(dspSource)
     const out: EditorWidget[] = []
@@ -246,8 +258,28 @@ export function useTrigWidget({
       }
     }
 
+    for (const ref of euclids) {
+      const loc = ref.loc
+      const absStart = (lineStarts[loc.line - 1] ?? 0) + (loc.column - 1)
+      const absEnd = absStart + Math.max(1, loc.length)
+      for (const span of spanToWidgetSpans(lineStarts, absStart, absEnd)) {
+        out.push({
+          type: 'overlay',
+          line: span.line,
+          column: span.column,
+          length: span.length,
+          render: (ctx, x, y, w, h) => {
+            const a = euclidStRef.current[ref.euclidIndex | 0]?.a ?? 0
+            if (a <= 0) return
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
+            ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
+          },
+        })
+      }
+    }
+
     return out
-  }, [showWidgets, dspSource, everies, ats])
+  }, [showWidgets, dspSource, everies, ats, euclids])
 
   return { widgets, onBeforeDraw }
 }

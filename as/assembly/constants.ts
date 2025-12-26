@@ -38,7 +38,7 @@ export const LFO_ENTRY_SIZE = 7
 export const LFO_WRITE_POS_OFFSET = 0
 export const LFO_DATA_OFFSET = 1
 
-// Best-effort impulse history for UI widgets (every/at).
+// Best-effort impulse history for UI widgets (every/at/euclid).
 // entry: index, value, sampleCountMod
 export const TRIG_HISTORY_SIZE = 2048
 export const TRIG_ENTRY_SIZE = 3

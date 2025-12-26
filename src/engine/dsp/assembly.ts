@@ -39,7 +39,6 @@ export const ProgramStruct = Struct({
   sampleNeedleHistory: 'usize',
   filterHistory: 'usize',
   lfoHistory: 'usize',
-  everyTrigHistory: 'usize',
-  atTrigHistory: 'usize',
+  trigHistory: 'usize',
 })
 export type Program = typeof ProgramStruct.type

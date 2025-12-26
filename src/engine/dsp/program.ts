@@ -42,6 +42,7 @@ import {
   type BranchMarkRef,
   type CompressorRef,
   encodeLangToVmOps,
+  type EuclidRef,
   type EveryRef,
   type LfoRef,
   type LpRef,
@@ -94,12 +95,17 @@ export type VmLfoHistory = {
   raw: Float32Array
 }
 
-export type VmEveryTrigHistory = {
+export type VmTrigHistory = {
   writePos: number
   raw: Float32Array
 }
 
 export type VmAtTrigHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
+export type VmEuclidTrigHistory = {
   writePos: number
   raw: Float32Array
 }
@@ -158,6 +164,7 @@ function buildProgram(
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
+  euclidRefs: EuclidRef[]
   slicerRefs: SlicerRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
@@ -168,8 +175,8 @@ function buildProgram(
   bars?: number
 } {
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs,
-    compressorRefs, lpRefs, lfoRefs, slicerRefs, everyRefs, atRefs, arrayLiterals, branchMarks, numberParams,
-    numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
+    compressorRefs, lpRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
+    numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
     })
@@ -190,6 +197,7 @@ function buildProgram(
     lfoRefs: lfoRefs ?? [],
     everyRefs: everyRefs ?? [],
     atRefs: atRefs ?? [],
+    euclidRefs: euclidRefs ?? [],
     arrayLiterals: arrayLiterals ?? [],
     branchMarks: branchMarks ?? [],
     numberParams: numberParams ?? [],
@@ -226,6 +234,7 @@ export type ProgramBuildResult = {
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
+  euclidRefs: EuclidRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   timelineSequences: TimelineSequenceDef[]
   arrayLiterals: ArrayLiteralRef[]
@@ -420,28 +429,15 @@ async function createProgram(
     ),
   }
 
-  const everyTrigHistory$ = program.everyTrigHistory
-  const everyTrigWritePos = new Float32Array(wasmMemory.buffer, everyTrigHistory$, TRIG_DATA_OFFSET)
-  const everyTrigHistory: VmEveryTrigHistory = {
+  const trigHistory$ = program.trigHistory
+  const trigWritePos = new Float32Array(wasmMemory.buffer, trigHistory$, TRIG_DATA_OFFSET)
+  const trigHistory: VmTrigHistory = {
     get writePos() {
-      return everyTrigWritePos[0] || 0
+      return trigWritePos[0] || 0
     },
     raw: new Float32Array(
       wasmMemory.buffer,
-      everyTrigHistory$,
-      TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE,
-    ),
-  }
-
-  const atTrigHistory$ = program.atTrigHistory
-  const atTrigWritePos = new Float32Array(wasmMemory.buffer, atTrigHistory$, TRIG_DATA_OFFSET)
-  const atTrigHistory: VmAtTrigHistory = {
-    get writePos() {
-      return atTrigWritePos[0] || 0
-    },
-    raw: new Float32Array(
-      wasmMemory.buffer,
-      atTrigHistory$,
+      trigHistory$,
       TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE,
     ),
   }
@@ -481,8 +477,7 @@ async function createProgram(
     sampleNeedleHistory,
     filterHistory,
     lfoHistory,
-    everyTrigHistory,
-    atTrigHistory,
+    trigHistory,
     get data() {
       return programData
     },
@@ -495,8 +490,8 @@ async function createProgram(
 
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
-          lpRefs, slicerRefs, lfoRefs, everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals,
-          sampleDefs, bpm, bars } = buildProgram(newData, source)
+          lpRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
+          numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -551,6 +546,7 @@ async function createProgram(
           lfoRefs,
           everyRefs,
           atRefs,
+          euclidRefs,
           miniSourceMaps,
           timelineSequences,
           arrayLiterals,

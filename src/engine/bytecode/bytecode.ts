@@ -27,7 +27,7 @@ import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
 import { extractSlicersFromProgramWithRefs } from './extract-slicers.ts'
-import { extractAtsFromProgramWithRefs, extractEveriesFromProgramWithRefs } from './extract-trigs.ts'
+import { extractAtsFromProgramWithRefs, extractEuclidsFromProgramWithRefs, extractEveriesFromProgramWithRefs } from './extract-trigs.ts'
 import { extractTimelineLabelsFromProgram } from './extract-timeline-labels.ts'
 import { extractTimelineSequencesFromProgramWithRefs } from './extract-timeline-sequences.ts'
 import { binaryCode, encoderError, tryEvalConstNumber, unaryCode } from './helpers.ts'
@@ -350,6 +350,7 @@ export function encodeLangToVmOps(
   lfoRefs?: LfoRef[]
   everyRefs?: EveryRef[]
   atRefs?: AtRef[]
+  euclidRefs?: EuclidRef[]
   arrayLiterals?: ArrayLiteralRef[]
   branchMarks?: BranchMarkRef[]
   numberParams?: NumberWithParamsInfo[]
@@ -413,6 +414,7 @@ export function encodeLangToVmOps(
   let lfoRefs: LfoRef[] = []
   let everyRefs: EveryRef[] = []
   let atRefs: AtRef[] = []
+  let euclidRefs: EuclidRef[] = []
   const numberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
   const numberLiterals = extractNumberLiteralsFromProgram(parsed.program).filter(p => p.line > 0)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
@@ -948,6 +950,7 @@ export function encodeLangToVmOps(
   lfoRefs = extractLfosFromProgramWithRefs(src, transformedProgram)
   everyRefs = extractEveriesFromProgramWithRefs(src, transformedProgram)
   atRefs = extractAtsFromProgramWithRefs(src, transformedProgram)
+  euclidRefs = extractEuclidsFromProgramWithRefs(src, transformedProgram)
   const compiled = compile(src, transformedProgram)
   errors.push(...compiled.errors)
   if (errors.length) return { errors }
@@ -1336,6 +1339,7 @@ export function encodeLangToVmOps(
       lfoRefs,
       everyRefs,
       atRefs,
+      euclidRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,
@@ -1358,6 +1362,7 @@ export function encodeLangToVmOps(
       lfoRefs,
       everyRefs,
       atRefs,
+      euclidRefs,
       arrayLiterals,
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,

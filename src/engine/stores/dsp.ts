@@ -67,6 +67,7 @@ export type EngineDspState = {
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
+  euclidRefs: EuclidRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]
@@ -122,6 +123,7 @@ export type EngineDspState = {
     lfoRefs: LfoRef[]
     everyRefs: EveryRef[]
     atRefs: AtRef[]
+    euclidRefs: EuclidRef[]
     arrayLiterals: ArrayLiteralRef[]
     branchMarks: BranchMarkRef[]
     numberParams: NumberWithParamsInfo[]
@@ -394,6 +396,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const lfoRefs = primaryResult.lfoRefs
       const everyRefs = primaryResult.everyRefs
       const atRefs = primaryResult.atRefs
+      const euclidRefs = primaryResult.euclidRefs
       const arrayLiterals = primaryResult.arrayLiterals
       const branchMarks = primaryResult.branchMarks
       const numberParams = primaryResult.numberParams
@@ -422,6 +425,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           lfoRefs,
           everyRefs,
           atRefs,
+          euclidRefs,
           arrayLiterals,
           branchMarks,
           numberParams,
@@ -442,6 +446,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
           uiAtRefs: atRefs,
+          uiEuclidRefs: euclidRefs,
+          uiEuclidRefs: euclidRefs,
           uiArrayLiterals: arrayLiterals,
           uiBranchMarks: branchMarks,
           uiNumberParams: numberParams,
@@ -487,6 +493,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
         uiAtRefs: stagingResult.atRefs,
+        uiEuclidRefs: stagingResult.euclidRefs,
+        uiEuclidRefs: stagingResult.euclidRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiBranchMarks: stagingResult.branchMarks,
         uiNumberParams: stagingResult.numberParams,
@@ -542,6 +550,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiLfoRefs: current.lfoRefs,
           uiEveryRefs: current.everyRefs,
           uiAtRefs: current.atRefs,
+          uiEuclidRefs: current.euclidRefs,
           uiArrayLiterals: current.arrayLiterals,
           uiBranchMarks: current.branchMarks,
           uiNumberParams: current.numberParams,
@@ -571,6 +580,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         lfoRefs: stagingResult.lfoRefs,
         everyRefs: stagingResult.everyRefs,
         atRefs: stagingResult.atRefs,
+        euclidRefs: stagingResult.euclidRefs,
         arrayLiterals: stagingResult.arrayLiterals,
         branchMarks: stagingResult.branchMarks,
         numberParams: stagingResult.numberParams,
@@ -590,6 +600,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
         uiAtRefs: stagingResult.atRefs,
+        uiEuclidRefs: stagingResult.euclidRefs,
+        uiEuclidRefs: stagingResult.euclidRefs,
         uiArrayLiterals: stagingResult.arrayLiterals,
         uiBranchMarks: stagingResult.branchMarks,
         uiNumberParams: stagingResult.numberParams,
@@ -726,6 +738,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     lfoRefs: [],
     everyRefs: [],
     atRefs: [],
+    euclidRefs: [],
     arrayLiterals: [],
     branchMarks: [],
     numberParams: [],
@@ -955,6 +968,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const lfoRefs = stagingResult.lfoRefs
         const everyRefs = stagingResult.everyRefs
         const atRefs = stagingResult.atRefs
+        const euclidRefs = stagingResult.euclidRefs
         const arrayLiterals = stagingResult.arrayLiterals
         const branchMarks = stagingResult.branchMarks
         const numberParams = stagingResult.numberParams
@@ -990,6 +1004,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           lfoRefs,
           everyRefs,
           atRefs,
+          euclidRefs,
           arrayLiterals,
           branchMarks,
           numberParams,
@@ -1010,6 +1025,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
           uiAtRefs: atRefs,
+          uiEuclidRefs: euclidRefs,
+          uiEuclidRefs: euclidRefs,
           uiArrayLiterals: arrayLiterals,
           uiBranchMarks: branchMarks,
           uiNumberParams: numberParams,
@@ -1080,6 +1097,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiLfoRefs: next.lfoRefs,
         uiEveryRefs: next.everyRefs,
         uiAtRefs: next.atRefs,
+        uiEuclidRefs: next.euclidRefs,
         uiArrayLiterals: next.arrayLiterals,
         uiBranchMarks: next.branchMarks,
         uiNumberParams: next.numberParams,
