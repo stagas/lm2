@@ -1,16 +1,16 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { FILTER_DATA_OFFSET, FILTER_ENTRY_SIZE, FILTER_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
-import type { LpRef } from '../bytecode/bytecode.ts'
+import type { FilterRef } from '../bytecode/types.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { getCurrentTheme } from './theme.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
-type UseLpWidgetParams = {
+type UseFilterWidgetParams = {
   program1: ProgramInstance | undefined
   audioContext: AudioContext | undefined
   globalSampleCount: Int32Array<SharedArrayBuffer> | undefined
-  lpRefs: LpRef[] | undefined
+  filterRefs: FilterRef[] | undefined
   dspSource: string
   showWidgets: boolean
   isLive: boolean
@@ -34,6 +34,96 @@ function lpMagDb(freqHz: number, cutHz: number, q: number): number {
   return 20 * Math.log10(mag)
 }
 
+function hpMagDb(freqHz: number, cutHz: number, q: number): number {
+  const f = Math.max(1e-6, freqHz)
+  const fc = Math.max(1e-6, cutHz)
+  const qq = Math.max(1e-6, q)
+  const r = fc / f
+  const rr = r * r
+  const a = 1 - rr
+  const b = r / qq
+  const denom = Math.sqrt(a * a + b * b)
+  const mag = denom > 0 ? 1 / denom : 1
+  return 20 * Math.log10(mag)
+}
+
+function bpMagDb(freqHz: number, cutHz: number, q: number): number {
+  const f = Math.max(1e-6, freqHz)
+  const fc = Math.max(1e-6, cutHz)
+  const qq = Math.max(1e-6, q)
+  const r = f / fc
+  const a = r - 1/r
+  const b = r / qq
+  const denom = Math.sqrt(a * a + b * b)
+  const mag = denom > 0 ? 1 / denom : 1
+  return 20 * Math.log10(mag)
+}
+
+function bsMagDb(freqHz: number, cutHz: number, q: number): number {
+  const f = Math.max(1e-6, freqHz)
+  const fc = Math.max(1e-6, cutHz)
+  const qq = Math.max(1e-6, q)
+  const r = f / fc
+  const rr = r * r
+  const a = 1 - rr
+  const b = r / qq
+  const denom = Math.sqrt(a * a + b * b)
+  const mag = denom > 0 ? 1 / denom : 0
+  return 20 * Math.log10(mag + 1)
+}
+
+function shelfMagDb(freqHz: number, cutHz: number, gainDb: number, isHigh: boolean): number {
+  const f = Math.max(1e-6, freqHz)
+  const fc = Math.max(1e-6, cutHz)
+  const g = Math.pow(10, gainDb / 20)
+  const r = isHigh ? fc / f : f / fc
+  const rr = r * r
+  const a = 1 + rr
+  const b = 2 * r
+  const c = 1 + rr * g
+  const d = 2 * r * g
+  const denom = Math.sqrt(a * a + b * b)
+  const num = Math.sqrt(c * c + d * d)
+  const mag = denom > 0 ? num / denom : 1
+  return 20 * Math.log10(mag)
+}
+
+function peakMagDb(freqHz: number, cutHz: number, q: number, gainDb: number): number {
+  const f = Math.max(1e-6, freqHz)
+  const fc = Math.max(1e-6, cutHz)
+  const qq = Math.max(1e-6, q)
+  const g = Math.pow(10, gainDb / 20)
+  const r = f / fc
+  const rr = r * r
+  const a = 1 - rr
+  const b = r / qq
+  const c = 1 - rr * g
+  const d = r / qq * g
+  const denom = Math.sqrt(a * a + b * b)
+  const num = Math.sqrt(c * c + d * d)
+  const mag = denom > 0 ? num / denom : 1
+  return 20 * Math.log10(mag)
+}
+
+function apMagDb(freqHz: number, cutHz: number, q: number): number {
+  // Allpass has constant magnitude of 1 (0dB)
+  return 0
+}
+
+function getFilterMagDb(filterType: string, freqHz: number, cutHz: number, q: number, gain?: number): number {
+  switch (filterType) {
+    case 'lp': return lpMagDb(freqHz, cutHz, q)
+    case 'hp': return hpMagDb(freqHz, cutHz, q)
+    case 'bp': return bpMagDb(freqHz, cutHz, q)
+    case 'bs': return bsMagDb(freqHz, cutHz, q)
+    case 'ls': return shelfMagDb(freqHz, cutHz, gain || 0, false)
+    case 'hs': return shelfMagDb(freqHz, cutHz, gain || 0, true)
+    case 'peak': return peakMagDb(freqHz, cutHz, q, gain || 0)
+    case 'ap': return apMagDb(freqHz, cutHz, q)
+    default: return 0
+  }
+}
+
 function hzToX(hz: number, minHz: number, maxHz: number, w: number): number {
   const a = Math.max(1, minHz)
   const b = Math.max(a + 1e-6, maxHz)
@@ -42,20 +132,20 @@ function hzToX(hz: number, minHz: number, maxHz: number, w: number): number {
   return t * w
 }
 
-export function useLpWidget({
+export function useFilterWidget({
   program1,
   audioContext,
   globalSampleCount,
-  lpRefs,
+  filterRefs,
   dspSource,
   showWidgets,
   isLive,
   playbackState,
-}: UseLpWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
-  const refs = lpRefs ?? []
+}: UseFilterWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
+  const refs = filterRefs ?? []
 
-  type Pt = { tsMod: number; cut: number; q: number }
-  type St = { pts: Pt[]; cut: number; q: number }
+  type Pt = { tsMod: number; cut: number; q: number; gain?: number }
+  type St = { pts: Pt[]; cut: number; q: number; gain?: number }
 
   const lastWritePosRef = useRef<number>(0)
   const stRef = useRef<Array<St | undefined>>([])
@@ -121,18 +211,27 @@ export function useLpWidget({
 
         const idx = Math.floor(raw[base] ?? 0)
         const cut = raw[base + 1] ?? 0
-        const q = raw[base + 2] ?? 0.707
+        const param2 = raw[base + 2] ?? 0
+        const filterType = Math.floor(raw[base + 3] ?? 0)
         const tsMod = (Math.floor(raw[base + 4] ?? 0) >>> 0) & (MOD - 1)
         if (idx < 0 || idx > 63) continue
 
+        // param2 is q for most filters, gain for shelf filters
+        const isShelfFilter = filterType === 5 || filterType === 6 || filterType === 7 // LS, HS, Peak
+
         let st = stRef.current[idx]
         if (!st) {
-          st = { pts: [], cut: cut || 0, q: q || 0.707 }
+          st = {
+            pts: [],
+            cut: cut || 0,
+            q: isShelfFilter ? 1 : (param2 || 0.707),
+            ...(isShelfFilter ? { gain: param2 || 0 } : {})
+          }
           stRef.current[idx] = st
         }
 
         const pts = st.pts
-        pts.push({ tsMod, cut, q })
+        pts.push({ tsMod, cut, q: isShelfFilter ? st.q : param2, ...(isShelfFilter ? { gain: param2 } : {}) })
         const keep = 256
         if (pts.length > keep) pts.splice(0, pts.length - keep)
       }
@@ -157,14 +256,18 @@ export function useLpWidget({
 
       const targetCut = best.cut
       const targetQ = best.q
+      const targetGain = best.gain
       st.cut = st.cut + (targetCut - st.cut) * a
       st.q = st.q + (targetQ - st.q) * a
+      if (st.gain !== undefined && targetGain !== undefined) {
+        st.gain = st.gain + (targetGain - st.gain) * a
+      }
     }
   }, [showWidgets, refs.length, isLive, playbackState, program1, audioContext, globalSampleCount])
 
-  const drawLp = useCallback((
+  const drawFilter = useCallback((
     c: CanvasRenderingContext2D,
-    ref: LpRef,
+    ref: FilterRef,
     widgetY: number,
     widgetHeight: number,
     viewX: number,
@@ -197,9 +300,10 @@ export function useLpWidget({
     const minHz = 20
     const maxHz = Math.min(20000, nyquist)
 
-    const st = stRef.current[ref.lpIndex | 0]
+    const st = stRef.current[ref.filterIndex | 0]
     const cut = clamp(st?.cut ?? ref.params.cut, minHz, maxHz)
     const q = clamp(st?.q ?? ref.params.q, 0.05, 20)
+    const gain = st?.gain ?? ref.params.gain ?? 0
 
     const minDb = -60
     const maxDb = 24
@@ -286,7 +390,7 @@ export function useLpWidget({
     for (let i = 0; i <= steps; i++) {
       const t = i / steps
       const hz = minHz * Math.exp(Math.log(maxHz / minHz) * t)
-      const db = lpMagDb(hz, cut, q)
+      const db = getFilterMagDb(ref.filterType, hz, cut, q, gain)
       const px = t * chartW
       const py = dbToY(db)
       if (i === 0) c.moveTo(px, py)
@@ -300,7 +404,13 @@ export function useLpWidget({
     c.textAlign = 'left'
     const cutTxt = cut >= 1000 ? `${(cut / 1000).toFixed(cut % 1000 === 0 ? 0 : 2)}kHz` : `${cut.toFixed(0)}Hz`
     c.fillText(`cut ${cutTxt}`, 6, chartH - 14)
-    c.fillText(`q   ${q.toFixed(2)}`, 6, chartH)
+
+    const hasGain = ref.filterType === 'ls' || ref.filterType === 'hs' || ref.filterType === 'peak'
+    if (hasGain) {
+      c.fillText(`gain ${gain >= 0 ? '+' : ''}${gain.toFixed(1)}dB`, 6, chartH)
+    } else {
+      c.fillText(`q   ${q.toFixed(2)}`, 6, chartH)
+    }
 
     c.restore()
     c.restore()
@@ -319,13 +429,13 @@ export function useLpWidget({
         length: Math.max(1, ref.aboveLoc.length),
         height: 56,
         render: (ctx, x, y, w, h, _vx, _vw) => {
-          drawLp(ctx, ref, y, h, x, w)
+          drawFilter(ctx, ref, y, h, x, w)
         },
       })
     }
 
     return out
-  }, [showWidgets, refs, drawLp])
+  }, [showWidgets, refs, drawFilter])
 
   return { widgets, onBeforeDraw }
 }

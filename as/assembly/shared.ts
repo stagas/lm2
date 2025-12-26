@@ -52,6 +52,13 @@ export enum Op {
   LfoRamp,
   LfoSqr,
   LfoSah,
+  Hp,
+  Bp,
+  Bs,
+  Ls,
+  Hs,
+  Peak,
+  Ap,
 }
 
 export enum SeqOp {

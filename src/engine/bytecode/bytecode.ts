@@ -22,7 +22,7 @@ import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
 import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
 import { extractLfosFromProgramWithRefs } from './extract-lfo.ts'
-import { extractLpsFromProgramWithRefs } from './extract-lp.ts'
+import { extractFiltersFromProgramWithRefs } from './extract-filter.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
@@ -59,7 +59,7 @@ export * from './extract-analysers.ts'
 export * from './extract-bpm-bars.ts'
 export * from './extract-compressors.ts'
 export * from './extract-lfo.ts'
-export * from './extract-lp.ts'
+export * from './extract-filter.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
 export * from './extract-samples.ts'
@@ -345,7 +345,7 @@ export function encodeLangToVmOps(
   timelineLabels?: TimelineLabel[]
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
-  lpRefs?: LpRef[]
+  lpRefs?: FilterRef[]
   slicerRefs?: SlicerRef[]
   lfoRefs?: LfoRef[]
   everyRefs?: EveryRef[]
@@ -408,7 +408,7 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
   let analyserRefs: AnalyserRef[] = []
   let compressorRefs: CompressorRef[] = []
-  let lpRefs: LpRef[] = []
+  let lpRefs: FilterRef[] = []
   let slicerRefs: SlicerRef[] = []
   let lfoRefs: LfoRef[] = []
   let everyRefs: EveryRef[] = []
@@ -943,7 +943,7 @@ export function encodeLangToVmOps(
   const transformedProgram = { ...parsed.program, body: parsed.program.body.map(transformStmt).filter(Boolean) } as any
   analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
   compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
-  lpRefs = extractLpsFromProgramWithRefs(src, transformedProgram)
+  lpRefs = extractFiltersFromProgramWithRefs(src, transformedProgram)
   slicerRefs = extractSlicersFromProgramWithRefs(src, transformedProgram)
   lfoRefs = extractLfosFromProgramWithRefs(src, transformedProgram)
   everyRefs = extractEveriesFromProgramWithRefs(src, transformedProgram)

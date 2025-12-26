@@ -1,36 +1,79 @@
 import type { Loc, Program } from '../../lang/ast.ts'
 import { tryEvalConstNumber } from './helpers.ts'
 import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault, getPosArg } from './extract-call-utils.ts'
-import type { LpRef } from './types.ts'
+import type { FilterRef, FilterType } from './types.ts'
 
-const MAX_LP_INDEX = 63
+const MAX_FILTER_INDEX = 63
 
-function clampLpIndex(n: any): number {
+function clampFilterIndex(n: any): number {
   const v = Math.floor(Number(n ?? 0))
   if (!Number.isFinite(v)) return 0
   if (v < 0) return 0
-  if (v > MAX_LP_INDEX) return MAX_LP_INDEX
+  if (v > MAX_FILTER_INDEX) return MAX_FILTER_INDEX
   return v
 }
 
-function getLpIndexFromCall(call: any): number {
+function getFilterIndexFromCall(call: any): number {
   const namedIdx = findNamedArg(call, 'index')
-  if (namedIdx?.value) return clampLpIndex(tryEvalConstNumber(namedIdx.value))
+  if (namedIdx?.value) return clampFilterIndex(tryEvalConstNumber(namedIdx.value))
   return 0
 }
 
-function isKnobParamName(name: string): name is 'cut' | 'q' {
-  return name === 'cut' || name === 'q'
+function isKnobParamName(name: string): name is 'cut' | 'q' | 'gain' {
+  return name === 'cut' || name === 'q' || name === 'gain'
 }
 
-function posIndexToKnobName(posIndex: number): 'cut' | 'q' | null {
-  if (posIndex === 1) return 'cut'
-  if (posIndex === 2) return 'q'
-  return null
+function getFilterType(calleeName: string): FilterType | null {
+  switch (calleeName) {
+    case 'lp': return 'lp'
+    case 'hp': return 'hp'
+    case 'bp': return 'bp'
+    case 'bs': return 'bs'
+    case 'ls': return 'ls'
+    case 'hs': return 'hs'
+    case 'peak': return 'peak'
+    case 'ap': return 'ap'
+    default: return null
+  }
 }
 
-function visit(src: string, program: Program): LpRef[] {
-  const refs: LpRef[] = []
+function getDefaultParams(filterType: FilterType) {
+  const baseParams = { cut: 1000, q: 1 }
+  switch (filterType) {
+    case 'ls':
+    case 'hs':
+    case 'peak':
+      return { ...baseParams, gain: 0 }
+    default:
+      return baseParams
+  }
+}
+
+function getPosArgsForFilter(filterType: FilterType): ('cut' | 'q' | 'gain')[] {
+  switch (filterType) {
+    case 'lp':
+    case 'hp':
+    case 'bp':
+    case 'bs':
+    case 'ap':
+      return ['cut', 'q']
+    case 'ls':
+    case 'hs':
+      return ['cut', 'gain']
+    case 'peak':
+      return ['cut', 'q', 'gain']
+    default:
+      return []
+  }
+}
+
+function posIndexToKnobName(filterType: FilterType, posIndex: number): 'cut' | 'q' | 'gain' | null {
+  const posArgs = getPosArgsForFilter(filterType)
+  return posArgs[posIndex - 1] || null
+}
+
+function visit(src: string, program: Program): FilterRef[] {
+  const refs: FilterRef[] = []
   const lineStarts = buildLineStartsForLocs(src)
 
   function visitExpr(expr: any): void {
@@ -38,22 +81,25 @@ function visit(src: string, program: Program): LpRef[] {
 
     if (expr.kind === 'call') {
       const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
-      if (calleeName === 'lp') {
+      const filterType = getFilterType(calleeName)
+      if (filterType) {
         const pos0 = getPosArg(expr, 0)
         const namedIn = findNamedArg(expr, 'in')
         const namedCut = findNamedArg(expr, 'cut')
         const namedQ = findNamedArg(expr, 'q')
+        const namedGain = findNamedArg(expr, 'gain')
 
         const cutExpr = namedCut?.value ?? getPosArg(expr, 1)?.value
         const qExpr = namedQ?.value ?? getPosArg(expr, 2)?.value
+        const gainExpr = namedGain?.value ?? getPosArg(expr, 3)?.value
 
-        const knobParams: LpRef['knobParams'] = []
+        const knobParams: FilterRef['knobParams'] = []
         const seen = new Set<string>()
         let posIndex = 0
         for (const a of expr.args ?? []) {
           if (!a) continue
           if (a.kind === 'pos') {
-            const name = posIndexToKnobName(posIndex)
+            const name = posIndexToKnobName(filterType, posIndex)
             posIndex++
             if (!name) continue
             if (seen.has(name)) continue
@@ -77,19 +123,23 @@ function visit(src: string, program: Program): LpRef[] {
 
         const calleeLoc = (expr.callee?.loc ?? expr.loc) as Loc
         const aboveLoc = computeAboveLoc(src, lineStarts, calleeLoc)
+        const defaultParams = getDefaultParams(filterType)
 
         refs.push({
-          lpIndex: getLpIndexFromCall(expr),
+          filterType,
+          filterIndex: getFilterIndexFromCall(expr),
           loc: calleeLoc,
           aboveLoc,
           callLoc: expr.loc,
           inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
           cutArgLoc: (namedCut?.loc ?? getPosArg(expr, 1)?.loc ?? null),
           qArgLoc: (namedQ?.loc ?? getPosArg(expr, 2)?.loc ?? null),
+          gainArgLoc: (namedGain?.loc ?? getPosArg(expr, 3)?.loc ?? null),
           knobParams,
           params: {
-            cut: getNumberOrDefault(cutExpr, 500),
-            q: getNumberOrDefault(qExpr, 0.75),
+            cut: getNumberOrDefault(cutExpr, defaultParams.cut),
+            q: getNumberOrDefault(qExpr, defaultParams.q),
+            ...(defaultParams.gain !== undefined ? { gain: getNumberOrDefault(gainExpr, defaultParams.gain) } : {}),
           },
         })
       }
@@ -215,8 +265,9 @@ function visit(src: string, program: Program): LpRef[] {
   return refs
 }
 
-export function extractLpsFromProgramWithRefs(src: string, program: Program): LpRef[] {
+export function extractFiltersFromProgramWithRefs(src: string, program: Program): FilterRef[] {
   return visit(src, program)
 }
+
 
 
