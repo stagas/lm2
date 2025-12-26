@@ -37,6 +37,19 @@ export const LFO_HISTORY_SIZE = 2048
 export const LFO_ENTRY_SIZE = 7
 export const LFO_WRITE_POS_OFFSET = 0
 export const LFO_DATA_OFFSET = 1
+
+// Best-effort impulse history for UI widgets (every/at).
+// entry: index, value, sampleCountMod
+export const EVERY_TRIG_HISTORY_SIZE = 2048
+export const EVERY_TRIG_ENTRY_SIZE = 3
+export const EVERY_TRIG_WRITE_POS_OFFSET = 0
+export const EVERY_TRIG_DATA_OFFSET = 1
+
+export const AT_TRIG_HISTORY_SIZE = 2048
+export const AT_TRIG_ENTRY_SIZE = 3
+export const AT_TRIG_WRITE_POS_OFFSET = 0
+export const AT_TRIG_DATA_OFFSET = 1
+
 export const ARRAYS_COUNT = 1024
 export const LITERALS_COUNT = 1024
 export const OPS_COUNT = 8192

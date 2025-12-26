@@ -2,7 +2,9 @@ import type { LangError } from '../lang/errors.ts'
 import { type SourceLocation } from '../lib/mini-source-map.ts'
 import {
   type AnalyserRef,
+  type AtRef,
   type CompressorRef,
+  type EveryRef,
   type LfoRef,
   type LpRef,
   type ArrayLiteralRef,
@@ -29,6 +31,8 @@ export type WidgetCompileResult = {
   compressorRefs: CompressorRef[]
   lpRefs: LpRef[]
   lfoRefs: LfoRef[]
+  everyRefs: EveryRef[]
+  atRefs: AtRef[]
   arrayLiterals: ArrayLiteralRef[]
   branchMarks: BranchMarkRef[]
   numberParams: NumberWithParamsInfo[]

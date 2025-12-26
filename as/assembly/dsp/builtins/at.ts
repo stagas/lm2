@@ -1,5 +1,7 @@
 // dprint-ignore-file
 import { At } from '../../gen/at'
+import { AT_TRIG_DATA_OFFSET, AT_TRIG_ENTRY_SIZE, AT_TRIG_HISTORY_SIZE, AT_TRIG_WRITE_POS_OFFSET } from '../../constants'
+import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmSym } from '../vm-sym'
@@ -8,6 +10,10 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
+
+function clampIndex(v: i32): i32 {
+  return v < 0 ? 0 : v > 255 ? 255 : v
+}
 
 export function callAt(
   posCount: i32,
@@ -29,6 +35,8 @@ export function callAt(
     stack.push(VmTag.Undef)
     return
   }
+
+  let trigIndex: i32 = 0
 
   let barTag: VmTag = posTags[0] as VmTag
   let barNum: f64 = posNums[0]
@@ -52,7 +60,10 @@ export function callAt(
   // Named overrides (bar/every/prob/seed)
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.Bar) {
+    if (k === VmSym.Index) {
+      trigIndex = clampIndex(i32(Math.floor(nameNums[i])))
+    }
+    else if (k === VmSym.Bar) {
       barTag = nameTags[i] as VmTag
       barNum = nameNums[i]
       barAux = nameAux[i]
@@ -88,6 +99,24 @@ export function callAt(
   gen.prob$ = prob$
   gen.seed$ = seed$
   gen.process(out$, length)
+
+  // Best-effort impulse history for UI widgets (no atomics needed).
+  {
+    const hist = program.atTrigHistory
+    let writePos = i32(hist[AT_TRIG_WRITE_POS_OFFSET])
+    for (let i: i32 = 0; i < length; i++) {
+      const v: f32 = load<f32>(out$ + (i << 2))
+      if (v > 0.0) {
+        const slot = writePos % AT_TRIG_HISTORY_SIZE
+        const base = AT_TRIG_DATA_OFFSET + slot * AT_TRIG_ENTRY_SIZE
+        hist[base] = f32(trigIndex)
+        hist[base + 1] = v
+        hist[base + 2] = f32((globalSampleCount + i) & 0xfffff)
+        writePos = (writePos + 1) & 0xfffff
+      }
+    }
+    hist[AT_TRIG_WRITE_POS_OFFSET] = f32(writePos)
+  }
 
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
