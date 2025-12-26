@@ -1,5 +1,5 @@
 import { ChatIcon, HeartIcon, PlayIcon } from '@phosphor-icons/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CommentData, LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
 import { useEngineDspStore } from '../store.ts'
@@ -85,6 +85,7 @@ function BrowseItem(
   return (
     <>
       <div
+        data-loop-id={loop.id}
         onPointerDown={handlePlay}
         className="flex flex-row px-3 py-2 border-b border-neutral-700 cursor-pointer hover:bg-neutral-900 gap-2 justify-between group"
       >
@@ -141,10 +142,18 @@ export function SidebarBrowseList({ loops, emptyLabel }: { loops: LoopData[]; em
   const toggleLike = useAppStore(state => state.toggleLike)
   const refreshLikedLoops = useAppStore(state => state.refreshLikedLoops)
   const likedLoopsCacheLen = useAppStore(state => state.likedLoopsCache.length)
+  const prefetchPublicLoopCodes = useAppStore(state => state.prefetchPublicLoopCodes)
+  const publicLoopCodeCache = useAppStore(state => state.publicLoopCodeCache)
 
   const userId = sessionData?.user.id ?? null
   const likedLoopIds = useMemo(() => (sessionData?.likedLoopIds ?? []), [sessionData])
   const likedIds = useMemo(() => new Set(likedLoopIds), [likedLoopIds])
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const codeCacheRef = useRef(publicLoopCodeCache)
+
+  useEffect(() => {
+    codeCacheRef.current = publicLoopCodeCache
+  }, [publicLoopCodeCache])
 
   useEffect(() => {
     if (!sessionData) return
@@ -153,12 +162,49 @@ export function SidebarBrowseList({ loops, emptyLabel }: { loops: LoopData[]; em
     void refreshLikedLoops()
   }, [likedLoopIds.length, likedLoopsCacheLen, refreshLikedLoops, sessionData])
 
+  useEffect(() => {
+    const root = listRef.current
+    if (!root) return
+
+    const pending = new Set<string>()
+    let scheduled = false
+
+    const flush = () => {
+      scheduled = false
+      const cache = codeCacheRef.current
+      const ids = Array.from(pending).filter(id => cache[id] == null)
+      pending.clear()
+      if (ids.length === 0) return
+      void prefetchPublicLoopCodes(ids)
+    }
+
+    const schedule = () => {
+      if (scheduled) return
+      scheduled = true
+      queueMicrotask(flush)
+    }
+
+    const obs = new IntersectionObserver(entries => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue
+        const id = (e.target as HTMLElement).dataset.loopId
+        if (!id) continue
+        pending.add(id)
+      }
+      schedule()
+    })
+
+    const nodes = root.querySelectorAll<HTMLElement>('[data-loop-id]')
+    for (const n of nodes) obs.observe(n)
+    return () => obs.disconnect()
+  }, [loops, prefetchPublicLoopCodes])
+
   if (loops.length === 0) {
     return <div className="px-3 py-2 text-xs text-neutral-500">{emptyLabel}</div>
   }
 
   return (
-    <div className="flex flex-col">
+    <div ref={listRef} className="flex flex-col">
       {loops.map(loop => (
         <BrowseItem
           key={loop.id}

@@ -31,16 +31,15 @@ export type LoopKv = {
   isPublic: boolean
 }
 
-export type PublicLoopKv = {
-  id: string
-  title: string
-  artist: string
-  artistId: string
-  timestamp: number
-  isPublic: true
-  likesCount: number
-  commentsCount: number
-}
+export type PublicLoopKv = readonly [
+  loopId: string,
+  artist: string,
+  artistId: string,
+  likesCount: number,
+  commentsCount: number,
+  title: string,
+  timestamp: number,
+]
 
 let kv: Deno.Kv | null = null
 
