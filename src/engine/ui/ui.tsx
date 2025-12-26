@@ -15,9 +15,9 @@ import { useTimelineHeader } from './useTimelineHeader.ts'
 function Intro({ isFadingOut = false, isFadingIn = true }: { isFadingOut?: boolean; isFadingIn?: boolean }) {
   return (
     <div
-      className={`z-50 fixed inset-0 w-[100dvw] h-[100dvh] transition-opacity duration-[1000ms] ease-in-out pointer-events-none ${
+      className={`z-50 fixed inset-0 w-[100dvw] h-[100dvh] transition-opacity duration-[1000ms] ease-in-out ${
         isFadingOut
-          ? 'opacity-0'
+          ? 'opacity-0 pointer-events-none'
           : 'opacity-100'
       }`}
     >

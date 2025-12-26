@@ -37,7 +37,7 @@ export const ProgramStruct = Struct({
   arrayAccessHistory: 'usize',
   branchHistory: 'usize',
   sampleNeedleHistory: 'usize',
-  lpCutHistory: 'usize',
+  filterHistory: 'usize',
   lfoHistory: 'usize',
   everyTrigHistory: 'usize',
   atTrigHistory: 'usize',

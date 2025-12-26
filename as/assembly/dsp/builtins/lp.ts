@@ -1,6 +1,6 @@
 // dprint-ignore-file
 import { Lp } from '../../gen/biquad'
-import { LP_CUT_DATA_OFFSET, LP_CUT_ENTRY_SIZE, LP_CUT_HISTORY_SIZE, LP_CUT_WRITE_POS_OFFSET } from '../../constants'
+import { FILTER_DATA_OFFSET, FILTER_ENTRY_SIZE, FILTER_HISTORY_SIZE, FILTER_WRITE_POS_OFFSET } from '../../constants'
 import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
 import { Op } from '../../shared'
@@ -85,15 +85,16 @@ export function callLp(
 
   // Best-effort history for UI widgets (no atomics needed).
   {
-    const hist = program.lpCutHistory
-    const writePos = i32(hist[LP_CUT_WRITE_POS_OFFSET])
-    const slot = writePos % LP_CUT_HISTORY_SIZE
-    const base = LP_CUT_DATA_OFFSET + slot * LP_CUT_ENTRY_SIZE
+    const hist = program.filterHistory
+    const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
+    const slot = writePos % FILTER_HISTORY_SIZE
+    const base = FILTER_DATA_OFFSET + slot * FILTER_ENTRY_SIZE
     hist[base] = f32(lpIndex)
     hist[base + 1] = load<f32>(cut$)
     hist[base + 2] = load<f32>(q$)
-    hist[base + 3] = f32((globalSampleCount + length) & 0xfffff)
-    hist[LP_CUT_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
+    hist[base + 3] = f32(1) // gate enabled for LP filter
+    hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
   stack.push(VmTag.Audio, 0.0, outIndex)

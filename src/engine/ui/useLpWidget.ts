@@ -1,6 +1,6 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { LP_CUT_DATA_OFFSET, LP_CUT_ENTRY_SIZE, LP_CUT_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
+import { FILTER_DATA_OFFSET, FILTER_ENTRY_SIZE, FILTER_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { LpRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { getCurrentTheme } from './theme.ts'
@@ -78,7 +78,7 @@ export function useLpWidget({
     if (!refs.length) return
     if (!isLive) return
 
-    const history = program1?.program.lpCutHistory
+    const history = program1?.program.filterHistory
     if (!history) return
 
     const writePos = Math.floor(history.writePos) >>> 0
@@ -112,17 +112,17 @@ export function useLpWidget({
     if (writePos !== prevWritePos) {
       const raw = history.raw
       const deltaRaw = (writePos - prevWritePos + MOD) % MOD
-      const delta = Math.min(deltaRaw, LP_CUT_HISTORY_SIZE)
+      const delta = Math.min(deltaRaw, FILTER_HISTORY_SIZE)
 
       for (let k = delta; k > 0; k--) {
         const p = (writePos - k) >>> 0
-        const slot = p % LP_CUT_HISTORY_SIZE
-        const base = LP_CUT_DATA_OFFSET + slot * LP_CUT_ENTRY_SIZE
+        const slot = p % FILTER_HISTORY_SIZE
+        const base = FILTER_DATA_OFFSET + slot * FILTER_ENTRY_SIZE
 
         const idx = Math.floor(raw[base] ?? 0)
         const cut = raw[base + 1] ?? 0
         const q = raw[base + 2] ?? 0.707
-        const tsMod = (Math.floor(raw[base + 3] ?? 0) >>> 0) & (MOD - 1)
+        const tsMod = (Math.floor(raw[base + 4] ?? 0) >>> 0) & (MOD - 1)
         if (idx < 0 || idx > 63) continue
 
         let st = stRef.current[idx]
