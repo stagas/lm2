@@ -108,9 +108,12 @@ export type CompressorRef = {
   }
 }
 
-export type LpRef = {
-  lpIndex: number
-  /** Location of the `lp` identifier (for widget anchoring). */
+export type FilterType = 'lp' | 'hp' | 'bp' | 'bs' | 'ls' | 'hs' | 'peak' | 'ap'
+
+export type FilterRef = {
+  filterType: FilterType
+  filterIndex: number
+  /** Location of the filter identifier (for widget anchoring). */
   loc: Loc
   /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
   aboveLoc: Loc
@@ -122,9 +125,11 @@ export type LpRef = {
   cutArgLoc: Loc | null
   /** Location of the Q arg (positional or `q:`). */
   qArgLoc: Loc | null
+  /** Location of the gain arg (for shelf/peak filters). */
+  gainArgLoc: Loc | null
   /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
   knobParams: Array<{
-    name: 'cut' | 'q'
+    name: 'cut' | 'q' | 'gain'
     value: number
     valueLoc: Loc
   }>
@@ -132,8 +137,12 @@ export type LpRef = {
   params: {
     cut: number
     q: number
+    gain?: number
   }
 }
+
+// Legacy alias for backward compatibility
+export type LpRef = FilterRef
 
 export type SlicerRef = {
   /** Location of the `slicer` identifier (for widget anchoring). */

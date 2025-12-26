@@ -34,7 +34,7 @@ import { useCompressorWidget } from './useCompressorWidget.ts'
 import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
 import { useLfoWidget } from './useLfoWidget.ts'
 import { useLoopView } from './useLoopView.ts'
-import { useLpWidget } from './useLpWidget.ts'
+import { useFilterWidget } from './useFilterWidget.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
 import { useSampleWidget } from './useSampleWidget.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
@@ -465,11 +465,11 @@ function DspSourceEditorReady(
     sampleRate: audioContext?.sampleRate,
   })
 
-  const { widgets: lpWidgets, onBeforeDraw: onBeforeDrawLp } = useLpWidget({
+  const { widgets: filterWidgets, onBeforeDraw: onBeforeDrawFilter } = useFilterWidget({
     program1: runtimeProgram,
     audioContext,
     globalSampleCount,
-    lpRefs: widgetCompileState.lpRefs,
+    filterRefs: widgetCompileState.lpRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isLive: isPlayingLoop,
@@ -598,7 +598,7 @@ function DspSourceEditorReady(
     onBeforeDrawTimelineSequence()
     onBeforeDrawAnalyser()
     onBeforeDrawCompressor()
-    onBeforeDrawLp()
+    onBeforeDrawFilter()
     onBeforeDrawSlicer()
     onBeforeDrawLfo()
     onBeforeDrawTrig()
@@ -612,7 +612,7 @@ function DspSourceEditorReady(
     onBeforeDrawTimelineSequence,
     onBeforeDrawAnalyser,
     onBeforeDrawCompressor,
-    onBeforeDrawLp,
+    onBeforeDrawFilter,
     onBeforeDrawSlicer,
     onBeforeDrawLfo,
     onBeforeDrawTrig,
@@ -627,7 +627,7 @@ function DspSourceEditorReady(
       ...sampleWidgets,
       ...analyserWidgets,
       ...compressorWidgets,
-      ...lpWidgets,
+      ...filterWidgets,
       ...slicerWidgets,
       ...lfoWidgets,
       ...trigWidgets,
@@ -641,7 +641,7 @@ function DspSourceEditorReady(
       ...knobWidgets,
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, lpWidgets, slicerWidgets,
+    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, filterWidgets, slicerWidgets,
     lfoWidgets, trigWidgets, knobWidgets, viewSampleCount])
 
   const codeEditorKey = useMemo(() => {

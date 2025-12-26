@@ -11,6 +11,13 @@ import { callEvery } from './builtins/every'
 import { callEuclid } from './builtins/euclid'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLp } from './builtins/lp'
+import { callHp } from './builtins/hp'
+import { callBp } from './builtins/bp'
+import { callBs } from './builtins/bs'
+import { callLs } from './builtins/ls'
+import { callHs } from './builtins/hs'
+import { callPeak } from './builtins/peak'
+import { callAp } from './builtins/ap'
 import { callMap } from './builtins/map'
 import { callMini } from './builtins/mini'
 import { callNote } from './builtins/note'
@@ -390,6 +397,48 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Lp) {
       callLp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Hp) {
+      callHp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Bp) {
+      callBp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Bs) {
+      callBs(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Ls) {
+      callLs(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Hs) {
+      callHs(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Peak) {
+      callPeak(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Ap) {
+      callAp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

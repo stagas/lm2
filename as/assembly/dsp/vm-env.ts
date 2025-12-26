@@ -178,6 +178,34 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Lp)
       return
     }
+    if (sym === VmSym.Hp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Hp)
+      return
+    }
+    if (sym === VmSym.Bp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Bp)
+      return
+    }
+    if (sym === VmSym.Bs) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Bs)
+      return
+    }
+    if (sym === VmSym.Ls) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Ls)
+      return
+    }
+    if (sym === VmSym.Hs) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Hs)
+      return
+    }
+    if (sym === VmSym.Peak) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Peak)
+      return
+    }
+    if (sym === VmSym.Ap) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Ap)
+      return
+    }
     if (sym === VmSym.Note) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Note)
       return

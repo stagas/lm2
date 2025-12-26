@@ -2,7 +2,7 @@ import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
-import { Lp } from './gen/biquad'
+import { Ap, Bs, Bp, Hp, Lp, Hs, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
 import { Euclid } from './gen/euclid'
 import { Every } from './gen/every'
@@ -71,6 +71,13 @@ export class GensPool {
   private ats: GenPool<At> = new GenPool<At>(() => new At())
   private euclids: GenPool<Euclid> = new GenPool<Euclid>(() => new Euclid())
   private lps: GenPool<Lp> = new GenPool<Lp>(() => new Lp())
+  private hps: GenPool<Hp> = new GenPool<Hp>(() => new Hp())
+  private bps: GenPool<Bp> = new GenPool<Bp>(() => new Bp())
+  private bss: GenPool<Bs> = new GenPool<Bs>(() => new Bs())
+  private lss: GenPool<Ls> = new GenPool<Ls>(() => new Ls())
+  private hss: GenPool<Hs> = new GenPool<Hs>(() => new Hs())
+  private peaks: GenPool<Peak> = new GenPool<Peak>(() => new Peak())
+  private aps: GenPool<Ap> = new GenPool<Ap>(() => new Ap())
   private compressors: GenPool<Compressor> = new GenPool<Compressor>(() => new Compressor())
   private lfoSines: GenPool<LfoSine> = new GenPool<LfoSine>(() => new LfoSine())
   private lfoTris: GenPool<LfoTri> = new GenPool<LfoTri>(() => new LfoTri())
@@ -98,6 +105,13 @@ export class GensPool {
     this.ats.resetIndex()
     this.euclids.resetIndex()
     this.lps.resetIndex()
+    this.hps.resetIndex()
+    this.bps.resetIndex()
+    this.bss.resetIndex()
+    this.lss.resetIndex()
+    this.hss.resetIndex()
+    this.peaks.resetIndex()
+    this.aps.resetIndex()
     this.compressors.resetIndex()
     this.lfoSines.resetIndex()
     this.lfoTris.resetIndex()
@@ -126,6 +140,13 @@ export class GensPool {
     this.ats.reset()
     this.euclids.reset()
     this.lps.reset()
+    this.hps.reset()
+    this.bps.reset()
+    this.bss.reset()
+    this.lss.reset()
+    this.hss.reset()
+    this.peaks.reset()
+    this.aps.reset()
     this.compressors.reset()
     this.lfoSines.reset()
     this.lfoTris.reset()
@@ -175,6 +196,20 @@ export class GensPool {
         return this.euclids.get()
       case Op.Lp:
         return this.lps.get()
+      case Op.Hp:
+        return this.hps.get()
+      case Op.Bp:
+        return this.bps.get()
+      case Op.Bs:
+        return this.bss.get()
+      case Op.Ls:
+        return this.lss.get()
+      case Op.Hs:
+        return this.hss.get()
+      case Op.Peak:
+        return this.peaks.get()
+      case Op.Ap:
+        return this.aps.get()
       case Op.Compressor:
         return this.compressors.get()
       case Op.LfoSine:
@@ -212,6 +247,13 @@ export class GensPool {
     this.every.copyFrom(source.every)
     this.ats.copyFrom(source.ats)
     this.lps.copyFrom(source.lps)
+    this.hps.copyFrom(source.hps)
+    this.bps.copyFrom(source.bps)
+    this.bss.copyFrom(source.bss)
+    this.lss.copyFrom(source.lss)
+    this.hss.copyFrom(source.hss)
+    this.peaks.copyFrom(source.peaks)
+    this.aps.copyFrom(source.aps)
     this.compressors.copyFrom(source.compressors)
     this.lfoSines.copyFrom(source.lfoSines)
     this.lfoTris.copyFrom(source.lfoTris)

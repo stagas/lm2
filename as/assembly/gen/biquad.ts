@@ -287,3 +287,131 @@ export class Lp extends Biquad {
     }
   }
 }
+
+export class Hp extends Biquad {
+  process(out$: usize, length: i32): void {
+    let cut$ = this.cut$
+    let q$ = this.q$
+    let in$ = this.in$
+
+    for (let i = 0; i < length; i++) {
+      this.calculateHighpass(load<f32>(cut$), load<f32>(q$))
+      const sample = this.processSample(load<f32>(in$))
+      store<f32>(out$, sample)
+      out$ += 4
+      in$ += 4
+      cut$ += 4
+      q$ += 4
+    }
+  }
+}
+
+export class Bp extends Biquad {
+  process(out$: usize, length: i32): void {
+    let cut$ = this.cut$
+    let q$ = this.q$
+    let in$ = this.in$
+
+    for (let i = 0; i < length; i++) {
+      this.calculateBandpass(load<f32>(cut$), load<f32>(q$))
+      const sample = this.processSample(load<f32>(in$))
+      store<f32>(out$, sample)
+      out$ += 4
+      in$ += 4
+      cut$ += 4
+      q$ += 4
+    }
+  }
+}
+
+export class Bs extends Biquad {
+  process(out$: usize, length: i32): void {
+    let cut$ = this.cut$
+    let q$ = this.q$
+    let in$ = this.in$
+
+    for (let i = 0; i < length; i++) {
+      this.calculateBandstop(load<f32>(cut$), load<f32>(q$))
+      const sample = this.processSample(load<f32>(in$))
+      store<f32>(out$, sample)
+      out$ += 4
+      in$ += 4
+      cut$ += 4
+      q$ += 4
+    }
+  }
+}
+
+export class Ls extends Biquad {
+  process(out$: usize, length: i32): void {
+    let cut$ = this.cut$
+    let gain$ = this.gain$
+    let in$ = this.in$
+
+    for (let i = 0; i < length; i++) {
+      this.calculateLowshelf(load<f32>(cut$), load<f32>(gain$))
+      const sample = this.processSample(load<f32>(in$))
+      store<f32>(out$, sample)
+      out$ += 4
+      in$ += 4
+      cut$ += 4
+      gain$ += 4
+    }
+  }
+}
+
+export class Hs extends Biquad {
+  process(out$: usize, length: i32): void {
+    let cut$ = this.cut$
+    let gain$ = this.gain$
+    let in$ = this.in$
+
+    for (let i = 0; i < length; i++) {
+      this.calculateHighshelf(load<f32>(cut$), load<f32>(gain$))
+      const sample = this.processSample(load<f32>(in$))
+      store<f32>(out$, sample)
+      out$ += 4
+      in$ += 4
+      cut$ += 4
+      gain$ += 4
+    }
+  }
+}
+
+export class Peak extends Biquad {
+  process(out$: usize, length: i32): void {
+    let cut$ = this.cut$
+    let q$ = this.q$
+    let gain$ = this.gain$
+    let in$ = this.in$
+
+    for (let i = 0; i < length; i++) {
+      this.calculatePeak(load<f32>(cut$), load<f32>(q$), load<f32>(gain$))
+      const sample = this.processSample(load<f32>(in$))
+      store<f32>(out$, sample)
+      out$ += 4
+      in$ += 4
+      cut$ += 4
+      q$ += 4
+      gain$ += 4
+    }
+  }
+}
+
+export class Ap extends Biquad {
+  process(out$: usize, length: i32): void {
+    let cut$ = this.cut$
+    let q$ = this.q$
+    let in$ = this.in$
+
+    for (let i = 0; i < length; i++) {
+      this.calculateAllpass(load<f32>(cut$), load<f32>(q$))
+      const sample = this.processSample(load<f32>(in$))
+      store<f32>(out$, sample)
+      out$ += 4
+      in$ += 4
+      cut$ += 4
+      q$ += 4
+    }
+  }
+}

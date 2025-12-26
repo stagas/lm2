@@ -696,6 +696,98 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'saw(hz) |> lp($, cut:500, q:0.75) |> out($)',
     ],
   },
+  hp: {
+    name: 'hp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be high-passed' },
+      { name: 'cut', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'High-passes a signal with a biquad filter.',
+    examples: [
+      'saw(hz) |> hp($, cut:200, q:0.75) |> out($)',
+    ],
+  },
+  bp: {
+    name: 'bp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be band-passed' },
+      { name: 'cut', type: 'number', description: 'Center frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Band-passes a signal with a biquad filter.',
+    examples: [
+      'saw(hz) |> bp($, cut:1000, q:2) |> out($)',
+    ],
+  },
+  bs: {
+    name: 'bs',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be band-stopped' },
+      { name: 'cut', type: 'number', description: 'Center frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Band-stops (notches) a signal with a biquad filter.',
+    examples: [
+      'saw(hz) |> bs($, cut:1000, q:5) |> out($)',
+    ],
+  },
+  ls: {
+    name: 'ls',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be low-shelved' },
+      { name: 'cut', type: 'number', description: 'Corner frequency in hertz' },
+      { name: 'gain', type: 'number', description: 'Gain in decibels' },
+    ],
+    returnType: 'number',
+    description: 'Applies a low-shelf filter with adjustable gain.',
+    examples: [
+      'saw(hz) |> ls($, cut:200, gain:6) |> out($)',
+    ],
+  },
+  hs: {
+    name: 'hs',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be high-shelved' },
+      { name: 'cut', type: 'number', description: 'Corner frequency in hertz' },
+      { name: 'gain', type: 'number', description: 'Gain in decibels' },
+    ],
+    returnType: 'number',
+    description: 'Applies a high-shelf filter with adjustable gain.',
+    examples: [
+      'saw(hz) |> hs($, cut:3000, gain:-3) |> out($)',
+    ],
+  },
+  peak: {
+    name: 'peak',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be peaked' },
+      { name: 'cut', type: 'number', description: 'Center frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'gain', type: 'number', description: 'Gain in decibels' },
+    ],
+    returnType: 'number',
+    description: 'Applies a peaking filter with adjustable gain and Q.',
+    examples: [
+      'saw(hz) |> peak($, cut:1000, q:5, gain:6) |> out($)',
+    ],
+  },
+  ap: {
+    name: 'ap',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be all-passed' },
+      { name: 'cut', type: 'number', description: 'Center frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Applies an all-pass filter for phase shifting.',
+    examples: [
+      'saw(hz) |> ap($, cut:1000, q:1) |> out($)',
+    ],
+  },
   lfosine: {
     name: 'lfosine',
     parameters: [
