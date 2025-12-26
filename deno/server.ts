@@ -10,6 +10,8 @@ import {
   AuthLoginRequestSchema,
   AuthRegisterRequestSchema,
   type CommentData,
+  CommentDataSchema,
+  CreateCommentRequestSchema,
   ErrorResponseSchema,
   type LoopData,
   LoopDataSchema,
@@ -31,6 +33,7 @@ const fieldLabel: Record<string, string> = {
   code: 'Code',
   isPublic: 'Public',
   timestamp: 'Timestamp',
+  content: 'Comment',
 }
 
 function zodIssueMessage(issue: ZodIssue): string {
@@ -355,6 +358,137 @@ app.get('/api/loop/:id/comments', async c => {
   }
   comments.sort((a, b) => b.timestamp - a.timestamp)
   return c.json(comments)
+})
+
+app.post('/api/loop/:id/comments', async c => {
+  const { token, session } = await requireSession(c)
+  if (!token || !session) {
+    const err = jsonError('Not authenticated', 401)
+    return c.json(err.body, err.status)
+  }
+
+  const raw = await c.req.json().catch(() => null)
+  if (raw === null) {
+    const err = jsonError('Invalid JSON', 400)
+    return c.json(err.body, err.status)
+  }
+  const parsed = CreateCommentRequestSchema.safeParse(raw)
+  if (!parsed.success) {
+    const err = jsonError(zodErrorMessage(parsed.error), 400)
+    return c.json(err.body, err.status)
+  }
+
+  const kv = await getKv()
+  const id = c.req.param('id')
+
+  const [sessionEntry, userEntry, loopEntry, publicEntry, commentCountEntry] = await kv.getMany([
+    k.session(token),
+    k.user(session.userId),
+    k.loop(id),
+    k.publicLoop(id),
+    k.loopCommentCount(id),
+  ] as const)
+
+  const currentSession = sessionEntry.value as SessionKv | null
+  const user = userEntry.value as UserKv | null
+  const loop = loopEntry.value as LoopKv | null
+  const pub = publicLoopKv(publicEntry.value)
+  const commentsCount = (commentCountEntry.value as number | null) ?? 0
+
+  if (!currentSession || !user) {
+    const err = jsonError('Not authenticated', 401)
+    return c.json(err.body, err.status)
+  }
+  if (!loop || !pub || loop.isPublic !== true) {
+    const err = jsonError('Loop not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  const timestamp = Date.now()
+  const commentId = newId(6)
+  const comment = CommentDataSchema.parse({
+    id: commentId,
+    loopId: id,
+    content: parsed.data.content,
+    author: { id: user.id, name: user.name, email: user.email },
+    timestamp,
+  })
+
+  const nextCount = commentsCount + 1
+  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], nextCount, pub[5], pub[6]]
+
+  await kv.atomic()
+    .set(k.loopComment(id, timestamp, commentId), comment)
+    .set(k.loopCommentCount(id), nextCount)
+    .set(k.publicLoop(id), nextPublic)
+    .commit()
+
+  return c.json(comment)
+})
+
+app.delete('/api/loop/:id/comments/:commentId', async c => {
+  const { token, session } = await requireSession(c)
+  if (!token || !session) {
+    const err = jsonError('Not authenticated', 401)
+    return c.json(err.body, err.status)
+  }
+
+  const id = c.req.param('id')
+  const commentId = c.req.param('commentId')
+  const tsParam = c.req.query('ts')
+  const timestamp = tsParam ? Number(tsParam) : NaN
+  if (!Number.isFinite(timestamp)) {
+    const err = jsonError('Timestamp is required', 400)
+    return c.json(err.body, err.status)
+  }
+
+  const kv = await getKv()
+  const [sessionEntry, userEntry, loopEntry, publicEntry, commentCountEntry, commentEntry] = await kv.getMany([
+    k.session(token),
+    k.user(session.userId),
+    k.loop(id),
+    k.publicLoop(id),
+    k.loopCommentCount(id),
+    k.loopComment(id, timestamp, commentId),
+  ] as const)
+
+  const currentSession = sessionEntry.value as SessionKv | null
+  const user = userEntry.value as UserKv | null
+  const loop = loopEntry.value as LoopKv | null
+  const pub = publicLoopKv(publicEntry.value)
+  const commentsCount = (commentCountEntry.value as number | null) ?? 0
+  const comment = commentEntry.value as CommentData | null
+
+  if (!currentSession || !user) {
+    const err = jsonError('Not authenticated', 401)
+    return c.json(err.body, err.status)
+  }
+  if (!loop || !pub || loop.isPublic !== true) {
+    const err = jsonError('Loop not found', 404)
+    return c.json(err.body, err.status)
+  }
+  if (!comment) {
+    const err = jsonError('Comment not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  const isOwner = loop.userId === session.userId
+  const isAuthor = comment.author.id === session.userId
+  if (!isOwner && !isAuthor) {
+    const err = jsonError('Not allowed', 403)
+    return c.json(err.body, err.status)
+  }
+
+  const nextCount = Math.max(0, commentsCount - 1)
+  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], nextCount, pub[5], pub[6]]
+
+  await kv.atomic()
+    .delete(k.loopComment(id, timestamp, commentId))
+    .set(k.loopCommentCount(id), nextCount)
+    .set(k.publicLoop(id), nextPublic)
+    .commit()
+
+  return c.json({ ok: true })
 })
 
 app.post('/api/auth/register', async c => {

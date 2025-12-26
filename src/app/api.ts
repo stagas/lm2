@@ -71,6 +71,21 @@ export class API {
     return await this.requestJson<CommentData[]>(`/api/loop/${encodeURIComponent(loopId)}/comments`)
   }
 
+  async createLoopComment(loopId: string, content: string): Promise<CommentData> {
+    return await this.requestJson<CommentData>(`/api/loop/${encodeURIComponent(loopId)}/comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content }),
+    })
+  }
+
+  async deleteLoopComment(loopId: string, commentId: string, timestamp: number): Promise<void> {
+    await this.requestJson<{ ok: true }>(
+      `/api/loop/${encodeURIComponent(loopId)}/comments/${encodeURIComponent(commentId)}?ts=${encodeURIComponent(String(timestamp))}`,
+      { method: 'DELETE' },
+    )
+  }
+
   async login(email: string, password: string): Promise<SessionData> {
     return await this.requestJson<SessionData>('/api/auth/login', {
       method: 'POST',

@@ -16,6 +16,11 @@ export const CommentDataSchema = z.object({
 }).strict()
 export type CommentData = z.infer<typeof CommentDataSchema>
 
+export const CreateCommentRequestSchema = z.object({
+  content: z.string().min(1),
+}).strict()
+export type CreateCommentRequest = z.infer<typeof CreateCommentRequestSchema>
+
 export type LoopData = {
   id: string
   title: string

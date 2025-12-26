@@ -12,11 +12,10 @@ import {
   evalCompiledTimelineAtBeat,
   parseCompiledTimeline,
 } from '../dsp/timeline-history.ts'
-import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
+import { useEngineRuntimeStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
+import { RestartButton } from './RestartButton.tsx'
 import { useTheme } from './theme.ts'
-import { useRestartLoop } from './useRestartLoop.tsx'
-import { useSeekToSampleImmediate } from './useSeekToSample.ts'
 
 type MinimapScrollbarProps = {
   audioContext?: AudioContext | null
@@ -49,9 +48,6 @@ export function MinimapScrollbar({
   canControlPlayback = true,
 }: MinimapScrollbarProps) {
   const { loop, setLoop, clearLoop, animationManager, currentLoop } = useEngineRuntimeStore()
-  const seekToSampleImmediate = useSeekToSampleImmediate()
-  const restartLoop = useRestartLoop()
-  const playLoop = useEngineDspStore(state => state.playLoop)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
@@ -225,7 +221,7 @@ export function MinimapScrollbar({
     let labelStartIndex = 0
 
     for (let barIndex = 0; barIndex <= barCount; barIndex += MINIMAP_MINOR_STEP) {
-      const x = (barIndex / barCount) * (width - 2)
+      const x = (barIndex / barCount) * (width - 1)
       if (hasLabels) {
         while (labelStartIndex < labelStarts.length && labelStarts[labelStartIndex]! <= barIndex) {
           start = labelStarts[labelStartIndex]!
@@ -447,22 +443,7 @@ export function MinimapScrollbar({
 
   return (
     <div className="flex flex-row w-full h-full">
-      <button
-        className="min-w-[17px] w-[17px] bg-neutral-800 text-white"
-        onPointerDown={() => {
-          if (!canControlPlayback) {
-            if (currentLoop) {
-              seekToSampleImmediate(0)
-              void playLoop(currentLoop.data.id, currentLoop.codeFile.value, 0)
-              return
-            }
-            return
-          }
-          void restartLoop()
-        }}
-      >
-        &nbsp;
-      </button>
+      <RestartButton canControlPlayback={canControlPlayback} currentLoop={currentLoop} />
       <canvas
         ref={canvasRef}
         className="w-[calc(100%-17px)] h-full touch-none"

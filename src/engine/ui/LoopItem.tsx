@@ -1,6 +1,6 @@
 import {
   CheckIcon,
-  CircleNotch,
+  CircleNotchIcon,
   FilePlusIcon,
   FloppyDiskBackIcon,
   GlobeIcon,
@@ -20,7 +20,7 @@ import { MouseButtons } from 'utils/mouse-buttons'
 import type { LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
 import { useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
-import { PlayGradientIcon } from './Icons.tsx'
+import { PauseGradientIcon } from './Icons.tsx'
 import { Loop } from './loop.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
@@ -346,7 +346,7 @@ export const LoopItem = ({
               )}
               {isLoading && (
                 <div className="text-neutral-400 animate-spin shrink-0">
-                  <CircleNotch weight="regular" size={16} />
+                  <CircleNotchIcon weight="regular" size={16} />
                 </div>
               )}
               <div className="truncate">{loopTitle}</div>
@@ -382,7 +382,7 @@ export const LoopItem = ({
           <LoopItemButton
             title="Play"
             className={isLive ? 'text-orange-600' : undefined}
-            icon={isLive ? <PlayGradientIcon size={16} /> : <PlayIcon weight="regular" size={16} />}
+            icon={isLive ? <PauseGradientIcon size={16} /> : <PlayIcon weight="regular" size={16} />}
             onClick={handlePlayClick}
           />
         </div>
