@@ -193,6 +193,14 @@ export type AtRef = {
   callLoc: Loc
 }
 
+export type EuclidRef = {
+  euclidIndex: number
+  /** Location of the `euclid` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+}
+
 export type MiniSequenceRef = {
   seqIndex: number
   sequence: string

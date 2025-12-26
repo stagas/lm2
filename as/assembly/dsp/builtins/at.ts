@@ -102,7 +102,7 @@ export function callAt(
 
   // Best-effort impulse history for UI widgets (no atomics needed).
   {
-    const hist = program.atTrigHistory
+    const hist = program.trigHistory
     let writePos = i32(hist[TRIG_WRITE_POS_OFFSET])
     for (let i: i32 = 0; i < length; i++) {
       const v: f32 = load<f32>(out$ + (i << 2))

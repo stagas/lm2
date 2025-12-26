@@ -13,6 +13,7 @@ import {
 } from 'react'
 import { useEngineUiStore } from '../store.ts'
 import { BytecodeInspector } from './BytecodeInspector.tsx'
+import { SidebarBrowse } from './SidebarBrowse.tsx'
 import { SidebarLoops } from './SidebarLoops.tsx'
 import { SidebarSettings } from './SidebarSettings.tsx'
 
@@ -61,6 +62,7 @@ export function Sidebar() {
             {sidebarTab === 'loops' && (
               <SidebarLoops scrollContainerRef={scrollContainerRef} apiError={apiError} setApiError={setApiError} />
             )}
+            {sidebarTab === 'browse' && <SidebarBrowse />}
             {sidebarTab === 'compiled' && <BytecodeInspector />}
             {sidebarTab === 'settings' && <SidebarSettings apiError={apiError} setApiError={setApiError} />}
           </div>

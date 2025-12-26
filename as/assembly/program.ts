@@ -3,26 +3,26 @@ import { CompressorOutsPool } from './compressor-outs-pool'
 import {
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
-  TRIG_DATA_OFFSET,
-  TRIG_ENTRY_SIZE,
-  TRIG_HISTORY_SIZE,
   BRANCH_HISTORY_ENTRY_SIZE,
   BRANCH_HISTORY_SIZE,
   CALLBACK_SCOPE_MAX_BINDINGS,
   CALLBACK_SCOPE_MAX_DEPTH,
   CHUNK_SIZE,
+  FILTER_DATA_OFFSET,
+  FILTER_ENTRY_SIZE,
+  FILTER_HISTORY_SIZE,
   HISTORIES_COUNT,
   LFO_DATA_OFFSET,
   LFO_ENTRY_SIZE,
   LFO_HISTORY_SIZE,
   LITERALS_COUNT,
-  FILTER_DATA_OFFSET,
-  FILTER_ENTRY_SIZE,
-  FILTER_HISTORY_SIZE,
   RING_BUFFER_SIZE,
   SAMPLE_NEEDLE_DATA_OFFSET,
   SAMPLE_NEEDLE_ENTRY_SIZE,
   SAMPLE_NEEDLE_HISTORY_SIZE,
+  TRIG_DATA_OFFSET,
+  TRIG_ENTRY_SIZE,
+  TRIG_HISTORY_SIZE,
 } from './constants'
 import { GensPool } from './gens-pool'
 import { Smoothed } from './lib/smoothed'
@@ -46,10 +46,7 @@ export class Program {
   lfoHistory: StaticArray<f32> = new StaticArray<f32>(
     LFO_DATA_OFFSET + LFO_HISTORY_SIZE * LFO_ENTRY_SIZE,
   )
-  everyTrigHistory: StaticArray<f32> = new StaticArray<f32>(
-    TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE,
-  )
-  atTrigHistory: StaticArray<f32> = new StaticArray<f32>(
+  trigHistory: StaticArray<f32> = new StaticArray<f32>(
     TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE,
   )
 

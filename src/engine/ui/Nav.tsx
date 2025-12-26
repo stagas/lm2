@@ -1,3 +1,4 @@
+import { ChatCircleIcon, ChatIcon, HeartIcon } from '@phosphor-icons/react'
 import { Logo } from '../../components/Logo.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
@@ -68,6 +69,26 @@ export function Nav({
         currentLoop={currentLoop}
         onDspError={onDspError}
       />
+      <div className="whitespace-nowrap text-2xl mr-3 ml-1 pl-5 h-full gap-4 flex items-center justify-center border-l-2 border-orange-600 font-[Turret_Road] font-bold">
+        <div className="flex flex-col items-end">
+          <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent">
+            stagas - Deep Shadows in the Dark
+          </span>
+          <span className="-mt-1 bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-sm">
+            remix of: raver - Shadows
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
+            <HeartIcon size={16} />
+            <span className="relative top-[1.35px] left-[1px]">42</span>
+          </div>
+          <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
+            <ChatIcon size={16} />
+            <span className="relative top-[1.35px] left-[1px]">42</span>
+          </div>
+        </div>
+      </div>
       <MinimapScrollbar
         audioContext={audioContext}
         bpmValue={bpmValue}
