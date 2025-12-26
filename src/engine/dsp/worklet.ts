@@ -6,6 +6,7 @@ import type * as WasmExports from '../../../as/build/index'
 import config from '../../../asconfig.json'
 import { type WasmSetup, wasmSetup } from '../../lib/wasm-setup.ts'
 import { DspStruct } from './assembly.ts'
+import { detectSlices } from './detect-slices.ts'
 import { ControlOp } from './worklet-shared.ts'
 
 type DspInstance = {
@@ -128,44 +129,6 @@ export class DspProcessor extends AudioWorkletProcessor {
       sourcemapUrl: this.options.processorOptions.sourcemapUrl,
       imports: ({ memory }) => {
         const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-        const detectSlices = (samples: Float32Array, threshold: number, max: number) => {
-          const points = new Int32Array(Math.max(1, max))
-          let count = 0
-          points[count++] = 0
-
-          const hop = 512
-          const minDistance = 1024
-          const len = samples.length | 0
-          if (len <= 0) return { points, count: 0 }
-
-          const mult = 0.5 + clamp(threshold, 0, 1) * 1.5
-          let prevEnergy = 0
-          let lastPeak = 0
-
-          for (let i = hop; i + hop < len && count < max; i += hop) {
-            let energy = 0
-            const end = Math.min(len, i + hop)
-            for (let j = i; j < end; j++) {
-              const v = samples[j] || 0
-              energy += v * v
-            }
-            energy = Math.sqrt(energy / Math.max(1, end - i))
-
-            const diff = energy - prevEnergy
-            const onsetThreshold = prevEnergy * mult * 0.3
-            if (diff > onsetThreshold && diff > 0.01 && i - lastPeak >= minDistance) {
-              points[count++] = i
-              lastPeak = i
-            }
-            prevEnergy = energy
-          }
-
-          if (count <= 0) {
-            points[0] = 0
-            count = 1
-          }
-          return { points, count }
-        }
 
         return {
           host: {

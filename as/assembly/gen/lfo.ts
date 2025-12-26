@@ -22,7 +22,7 @@ function lfoPhase01(sample: f64, bar: f64, samplesPerWholeNote: f64): f64 {
 
 function lfoCycle(sample: f64, bar: f64, samplesPerWholeNote: f64): i32 {
   const cs: f64 = cycleSamples(bar, samplesPerWholeNote)
-  return i32(Math.floor(sample / cs))
+  return i32(Math.round(sample / cs))
 }
 
 function fractf64(v: f64): f64 {

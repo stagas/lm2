@@ -48,11 +48,15 @@ export function EngineUI() {
   const hasHydrated = useAppStore(state => state.hasHydrated)
   const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const isProgramReady = useEngineRuntimeStore(state => state.isProgramReady)
+  const audioContext = useEngineRuntimeStore(state => state.audioContext)
   const preloadSamples = useEngineDspStore(state => state.preloadSamples)
+  const isPreloadingSamples = useEngineDspStore(state => state.isPreloadingSamples)
   const currentLoop = useCurrentLoop()
   const code = useCodeFileValue(currentLoop?.codeFile)
   const isAwaitingCode = currentLoop != null && currentLoop.data.code == null && code.length === 0
   const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || isLoopLoading || isAwaitingCode
+    || !audioContext
+    || isPreloadingSamples
     || !currentLoop
 
   const [showIntro, setShowIntro] = useState(true)
@@ -74,6 +78,7 @@ export function EngineUI() {
 
   useLayoutEffect(() => {
     if (!currentLoop) return
+    if (!audioContext) return
     const loopId = currentLoop.data.id
     const hasCode = code.length > 0
 
@@ -83,8 +88,8 @@ export function EngineUI() {
     if (!changedLoop && !becameReady) return
 
     didPreloadRef.current = { loopId, hadCode: hasCode }
-    preloadSamples(code)
-  }, [code, currentLoop, preloadSamples])
+    void preloadSamples(code)
+  }, [audioContext, code, currentLoop, preloadSamples])
 
   useEffect(() => {
     if (shouldWait || !showIntro) return

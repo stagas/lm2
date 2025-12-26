@@ -25,6 +25,7 @@ import {
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
   type SampleDef,
+  type SlicerRef,
   type TimelineLabel,
   type TimelineSequenceRef,
 } from '../bytecode/bytecode.ts'
@@ -62,6 +63,7 @@ export type EngineDspState = {
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   lpRefs: LpRef[]
+  slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
@@ -81,6 +83,7 @@ export type EngineDspState = {
   uiAnalyserRefs: AnalyserRef[]
   uiCompressorRefs: CompressorRef[]
   uiLpRefs: LpRef[]
+  uiSlicerRefs: SlicerRef[]
   uiLfoRefs: LfoRef[]
   uiEveryRefs: EveryRef[]
   uiAtRefs: AtRef[]
@@ -95,13 +98,14 @@ export type EngineDspState = {
   uiBars?: number
   isProgramSwapPending: boolean
   isUpdatingDsp: boolean
+  isPreloadingSamples: boolean
   lastSuccessfulProgramData?: ProgramDataView
 
   initialize: () => Promise<void>
   dispose: () => void
   updateWasmBinary: () => Promise<void>
   updateDspSource: (source: string) => Promise<string[] | undefined>
-  preloadSamples: (source: string) => void
+  preloadSamples: (source: string) => Promise<void>
   playLoop: (loopId: string, source: string, startSample?: number) => Promise<void>
   setUiCompilePreview: (next: {
     source: string
@@ -114,6 +118,7 @@ export type EngineDspState = {
     analyserRefs: AnalyserRef[]
     compressorRefs: CompressorRef[]
     lpRefs: LpRef[]
+    slicerRefs: SlicerRef[]
     lfoRefs: LfoRef[]
     everyRefs: EveryRef[]
     atRefs: AtRef[]
@@ -134,6 +139,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
   let sampleLoader: SampleLoader | undefined
   let sampleDecodeToken = 0
   let sampleUploadToken = 0
+  let samplePreloadId = 0
   const samplePreviewTarget = {
     ops: new Int32Array(OPS_COUNT),
     literals: new Float32Array(LITERALS_COUNT),
@@ -147,11 +153,11 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
   function scheduleSampleLoad(
     defs: SampleDef[] | undefined,
     opts: { uploadToWorklet: boolean },
-  ): void {
+  ): Promise<void> {
     const runtime = useEngineRuntimeStore.getState()
     const audioContext = runtime.audioContext
-    if (!audioContext) return
-    if (!defs?.length) return
+    if (!audioContext) return Promise.resolve()
+    if (!defs?.length) return Promise.resolve()
 
     if (!sampleLoader) sampleLoader = new SampleLoader(audioContext)
     const token = opts.uploadToWorklet ? ++sampleUploadToken : ++sampleDecodeToken
@@ -171,7 +177,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       if (next) set({ loadedSamples: next })
     }
 
-    void (async () => {
+    return (async () => {
       for (const d of defs) {
         if (isStale()) return
 
@@ -384,6 +390,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const analyserRefs = primaryResult.analyserRefs
       const compressorRefs = primaryResult.compressorRefs
       const lpRefs = primaryResult.lpRefs
+      const slicerRefs = primaryResult.slicerRefs
       const lfoRefs = primaryResult.lfoRefs
       const everyRefs = primaryResult.everyRefs
       const atRefs = primaryResult.atRefs
@@ -411,6 +418,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           analyserRefs,
           compressorRefs,
           lpRefs,
+          slicerRefs,
           lfoRefs,
           everyRefs,
           atRefs,
@@ -430,6 +438,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
           uiLpRefs: lpRefs,
+          uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
           uiAtRefs: atRefs,
@@ -474,6 +483,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
         uiLpRefs: stagingResult.lpRefs,
+        uiSlicerRefs: stagingResult.slicerRefs,
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
         uiAtRefs: stagingResult.atRefs,
@@ -528,6 +538,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiAnalyserRefs: current.analyserRefs,
           uiCompressorRefs: current.compressorRefs,
           uiLpRefs: current.lpRefs,
+          uiSlicerRefs: current.slicerRefs,
           uiLfoRefs: current.lfoRefs,
           uiEveryRefs: current.everyRefs,
           uiAtRefs: current.atRefs,
@@ -556,6 +567,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         analyserRefs: stagingResult.analyserRefs,
         compressorRefs: stagingResult.compressorRefs,
         lpRefs: stagingResult.lpRefs,
+        slicerRefs: stagingResult.slicerRefs,
         lfoRefs: stagingResult.lfoRefs,
         everyRefs: stagingResult.everyRefs,
         atRefs: stagingResult.atRefs,
@@ -574,6 +586,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
         uiLpRefs: stagingResult.lpRefs,
+        uiSlicerRefs: stagingResult.slicerRefs,
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
         uiAtRefs: stagingResult.atRefs,
@@ -709,6 +722,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     analyserRefs: [],
     compressorRefs: [],
     lpRefs: [],
+    slicerRefs: [],
     lfoRefs: [],
     everyRefs: [],
     atRefs: [],
@@ -728,6 +742,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiAnalyserRefs: [],
     uiCompressorRefs: [],
     uiLpRefs: [],
+    uiSlicerRefs: [],
     uiLfoRefs: [],
     uiEveryRefs: [],
     uiAtRefs: [],
@@ -742,6 +757,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiBars: undefined,
     isProgramSwapPending: false,
     isUpdatingDsp: false,
+    isPreloadingSamples: false,
     lastSuccessfulProgramData: undefined,
 
     initialize: async () => {
@@ -804,6 +820,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         analyserRefs: [],
         compressorRefs: [],
         lpRefs: [],
+        slicerRefs: [],
         lfoRefs: [],
         everyRefs: [],
         atRefs: [],
@@ -818,6 +835,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiAnalyserRefs: [],
         uiCompressorRefs: [],
         uiLpRefs: [],
+        uiSlicerRefs: [],
         uiLfoRefs: [],
         uiEveryRefs: [],
         uiAtRefs: [],
@@ -847,17 +865,23 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       await updateWasmBinaryInner()
     },
 
-    preloadSamples: (source: string) => {
+    preloadSamples: async (source: string) => {
       const runtime = useEngineRuntimeStore.getState()
       if (!runtime.audioContext) return
       if (!source) return
+      const preloadId = ++samplePreloadId
+      set({ isPreloadingSamples: true })
 
       samplePreviewTarget.ops.fill(0)
       samplePreviewTarget.literals.fill(0)
       const result = encodeLangToVmOps(source, samplePreviewTarget)
-      if (result.errors.length) return
+      if (result.errors.length) {
+        if (preloadId === samplePreloadId) set({ isPreloadingSamples: false })
+        return
+      }
 
-      scheduleSampleLoad(result.sampleDefs ?? [], { uploadToWorklet: false })
+      await scheduleSampleLoad(result.sampleDefs ?? [], { uploadToWorklet: false })
+      if (preloadId === samplePreloadId) set({ isPreloadingSamples: false })
     },
 
     playLoop: async (loopId: string, source: string, startSample?: number) => {
@@ -911,7 +935,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         })
 
         if (runtime.worklet && runtime.audioContext) {
-          scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true })
+          void scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true })
         }
 
         if (stagingResult.bpm !== undefined && runtime.bpmValue) {
@@ -927,6 +951,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const analyserRefs = stagingResult.analyserRefs
         const compressorRefs = stagingResult.compressorRefs
         const lpRefs = stagingResult.lpRefs
+        const slicerRefs = stagingResult.slicerRefs
         const lfoRefs = stagingResult.lfoRefs
         const everyRefs = stagingResult.everyRefs
         const atRefs = stagingResult.atRefs
@@ -961,6 +986,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           analyserRefs,
           compressorRefs,
           lpRefs,
+          slicerRefs,
           lfoRefs,
           everyRefs,
           atRefs,
@@ -980,6 +1006,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
           uiLpRefs: lpRefs,
+          uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
           uiAtRefs: atRefs,
@@ -1049,6 +1076,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiAnalyserRefs: next.analyserRefs,
         uiCompressorRefs: next.compressorRefs,
         uiLpRefs: next.lpRefs,
+        uiSlicerRefs: next.slicerRefs,
         uiLfoRefs: next.lfoRefs,
         uiEveryRefs: next.everyRefs,
         uiAtRefs: next.atRefs,

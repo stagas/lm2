@@ -27,21 +27,22 @@ import type { Loop } from './loop.ts'
 import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
-import { useCompressorWidget } from './useCompressorWidget.ts'
-import { useLfoWidget } from './useLfoWidget.ts'
-import { useLpWidget } from './useLpWidget.ts'
-import { useTrigWidget } from './useTrigWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useBranchWidget } from './useBranchWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
+import { useCompressorWidget } from './useCompressorWidget.ts'
+import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
+import { useLfoWidget } from './useLfoWidget.ts'
 import { useLoopView } from './useLoopView.ts'
-import { useKnobWidget, type KnobInfo } from './useKnobWidget.ts'
+import { useLpWidget } from './useLpWidget.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
 import { useSampleWidget } from './useSampleWidget.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
+import { useSlicerWidget } from './useSlicerWidget.ts'
 import { useSliderWidget } from './useSliderWidget.ts'
 import { useTimelineSequenceWidget } from './useTimelineSequenceWidget.ts'
 import { useTimelineWidget } from './useTimelineWidget.ts'
+import { useTrigWidget } from './useTrigWidget.ts'
 
 export function DspSourceEditor(
   {
@@ -59,10 +60,14 @@ export function DspSourceEditor(
   const hasHydrated = useAppStore(state => state.hasHydrated)
   const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const isProgramReady = useEngineRuntimeStore(state => state.isProgramReady)
+  const audioContext = useEngineRuntimeStore(state => state.audioContext)
+  const isPreloadingSamples = useEngineDspStore(state => state.isPreloadingSamples)
   const code = currentLoop?.codeFile.value ?? ''
   const isAwaitingCode = currentLoop != null && currentLoop.data.code == null && code.length === 0
 
-  if (!hasHydrated || !isProgramReady || isLoopLoading || isAwaitingCode || !currentLoop) {
+  if (!hasHydrated || !isProgramReady || !audioContext || isLoopLoading || isPreloadingSamples || isAwaitingCode
+    || !currentLoop)
+  {
     return (
       <RadialGradient>
         <SpinnerLarge />
@@ -116,6 +121,7 @@ function DspSourceEditorReady(
     uiAnalyserRefs,
     uiCompressorRefs,
     uiLpRefs,
+    uiSlicerRefs,
     uiLfoRefs,
     uiEveryRefs,
     uiAtRefs,
@@ -212,6 +218,7 @@ function DspSourceEditorReady(
         analyserRefs: uiAnalyserRefs,
         compressorRefs: uiCompressorRefs,
         lpRefs: uiLpRefs,
+        slicerRefs: uiSlicerRefs,
         lfoRefs: uiLfoRefs,
         everyRefs: uiEveryRefs,
         atRefs: uiAtRefs,
@@ -233,6 +240,7 @@ function DspSourceEditorReady(
         analyserRefs: uiAnalyserRefs,
         compressorRefs: uiCompressorRefs,
         lpRefs: uiLpRefs,
+        slicerRefs: uiSlicerRefs,
         lfoRefs: uiLfoRefs,
         everyRefs: uiEveryRefs,
         atRefs: uiAtRefs,
@@ -259,6 +267,7 @@ function DspSourceEditorReady(
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
       lpRefs: previewCompile.lpRefs ?? [],
+      slicerRefs: previewCompile.slicerRefs ?? [],
       lfoRefs: previewCompile.lfoRefs ?? [],
       everyRefs: previewCompile.everyRefs ?? [],
       atRefs: previewCompile.atRefs ?? [],
@@ -279,6 +288,7 @@ function DspSourceEditorReady(
     uiAnalyserRefs,
     uiCompressorRefs,
     uiLpRefs,
+    uiSlicerRefs,
     uiLfoRefs,
     uiEveryRefs,
     uiAtRefs,
@@ -330,6 +340,7 @@ function DspSourceEditorReady(
       analyserRefs: result.analyserRefs ?? [],
       compressorRefs: result.compressorRefs ?? [],
       lpRefs: result.lpRefs ?? [],
+      slicerRefs: result.slicerRefs ?? [],
       lfoRefs: result.lfoRefs ?? [],
       everyRefs: result.everyRefs ?? [],
       atRefs: result.atRefs ?? [],
@@ -465,6 +476,12 @@ function DspSourceEditorReady(
     playbackState,
   })
 
+  const { widgets: slicerWidgets, onBeforeDraw: onBeforeDrawSlicer } = useSlicerWidget({
+    slicerRefs: widgetCompileState.slicerRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+  })
+
   const { widgets: lfoWidgets, onBeforeDraw: onBeforeDrawLfo } = useLfoWidget({
     program1: runtimeProgram,
     audioContext,
@@ -525,16 +542,26 @@ function DspSourceEditorReady(
 
     for (const ref of widgetCompileState.compressorRefs ?? []) {
       for (const p of ref.knobParams ?? []) {
-        if (p.name === 'attack') out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length,
-          value: p.value, min: 0.0001, max: 1, precision: 4, mode: 'exp2' })
-        else if (p.name === 'release') out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length,
-          value: p.value, min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
-        else if (p.name === 'threshold') out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length,
-          value: p.value, min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
-        else if (p.name === 'ratio') out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length,
-          value: p.value, min: 1, max: 20, precision: 2, mode: 'linear', stepPerPx: 0.05 })
-        else if (p.name === 'knee') out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length,
-          value: p.value, min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
+        if (p.name === 'attack') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0.0001, max: 1, precision: 4, mode: 'exp2' })
+        }
+        else if (p.name === 'release') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
+        }
+        else if (p.name === 'threshold') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
+        }
+        else if (p.name === 'ratio') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 1, max: 20, precision: 2, mode: 'linear', stepPerPx: 0.05 })
+        }
+        else if (p.name === 'knee') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
+        }
       }
     }
 
@@ -572,6 +599,7 @@ function DspSourceEditorReady(
     onBeforeDrawAnalyser()
     onBeforeDrawCompressor()
     onBeforeDrawLp()
+    onBeforeDrawSlicer()
     onBeforeDrawLfo()
     onBeforeDrawTrig()
     onBeforeDrawArrayAccess()
@@ -585,6 +613,7 @@ function DspSourceEditorReady(
     onBeforeDrawAnalyser,
     onBeforeDrawCompressor,
     onBeforeDrawLp,
+    onBeforeDrawSlicer,
     onBeforeDrawLfo,
     onBeforeDrawTrig,
     onBeforeDrawArrayAccess,
@@ -599,6 +628,7 @@ function DspSourceEditorReady(
       ...analyserWidgets,
       ...compressorWidgets,
       ...lpWidgets,
+      ...slicerWidgets,
       ...lfoWidgets,
       ...trigWidgets,
       ...timelineWidgets,
@@ -611,7 +641,8 @@ function DspSourceEditorReady(
       ...knobWidgets,
     ]
   }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, lpWidgets, lfoWidgets, trigWidgets, knobWidgets, viewSampleCount])
+    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, lpWidgets, slicerWidgets,
+    lfoWidgets, trigWidgets, knobWidgets, viewSampleCount])
 
   const codeEditorKey = useMemo(() => {
     const codeFile = currentLoop?.codeFile

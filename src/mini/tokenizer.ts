@@ -75,7 +75,7 @@ function parseModifiers(text: string): Modifiers {
       case '*': {
         const m = rest.match(/^([\d.]+)/)
         if (m) {
-          mods.density = parseFloat(m[1]!)
+          mods.density = parseFloat(m[1]!) || 1
           i += m[0]!.length + 1
         }
         else {
@@ -86,7 +86,7 @@ function parseModifiers(text: string): Modifiers {
       case '!': {
         const m = rest.match(/^([\d.]+)/)
         if (m) {
-          mods.replicate = parseFloat(m[1]!)
+          mods.replicate = parseFloat(m[1]!) || 1
           i += m[0]!.length + 1
         }
         else {
@@ -97,7 +97,7 @@ function parseModifiers(text: string): Modifiers {
       case '@': {
         const m = rest.match(/^([\d.]+)/)
         if (m) {
-          mods.elongate = parseFloat(m[1]!)
+          mods.elongate = parseFloat(m[1]!) || 1
           i += m[0]!.length + 1
         }
         else {
@@ -108,7 +108,7 @@ function parseModifiers(text: string): Modifiers {
       case '/': {
         const m = rest.match(/^([\d.]+)/)
         if (m) {
-          mods.density = 1 / parseFloat(m[1]!)
+          mods.density = 1 / (parseFloat(m[1]!) || 1)
           i += m[0]!.length + 1
         }
         else {

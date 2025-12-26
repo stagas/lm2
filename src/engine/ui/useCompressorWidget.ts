@@ -349,7 +349,7 @@ export function useCompressorWidget({
     }
 
     c.fillStyle = 'rgba(180,180,180,0.9)'
-    c.font = '10px "Space Mono"'
+    c.font = '7pt "Space Mono"'
     c.textBaseline = 'top'
     let txt = `${curLevel.toFixed(1).padStart(5, ' ')}dB in`
     c.fillText(txt, 6, 2)

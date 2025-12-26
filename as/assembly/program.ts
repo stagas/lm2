@@ -3,6 +3,9 @@ import { CompressorOutsPool } from './compressor-outs-pool'
 import {
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
+  AT_TRIG_DATA_OFFSET,
+  AT_TRIG_ENTRY_SIZE,
+  AT_TRIG_HISTORY_SIZE,
   BRANCH_HISTORY_ENTRY_SIZE,
   BRANCH_HISTORY_SIZE,
   CALLBACK_SCOPE_MAX_BINDINGS,
@@ -12,20 +15,17 @@ import {
   EVERY_TRIG_ENTRY_SIZE,
   EVERY_TRIG_HISTORY_SIZE,
   HISTORIES_COUNT,
+  LFO_DATA_OFFSET,
+  LFO_ENTRY_SIZE,
+  LFO_HISTORY_SIZE,
   LITERALS_COUNT,
+  LP_CUT_DATA_OFFSET,
+  LP_CUT_ENTRY_SIZE,
+  LP_CUT_HISTORY_SIZE,
   RING_BUFFER_SIZE,
   SAMPLE_NEEDLE_DATA_OFFSET,
   SAMPLE_NEEDLE_ENTRY_SIZE,
   SAMPLE_NEEDLE_HISTORY_SIZE,
-  AT_TRIG_DATA_OFFSET,
-  AT_TRIG_ENTRY_SIZE,
-  AT_TRIG_HISTORY_SIZE,
-  LP_CUT_DATA_OFFSET,
-  LP_CUT_ENTRY_SIZE,
-  LP_CUT_HISTORY_SIZE,
-  LFO_DATA_OFFSET,
-  LFO_ENTRY_SIZE,
-  LFO_HISTORY_SIZE,
 } from './constants'
 import { GensPool } from './gens-pool'
 import { Smoothed } from './lib/smoothed'
@@ -172,8 +172,9 @@ export class Program {
   }
 
   copyFrom(source: Program): void {
-    this.lock = source.lock
-    // this.data.copyFrom(source.data)
+    // Intentionally do not copy `lock` or any callback-scope state.
+    // `copyFrom()` is used to warm-start a new program during crossfade; callback scopes contain
+    // transient pointers into out buffers that are only valid within a single VM invocation.
 
     const outBytes = CHUNK_SIZE << 2
     for (let i = 0; i < this.outsPool.outs.length; i++) {
@@ -200,48 +201,12 @@ export class Program {
       memory.copy(dstGr$, srcGr$, compressorBytes)
     }
 
-    this.callbackDepth = source.callbackDepth
-    memory.copy(
-      changetype<usize>(this.callbackBodyBase),
-      changetype<usize>(source.callbackBodyBase),
-      CALLBACK_SCOPE_MAX_DEPTH << 2,
-    )
-    memory.copy(
-      changetype<usize>(this.callbackRemapBase),
-      changetype<usize>(source.callbackRemapBase),
-      CALLBACK_SCOPE_MAX_DEPTH << 2,
-    )
-    memory.copy(
-      changetype<usize>(this.callbackBindingCount),
-      changetype<usize>(source.callbackBindingCount),
-      CALLBACK_SCOPE_MAX_DEPTH << 2,
-    )
-    memory.copy(
-      changetype<usize>(this.callbackBindingIndices),
-      changetype<usize>(source.callbackBindingIndices),
-      CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS << 2,
-    )
-    memory.copy(
-      changetype<usize>(this.callbackBindingPrevHas),
-      changetype<usize>(source.callbackBindingPrevHas),
-      CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS << 2,
-    )
-    memory.copy(
-      changetype<usize>(this.callbackBindingPrevOuts),
-      changetype<usize>(source.callbackBindingPrevOuts),
-      CALLBACK_SCOPE_MAX_DEPTH * CALLBACK_SCOPE_MAX_BINDINGS * sizeof<usize>(),
-    )
-
-    memory.copy(
-      changetype<usize>(this.callbackBoundHas),
-      changetype<usize>(source.callbackBoundHas),
-      1024 << 2,
-    )
-    memory.copy(
-      changetype<usize>(this.callbackBoundOuts),
-      changetype<usize>(source.callbackBoundOuts),
-      1024 * sizeof<usize>(),
-    )
+    // Reset callback-scope state to a clean baseline.
+    // Keeping it around would copy raw pointers (`usize`) that refer to the *source* program's buffers.
+    this.callbackDepth = 0
+    for (let i = 0; i < this.callbackBoundHas.length; i++) {
+      this.callbackBoundHas[i] = 0
+    }
 
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
       this.literalsSmoothed[i].copyFrom(source.literalsSmoothed[i])

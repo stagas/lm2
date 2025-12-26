@@ -135,6 +135,19 @@ export type LpRef = {
   }
 }
 
+export type SlicerRef = {
+  /** Location of the `slicer` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  sampleIndex: number
+  threshold: number
+  sampleArgLoc: Loc | null
+  thresholdArgLoc: Loc | null
+}
+
 export type LfoRef = {
   lfoIndex: number
   lfoType: 'sine' | 'tri' | 'saw' | 'ramp' | 'sqr' | 'sah'
