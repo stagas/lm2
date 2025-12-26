@@ -24,12 +24,12 @@ export const SAMPLE_NEEDLE_ENTRY_SIZE = 4
 export const SAMPLE_NEEDLE_WRITE_POS_OFFSET = 0
 export const SAMPLE_NEEDLE_DATA_OFFSET = 1
 
-// Best-effort LP cutoff/Q history for UI widgets.
-// entry: lpIndex, cutHz, q, sampleCountMod
-export const LP_CUT_HISTORY_SIZE = 2048
-export const LP_CUT_ENTRY_SIZE = 4
-export const LP_CUT_WRITE_POS_OFFSET = 0
-export const LP_CUT_DATA_OFFSET = 1
+// Best-effort filter history for UI widgets.
+// entry: lpIndex, cutHz, q, gate, sampleCountMod
+export const FILTER_HISTORY_SIZE = 2048
+export const FILTER_ENTRY_SIZE = 5
+export const FILTER_WRITE_POS_OFFSET = 0
+export const FILTER_DATA_OFFSET = 1
 
 // Best-effort LFO history for UI widgets.
 // entry: lfoIndex, lfoType, bar, offset, phase01, value, sampleCountMod
@@ -40,15 +40,10 @@ export const LFO_DATA_OFFSET = 1
 
 // Best-effort impulse history for UI widgets (every/at).
 // entry: index, value, sampleCountMod
-export const EVERY_TRIG_HISTORY_SIZE = 2048
-export const EVERY_TRIG_ENTRY_SIZE = 3
-export const EVERY_TRIG_WRITE_POS_OFFSET = 0
-export const EVERY_TRIG_DATA_OFFSET = 1
-
-export const AT_TRIG_HISTORY_SIZE = 2048
-export const AT_TRIG_ENTRY_SIZE = 3
-export const AT_TRIG_WRITE_POS_OFFSET = 0
-export const AT_TRIG_DATA_OFFSET = 1
+export const TRIG_HISTORY_SIZE = 2048
+export const TRIG_ENTRY_SIZE = 3
+export const TRIG_WRITE_POS_OFFSET = 0
+export const TRIG_DATA_OFFSET = 1
 
 export const ARRAYS_COUNT = 1024
 export const LITERALS_COUNT = 1024

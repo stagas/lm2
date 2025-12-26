@@ -7,23 +7,17 @@ import {
   ARRAY_HISTORY_SIZE,
   ARRAY_SIZE,
   ARRAYS_COUNT,
-  AT_TRIG_DATA_OFFSET,
-  AT_TRIG_ENTRY_SIZE,
-  AT_TRIG_HISTORY_SIZE,
   BRANCH_HISTORY_ENTRY_SIZE,
   BRANCH_HISTORY_SIZE,
   CHUNK_SIZE,
-  EVERY_TRIG_DATA_OFFSET,
-  EVERY_TRIG_ENTRY_SIZE,
-  EVERY_TRIG_HISTORY_SIZE,
+  FILTER_DATA_OFFSET,
+  FILTER_ENTRY_SIZE,
+  FILTER_HISTORY_SIZE,
   HISTORIES_COUNT,
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
   HISTORY_SIZE,
   HISTORY_WRITE_POS_OFFSET,
-  LP_CUT_DATA_OFFSET,
-  LP_CUT_ENTRY_SIZE,
-  LP_CUT_HISTORY_SIZE,
   LFO_DATA_OFFSET,
   LFO_ENTRY_SIZE,
   LFO_HISTORY_SIZE,
@@ -33,6 +27,9 @@ import {
   SAMPLE_NEEDLE_DATA_OFFSET,
   SAMPLE_NEEDLE_ENTRY_SIZE,
   SAMPLE_NEEDLE_HISTORY_SIZE,
+  TRIG_DATA_OFFSET,
+  TRIG_ENTRY_SIZE,
+  TRIG_HISTORY_SIZE,
 } from '../../../as/assembly/constants.ts'
 import { acquireSpinLock } from '../../lib/atomics.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../../lib/mini-source-map.ts'
@@ -40,19 +37,19 @@ import { compileMiniNotation } from '../../mini/compiler.ts'
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import {
   type AnalyserRef,
+  type ArrayLiteralRef,
   type AtRef,
+  type BranchMarkRef,
   type CompressorRef,
+  encodeLangToVmOps,
   type EveryRef,
   type LfoRef,
   type LpRef,
-  type SlicerRef,
-  type ArrayLiteralRef,
-  type BranchMarkRef,
-  encodeLangToVmOps,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
   type SampleDef,
+  type SlicerRef,
   type TimelineLabel,
   type TimelineSequenceDef,
   type TimelineSequenceRef,
@@ -87,7 +84,7 @@ export type VmSampleNeedleHistory = {
   raw: Float32Array
 }
 
-export type VmLpCutHistory = {
+export type VmFilterHistory = {
   writePos: number
   raw: Float32Array
 }
@@ -170,8 +167,9 @@ function buildProgram(
   bpm?: number
   bars?: number
 } {
-  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs, lfoRefs,
-    slicerRefs, everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
+  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs,
+    compressorRefs, lpRefs, lfoRefs, slicerRefs, everyRefs, atRefs, arrayLiterals, branchMarks, numberParams,
+    numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
       ops: data.ops,
       literals: data.literals,
     })
@@ -396,16 +394,16 @@ async function createProgram(
     ),
   }
 
-  const lpCutHistory$ = program.lpCutHistory
-  const lpCutWritePos = new Float32Array(wasmMemory.buffer, lpCutHistory$, LP_CUT_DATA_OFFSET)
-  const lpCutHistory: VmLpCutHistory = {
+  const filterHistory$ = program.filterHistory
+  const filterWritePos = new Float32Array(wasmMemory.buffer, filterHistory$, FILTER_DATA_OFFSET)
+  const filterHistory: VmFilterHistory = {
     get writePos() {
-      return lpCutWritePos[0] || 0
+      return filterWritePos[0] || 0
     },
     raw: new Float32Array(
       wasmMemory.buffer,
-      lpCutHistory$,
-      LP_CUT_DATA_OFFSET + LP_CUT_HISTORY_SIZE * LP_CUT_ENTRY_SIZE,
+      filterHistory$,
+      FILTER_DATA_OFFSET + FILTER_HISTORY_SIZE * FILTER_ENTRY_SIZE,
     ),
   }
 
@@ -423,7 +421,7 @@ async function createProgram(
   }
 
   const everyTrigHistory$ = program.everyTrigHistory
-  const everyTrigWritePos = new Float32Array(wasmMemory.buffer, everyTrigHistory$, EVERY_TRIG_DATA_OFFSET)
+  const everyTrigWritePos = new Float32Array(wasmMemory.buffer, everyTrigHistory$, TRIG_DATA_OFFSET)
   const everyTrigHistory: VmEveryTrigHistory = {
     get writePos() {
       return everyTrigWritePos[0] || 0
@@ -431,12 +429,12 @@ async function createProgram(
     raw: new Float32Array(
       wasmMemory.buffer,
       everyTrigHistory$,
-      EVERY_TRIG_DATA_OFFSET + EVERY_TRIG_HISTORY_SIZE * EVERY_TRIG_ENTRY_SIZE,
+      TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE,
     ),
   }
 
   const atTrigHistory$ = program.atTrigHistory
-  const atTrigWritePos = new Float32Array(wasmMemory.buffer, atTrigHistory$, AT_TRIG_DATA_OFFSET)
+  const atTrigWritePos = new Float32Array(wasmMemory.buffer, atTrigHistory$, TRIG_DATA_OFFSET)
   const atTrigHistory: VmAtTrigHistory = {
     get writePos() {
       return atTrigWritePos[0] || 0
@@ -444,7 +442,7 @@ async function createProgram(
     raw: new Float32Array(
       wasmMemory.buffer,
       atTrigHistory$,
-      AT_TRIG_DATA_OFFSET + AT_TRIG_HISTORY_SIZE * AT_TRIG_ENTRY_SIZE,
+      TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE,
     ),
   }
 
@@ -464,7 +462,9 @@ async function createProgram(
   const levelDbOuts$ = new Uint32Array(wasmMemory.buffer, compressorOutsPool.levelDbOuts, 64)
   const grDbOuts$ = new Uint32Array(wasmMemory.buffer, compressorOutsPool.grDbOuts, 64)
   const compressorOuts = {
-    levelDb: [...levelDbOuts$].map(out$ => toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)),
+    levelDb: [...levelDbOuts$].map(out$ =>
+      toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
     grDb: [...grDbOuts$].map(out$ => toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)),
   }
 
@@ -479,7 +479,7 @@ async function createProgram(
     arrayAccessHistory,
     branchHistory,
     sampleNeedleHistory,
-    lpCutHistory,
+    filterHistory,
     lfoHistory,
     everyTrigHistory,
     atTrigHistory,
@@ -494,8 +494,9 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs, lpRefs, slicerRefs, lfoRefs,
-          everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
+          lpRefs, slicerRefs, lfoRefs, everyRefs, atRefs, arrayLiterals, branchMarks, numberParams, numberLiterals,
+          sampleDefs, bpm, bars } = buildProgram(newData, source)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {

@@ -2,12 +2,9 @@ import type { EditorWidget } from 'mini-code'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
-  AT_TRIG_DATA_OFFSET,
-  AT_TRIG_ENTRY_SIZE,
-  AT_TRIG_HISTORY_SIZE,
-  EVERY_TRIG_DATA_OFFSET,
-  EVERY_TRIG_ENTRY_SIZE,
-  EVERY_TRIG_HISTORY_SIZE,
+  TRIG_DATA_OFFSET,
+  TRIG_ENTRY_SIZE,
+  TRIG_HISTORY_SIZE,
 } from '../../../as/assembly/constants.ts'
 import type { AtRef, EveryRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance, VmAtTrigHistory, VmEveryTrigHistory } from '../dsp/program.ts'
@@ -182,9 +179,9 @@ export function useTrigWidget({
         everyHistory,
         lastWritePosEveryRef,
         everyStRef,
-        EVERY_TRIG_DATA_OFFSET,
-        EVERY_TRIG_ENTRY_SIZE,
-        EVERY_TRIG_HISTORY_SIZE,
+        TRIG_DATA_OFFSET,
+        TRIG_ENTRY_SIZE,
+        TRIG_HISTORY_SIZE,
       )
       updateTrigStates(everyStRef, nowMod, pred.sampleRate, fadeSeconds)
     }
@@ -194,9 +191,9 @@ export function useTrigWidget({
         atHistory,
         lastWritePosAtRef,
         atStRef,
-        AT_TRIG_DATA_OFFSET,
-        AT_TRIG_ENTRY_SIZE,
-        AT_TRIG_HISTORY_SIZE,
+        TRIG_DATA_OFFSET,
+        TRIG_ENTRY_SIZE,
+        TRIG_HISTORY_SIZE,
       )
       updateTrigStates(atStRef, nowMod, pred.sampleRate, fadeSeconds)
     }

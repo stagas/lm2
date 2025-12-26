@@ -1,6 +1,6 @@
 // dprint-ignore-file
 import { At } from '../../gen/at'
-import { AT_TRIG_DATA_OFFSET, AT_TRIG_ENTRY_SIZE, AT_TRIG_HISTORY_SIZE, AT_TRIG_WRITE_POS_OFFSET } from '../../constants'
+import { TRIG_DATA_OFFSET, TRIG_ENTRY_SIZE, TRIG_HISTORY_SIZE, TRIG_WRITE_POS_OFFSET } from '../../constants'
 import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
 import { Op } from '../../shared'
@@ -103,19 +103,19 @@ export function callAt(
   // Best-effort impulse history for UI widgets (no atomics needed).
   {
     const hist = program.atTrigHistory
-    let writePos = i32(hist[AT_TRIG_WRITE_POS_OFFSET])
+    let writePos = i32(hist[TRIG_WRITE_POS_OFFSET])
     for (let i: i32 = 0; i < length; i++) {
       const v: f32 = load<f32>(out$ + (i << 2))
       if (v > 0.0) {
-        const slot = writePos % AT_TRIG_HISTORY_SIZE
-        const base = AT_TRIG_DATA_OFFSET + slot * AT_TRIG_ENTRY_SIZE
+        const slot = writePos % TRIG_HISTORY_SIZE
+        const base = TRIG_DATA_OFFSET + slot * TRIG_ENTRY_SIZE
         hist[base] = f32(trigIndex)
         hist[base + 1] = v
         hist[base + 2] = f32((globalSampleCount + i) & 0xfffff)
         writePos = (writePos + 1) & 0xfffff
       }
     }
-    hist[AT_TRIG_WRITE_POS_OFFSET] = f32(writePos)
+    hist[TRIG_WRITE_POS_OFFSET] = f32(writePos)
   }
 
   stack.push(VmTag.Audio, 0.0, outIndex)
