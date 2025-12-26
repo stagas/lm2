@@ -111,6 +111,7 @@ function DspSourceEditorReady(
 
   const {
     dspSource,
+    preloadSamples,
     updateDspSource,
     uiDspSource,
     uiSequences,
@@ -131,6 +132,7 @@ function DspSourceEditorReady(
     uiNumberParams,
     uiSampleDefs,
     loadedSamples,
+    isPreloadingSamples,
     isProgramSwapPending,
     isUpdatingDsp,
   } = useEngineDspStore()
@@ -312,6 +314,20 @@ function DspSourceEditorReady(
     }
     return false
   }, [hasCompileErrors, loadedSamples, widgetCompileState.sampleDefs])
+
+  const didRequestPreviewSamplesRef = useRef<{ loopId: string; source: string } | null>(null)
+  useLayoutEffect(() => {
+    if (!audioContext) return
+    if (!isAwaitingSamples) return
+    if (!code) return
+
+    const loopId = currentLoop.data.id
+    const prev = didRequestPreviewSamplesRef.current
+    if (prev?.loopId === loopId && prev.source === code) return
+    didRequestPreviewSamplesRef.current = { loopId, source: code }
+
+    void preloadSamples(code)
+  }, [audioContext, code, currentLoop.data.id, isAwaitingSamples, preloadSamples])
 
   const runtimeProgram = isProgramSwapPending ? program2 : program1
 
@@ -671,7 +687,7 @@ function DspSourceEditorReady(
     return next
   }, [currentLoop?.codeFile])
 
-  if (isAwaitingSamples) {
+  if (isPreloadingSamples || isAwaitingSamples) {
     return (
       <RadialGradient>
         <SpinnerLarge />

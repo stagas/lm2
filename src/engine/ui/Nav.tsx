@@ -5,6 +5,7 @@ import type { TimelineWindow } from '../types.ts'
 import { PauseGradientIcon, PlayGradientIcon, StopGradientIcon } from './Icons.tsx'
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
+import { RestartButton } from './RestartButton.tsx'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useLoopView } from './useLoopView.ts'
 
@@ -23,18 +24,58 @@ export function PlaybackControls({
   const playLoop = useEngineDspStore(state => state.playLoop)
   const pause = useEngineRuntimeStore(state => state.pause)
   const stop = useEngineRuntimeStore(state => state.stop)
+  const playbackState = useEngineRuntimeStore(state => state.playbackState)
+  const isPlaying = playbackState === 'running'
 
   return (
-    <div className="flex items-center justify-center">
-      <PlaybackButton icon={<PlayGradientIcon />} onClick={() => {
-        if (!currentLoop) return
-        onDspError(undefined)
-        void playLoop(currentLoop.data.id, currentLoop.codeFile.value).catch(err => {
-          onDspError(err instanceof Error ? err.message : String(err))
-        })
-      }} />
-      <PlaybackButton icon={<PauseGradientIcon />} onClick={pause} />
+    <div className="flex items-center justify-center mx-2">
+      {!isPlaying
+        ? (
+          <PlaybackButton icon={<PlayGradientIcon />} onClick={() => {
+            if (!currentLoop) return
+            onDspError(undefined)
+            void playLoop(currentLoop.data.id, currentLoop.codeFile.value).catch(err => {
+              onDspError(err instanceof Error ? err.message : String(err))
+            })
+          }} />
+        )
+        : <PlaybackButton icon={<PauseGradientIcon />} onClick={pause} />}
       <PlaybackButton icon={<StopGradientIcon />} onClick={stop} />
+    </div>
+  )
+}
+
+function LoopTitle(
+  { loop }: { loop: Loop | null },
+) {
+  const loopData = loop?.data
+  const title = loopData?.title ?? ''
+  const artist = loopData?.artist ?? ''
+  const remixOf = loopData?.remixOf
+  const likesCount = loopData?.likesCount ?? 0
+  const commentsCount = loopData?.commentsCount ?? 0
+  return (
+    <div className="whitespace-nowrap text-2xl mr-4 pl-4 h-full gap-4 flex items-center justify-center font-[Turret_Road] font-bold">
+      <div className="flex flex-col items-end">
+        <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent">
+          {artist} - {title}
+        </span>
+        {remixOf && (
+          <span className="-mt-1 bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-sm">
+            remix of: {remixOf.artist} - {remixOf.title}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col">
+        <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
+          <HeartIcon size={16} />
+          <span className="relative top-[1.35px] left-[1px]">{likesCount}</span>
+        </div>
+        <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
+          <ChatIcon size={16} />
+          <span className="relative top-[1.35px] left-[1px]">{commentsCount}</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -62,42 +103,13 @@ export function Nav({
     currentLoop?.data.id ?? null,
   )
 
-  const loopData = currentLoop?.data
-  const title = loopData?.title ?? ''
-  const artist = loopData?.artist ?? ''
-  const remixOf = loopData?.remixOf
-  const likesCount = loopData?.likesCount ?? 0
-  const commentsCount = loopData?.commentsCount ?? 0
-
   return (
-    <div className="h-[60px] flex items-center justify-center gap-2 pl-3 border-b-2 border-orange-600">
+    <div className="h-[60px] flex items-center justify-center pl-3 border-b-2 border-orange-600">
       <Logo />
       <PlaybackControls
         currentLoop={currentLoop}
         onDspError={onDspError}
       />
-      <div className="whitespace-nowrap text-2xl mr-3 ml-1 pl-5 h-full gap-4 flex items-center justify-center border-l-2 border-orange-600 font-[Turret_Road] font-bold">
-        <div className="flex flex-col items-end">
-          <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent">
-            {artist} - {title}
-          </span>
-          {remixOf && (
-            <span className="-mt-1 bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-sm">
-              remix of: {remixOf.artist} - {remixOf.title}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-col">
-          <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
-            <HeartIcon size={16} />
-            <span className="relative top-[1.35px] left-[1px]">{likesCount}</span>
-          </div>
-          <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
-            <ChatIcon size={16} />
-            <span className="relative top-[1.35px] left-[1px]">{commentsCount}</span>
-          </div>
-        </div>
-      </div>
       <MinimapScrollbar
         audioContext={audioContext}
         bpmValue={bpmValue}
@@ -110,6 +122,7 @@ export function Nav({
         timelineWindowRef={timelineWindowRef}
         canControlPlayback={canControlPlayback}
       />
+      <LoopTitle loop={currentLoop} />
     </div>
   )
 }

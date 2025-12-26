@@ -43,6 +43,8 @@ interface AppState {
   prefetchPublicLoopCodes: (loopIds: string[]) => Promise<void>
   getPublicLoopCode: (loopId: string) => Promise<string>
   getLoopComments: (loopId: string) => Promise<CommentData[]>
+  createLoopComment: (loopId: string, content: string) => Promise<CommentData>
+  deleteLoopComment: (loopId: string, commentId: string, timestamp: number) => Promise<void>
   buffers: Record<string, CodeFileState>
   bases: Record<string, { code: string; ts?: number }>
   dirtyById: Record<string, boolean>
@@ -69,6 +71,13 @@ const publicLoopPrefetching = new Set<string>()
 const publicLoopFetching = new Map<string, Promise<string>>()
 
 const SESSION_VIEWS_KEY = 'app:views:v1'
+
+const updateLoopCommentsCountInList = (list: LoopData[], loopId: string, delta: number) =>
+  list.map(loop =>
+    loop.id === loopId
+      ? { ...loop, commentsCount: Math.max(0, loop.commentsCount + delta) }
+      : loop
+  )
 
 const readSessionViews = (): Record<string, EditorViewState> => {
   if (typeof window === 'undefined') return {}
@@ -350,10 +359,56 @@ export const useAppStore = create<AppState>()(
         const cached = get().loopCommentsCache[loopId]
         if (cached != null) return cached
         const comments = await get().api.fetchLoopComments(loopId)
-        set(state => ({
-          loopCommentsCache: { ...state.loopCommentsCache, [loopId]: comments },
-        }))
+        set(state => {
+          const prev = state.loopCommentsCache[loopId]
+          if (!prev) {
+            return {
+              loopCommentsCache: { ...state.loopCommentsCache, [loopId]: comments },
+            }
+          }
+
+          const byId = new Map<string, CommentData>()
+          for (const c of prev) byId.set(c.id, c)
+          for (const c of comments) byId.set(c.id, c)
+          const merged = Array.from(byId.values()).sort((a, b) => b.timestamp - a.timestamp)
+          return {
+            loopCommentsCache: { ...state.loopCommentsCache, [loopId]: merged },
+          }
+        })
         return comments
+      },
+
+      createLoopComment: async (loopId, content) => {
+        const comment = await get().api.createLoopComment(loopId, content)
+        set(state => ({
+          loopCommentsCache: {
+            ...state.loopCommentsCache,
+            [loopId]: (() => {
+              const prev = state.loopCommentsCache[loopId]
+              if (!prev) return [comment]
+              if (prev.some(c => c.id === comment.id)) return prev
+              return [comment, ...prev]
+            })(),
+          },
+          publicLoopsCache: updateLoopCommentsCountInList(state.publicLoopsCache, loopId, 1),
+          likedLoopsCache: updateLoopCommentsCountInList(state.likedLoopsCache, loopId, 1),
+          serverLoopsCache: updateLoopCommentsCountInList(state.serverLoopsCache, loopId, 1),
+        }))
+        return comment
+      },
+
+      deleteLoopComment: async (loopId, commentId, timestamp) => {
+        await get().api.deleteLoopComment(loopId, commentId, timestamp)
+        set(state => ({
+          loopCommentsCache: (() => {
+            const prev = state.loopCommentsCache[loopId]
+            if (!prev) return state.loopCommentsCache
+            return { ...state.loopCommentsCache, [loopId]: prev.filter(c => c.id !== commentId) }
+          })(),
+          publicLoopsCache: updateLoopCommentsCountInList(state.publicLoopsCache, loopId, -1),
+          likedLoopsCache: updateLoopCommentsCountInList(state.likedLoopsCache, loopId, -1),
+          serverLoopsCache: updateLoopCommentsCountInList(state.serverLoopsCache, loopId, -1),
+        }))
       },
 
       buffers: {},
