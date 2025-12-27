@@ -23,9 +23,13 @@ const artistIdFromPathname = (pathname: string) => {
   return id.length > 0 ? id : null
 }
 
+const isArtistWithoutIdPath = (pathname: string) =>
+  pathname === '/artist' || (pathname.startsWith('/artist/') && artistIdFromPathname(pathname) == null)
+
 export function SidebarBrowse() {
   const { pathname, navigate } = useRouter()
   const sessionData = useAppStore(state => state.sessionData)
+  const sessionFetchState = useAppStore(state => state.sessionFetchState)
   const api = useAppStore(state => state.api)
   const setSessionData = useAppStore(state => state.setSessionData)
 
@@ -53,12 +57,30 @@ export function SidebarBrowse() {
   const [isLikedLoading, setIsLikedLoading] = useState(false)
   const [likedViewLoops, setLikedViewLoops] = useState<LoopData[]>([])
   const prevLikedIdsRef = useRef<Set<string> | null>(null)
+  const initPathRef = useRef<string | null>(null)
+  const didInitRedirectRef = useRef(false)
 
   useEffect(() => {
     setTimeout(() => {
       document.querySelector('textarea')?.focus({ preventScroll: true })
     }, 0)
   }, [tab])
+
+  useEffect(() => {
+    if (initPathRef.current == null) initPathRef.current = pathname
+  }, [pathname])
+
+  useEffect(() => {
+    if (didInitRedirectRef.current) return
+    if (sessionFetchState !== 'done') return
+    didInitRedirectRef.current = true
+
+    if (sessionData) return
+    const initPath = initPathRef.current ?? pathname
+    if (initPath === '/likes' || isArtistWithoutIdPath(initPath)) {
+      navigate('/', { replace: true })
+    }
+  }, [navigate, pathname, sessionData, sessionFetchState])
 
   useEffect(() => {
     if (tab !== 'artist') return
@@ -272,7 +294,11 @@ export function SidebarBrowse() {
         <button
           title={'Artist'}
           onPointerDown={() => {
-            const id = sessionData?.user.id ?? ''
+            const id = sessionData?.user.id
+            if (!id) {
+              navigate('/artist')
+              return
+            }
             navigate(`/artist/${id}/${toSlug(sessionData?.user.name ?? '')}`)
           }}
           className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 disabled:opacity-30 ${

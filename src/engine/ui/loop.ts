@@ -1,6 +1,10 @@
 import { CodeFile } from 'mini-code'
 import type { LoopData } from '../../../deno/types.ts'
 
+export const DEFAULT_LOOP_CODE = `
+sine(a4) |> out($)
+`
+
 export class Loop {
   codeFile: CodeFile
   constructor(public data: LoopData, codeFile?: CodeFile) {

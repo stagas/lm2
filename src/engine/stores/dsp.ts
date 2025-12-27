@@ -1132,7 +1132,8 @@ async function createWorklet() {
   window.addEventListener('pointerdown', () => {
     audioContext.resume()
   }, { once: true })
-  await audioContext.audioWorklet.addModule(workletUrl)
+  const moduleUrl = new URL(workletUrl, window.location.origin).toString()
+  await audioContext.audioWorklet.addModule(moduleUrl)
   const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
   const ringPos = new Uint8Array(new SharedArrayBuffer(1 * Uint8Array.BYTES_PER_ELEMENT))
   const control = new Uint32Array(new SharedArrayBuffer(1 * Uint32Array.BYTES_PER_ELEMENT))
