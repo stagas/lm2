@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { DEBUG } from '../constants.ts'
 import { useEngineUiStore } from '../store.ts'
 import { BytecodeInspector } from './BytecodeInspector.tsx'
 import { SidebarBrowse } from './SidebarBrowse.tsx'
@@ -24,6 +25,13 @@ const SidebarTabIcon: Record<SidebarTab, React.ReactNode> = {
   compiled: <ArticleIcon weight="regular" size={16} />,
   settings: <GearSixIcon weight="regular" size={16} />,
 }
+
+const SidebarTitles: Record<SidebarTab, string> = {
+  loops: 'My Loops',
+  browse: 'Browse Loops',
+  compiled: 'Bytecode Inspector',
+  settings: 'Tools and Settings',
+} as const
 
 export function Sidebar() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -41,10 +49,10 @@ export function Sidebar() {
       {sidebarOpen && (
         <div className="flex flex-col w-full h-full">
           <div className="h-[40px] bg-black flex shrink-0">
-            {Object.entries(SidebarTabIcon).map(([tab, icon]) => (
+            {Object.entries(SidebarTabIcon).filter(([tab]) => DEBUG || tab !== 'compiled').map(([tab, icon]) => (
               <button
                 key={tab}
-                title={tab}
+                title={SidebarTitles[tab as SidebarTab]}
                 onPointerDown={() => setSidebarTab(tab as SidebarTab)}
                 className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
                   sidebarTab === tab
