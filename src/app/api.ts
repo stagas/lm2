@@ -43,6 +43,39 @@ export class API {
       likesCount: r[3],
       commentsCount: r[4],
       remixesCount: r[5],
+      remixOfId: r[8] ? r[8] : undefined,
+      title: r[6],
+      timestamp: r[7],
+      isPublic: true,
+    }))
+  }
+
+  async fetchHotLoops(): Promise<LoopData[]> {
+    const rows = await this.requestJson<PublicLoopListEntry[]>('/api/hot-loops')
+    return rows.map(r => ({
+      id: r[0],
+      artist: r[1],
+      artistId: r[2],
+      likesCount: r[3],
+      commentsCount: r[4],
+      remixesCount: r[5],
+      remixOfId: r[8] ? r[8] : undefined,
+      title: r[6],
+      timestamp: r[7],
+      isPublic: true,
+    }))
+  }
+
+  async fetchBestLoops(): Promise<LoopData[]> {
+    const rows = await this.requestJson<PublicLoopListEntry[]>('/api/best-loops')
+    return rows.map(r => ({
+      id: r[0],
+      artist: r[1],
+      artistId: r[2],
+      likesCount: r[3],
+      commentsCount: r[4],
+      remixesCount: r[5],
+      remixOfId: r[8] ? r[8] : undefined,
       title: r[6],
       timestamp: r[7],
       isPublic: true,
@@ -51,6 +84,24 @@ export class API {
 
   async fetchPublicLoopData(id: string): Promise<LoopData> {
     return await this.requestJson<LoopData>(`/api/public-loop/${encodeURIComponent(id)}`)
+  }
+
+  async fetchPublicLoopRemixes(id: string): Promise<LoopData[]> {
+    const rows = await this.requestJson<PublicLoopListEntry[]>(
+      `/api/public-loop/${encodeURIComponent(id)}/remixes`,
+    )
+    return rows.map(r => ({
+      id: r[0],
+      artist: r[1],
+      artistId: r[2],
+      likesCount: r[3],
+      commentsCount: r[4],
+      remixesCount: r[5],
+      remixOfId: r[8] ? r[8] : undefined,
+      title: r[6],
+      timestamp: r[7],
+      isPublic: true,
+    }))
   }
 
   async prefetchPublicLoopCodes(ids: string[]): Promise<Record<string, string>> {
@@ -100,6 +151,14 @@ export class API {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ artistName, email, password }),
+    })
+  }
+
+  async updateArtistName(artistName: string): Promise<SessionData> {
+    return await this.requestJson<SessionData>('/api/user', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ artistName }),
     })
   }
 

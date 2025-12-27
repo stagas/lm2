@@ -18,11 +18,27 @@ export const MIGRATIONS: readonly Migration[] = [
         const id = pub[0]
         const existing = (await kv.get<number>(k.loopRemixCount(id))).value
         const remixesCount = existing ?? pub[5] ?? 0
-        const nextPub: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], pub[4], remixesCount, pub[6], pub[7]]
+        const nextPub: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], pub[4], remixesCount, pub[6], pub[7], pub[8] ?? '']
         await kv.atomic()
           .set(k.publicLoop(id), nextPub)
           .set(k.loopRemixCount(id), remixesCount)
           .commit()
+      }
+    },
+  },
+  {
+    version: 2,
+    name: 'public-loops-remix-of-id-v1',
+    up: async kv => {
+      for await (const entry of kv.list<unknown>({ prefix: k.publicLoops() })) {
+        const pub = parsePublicLoopKv(entry.value)
+        if (!pub) continue
+        const id = pub[0]
+        const loop = (await kv.get<unknown>(k.loop(id))).value as { remixOfId?: unknown } | null
+        const remixOfId = typeof loop?.remixOfId === 'string' ? loop.remixOfId : ''
+        if ((pub[8] ?? '') === remixOfId) continue
+        const nextPub: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], pub[4], pub[5], pub[6], pub[7], remixOfId]
+        await kv.atomic().set(k.publicLoop(id), nextPub).commit()
       }
     },
   },

@@ -1,3 +1,5 @@
+import { CheckIcon, CircleNotchIcon, PencilIcon } from '@phosphor-icons/react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../../app/store.ts'
 import Switch from '../../components/Switch.tsx'
 import { useEngineUiStore } from '../store.ts'
@@ -43,6 +45,45 @@ export function SidebarSettings(
   const setUiZeroBased = useEngineUiStore(state => state.setZeroBasedTimelines)
   const uiShowFunctionDefinitions = useEngineUiStore(state => state.showFunctionDefinitions)
   const setUiShowFunctionDefinitions = useEngineUiStore(state => state.setShowFunctionDefinitions)
+  const [editingArtistName, setEditingArtistName] = useState(false)
+  const artistNameInputRef = useRef<HTMLInputElement>(null)
+  const [isUpdatingArtistName, setIsUpdatingArtistName] = useState(false)
+  const [localArtistName, setLocalArtistName] = useState(sessionData?.user.name ?? '')
+
+  useEffect(() => {
+    setLocalArtistName(sessionData?.user.name ?? '')
+  }, [sessionData?.user.name])
+
+  useEffect(() => {
+    if (editingArtistName) {
+      setTimeout(() => {
+        artistNameInputRef.current?.focus()
+        artistNameInputRef.current?.select()
+      })
+    }
+  }, [editingArtistName])
+
+  const handleSaveArtistName = async () => {
+    setIsUpdatingArtistName(true)
+    try {
+      const nextSessionData = await api.updateArtistName(localArtistName.trim())
+      setSessionData(nextSessionData)
+      setApiError(null)
+      setEditingArtistName(false)
+    }
+    catch (e) {
+      setApiError(e instanceof Error ? e.message : String(e))
+    }
+    finally {
+      setIsUpdatingArtistName(false)
+    }
+  }
+
+  const handleCancelArtistName = () => {
+    setLocalArtistName(sessionData?.user.name ?? '')
+    setEditingArtistName(false)
+  }
+
   return (
     <>
       {!sessionData
@@ -55,9 +96,55 @@ export function SidebarSettings(
         )
         : (
           <div className="px-3 py-2 border-b border-neutral-800 flex items-center justify-between gap-2">
-            <div className="text-xs text-neutral-100 font-semibold truncate">
-              {sessionData.user.name}
-            </div>
+            {editingArtistName
+              ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={artistNameInputRef}
+                    type="text"
+                    value={localArtistName}
+                    className="text-xs flex py-1 px-2 flex-1 min-w-0 bg-gradient-to-b from-black to-neutral-700 rounded-sm outline-none text-white"
+                    onChange={e => setLocalArtistName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        void handleSaveArtistName()
+                      }
+                      else if (e.key === 'Escape') {
+                        handleCancelArtistName()
+                      }
+                    }}
+                  />
+                  <button
+                    title="Save Artist Name"
+                    className="text-xs font-semibold text-neutral-500 hover:text-white"
+                    onPointerDown={() => {
+                      void handleSaveArtistName()
+                    }}
+                  >
+                    {isUpdatingArtistName
+                      ? (
+                        <div className="w-4 h-4 text-white animate-spin">
+                          <CircleNotchIcon weight="regular" size={16} />
+                        </div>
+                      )
+                      : <CheckIcon weight="regular" size={16} />}
+                  </button>
+                </div>
+              )
+              : (
+                <div className="text-xs text-neutral-100 font-semibold truncate flex items-center gap-2">
+                  {localArtistName}
+                  <button
+                    title="Edit Artist Name"
+                    className="text-xs font-semibold text-neutral-500 hover:text-white"
+                    onPointerDown={() => {
+                      setEditingArtistName(true)
+                    }}
+                  >
+                    <PencilIcon weight="regular" size={16} />
+                  </button>
+                </div>
+              )}
             <button
               className="text-xs font-semibold bg-neutral-800 text-neutral-200 px-2 py-1"
               onPointerDown={() => {

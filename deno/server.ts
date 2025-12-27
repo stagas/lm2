@@ -21,6 +21,7 @@ import {
   type PublicLoopListEntry,
   type SessionData,
   SessionDataSchema,
+  UpdateArtistNameRequestSchema,
 } from './types.ts'
 
 function jsonError(message: string, status: ContentfulStatusCode = 400) {
@@ -77,6 +78,31 @@ function zodErrorMessage(err: ZodError): string {
   return zodIssueMessage(issue)
 }
 
+async function kvGetManyAll(kv: Deno.Kv, keys: readonly Deno.KvKey[]) {
+  const out: Deno.KvEntryMaybe<unknown>[] = []
+  for (let i = 0; i < keys.length; i += 10) {
+    const chunk = keys.slice(i, i + 10) as unknown as readonly Deno.KvKey[]
+    out.push(...(await kv.getMany(chunk)))
+  }
+  return out
+}
+
+async function appendHotLoopEvent(kv: Deno.Kv, loopId: string) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const entry = await kv.get<unknown>(k.hotLoopEvents())
+    const prev = Array.isArray(entry.value) ? entry.value : []
+    const ids = prev.filter(x => typeof x === 'string') as string[]
+    ids.push(loopId)
+    while (ids.length > 200) ids.shift()
+
+    const atomic = kv.atomic()
+    if (entry.versionstamp) atomic.check(entry)
+    atomic.set(k.hotLoopEvents(), ids)
+    const res = await atomic.commit()
+    if (res.ok) return
+  }
+}
+
 function sessionToApi(session: SessionKv): SessionData {
   const likedLoopIds = Array.isArray((session as unknown as { likes?: unknown }).likes)
     ? (session as unknown as { likes: string[] }).likes
@@ -89,6 +115,7 @@ function sessionToApi(session: SessionKv): SessionData {
     likesCount: 0,
     commentsCount: 0,
     remixesCount: 0,
+    remixOfId: loop.remixOfId,
     isPublic: loop.isPublic,
     timestamp: loop.timestamp,
   }))
@@ -110,6 +137,7 @@ function loopToApi(loop: LoopKv, user: { id: string; name: string }, remixesCoun
     likesCount: 0,
     commentsCount: 0,
     remixesCount,
+    remixOfId: loop.remixOfId,
     isPublic: loop.isPublic,
     timestamp: loop.timestamp,
     comments: [],
@@ -125,6 +153,7 @@ function publicLoopToApi(loop: PublicLoopKv): LoopData {
     likesCount: loop[3],
     commentsCount: loop[4],
     remixesCount: loop[5],
+    remixOfId: loop[8] ? loop[8] : undefined,
     isPublic: true,
     timestamp: loop[7],
   })
@@ -154,6 +183,58 @@ app.get('/api/session', async c => {
   return c.json(sessionToApi(session))
 })
 
+app.put('/api/user', async c => {
+  const { token, session } = await requireSession(c)
+  if (!token || !session) {
+    const err = jsonError('Not authenticated', 401)
+    return c.json(err.body, err.status)
+  }
+
+  const raw = await c.req.json().catch(() => null)
+  if (raw === null) {
+    const err = jsonError('Invalid JSON', 400)
+    return c.json(err.body, err.status)
+  }
+  const parsed = UpdateArtistNameRequestSchema.safeParse(raw)
+  if (!parsed.success) {
+    const err = jsonError(zodErrorMessage(parsed.error), 400)
+    return c.json(err.body, err.status)
+  }
+
+  const kv = await getKv()
+  const [sessionEntry, userEntry] = await kv.getMany([
+    k.session(token),
+    k.user(session.userId),
+  ] as const)
+
+  const currentSession = sessionEntry.value as SessionKv | null
+  const user = userEntry.value as UserKv | null
+  if (!currentSession || !user) {
+    const err = jsonError('Not authenticated', 401)
+    return c.json(err.body, err.status)
+  }
+
+  const name = parsed.data.artistName
+  const nextUser: UserKv = { ...user, name }
+  const nextSession: SessionKv = { ...currentSession, name }
+
+  await kv.atomic()
+    .set(k.user(session.userId), nextUser)
+    .set(k.session(token), nextSession)
+    .commit()
+
+  for (const loop of user.loops) {
+    if (!loop.isPublic) continue
+    const publicEntry = await kv.get<unknown>(k.publicLoop(loop.id))
+    const pub = parsePublicLoopKv(publicEntry.value)
+    if (!pub) continue
+    const nextPublic: PublicLoopKv = [pub[0], name, pub[2], pub[3], pub[4], pub[5], pub[6], pub[7], pub[8]]
+    await kv.atomic().set(k.publicLoop(loop.id), nextPublic).commit()
+  }
+
+  return c.json(sessionToApi(nextSession))
+})
+
 app.get('/api/public-loops', async c => {
   const kv = await getKv()
   const loops: PublicLoopListEntry[] = []
@@ -163,6 +244,72 @@ app.get('/api/public-loops', async c => {
   }
   loops.sort((a, b) => b[7] - a[7])
   return c.json(loops)
+})
+
+app.get('/api/best-loops', async c => {
+  const kv = await getKv()
+  const loops: PublicLoopListEntry[] = []
+  for await (const entry of kv.list<unknown>({ prefix: k.publicLoops() })) {
+    const v = parsePublicLoopKv(entry.value)
+    if (v) loops.push(v)
+  }
+
+  const now = Date.now()
+  const score = (l: PublicLoopListEntry) => {
+    const likes = l[3]
+    const comments = l[4]
+    const remixes = l[5]
+    const ts = l[7]
+    const ageHr = Math.max(0, (now - ts) / 3_600_000)
+    const denom = Math.pow(ageHr + 2, 1.5)
+    return (likes * 3 + comments * 2 + remixes * 4) / denom
+  }
+
+  loops.sort((a, b) => score(b) - score(a) || (b[7] - a[7]))
+  return c.json(loops)
+})
+
+app.get('/api/hot-loops', async c => {
+  const kv = await getKv()
+  const entry = await kv.get<unknown>(k.hotLoopEvents())
+  const raw = Array.isArray(entry.value) ? entry.value : []
+  const ids = raw.filter(x => typeof x === 'string') as string[]
+  if (ids.length === 0) return c.json([])
+
+  const counts = new Map<string, { count: number; last: number }>()
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]!
+    const prev = counts.get(id)
+    if (prev) {
+      prev.count++
+      prev.last = i
+    }
+    else {
+      counts.set(id, { count: 1, last: i })
+    }
+  }
+
+  const rankedIds = Array.from(counts.entries())
+    .sort((a, b) => (b[1].count - a[1].count) || (b[1].last - a[1].last))
+    .map(([id]) => id)
+
+  const entries = await kvGetManyAll(
+    kv,
+    rankedIds.map(id => k.publicLoop(id)) as unknown as readonly Deno.KvKey[],
+  )
+  const byId = new Map<string, PublicLoopListEntry>()
+  for (let i = 0; i < rankedIds.length; i++) {
+    const id = rankedIds[i]!
+    const v = parsePublicLoopKv(entries[i]?.value ?? null)
+    if (v) byId.set(id, v)
+  }
+
+  const out: PublicLoopListEntry[] = []
+  for (const id of rankedIds) {
+    const v = byId.get(id)
+    if (v) out.push(v)
+  }
+  return c.json(out)
 })
 
 app.get('/api/public-loop/:id', async c => {
@@ -181,6 +328,35 @@ app.get('/api/public-loop/:id', async c => {
   return c.json(LoopDataSchema.parse({ ...publicLoopToApi(pub), code: loop.code }))
 })
 
+app.get('/api/public-loop/:id/remixes', async c => {
+  const kv = await getKv()
+  const id = c.req.param('id')
+
+  const [loopEntry, publicEntry] = await kv.getMany([
+    k.loop(id),
+    k.publicLoop(id),
+  ] as const)
+  const loop = loopEntry.value as LoopKv | null
+  const pub = parsePublicLoopKv(publicEntry.value)
+  if (!loop || !pub || loop.isPublic !== true) {
+    const err = jsonError('Loop not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  const remixes: PublicLoopListEntry[] = []
+  for await (const entry of kv.list<unknown>({ prefix: k.loops() })) {
+    const v = entry.value as LoopKv | null
+    if (!v || typeof v !== 'object') continue
+    if (v.isPublic !== true) continue
+    if (v.remixOfId !== id) continue
+    const pubEntry = await kv.get<unknown>(k.publicLoop(v.id))
+    const r = parsePublicLoopKv(pubEntry.value)
+    if (r) remixes.push(r)
+  }
+  remixes.sort((a, b) => b[7] - a[7])
+  return c.json(remixes)
+})
+
 app.get('/api/prefetch', async c => {
   const idsParam = c.req.query('ids') ?? ''
   const ids = Array.from(
@@ -196,7 +372,7 @@ app.get('/api/prefetch', async c => {
 
   const kv = await getKv()
   const keys = ids.flatMap(id => [k.loop(id), k.publicLoop(id)])
-  const entries = await kv.getMany(keys as unknown as readonly Deno.KvKey[])
+  const entries = await kvGetManyAll(kv, keys as unknown as readonly Deno.KvKey[])
 
   const codes: Record<string, string> = {}
   for (let i = 0; i < ids.length; i++) {
@@ -221,7 +397,10 @@ app.get('/api/liked-loops', async c => {
   if (ids.length === 0) return c.json([])
 
   const kv = await getKv()
-  const entries = await kv.getMany(ids.map(id => k.publicLoop(id)) as unknown as readonly Deno.KvKey[])
+  const entries = await kvGetManyAll(
+    kv,
+    ids.map(id => k.publicLoop(id)) as unknown as readonly Deno.KvKey[],
+  )
   const loops: PublicLoopKv[] = []
   for (const e of entries) {
     const v = parsePublicLoopKv(e.value)
@@ -283,7 +462,7 @@ app.post('/api/loop/:id/like', async c => {
 
   const nextUser: UserKv = { ...user, likes: nextLikes }
   const nextSession: SessionKv = { ...currentSession, likes: nextLikes }
-  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], nextCount, pub[4], pub[5], pub[6], pub[7]]
+  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], nextCount, pub[4], pub[5], pub[6], pub[7], pub[8]]
 
   const a = kv.atomic()
     .set(k.user(session.userId), nextUser)
@@ -295,6 +474,7 @@ app.post('/api/loop/:id/like', async c => {
   else a.delete(k.loopLike(id, session.userId))
 
   await a.commit()
+  if (nextLiked) await appendHotLoopEvent(kv, id)
   return c.json(sessionToApi(nextSession))
 })
 
@@ -372,7 +552,7 @@ app.post('/api/loop/:id/comments', async c => {
   })
 
   const nextCount = commentsCount + 1
-  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], nextCount, pub[5], pub[6], pub[7]]
+  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], nextCount, pub[5], pub[6], pub[7], pub[8]]
 
   await kv.atomic()
     .set(k.loopComment(id, timestamp, commentId), comment)
@@ -380,6 +560,7 @@ app.post('/api/loop/:id/comments', async c => {
     .set(k.publicLoop(id), nextPublic)
     .commit()
 
+  await appendHotLoopEvent(kv, id)
   return c.json(comment)
 })
 
@@ -437,7 +618,7 @@ app.delete('/api/loop/:id/comments/:commentId', async c => {
   }
 
   const nextCount = Math.max(0, commentsCount - 1)
-  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], nextCount, pub[5], pub[6], pub[7]]
+  const nextPublic: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], nextCount, pub[5], pub[6], pub[7], pub[8]]
 
   await kv.atomic()
     .delete(k.loopComment(id, timestamp, commentId))
@@ -676,7 +857,15 @@ app.put('/api/loop/:id', async c => {
     remixOfId: nextRemixOfId,
   }
 
-  const summary: LoopSummaryKv = { id, title: loop.title, timestamp: loop.timestamp, isPublic: loop.isPublic }
+  const becamePublic = loop.isPublic === true && prevLoop?.isPublic !== true
+
+  const summary: LoopSummaryKv = {
+    id,
+    title: loop.title,
+    timestamp: loop.timestamp,
+    isPublic: loop.isPublic,
+    remixOfId: loop.remixOfId,
+  }
 
   const upsertSummary = (list: LoopSummaryKv[]) => {
     const idx = list.findIndex(x => x.id === id)
@@ -705,14 +894,14 @@ app.put('/api/loop/:id', async c => {
     a.set(k.loopRemixCount(parentId), next)
     const pub = parsePublicLoopKv(pubEntry?.value ?? null)
     if (pub) {
-      const nextPub: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], pub[4], next, pub[6], pub[7]]
+      const nextPub: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], pub[4], next, pub[6], pub[7], pub[8]]
       a.set(k.publicLoop(parentId), nextPub)
     }
   }
 
   if (loop.isPublic) {
     const pub: PublicLoopKv = [id, user.name, session.userId, likesCount, commentsCount, ownRemixesCount, loop.title,
-      loop.timestamp]
+      loop.timestamp, nextRemixOfId ?? '']
     a.set(k.publicLoop(id), pub)
   }
   else {
@@ -720,6 +909,7 @@ app.put('/api/loop/:id', async c => {
   }
   await a.commit()
 
+  if (becamePublic) await appendHotLoopEvent(kv, id)
   return c.json({ ok: true })
 })
 
@@ -773,7 +963,7 @@ app.delete('/api/loop/:id', async c => {
     a.set(k.loopRemixCount(parentId), next)
     const pub = parsePublicLoopKv(parentPubEntry?.value ?? null)
     if (pub) {
-      const nextPub: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], pub[4], next, pub[6], pub[7]]
+      const nextPub: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], pub[4], next, pub[6], pub[7], pub[8]]
       a.set(k.publicLoop(parentId), nextPub)
     }
   }

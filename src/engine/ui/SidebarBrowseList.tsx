@@ -139,6 +139,61 @@ function CommentsPanel(
   )
 }
 
+function RemixesPanel(
+  {
+    remixes,
+    isLoading,
+    onSelect,
+  }: {
+    remixes: LoopData[]
+    isLoading: boolean
+    onSelect: (loop: LoopData) => void
+  },
+) {
+  return (
+    <div className="px-3 py-2 border-b border-neutral-700 bg-neutral-950">
+      {isLoading && (
+        <div className="flex flex-row items-center gap-2 text-neutral-500 text-xs pb-2">
+          <CircleNotchIcon size={16} className="animate-spin" />
+          <span>Loading remixes…</span>
+        </div>
+      )}
+
+      {remixes.length === 0
+        ? (isLoading ? null : <div className="text-xs text-neutral-500">No remixes yet.</div>)
+        : (
+          <div className="flex flex-col gap-2">
+            {remixes
+              .slice()
+              .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+              .map(r => (
+                <button
+                  key={r.id}
+                  className="text-left flex flex-row items-start gap-2 border-b border-neutral-800 pb-2 px-1.5 hover:bg-neutral-900 rounded-md"
+                  onPointerDown={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onSelect(r)
+                  }}
+                >
+                  <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                    <div className="text-xs text-neutral-400 flex flex-row items-center justify-between gap-2">
+                      <div className="min-w-0 truncate">
+                        <span className="text-neutral-300 font-semibold">{r.artist}</span>
+                        <span className="text-neutral-500">-</span>
+                        <span className="text-neutral-400">{r.title}</span>
+                      </div>
+                      <span className="text-neutral-600 shrink-0">{formatAge(r.timestamp)}</span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+          </div>
+        )}
+    </div>
+  )
+}
+
 function BrowseItem(
   {
     loop,
@@ -162,16 +217,32 @@ function BrowseItem(
   const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
   const setViewSampleCount = useEngineUiStore(state => state.setViewSampleCount)
   const globalSampleCount = useEngineRuntimeStore(state => state.globalSampleCount)
+  const sessionData = useAppStore(state => state.sessionData)
   const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
+  const localLoops = useAppStore(state => state.localLoops)
   const selectedLoopId = useAppStore(state => state.selectedLoopId)
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const getLoopComments = useAppStore(state => state.getLoopComments)
+  const getLoopRemixes = useAppStore(state => state.getLoopRemixes)
   const createLoopComment = useAppStore(state => state.createLoopComment)
   const deleteLoopComment = useAppStore(state => state.deleteLoopComment)
   const cachedComments = useAppStore(state => state.loopCommentsCache[loop.id])
+  const cachedRemixes = useAppStore(state => state.loopRemixesCache[loop.id])
+  const remixOf = useAppStore(state => {
+    const rid = loop.remixOfId
+    if (!rid) return null
+    return state.publicLoopsCache.find(l => l.id === rid)
+      ?? state.hotLoopsCache.find(l => l.id === rid)
+      ?? state.bestLoopsCache.find(l => l.id === rid)
+      ?? state.likedLoopsCache.find(l => l.id === rid)
+      ?? state.serverLoopsCache.find(l => l.id === rid)
+      ?? null
+  })
 
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isCommentsLoading, setIsCommentsLoading] = useState(false)
+  const [isRemixesOpen, setIsRemixesOpen] = useState(false)
+  const [isRemixesLoading, setIsRemixesLoading] = useState(false)
   const [draftComment, setDraftComment] = useState('')
   const [isPosting, setIsPosting] = useState(false)
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
@@ -181,6 +252,10 @@ function BrowseItem(
   const isPlaying = playbackState === 'running'
 
   const handleOpen = () => {
+    if (sessionData?.loops.some(l => l.id === loop.id)) {
+      setSelectedLoopId(loop.id)
+      return
+    }
     setSelectedLoopId(loop.id)
   }
 
@@ -246,6 +321,15 @@ function BrowseItem(
     void getLoopComments(loop.id).finally(() => setIsCommentsLoading(false))
   }
 
+  const handleToggleRemixes = () => {
+    const next = !isRemixesOpen
+    setIsRemixesOpen(next)
+    if (!next) return
+    if (cachedRemixes != null) return
+    setIsRemixesLoading(true)
+    void getLoopRemixes(loop.id).finally(() => setIsRemixesLoading(false))
+  }
+
   const handleSubmitComment = () => {
     if (userId == null) return
     const content = draftComment.trim()
@@ -282,10 +366,25 @@ function BrowseItem(
         `}
         onPointerDown={handleOpen}
       >
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-1">
           <div className="flex flex-row gap-2">
             <div className="flex flex-col w-full">
               <span className="text-sm">{loop.artist} - {loop.title}</span>
+              {remixOf && (
+                <div className="flex flex-row text-xs text-neutral-500 font-normal items-center gap-1">
+                  <span className="">remix of:</span>
+                  <button
+                    onPointerDown={e => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      setSelectedLoopId(remixOf.id)
+                    }}
+                    className="hover:text-white hover:font-light"
+                  >
+                    {remixOf.artist} - {remixOf.title}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex flex-row self-start justify-center gap-2 text-xs">
@@ -310,7 +409,13 @@ function BrowseItem(
               <ChatIcon size={16} />
               <span className="relative left-[1px]">{loop.commentsCount}</span>
             </button>
-            <button className="text-neutral-500 flex flex-row items-center justify-center font-normal hover:text-white cursor-pointer">
+            <button
+              className="text-neutral-500 flex flex-row items-center justify-center font-normal hover:text-white cursor-pointer"
+              onPointerDown={e => {
+                e.stopPropagation()
+                handleToggleRemixes()
+              }}
+            >
               <RepeatIcon size={16} className="relative top-[.3px]" />
               <span className="relative left-[1px]">{loop.remixesCount}</span>
             </button>
@@ -323,14 +428,19 @@ function BrowseItem(
         {isLive
           ? (
             <div
-              className="flex flex-col items-center justify-center cursor-pointer"
+              className="flex flex-col items-center justify-center group cursor-pointer"
               onContextMenu={e => e.preventDefault()}
               onPointerDown={e => {
                 e.stopPropagation()
                 handleTogglePlay(e)
               }}
             >
-              <PauseGradientIcon size={24} />
+              <div className="block group-hover:hidden text-neutral-700">
+                <PlayGradientIcon size={24} />
+              </div>
+              <div className="hidden group-hover:block">
+                <PauseGradientIcon size={24} />
+              </div>
             </div>
           )
           : (
@@ -363,6 +473,13 @@ function BrowseItem(
           onSubmit={handleSubmitComment}
           deletingCommentId={deletingCommentId}
           onDelete={handleDeleteComment}
+        />
+      )}
+      {isRemixesOpen && (
+        <RemixesPanel
+          remixes={cachedRemixes ?? []}
+          isLoading={isRemixesLoading && cachedRemixes == null}
+          onSelect={r => setSelectedLoopId(r.id)}
         />
       )}
     </>

@@ -12,6 +12,7 @@ export type LoopSummaryKv = {
   title: string
   timestamp: number
   isPublic: boolean
+  remixOfId?: string
 }
 
 export type SessionKv = {
@@ -41,6 +42,7 @@ export type PublicLoopKv = readonly [
   remixesCount: number,
   title: string,
   timestamp: number,
+  remixOfId: string,
 ]
 
 let kv: Deno.Kv | null = null
@@ -58,8 +60,10 @@ export const k = {
   session: (token: string) => ['s', token] as const,
   sessionByUserId: (userId: string) => ['s_by_u', userId] as const,
   loop: (id: string) => ['l', id] as const,
+  loops: () => ['l'] as const,
   publicLoop: (id: string) => ['p', id] as const,
   publicLoops: () => ['p'] as const,
+  hotLoopEvents: () => ['hot', 'events'] as const,
   loopLike: (loopId: string, userId: string) => ['lk', loopId, userId] as const,
   loopLikeCount: (loopId: string) => ['lkc', loopId] as const,
   loopCommentCount: (loopId: string) => ['cc', loopId] as const,
