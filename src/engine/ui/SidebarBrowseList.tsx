@@ -311,7 +311,7 @@ function BrowseItem(
               <span className="relative top-[1.35px] left-[1px]">{loop.commentsCount}</span>
             </div>
             <div className="text-neutral-500 font-normal">
-              <span className="text-sm">{formatAge(loop.timestamp)}</span>
+              <span className="relative top-[.3px] text-sm">{formatAge(loop.timestamp)}</span>
             </div>
           </div>
         </div>
