@@ -14,6 +14,7 @@ import { SpinnerLarge } from '../../components/Spinner.tsx'
 import type { LangError } from '../../lang/errors.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../../mini/compiler.ts'
+import { isLocalId, makeLocalId } from '../../utils/id.ts'
 import {
   encodeLangToVmOps,
   extractBarsFromSource,
@@ -154,7 +155,93 @@ function DspSourceEditorReady(
   useCodeFileValue(currentLoop?.codeFile)
   const code = currentLoop?.codeFile.value ?? ''
   const loopId = currentLoop?.data.id ?? null
+  const loopBase = useAppStore(state => (loopId ? state.bases[loopId]?.code : undefined))
+  const sessionData = useAppStore(state => state.sessionData)
+  const serverLoopsUserId = useAppStore(state => state.serverLoopsUserId)
+  const serverLoopsCache = useAppStore(state => state.serverLoopsCache)
+  const localLoops = useAppStore(state => state.localLoops)
+  const addLocalLoop = useAppStore(state => state.addLocalLoop)
+  const moveBuffer = useAppStore(state => state.moveBuffer)
+  const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const { globalSampleCount, isPlayingLoop, isPlaybackRunningForView, viewSampleCount } = useLoopView(loopId)
+
+  const remixBaselineRef = useRef<{ loopId: string; base: string } | null>(null)
+  const remixPrevCodeRef = useRef<{ loopId: string; code: string } | null>(null)
+
+  useEffect(() => {
+    if (!loopId) return
+    remixBaselineRef.current = null
+    remixPrevCodeRef.current = null
+  }, [loopId])
+
+  useEffect(() => {
+    if (!loopId) return
+    if (remixBaselineRef.current?.loopId === loopId) return
+    if (loopBase == null) return
+    remixBaselineRef.current = { loopId, base: loopBase }
+    remixPrevCodeRef.current = { loopId, code }
+  }, [code, loopBase, loopId])
+
+  useEffect(() => {
+    if (!loopId) return
+    if (isLocalId(loopId)) return
+    const baseline = remixBaselineRef.current
+    if (!baseline || baseline.loopId !== loopId) {
+      remixPrevCodeRef.current = { loopId, code }
+      return
+    }
+
+    const prev = remixPrevCodeRef.current
+    remixPrevCodeRef.current = { loopId, code }
+    if (!prev || prev.loopId !== loopId) return
+    if (prev.code === code) return
+    if (code === baseline.base) return
+
+    if (serverLoopsCache.some(l => l.id === loopId)) return
+    if (sessionData?.loops.some(l => l.id === loopId)) return
+    const ownId = sessionData?.user.id ?? serverLoopsUserId
+    if (ownId && currentLoop?.data.artistId === ownId) return
+
+    const existing = localLoops.find(l => l.remixOfId === loopId || l.remixOf?.id === loopId)
+    const localId = existing?.id ?? makeLocalId()
+    moveBuffer(loopId, localId)
+    if (!existing) {
+      addLocalLoop({
+        id: localId,
+        title: currentLoop?.data.title ?? 'Untitled',
+        artist: sessionData?.user.name ?? 'local',
+        artistId: ownId ?? 'local',
+        code: '',
+        likesCount: 0,
+        commentsCount: 0,
+        remixesCount: 0,
+        remixOfId: loopId,
+        remixOf: currentLoop?.data,
+        isPublic: false,
+        timestamp: 0,
+      })
+    }
+    const runtime = useEngineRuntimeStore.getState()
+    if (runtime.playingLoopId === loopId) {
+      useEngineUiStore.getState().renameLoopId(loopId, localId)
+      runtime.setPlayingLoopId(localId)
+    }
+    setSelectedLoopId(localId)
+    useEngineUiStore.getState().setSidebarTab('loops')
+  }, [
+    addLocalLoop,
+    code,
+    currentLoop?.data,
+    localLoops,
+    loopId,
+    moveBuffer,
+    serverLoopsCache,
+    serverLoopsUserId,
+    sessionData?.loops,
+    sessionData?.user.id,
+    sessionData?.user.name,
+    setSelectedLoopId,
+  ])
 
   const previewCompile = useMemo(() => {
     const target = previewTargetRef.current

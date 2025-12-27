@@ -64,4 +64,13 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
   }
 }, {
   name: 'lm2-ui-store',
+  version: 2,
+  migrate: persisted => {
+    if (!persisted || typeof persisted !== 'object') return persisted as EngineUiState
+    const p = persisted as EngineUiState
+    if ((p.sidebarTab as unknown as string) === 'liked') {
+      return { ...p, sidebarTab: 'browse' }
+    }
+    return p
+  },
 }))

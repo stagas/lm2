@@ -1,4 +1,5 @@
 import { ChatCircleIcon, ChatIcon, HeartIcon, RepeatIcon, ShareIcon, ShareNetworkIcon } from '@phosphor-icons/react'
+import { useAppStore } from '../../app/store.ts'
 import { Logo } from '../../components/Logo.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
@@ -24,22 +25,17 @@ export function PlaybackControls({
   const playLoop = useEngineDspStore(state => state.playLoop)
   const pause = useEngineRuntimeStore(state => state.pause)
   const stop = useEngineRuntimeStore(state => state.stop)
-  const playbackState = useEngineRuntimeStore(state => state.playbackState)
-  const isPlaying = playbackState === 'running'
 
   return (
     <div className="flex items-center justify-center mx-2">
-      {!isPlaying
-        ? (
-          <PlaybackButton icon={<PlayGradientIcon />} onClick={() => {
-            if (!currentLoop) return
-            onDspError(undefined)
-            void playLoop(currentLoop.data.id, currentLoop.codeFile.value).catch(err => {
-              onDspError(err instanceof Error ? err.message : String(err))
-            })
-          }} />
-        )
-        : <PlaybackButton icon={<PauseGradientIcon />} onClick={pause} />}
+      <PlaybackButton icon={<PlayGradientIcon />} onClick={() => {
+        if (!currentLoop) return
+        onDspError(undefined)
+        void playLoop(currentLoop.data.id, currentLoop.codeFile.value).catch(err => {
+          onDspError(err instanceof Error ? err.message : String(err))
+        })
+      }} />
+      <PlaybackButton icon={<PauseGradientIcon />} onClick={pause} />
       <PlaybackButton icon={<StopGradientIcon />} onClick={stop} />
     </div>
   )
@@ -51,7 +47,16 @@ function LoopTitle(
   const loopData = loop?.data
   const title = loopData?.title ?? ''
   const artist = loopData?.artist ?? ''
-  const remixOf = loopData?.remixOf
+  const remixOfId = loopData?.remixOfId
+  const remixOfFromId = useAppStore(state => {
+    if (!remixOfId) return undefined
+    return state.publicLoopsCache.find(l => l.id === remixOfId)
+      ?? state.hotLoopsCache.find(l => l.id === remixOfId)
+      ?? state.bestLoopsCache.find(l => l.id === remixOfId)
+      ?? state.likedLoopsCache.find(l => l.id === remixOfId)
+      ?? state.serverLoopsCache.find(l => l.id === remixOfId)
+  })
+  const remixOf = remixOfFromId ?? loopData?.remixOf
   const likesCount = loopData?.likesCount ?? 0
   const commentsCount = loopData?.commentsCount ?? 0
   const remixesCount = loopData?.remixesCount ?? 0

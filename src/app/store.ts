@@ -32,16 +32,22 @@ interface AppState {
   serverLoopsCache: LoopData[]
   upsertServerLoopCache: (loop: LoopData) => void
   publicLoopsCache: LoopData[]
+  hotLoopsCache: LoopData[]
+  bestLoopsCache: LoopData[]
   likedLoopsCache: LoopData[]
   publicLoopCodeCache: Record<string, string>
   loopCommentsCache: Record<string, CommentData[]>
+  loopRemixesCache: Record<string, LoopData[]>
   refreshPublicLoops: () => Promise<void>
+  refreshHotLoops: () => Promise<void>
+  refreshBestLoops: () => Promise<void>
   refreshLikedLoops: () => Promise<void>
   upsertPublicLoopCache: (loop: LoopData) => void
   removePublicLoopCache: (id: string) => void
   toggleLike: (loopId: string) => Promise<void>
   prefetchPublicLoopCodes: (loopIds: string[]) => Promise<void>
   getPublicLoopCode: (loopId: string) => Promise<string>
+  getLoopRemixes: (loopId: string) => Promise<LoopData[]>
   getLoopComments: (loopId: string) => Promise<CommentData[]>
   createLoopComment: (loopId: string, content: string) => Promise<CommentData>
   deleteLoopComment: (loopId: string, commentId: string, timestamp: number) => Promise<void>
@@ -76,6 +82,13 @@ const updateLoopCommentsCountInList = (list: LoopData[], loopId: string, delta: 
   list.map(loop =>
     loop.id === loopId
       ? { ...loop, commentsCount: Math.max(0, loop.commentsCount + delta) }
+      : loop
+  )
+
+const updateLoopLikesCountInList = (list: LoopData[], loopId: string, delta: number) =>
+  list.map(loop =>
+    loop.id === loopId
+      ? { ...loop, likesCount: Math.max(0, loop.likesCount + delta) }
       : loop
   )
 
@@ -129,9 +142,12 @@ export const useAppStore = create<AppState>()(
       serverLoopsUserId: null,
       serverLoopsCache: [],
       publicLoopsCache: [],
+      hotLoopsCache: [],
+      bestLoopsCache: [],
       likedLoopsCache: [],
       publicLoopCodeCache: {},
       loopCommentsCache: {},
+      loopRemixesCache: {},
 
       setSessionData: sessionData => {
         if (!sessionData) {
@@ -141,6 +157,7 @@ export const useAppStore = create<AppState>()(
             serverLoopsUserId: null,
             serverLoopsCache: [],
             likedLoopsCache: [],
+            loopRemixesCache: {},
           })
           return
         }
@@ -258,6 +275,18 @@ export const useAppStore = create<AppState>()(
         set({ publicLoopsCache: loops })
       },
 
+      refreshHotLoops: async () => {
+        const api = get().api
+        const loops = await api.fetchHotLoops()
+        set({ hotLoopsCache: loops })
+      },
+
+      refreshBestLoops: async () => {
+        const api = get().api
+        const loops = await api.fetchBestLoops()
+        set({ bestLoopsCache: loops })
+      },
+
       refreshLikedLoops: async () => {
         const api = get().api
         const loops = await api.fetchLikedLoops()
@@ -281,27 +310,101 @@ export const useAppStore = create<AppState>()(
 
       toggleLike: async loopId => {
         const prevSession = get().sessionData
-        const wasLiked = prevSession?.likedLoopIds.includes(loopId) ?? false
-        const nextSession = await get().api.toggleLike(loopId)
-        get().setSessionData(nextSession)
-        const isLiked = nextSession.likedLoopIds.includes(loopId)
-        const delta = (isLiked ? 1 : 0) - (wasLiked ? 1 : 0)
+        if (!prevSession) return
 
-        if (delta !== 0) {
-          set(state => ({
-            publicLoopsCache: state.publicLoopsCache.map(l =>
-              l.id === loopId ? { ...l, likesCount: Math.max(0, l.likesCount + delta) } : l
-            ),
+        const wasLiked = prevSession.likedLoopIds.includes(loopId)
+        const optimisticLiked = !wasLiked
+        const optimisticSession: SessionData = {
+          ...prevSession,
+          likedLoopIds: optimisticLiked
+            ? [...prevSession.likedLoopIds, loopId]
+            : prevSession.likedLoopIds.filter(id => id !== loopId),
+        }
+
+        get().setSessionData(optimisticSession)
+
+        const optimisticDelta = optimisticLiked ? 1 : -1
+        set(state => {
+          const item = state.publicLoopsCache.find(l => l.id === loopId)
+            ?? state.hotLoopsCache.find(l => l.id === loopId)
+            ?? state.bestLoopsCache.find(l => l.id === loopId)
+            ?? state.likedLoopsCache.find(l => l.id === loopId)
+
+          return ({
+            publicLoopsCache: updateLoopLikesCountInList(state.publicLoopsCache, loopId, optimisticDelta),
+            hotLoopsCache: updateLoopLikesCountInList(state.hotLoopsCache, loopId, optimisticDelta),
+            bestLoopsCache: updateLoopLikesCountInList(state.bestLoopsCache, loopId, optimisticDelta),
             likedLoopsCache: (() => {
-              if (isLiked) {
-                const item = state.publicLoopsCache.find(l => l.id === loopId)
+              if (optimisticLiked) {
+                if (state.likedLoopsCache.some(l => l.id === loopId)) {
+                  return updateLoopLikesCountInList(state.likedLoopsCache, loopId, optimisticDelta)
+                }
                 if (!item) return state.likedLoopsCache
-                if (state.likedLoopsCache.some(l => l.id === loopId)) return state.likedLoopsCache
-                return [item, ...state.likedLoopsCache]
+                return [{ ...item, likesCount: Math.max(0, item.likesCount + optimisticDelta) },
+                  ...state.likedLoopsCache]
               }
               return state.likedLoopsCache.filter(l => l.id !== loopId)
             })(),
-          }))
+          }) as AppState
+        })
+
+        try {
+          const nextSession = await get().api.toggleLike(loopId)
+          get().setSessionData(nextSession)
+
+          const actualLiked = nextSession.likedLoopIds.includes(loopId)
+          const correctionDelta = (actualLiked ? 1 : 0) - (optimisticLiked ? 1 : 0)
+          if (correctionDelta === 0) return
+
+          set(state => {
+            const item = state.publicLoopsCache.find(l => l.id === loopId)
+              ?? state.hotLoopsCache.find(l => l.id === loopId)
+              ?? state.bestLoopsCache.find(l => l.id === loopId)
+              ?? state.likedLoopsCache.find(l => l.id === loopId)
+
+            return ({
+              publicLoopsCache: updateLoopLikesCountInList(state.publicLoopsCache, loopId, correctionDelta),
+              hotLoopsCache: updateLoopLikesCountInList(state.hotLoopsCache, loopId, correctionDelta),
+              bestLoopsCache: updateLoopLikesCountInList(state.bestLoopsCache, loopId, correctionDelta),
+              likedLoopsCache: (() => {
+                if (actualLiked) {
+                  if (state.likedLoopsCache.some(l => l.id === loopId)) {
+                    return updateLoopLikesCountInList(state.likedLoopsCache, loopId, correctionDelta)
+                  }
+                  if (!item) return state.likedLoopsCache
+                  return [{ ...item, likesCount: Math.max(0, item.likesCount + correctionDelta) },
+                    ...state.likedLoopsCache]
+                }
+                return state.likedLoopsCache.filter(l => l.id !== loopId)
+              })(),
+            }) as AppState
+          })
+        }
+        catch {
+          get().setSessionData(prevSession)
+          const revertDelta = wasLiked ? 1 : -1
+          set(state => {
+            const item = state.publicLoopsCache.find(l => l.id === loopId)
+              ?? state.hotLoopsCache.find(l => l.id === loopId)
+              ?? state.bestLoopsCache.find(l => l.id === loopId)
+              ?? state.likedLoopsCache.find(l => l.id === loopId)
+
+            return ({
+              publicLoopsCache: updateLoopLikesCountInList(state.publicLoopsCache, loopId, revertDelta),
+              hotLoopsCache: updateLoopLikesCountInList(state.hotLoopsCache, loopId, revertDelta),
+              bestLoopsCache: updateLoopLikesCountInList(state.bestLoopsCache, loopId, revertDelta),
+              likedLoopsCache: (() => {
+                if (wasLiked) {
+                  if (state.likedLoopsCache.some(l => l.id === loopId)) {
+                    return updateLoopLikesCountInList(state.likedLoopsCache, loopId, revertDelta)
+                  }
+                  if (!item) return state.likedLoopsCache
+                  return [{ ...item, likesCount: Math.max(0, item.likesCount + revertDelta) }, ...state.likedLoopsCache]
+                }
+                return state.likedLoopsCache.filter(l => l.id !== loopId)
+              })(),
+            }) as AppState
+          })
         }
       },
 
@@ -353,6 +456,16 @@ export const useAppStore = create<AppState>()(
         finally {
           publicLoopFetching.delete(loopId)
         }
+      },
+
+      getLoopRemixes: async loopId => {
+        const cached = get().loopRemixesCache[loopId]
+        if (cached != null) return cached
+        const remixes = await get().api.fetchPublicLoopRemixes(loopId)
+        set(state => ({
+          loopRemixesCache: { ...state.loopRemixesCache, [loopId]: remixes },
+        }))
+        return remixes
       },
 
       getLoopComments: async loopId => {

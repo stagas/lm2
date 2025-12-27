@@ -120,14 +120,14 @@ export function SidebarLoops(
     const localIds = new Set(localLoops.map(l => l.id))
     const sessionIds = new Set(serverLoops.map(l => l.id))
     const has = (id: string | null | undefined) => id != null && (localIds.has(id) || sessionIds.has(id))
-    const first = has(selectedLoopId) ? selectedLoopId : (localLoops[0]?.id ?? serverLoops[0]?.id)
-    if (first) setCurrentLoopId(first)
+    const next = has(selectedLoopId) ? selectedLoopId : null
+    if (next) setCurrentLoopId(next)
   }, [currentLoopId, localLoops, selectedLoopId, serverLoops])
 
   useEffect(() => {
     if (!currentLoopId) return
     if (loops.some(loop => loop.data.id === currentLoopId)) return
-    setCurrentLoopId(loops[0]?.data.id ?? null)
+    setCurrentLoopId(null)
     didInitialCenterRef.current = false
   }, [currentLoopId, loops])
 
@@ -331,10 +331,12 @@ export function SidebarLoops(
         const code = state.value
         void (async () => {
           try {
+            const remixOfId = loop.data.remixOf?.id
             await api.upsertLoop(serverId, {
               title,
               code,
               isPublic,
+              ...(remixOfId ? { remixOfId } : {}),
             })
             moveBuffer(localId, serverId)
             const codeFile = loop.codeFile
@@ -349,7 +351,7 @@ export function SidebarLoops(
               setLoops(prev =>
                 prev.map(l =>
                   l.data.id === localId
-                    ? new Loop({ ...l.data, id: serverId, title, isPublic, timestamp, code }, codeFile)
+                    ? new Loop({ ...l.data, id: serverId, title, isPublic, timestamp, code, remixOfId }, codeFile)
                     : l
                 )
               )
@@ -366,6 +368,7 @@ export function SidebarLoops(
               likesCount: 0,
               commentsCount: 0,
               remixesCount: 0,
+              remixOfId,
               isPublic,
               timestamp,
             })
@@ -379,10 +382,12 @@ export function SidebarLoops(
       else if (sessionData && !isLocalId(loop.data.id)) {
         void (async () => {
           try {
+            const remixOfId = loop.data.remixOf?.id
             await api.upsertLoop(loop.data.id, {
               title,
               code: loop.codeFile.value,
               isPublic,
+              ...(remixOfId ? { remixOfId } : {}),
             })
             upsertServerLoopCache({
               ...loop.data,
@@ -392,6 +397,7 @@ export function SidebarLoops(
               code: loop.codeFile.value,
               isPublic,
               timestamp,
+              remixOfId,
             })
           }
           catch (e) {
@@ -500,11 +506,19 @@ export function SidebarLoops(
   return (
     <>
       <div className="flex flex-col w-full border-b-2 border-orange-600">
-        <div className="flex flex-row bg-gradient-to-b from-black to-neutral-800 items-center justify-evenly">
-          <button onPointerDown={() => handleNewLoop()} className="p-2.5 text-neutral-500 hover:text-white">
+        <div className="flex flex-row h-[40px] bg-gradient-to-b from-black to-neutral-800 items-center justify-evenly">
+          <button
+            title="New"
+            onPointerDown={() => handleNewLoop()}
+            className="flex items-center justify-center w-full h-full text-neutral-500 hover:text-white"
+          >
             <FilePlusIcon weight="regular" size={16} />
           </button>
-          <button onPointerDown={() => handleBranchLoop()} className="p-2.5 text-neutral-500 hover:text-white">
+          <button
+            title="New from Current"
+            onPointerDown={() => handleBranchLoop()}
+            className="flex items-center justify-center w-full h-full text-neutral-500 hover:text-white"
+          >
             <GitBranchIcon weight="regular" size={16} />
           </button>
         </div>

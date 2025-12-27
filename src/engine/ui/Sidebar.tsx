@@ -4,7 +4,6 @@ import {
   ArticleIcon,
   GearSixIcon,
   GlobeIcon,
-  HeartIcon,
   WaveformIcon,
 } from '@phosphor-icons/react'
 import {
@@ -14,15 +13,13 @@ import {
 import { useEngineUiStore } from '../store.ts'
 import { BytecodeInspector } from './BytecodeInspector.tsx'
 import { SidebarBrowse } from './SidebarBrowse.tsx'
-import { SidebarLiked } from './SidebarLiked.tsx'
 import { SidebarLoops } from './SidebarLoops.tsx'
 import { SidebarSettings } from './SidebarSettings.tsx'
 
-export type SidebarTab = 'loops' | 'liked' | 'browse' | 'compiled' | 'settings'
+export type SidebarTab = 'loops' | 'browse' | 'compiled' | 'settings'
 
 const SidebarTabIcon: Record<SidebarTab, React.ReactNode> = {
   loops: <WaveformIcon weight="regular" size={16} />,
-  liked: <HeartIcon weight="regular" size={16} />,
   browse: <GlobeIcon weight="regular" size={16} />,
   compiled: <ArticleIcon weight="regular" size={16} />,
   settings: <GearSixIcon weight="regular" size={16} />,
@@ -63,7 +60,6 @@ export function Sidebar() {
             {sidebarTab === 'loops' && (
               <SidebarLoops scrollContainerRef={scrollContainerRef} apiError={apiError} setApiError={setApiError} />
             )}
-            {sidebarTab === 'liked' && <SidebarLiked />}
             {sidebarTab === 'browse' && <SidebarBrowse />}
             {sidebarTab === 'compiled' && <BytecodeInspector />}
             {sidebarTab === 'settings' && <SidebarSettings apiError={apiError} setApiError={setApiError} />}
