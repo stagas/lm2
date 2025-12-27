@@ -7,7 +7,7 @@ import { SpinnerSmall } from '../../components/Spinner.tsx'
 import { isLocalId, makeLocalId, newId } from '../../utils/id.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { AuthForm } from './AuthForm.tsx'
-import { Loop } from './loop.ts'
+import { DEFAULT_LOOP_CODE, Loop } from './loop.ts'
 import { LoopItem } from './LoopItem.tsx'
 
 export function SidebarLoops(
@@ -226,7 +226,7 @@ export function SidebarLoops(
       title: newLoopTitle,
       artist: userName,
       artistId: userId,
-      code: '',
+      code: DEFAULT_LOOP_CODE,
       likesCount: 0,
       commentsCount: 0,
       remixesCount: 0,
@@ -607,6 +607,7 @@ export function SidebarLoops(
               onPause={pause}
               onStop={stop}
               canSave={sessionData != null}
+              hideCloseWhenNotDirty={loops.length === 1}
               onClose={() => handleClose(loop)}
               onEditDetails={details => handleEditDetails(loop, details)}
               onSave={details => handleSave(loop, details)}

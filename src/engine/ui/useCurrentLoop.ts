@@ -5,7 +5,7 @@ import { useSessionData } from '../../app/hooks/useSessionData.ts'
 import { useAppStore } from '../../app/store.ts'
 import { isLocalId, makeLocalId } from '../../utils/id.ts'
 import { useEngineRuntimeStore } from '../store.ts'
-import { Loop } from './loop.ts'
+import { DEFAULT_LOOP_CODE, Loop } from './loop.ts'
 
 export function useCurrentLoop(): Loop | null {
   const { isLoading: isSessionLoading, sessionData } = useSessionData()
@@ -77,7 +77,7 @@ export function useCurrentLoop(): Loop | null {
       title,
       artist: userName,
       artistId: userId,
-      code: '',
+      code: DEFAULT_LOOP_CODE,
       likesCount: 0,
       commentsCount: 0,
       remixesCount: 0,

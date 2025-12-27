@@ -259,6 +259,7 @@ export function MinimapScrollbar({
     const hasLabels = labelStarts.length > 0
     let start = 0
     let labelStartIndex = 0
+    let prevLabelX = -100
 
     for (let barIndex = 0; barIndex <= barCount; barIndex += MINIMAP_MINOR_STEP) {
       const x = (barIndex / barCount) * (width - 1)
@@ -278,14 +279,18 @@ export function MinimapScrollbar({
       ctx.textBaseline = 'middle'
       const phraseNumber = String(zeroBased ? barIndex : barIndex + 1)
       // place label a few pixels from the top-left of the marker
-      ctx.fillText(phraseNumber, x + 5, 10)
-      // if (barIndex >= barCount) continue
-      ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.15)'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(x, 0)
-      ctx.lineTo(x, height)
-      ctx.stroke()
+      if (x - prevLabelX > 20) {
+        ctx.fillText(phraseNumber, x + 5, 10)
+        prevLabelX = x
+
+        // if (barIndex >= barCount) continue
+        ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.15)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, height)
+        ctx.stroke()
+      }
     }
 
     if (timelineLabels && timelineLabels.length > 0) {

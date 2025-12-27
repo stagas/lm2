@@ -46,14 +46,11 @@ function Intro({ isFadingOut = false, isFadingIn = true }: { isFadingOut?: boole
 export function EngineUI() {
   const { isInitialized } = useEngine()
   const hasHydrated = useAppStore(state => state.hasHydrated)
-  const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const isProgramReady = useEngineRuntimeStore(state => state.isProgramReady)
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
   const preloadSamples = useEngineDspStore(state => state.preloadSamples)
   const currentLoop = useCurrentLoop()
-  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || isLoopLoading
-    || !audioContext
-    || !currentLoop
+  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext
 
   const [showIntro, setShowIntro] = useState(true)
   const [isFadingIn, setIsFadingIn] = useState(true)
@@ -76,7 +73,6 @@ export function EngineUI() {
   useLayoutEffect(() => {
     if (!currentLoop) return
     if (!audioContext) return
-    if (isLoopLoading) return
     const loopId = currentLoop.data.id
     const source = currentLoop.codeFile.value
     const hasCode = source.length > 0
@@ -88,7 +84,7 @@ export function EngineUI() {
 
     didPreloadRef.current = { loopId, hadCode: hasCode }
     void preloadSamples(source)
-  }, [audioContext, currentLoop, isLoopLoading, preloadSamples])
+  }, [audioContext, currentLoop, preloadSamples])
 
   useEffect(() => {
     if (shouldWait || !showIntro) return
@@ -112,7 +108,7 @@ export function EngineUI() {
           await new Promise<void>(resolve => setTimeout(resolve, 100))
           continue
         }
-        const resPromise = fetch('./cowbell.ogg')
+        const resPromise = fetch('/cowbell.ogg')
         // await useEngineDspStore.getState().playLoop('1', '.001 |> out($)')
         await new Promise<void>(resolve => setTimeout(resolve, 1500))
         const res = await resPromise
