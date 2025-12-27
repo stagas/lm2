@@ -88,6 +88,7 @@ const persistTimers = new Map<string, number>()
 const initialValues = new Map<string, string>()
 const publicLoopPrefetching = new Set<string>()
 const publicLoopFetching = new Map<string, Promise<string>>()
+let likedLoopsRefreshReq = 0
 
 const SESSION_VIEWS_KEY = 'app:views:v1'
 
@@ -336,7 +337,9 @@ export const useAppStore = create<AppState>()(
 
       refreshLikedLoops: async () => {
         const api = get().api
+        const req = ++likedLoopsRefreshReq
         const loops = await api.fetchLikedLoops()
+        if (req !== likedLoopsRefreshReq) return
         set({ likedLoopsCache: loops, isLikedLoopsCacheStale: false })
       },
 
@@ -498,11 +501,18 @@ export const useAppStore = create<AppState>()(
 
         try {
           const res = await get().api.toggleLike(loopId, epoch)
-          if (!get().isLoopEpochLatest(loopId, res.epoch)) return
-          const nextSession = res.sessionData
-          get().setSessionData(nextSession)
+          if (!get().isLoopEpochLatest(loopId, epoch)) return
+          const serverSession = res.sessionData
+          const actualLiked = serverSession.likedLoopIds.includes(loopId)
 
-          const actualLiked = nextSession.likedLoopIds.includes(loopId)
+          const currSession = get().sessionData
+          if (!currSession) return
+
+          const nextLikedLoopIds = actualLiked
+            ? (currSession.likedLoopIds.includes(loopId) ? currSession.likedLoopIds : [...currSession.likedLoopIds, loopId])
+            : currSession.likedLoopIds.filter(id => id !== loopId)
+
+          get().setSessionData({ ...serverSession, likedLoopIds: nextLikedLoopIds })
           const correctionDelta = (actualLiked ? 1 : 0) - (optimisticLiked ? 1 : 0)
           if (correctionDelta === 0) return
 
@@ -532,7 +542,15 @@ export const useAppStore = create<AppState>()(
         }
         catch {
           if (!get().isLoopEpochLatest(loopId, epoch)) return
-          get().setSessionData(prevSession)
+          const currSession = get().sessionData
+          if (currSession) {
+            const nextLikedLoopIds = wasLiked
+              ? (currSession.likedLoopIds.includes(loopId)
+                ? currSession.likedLoopIds
+                : [...currSession.likedLoopIds, loopId])
+              : currSession.likedLoopIds.filter(id => id !== loopId)
+            get().setSessionData({ ...currSession, likedLoopIds: nextLikedLoopIds })
+          }
           const revertDelta = wasLiked ? 1 : -1
           set(state => {
             const item = state.publicLoopsCache.find(l => l.id === loopId)
