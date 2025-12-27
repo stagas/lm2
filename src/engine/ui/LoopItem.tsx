@@ -7,6 +7,7 @@ import {
   LockIcon,
   PencilIcon,
   PlayIcon,
+  RepeatIcon,
   TrashIcon,
   XIcon,
 } from '@phosphor-icons/react'
@@ -229,6 +230,9 @@ export const LoopItem = ({
     onSaveAsNew?.({ title: loopTitle })
   }
 
+  const handleSaveAsRemix = () => {
+  }
+
   useEffect(() => {
     setLoopTitle(loop.data.title)
   }, [loop.data.title])
@@ -314,8 +318,14 @@ export const LoopItem = ({
                 ? (
                   <>
                     {!loop.isNew && (
-                      <LoopItemButton title="Save as New" icon={<FilePlusIcon weight="regular" size={16} />}
-                        onClick={handleSaveAsNew} />
+                      <>
+                        {loop.data.isPublic && (
+                          <LoopItemButton title="Save as Remix" icon={<RepeatIcon weight="regular" size={16} />}
+                            onClick={handleSaveAsRemix} />
+                        )}
+                        <LoopItemButton title="Save as New" icon={<FilePlusIcon weight="regular" size={16} />}
+                          onClick={handleSaveAsNew} />
+                      </>
                     )}
                     <LoopItemButton title="Save" icon={<CheckIcon weight="regular" size={16} />} onClick={handleSave} />
                   </>
