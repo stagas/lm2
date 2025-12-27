@@ -13,6 +13,10 @@ export function SidebarBrowse() {
   const hotLoops = useAppStore(state => state.hotLoopsCache)
   const bestLoops = useAppStore(state => state.bestLoopsCache)
   const likedLoops = useAppStore(state => state.likedLoopsCache)
+  const isPublicLoopsCacheStale = useAppStore(state => state.isPublicLoopsCacheStale)
+  const isHotLoopsCacheStale = useAppStore(state => state.isHotLoopsCacheStale)
+  const isBestLoopsCacheStale = useAppStore(state => state.isBestLoopsCacheStale)
+  const isLikedLoopsCacheStale = useAppStore(state => state.isLikedLoopsCacheStale)
 
   const refreshPublicLoops = useAppStore(state => state.refreshPublicLoops)
   const refreshHotLoops = useAppStore(state => state.refreshHotLoops)
@@ -28,32 +32,32 @@ export function SidebarBrowse() {
 
   useEffect(() => {
     if (tab !== 'new') return
-    if (publicLoops.length > 0) return
+    if (publicLoops.length > 0 && !isPublicLoopsCacheStale) return
     setIsLoading(true)
     void refreshPublicLoops().finally(() => setIsLoading(false))
-  }, [publicLoops.length, refreshPublicLoops, tab])
+  }, [isPublicLoopsCacheStale, publicLoops.length, refreshPublicLoops, tab])
 
   useEffect(() => {
     if (tab !== 'hot') return
-    if (hotLoops.length > 0) return
+    if (hotLoops.length > 0 && !isHotLoopsCacheStale) return
     setIsHotLoading(true)
     void refreshHotLoops().finally(() => setIsHotLoading(false))
-  }, [hotLoops.length, refreshHotLoops, tab])
+  }, [hotLoops.length, isHotLoopsCacheStale, refreshHotLoops, tab])
 
   useEffect(() => {
     if (tab !== 'best') return
-    if (bestLoops.length > 0) return
+    if (bestLoops.length > 0 && !isBestLoopsCacheStale) return
     setIsBestLoading(true)
     void refreshBestLoops().finally(() => setIsBestLoading(false))
-  }, [bestLoops.length, refreshBestLoops, tab])
+  }, [bestLoops.length, isBestLoopsCacheStale, refreshBestLoops, tab])
 
   useEffect(() => {
     if (tab !== 'liked') return
     if (!sessionData) return
-    if (likedLoops.length > 0) return
+    if (likedLoops.length > 0 && !isLikedLoopsCacheStale) return
     setIsLikedLoading(true)
     void refreshLikedLoops().finally(() => setIsLikedLoading(false))
-  }, [likedLoops.length, refreshLikedLoops, sessionData?.user.id, tab])
+  }, [isLikedLoopsCacheStale, likedLoops.length, refreshLikedLoops, sessionData?.user.id, tab])
 
   const content = useMemo(() => {
     if (tab === 'new') {

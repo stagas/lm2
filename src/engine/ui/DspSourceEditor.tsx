@@ -34,6 +34,7 @@ import { useBranchWidget } from './useBranchWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useCompressorWidget } from './useCompressorWidget.ts'
 import { useFilterWidget } from './useFilterWidget.ts'
+import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
 import { useLfoWidget } from './useLfoWidget.ts'
 import { useLoopView } from './useLoopView.ts'
@@ -59,17 +60,11 @@ export function DspSourceEditor(
     onDspError: (error: string | undefined) => void
   },
 ) {
-  const hasHydrated = useAppStore(state => state.hasHydrated)
-  const isLoopLoading = useAppStore(state => state.isLoopLoading)
-  const isProgramReady = useEngineRuntimeStore(state => state.isProgramReady)
-  const audioContext = useEngineRuntimeStore(state => state.audioContext)
-  const isPreloadingSamples = useEngineDspStore(state => state.isPreloadingSamples)
+  const isEditorBusy = useIsEditorBusy()
   const code = currentLoop?.codeFile.value ?? ''
   const isAwaitingCode = currentLoop != null && currentLoop.data.code == null && code.length === 0
 
-  if (!hasHydrated || !isProgramReady || !audioContext || isLoopLoading || isPreloadingSamples || isAwaitingCode
-    || !currentLoop)
-  {
+  if (isEditorBusy || isAwaitingCode || !currentLoop) {
     return (
       <RadialGradient>
         <SpinnerLarge />
@@ -473,6 +468,12 @@ function DspSourceEditorReady(
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())
   const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
+  const lastPlayingLoopIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (playingLoopId != null) lastPlayingLoopIdRef.current = playingLoopId
+  }, [playingLoopId])
+
+  const isLiveView = loopId != null && loopId === (playingLoopId ?? lastPlayingLoopIdRef.current)
   const resetKey = `${currentLoop?.data.id ?? ''}:${playingLoopId ?? ''}`
 
   const { widgets: sequenceWidgets, onBeforeDraw } = useSequenceWidget({
@@ -539,7 +540,7 @@ function DspSourceEditorReady(
     analyserRefs: widgetCompileState.analyserRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
-    isLive,
+    isLive: isLiveView,
     playbackState,
     sampleRate: audioContext?.sampleRate,
   })
