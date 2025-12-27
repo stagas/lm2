@@ -113,6 +113,7 @@ function DspSourceEditorReady(
   const miniRefs = useEngineDspStore(state => state.miniRefs)
   const timelineRefs = useEngineDspStore(state => state.timelineRefs)
   const timelineLabels = useEngineDspStore(state => state.timelineLabels)
+  const bars = useEngineDspStore(state => state.bars)
   const miniSourceMaps = useEngineDspStore(state => state.miniSourceMaps)
   const analyserRefs = useEngineDspStore(state => state.analyserRefs)
   const compressorRefs = useEngineDspStore(state => state.compressorRefs)
@@ -130,6 +131,7 @@ function DspSourceEditorReady(
   const isPreloadingSamples = useEngineDspStore(state => state.isPreloadingSamples)
   const isProgramSwapPending = useEngineDspStore(state => state.isProgramSwapPending)
   const isUpdatingDsp = useEngineDspStore(state => state.isUpdatingDsp)
+  const setUiCompilePreview = useEngineDspStore(state => state.setUiCompilePreview)
 
   const {
     isProgramReady,
@@ -402,6 +404,47 @@ function DspSourceEditorReady(
 
     return buildTimelineLabels(labelsExtracted.labels, barsExtracted.bars)
   }, [code, dspSource, hasCompileErrors, timelineLabels])
+
+  const barsForView = useMemo(() => {
+    if (code === dspSource) return bars
+    if (hasCompileErrors) return bars
+
+    const extracted = extractBarsFromSource(code)
+    if (extracted.errors.length) return bars
+    return extracted.bars
+  }, [bars, code, dspSource, hasCompileErrors])
+
+  useEffect(() => {
+    if (isUpdatingDsp || isProgramSwapPending) return
+    setUiCompilePreview({
+      source: widgetCompileState.dspSource,
+      sequences: widgetCompileState.sequences,
+      miniRefs: widgetCompileState.miniRefs,
+      timelineRefs: widgetCompileState.timelineRefs,
+      timelineLabels: timelineLabelsForView,
+      bars: barsForView,
+      miniSourceMaps: widgetCompileState.miniSourceMaps,
+      analyserRefs: widgetCompileState.analyserRefs ?? [],
+      compressorRefs: widgetCompileState.compressorRefs ?? [],
+      lpRefs: widgetCompileState.lpRefs ?? [],
+      slicerRefs: widgetCompileState.slicerRefs ?? [],
+      lfoRefs: widgetCompileState.lfoRefs ?? [],
+      everyRefs: widgetCompileState.everyRefs ?? [],
+      atRefs: widgetCompileState.atRefs ?? [],
+      euclidRefs: widgetCompileState.euclidRefs ?? [],
+      arrayLiterals: widgetCompileState.arrayLiterals ?? [],
+      branchMarks: widgetCompileState.branchMarks ?? [],
+      numberParams: widgetCompileState.numberParams ?? [],
+      sampleDefs: widgetCompileState.sampleDefs ?? [],
+    })
+  }, [
+    barsForView,
+    isProgramSwapPending,
+    isUpdatingDsp,
+    setUiCompilePreview,
+    timelineLabelsForView,
+    widgetCompileState,
+  ])
 
   const isAwaitingSamples = useMemo(() => {
     if (hasCompileErrors) return false

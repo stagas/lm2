@@ -370,7 +370,7 @@ function BrowseItem(
     <>
       <div
         data-loop-id={loop.id}
-        className={`flex flex-row px-3 py-2 border-b border-neutral-700 gap-2 justify-between
+        className={`flex flex-row px-3 py-2 border-b border-neutral-700 gap-2 justify-between select-none cursor-pointer
           bg-gradient-to-b ${isSelected ? 'from-neutral-700 to-black' : 'from-black to-neutral-900'}
           hover:to-neutral-800
         `}
@@ -398,7 +398,7 @@ function BrowseItem(
                       e.preventDefault()
                       setSelectedLoopId(remixOf.id)
                     }}
-                    className="hover:text-white hover:font-light"
+                    className="hover:text-orange-500 hover:font-light"
                   >
                     {remixOf.artist} - {remixOf.title}
                   </button>

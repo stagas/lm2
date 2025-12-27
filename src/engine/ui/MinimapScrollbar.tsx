@@ -83,17 +83,17 @@ export function MinimapScrollbar({
 
   useEffect(() => {
     const unsub = useEngineDspStore.subscribe(state => {
-      const nextRefs = state.timelineRefs
+      const nextRefs = state.uiTimelineRefs
       if (timelineRefsRef.current !== nextRefs) {
         timelineRefsRef.current = nextRefs
       }
 
-      const nextLabels = state.timelineLabels
+      const nextLabels = state.uiTimelineLabels
       if (timelineLabelsRef.current !== nextLabels) {
         timelineLabelsRef.current = nextLabels
       }
 
-      const nextBars = state.bars
+      const nextBars = state.uiBars
       if (barsRef.current !== nextBars) {
         barsRef.current = nextBars
       }

@@ -85,6 +85,7 @@ interface AppState {
 const codeFiles = new Map<string, CodeFile>()
 const codeFileUnsubs = new Map<string, () => void>()
 const persistTimers = new Map<string, number>()
+const dirtyRafTimers = new Map<string, number>()
 const initialValues = new Map<string, string>()
 const publicLoopPrefetching = new Set<string>()
 const publicLoopFetching = new Map<string, Promise<string>>()
@@ -140,6 +141,31 @@ const schedulePersistSessionViews = () => {
       // ignore write errors (quota, privacy mode, etc.)
     }
   }, 120)
+}
+
+type SetAppState = (next: ((state: AppState) => Partial<AppState> | AppState) | Partial<AppState> | AppState) => void
+type GetAppState = () => AppState
+
+const scheduleDirtyUpdate = (id: string, codeFile: CodeFile, get: GetAppState, set: SetAppState) => {
+  if (typeof window === 'undefined') return
+  if (dirtyRafTimers.has(id)) return
+  const rafId = window.requestAnimationFrame(() => {
+    dirtyRafTimers.delete(id)
+    const baseEntry = get().bases[id]
+    const initial = initialValues.get(id) ?? ''
+    const base = baseEntry?.code ?? initial
+    const baseKnown = baseEntry != null || isLocalId(id) || initial.length > 0
+    const isDirty = baseKnown ? codeFile.value !== base : false
+    set(state => {
+      const wasDirty = state.dirtyById[id] === true
+      const dirtyChanged = isDirty ? !wasDirty : wasDirty
+      if (!dirtyChanged) return state
+      if (isDirty) return { dirtyById: { ...state.dirtyById, [id]: true } }
+      const { [id]: _, ...rest } = state.dirtyById
+      return { dirtyById: rest }
+    })
+  })
+  dirtyRafTimers.set(id, rafId)
 }
 
 export const useAppStore = create<AppState>()(
@@ -509,7 +535,9 @@ export const useAppStore = create<AppState>()(
           if (!currSession) return
 
           const nextLikedLoopIds = actualLiked
-            ? (currSession.likedLoopIds.includes(loopId) ? currSession.likedLoopIds : [...currSession.likedLoopIds, loopId])
+            ? (currSession.likedLoopIds.includes(loopId)
+              ? currSession.likedLoopIds
+              : [...currSession.likedLoopIds, loopId])
             : currSession.likedLoopIds.filter(id => id !== loopId)
 
           get().setSessionData({ ...serverSession, likedLoopIds: nextLikedLoopIds })
@@ -728,6 +756,7 @@ export const useAppStore = create<AppState>()(
         codeFiles.set(id, codeFile)
 
         const unsub = codeFile.subscribe(() => {
+          scheduleDirtyUpdate(id, codeFile, get, set)
           const prev = persistTimers.get(id)
           if (prev) window.clearTimeout(prev)
           persistTimers.set(
@@ -867,6 +896,13 @@ export const useAppStore = create<AppState>()(
       moveBuffer: (fromId: string, toId: string) => {
         if (fromId === toId) return
 
+        const raf1 = dirtyRafTimers.get(fromId)
+        if (raf1 != null) window.cancelAnimationFrame(raf1)
+        dirtyRafTimers.delete(fromId)
+        const raf2 = dirtyRafTimers.get(toId)
+        if (raf2 != null) window.cancelAnimationFrame(raf2)
+        dirtyRafTimers.delete(toId)
+
         const movedInitial = initialValues.get(fromId)
         if (movedInitial != null) {
           initialValues.delete(fromId)
@@ -899,6 +935,7 @@ export const useAppStore = create<AppState>()(
           codeFiles.set(toId, codeFile)
 
           const unsub = codeFile.subscribe(() => {
+            scheduleDirtyUpdate(toId, codeFile, get, set)
             const prev = persistTimers.get(toId)
             if (prev) window.clearTimeout(prev)
             persistTimers.set(
@@ -1044,6 +1081,9 @@ export const useAppStore = create<AppState>()(
       },
 
       dropBuffer: (id: string) => {
+        const raf = dirtyRafTimers.get(id)
+        if (raf != null) window.cancelAnimationFrame(raf)
+        dirtyRafTimers.delete(id)
         codeFileUnsubs.get(id)?.()
         codeFileUnsubs.delete(id)
         codeFiles.delete(id)
