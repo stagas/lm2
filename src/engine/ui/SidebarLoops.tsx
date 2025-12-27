@@ -35,6 +35,9 @@ export function SidebarLoops(
   const api = useAppStore(state => state.api)
   const setSessionData = useAppStore(state => state.setSessionData)
   const upsertServerLoopCache = useAppStore(state => state.upsertServerLoopCache)
+  const optimisticUpsertBrowseLoop = useAppStore(state => state.optimisticUpsertBrowseLoop)
+  const optimisticDeleteBrowseLoop = useAppStore(state => state.optimisticDeleteBrowseLoop)
+  const invalidateBrowseCaches = useAppStore(state => state.invalidateBrowseCaches)
   const getCodeFile = useAppStore(state => state.getCodeFile)
   const moveBuffer = useAppStore(state => state.moveBuffer)
   const dropBuffer = useAppStore(state => state.dropBuffer)
@@ -61,7 +64,7 @@ export function SidebarLoops(
     setTimeout(() => {
       document.querySelector('textarea')?.focus({ preventScroll: true })
     }, 0)
-  }, [currentLoopId, loops])
+  }, [currentLoopId])
 
   const stopIfPlaying = (loopId: string) => {
     const runtime = useEngineRuntimeStore.getState()
@@ -332,6 +335,18 @@ export function SidebarLoops(
         void (async () => {
           try {
             const remixOfId = loop.data.remixOf?.id
+            optimisticUpsertBrowseLoop({
+              ...loop.data,
+              id: serverId,
+              title,
+              artist: sessionData.user.name,
+              artistId: sessionData.user.id,
+              code,
+              isPublic,
+              timestamp,
+              ...(remixOfId ? { remixOfId } : {}),
+            })
+            invalidateBrowseCaches({ hot: true, best: true, liked: true })
             await api.upsertLoop(serverId, {
               title,
               code,
@@ -375,6 +390,8 @@ export function SidebarLoops(
             removeLocalLoop(localId)
           }
           catch (e) {
+            optimisticDeleteBrowseLoop(serverId)
+            invalidateBrowseCaches({ public: true, hot: true, best: true, liked: true })
             setApiError(e instanceof Error ? e.message : String(e))
           }
         })()
@@ -383,6 +400,15 @@ export function SidebarLoops(
         void (async () => {
           try {
             const remixOfId = loop.data.remixOf?.id
+            optimisticUpsertBrowseLoop({
+              ...loop.data,
+              title,
+              code: loop.codeFile.value,
+              isPublic,
+              timestamp,
+              ...(remixOfId ? { remixOfId } : {}),
+            })
+            invalidateBrowseCaches({ hot: true, best: true, liked: true })
             await api.upsertLoop(loop.data.id, {
               title,
               code: loop.codeFile.value,
@@ -401,6 +427,7 @@ export function SidebarLoops(
             })
           }
           catch (e) {
+            invalidateBrowseCaches({ public: true, hot: true, best: true, liked: true })
             setApiError(e instanceof Error ? e.message : String(e))
           }
         })()
@@ -481,6 +508,8 @@ export function SidebarLoops(
             ...sessionData,
             loops: sessionData.loops.filter(l => l.id !== loop.data.id),
           })
+          optimisticDeleteBrowseLoop(loop.data.id)
+          invalidateBrowseCaches({ hot: true, best: true, liked: true })
           preserveScrollPos(() => {
             switchAwayFrom(loop.data.id, true)
             dropBuffer(loop.data.id)
@@ -490,6 +519,7 @@ export function SidebarLoops(
           setSessionData(next)
         }
         catch (e) {
+          invalidateBrowseCaches({ public: true, hot: true, best: true, liked: true })
           setApiError(e instanceof Error ? e.message : String(e))
         }
       })()

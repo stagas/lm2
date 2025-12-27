@@ -446,7 +446,6 @@ export function useAnalyserWidget({
     // When not viewing the currently-loaded (playingLoopId) loop, keep analysers flat
     // without destroying the last live analyser buffers.
     if (!isLive) return
-    if (playbackState === 'stopped') return
 
     const stArr = analyserStateRef.current
     const seen = seenRef.current
@@ -469,7 +468,6 @@ export function useAnalyserWidget({
 
       const ring = program1!.program!.analyserOuts[analyserIndex] as Ring | undefined
       if (!ring) {
-        st.floats = null
         continue
       }
 

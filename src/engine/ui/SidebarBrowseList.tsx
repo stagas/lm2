@@ -8,6 +8,7 @@ import { RadialGradient } from '../../components/RadialGradient.tsx'
 import { Spinner, SpinnerLarge, SpinnerSmall } from '../../components/Spinner.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { PauseGradientIcon, PlayGradientIcon } from './Icons.tsx'
+import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
 
 function formatAge(timestamp: number | undefined) {
@@ -493,8 +494,11 @@ export function SidebarBrowseList(
   const toggleLike = useAppStore(state => state.toggleLike)
   const refreshLikedLoops = useAppStore(state => state.refreshLikedLoops)
   const likedLoopsCacheLen = useAppStore(state => state.likedLoopsCache.length)
+  const isLikedLoopsCacheStale = useAppStore(state => state.isLikedLoopsCacheStale)
   const prefetchPublicLoopCodes = useAppStore(state => state.prefetchPublicLoopCodes)
   const publicLoopCodeCache = useAppStore(state => state.publicLoopCodeCache)
+  const selectedLoopId = useAppStore(state => state.selectedLoopId)
+  const isEditorBusy = useIsEditorBusy()
 
   const userId = sessionData?.user.id ?? null
   const likedLoopIds = useMemo(() => (sessionData?.likedLoopIds ?? []), [sessionData])
@@ -503,15 +507,21 @@ export function SidebarBrowseList(
   const codeCacheRef = useRef(publicLoopCodeCache)
 
   useEffect(() => {
+    setTimeout(() => {
+      document.querySelector('textarea')?.focus({ preventScroll: true })
+    }, 0)
+  }, [selectedLoopId, isEditorBusy])
+
+  useEffect(() => {
     codeCacheRef.current = publicLoopCodeCache
   }, [publicLoopCodeCache])
 
   useEffect(() => {
     if (!sessionData) return
     if (likedLoopIds.length === 0) return
-    if (likedLoopsCacheLen > 0) return
+    if (likedLoopsCacheLen > 0 && !isLikedLoopsCacheStale) return
     void refreshLikedLoops()
-  }, [likedLoopIds.length, likedLoopsCacheLen, refreshLikedLoops, sessionData])
+  }, [isLikedLoopsCacheStale, likedLoopIds.length, likedLoopsCacheLen, refreshLikedLoops, sessionData])
 
   useEffect(() => {
     const root = listRef.current

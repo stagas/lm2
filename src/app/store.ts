@@ -35,6 +35,10 @@ interface AppState {
   hotLoopsCache: LoopData[]
   bestLoopsCache: LoopData[]
   likedLoopsCache: LoopData[]
+  isPublicLoopsCacheStale: boolean
+  isHotLoopsCacheStale: boolean
+  isBestLoopsCacheStale: boolean
+  isLikedLoopsCacheStale: boolean
   publicLoopCodeCache: Record<string, string>
   loopCommentsCache: Record<string, CommentData[]>
   loopRemixesCache: Record<string, LoopData[]>
@@ -44,6 +48,9 @@ interface AppState {
   refreshLikedLoops: () => Promise<void>
   upsertPublicLoopCache: (loop: LoopData) => void
   removePublicLoopCache: (id: string) => void
+  optimisticUpsertBrowseLoop: (loop: LoopData) => void
+  optimisticDeleteBrowseLoop: (id: string) => void
+  invalidateBrowseCaches: (what: { public?: boolean; hot?: boolean; best?: boolean; liked?: boolean }) => void
   toggleLike: (loopId: string) => Promise<void>
   prefetchPublicLoopCodes: (loopIds: string[]) => Promise<void>
   getPublicLoopCode: (loopId: string) => Promise<string>
@@ -91,6 +98,11 @@ const updateLoopLikesCountInList = (list: LoopData[], loopId: string, delta: num
       ? { ...loop, likesCount: Math.max(0, loop.likesCount + delta) }
       : loop
   )
+
+const updateLoopInList = (list: LoopData[], loopId: string, patch: Partial<LoopData>) =>
+  list.map(loop => loop.id === loopId ? { ...loop, ...patch } : loop)
+
+const removeLoopFromList = (list: LoopData[], loopId: string) => list.filter(l => l.id !== loopId)
 
 const readSessionViews = (): Record<string, EditorViewState> => {
   if (typeof window === 'undefined') return {}
@@ -145,6 +157,10 @@ export const useAppStore = create<AppState>()(
       hotLoopsCache: [],
       bestLoopsCache: [],
       likedLoopsCache: [],
+      isPublicLoopsCacheStale: false,
+      isHotLoopsCacheStale: false,
+      isBestLoopsCacheStale: false,
+      isLikedLoopsCacheStale: false,
       publicLoopCodeCache: {},
       loopCommentsCache: {},
       loopRemixesCache: {},
@@ -272,25 +288,25 @@ export const useAppStore = create<AppState>()(
       refreshPublicLoops: async () => {
         const api = get().api
         const loops = await api.fetchPublicLoops()
-        set({ publicLoopsCache: loops })
+        set({ publicLoopsCache: loops, isPublicLoopsCacheStale: false })
       },
 
       refreshHotLoops: async () => {
         const api = get().api
         const loops = await api.fetchHotLoops()
-        set({ hotLoopsCache: loops })
+        set({ hotLoopsCache: loops, isHotLoopsCacheStale: false })
       },
 
       refreshBestLoops: async () => {
         const api = get().api
         const loops = await api.fetchBestLoops()
-        set({ bestLoopsCache: loops })
+        set({ bestLoopsCache: loops, isBestLoopsCacheStale: false })
       },
 
       refreshLikedLoops: async () => {
         const api = get().api
         const loops = await api.fetchLikedLoops()
-        set({ likedLoopsCache: loops })
+        set({ likedLoopsCache: loops, isLikedLoopsCacheStale: false })
       },
 
       upsertPublicLoopCache: loop => {
@@ -306,6 +322,106 @@ export const useAppStore = create<AppState>()(
 
       removePublicLoopCache: id => {
         set(state => ({ publicLoopsCache: state.publicLoopsCache.filter(l => l.id !== id) }))
+      },
+
+      optimisticUpsertBrowseLoop: loop => {
+        set(state => {
+          const loopId = loop.id
+          const isPublic = loop.isPublic ?? false
+          const { code, comments: _comments, remixOf: _remixOf, ...rest } = loop
+          const summary = rest as LoopData
+
+          const nextPublic = (() => {
+            if (!isPublic) return removeLoopFromList(state.publicLoopsCache, loopId)
+            const idx = state.publicLoopsCache.findIndex(l => l.id === loopId)
+            const nextLoop = idx === -1 ? summary : { ...state.publicLoopsCache[idx]!, ...summary }
+            return idx === -1
+              ? [nextLoop, ...state.publicLoopsCache]
+              : state.publicLoopsCache.map((l, i) => i === idx ? nextLoop : l)
+          })()
+
+          const nextHot = (() => {
+            if (!isPublic) return removeLoopFromList(state.hotLoopsCache, loopId)
+            if (!state.hotLoopsCache.some(l => l.id === loopId)) return state.hotLoopsCache
+            return updateLoopInList(state.hotLoopsCache, loopId, summary)
+          })()
+
+          const nextBest = (() => {
+            if (!isPublic) return removeLoopFromList(state.bestLoopsCache, loopId)
+            if (!state.bestLoopsCache.some(l => l.id === loopId)) return state.bestLoopsCache
+            return updateLoopInList(state.bestLoopsCache, loopId, summary)
+          })()
+
+          const nextLiked = (() => {
+            if (!isPublic) return removeLoopFromList(state.likedLoopsCache, loopId)
+            if (!state.likedLoopsCache.some(l => l.id === loopId)) return state.likedLoopsCache
+            return updateLoopInList(state.likedLoopsCache, loopId, summary)
+          })()
+
+          const nextPublicLoopCodeCache = (() => {
+            if (!isPublic) {
+              if (state.publicLoopCodeCache[loopId] == null) return state.publicLoopCodeCache
+              const next = { ...state.publicLoopCodeCache }
+              delete next[loopId]
+              return next
+            }
+            if (code == null) return state.publicLoopCodeCache
+            if (state.publicLoopCodeCache[loopId] === code) return state.publicLoopCodeCache
+            return { ...state.publicLoopCodeCache, [loopId]: code }
+          })()
+
+          return ({
+            publicLoopsCache: nextPublic,
+            hotLoopsCache: nextHot,
+            bestLoopsCache: nextBest,
+            likedLoopsCache: nextLiked,
+            publicLoopCodeCache: nextPublicLoopCodeCache,
+          }) as AppState
+        })
+      },
+
+      optimisticDeleteBrowseLoop: id => {
+        set(state => {
+          const nextPublicLoopCodeCache = (() => {
+            if (state.publicLoopCodeCache[id] == null) return state.publicLoopCodeCache
+            const next = { ...state.publicLoopCodeCache }
+            delete next[id]
+            return next
+          })()
+
+          const nextLoopCommentsCache = (() => {
+            if (state.loopCommentsCache[id] == null) return state.loopCommentsCache
+            const next = { ...state.loopCommentsCache }
+            delete next[id]
+            return next
+          })()
+
+          const nextLoopRemixesCache = (() => {
+            if (state.loopRemixesCache[id] == null) return state.loopRemixesCache
+            const next = { ...state.loopRemixesCache }
+            delete next[id]
+            return next
+          })()
+
+          return ({
+            publicLoopsCache: removeLoopFromList(state.publicLoopsCache, id),
+            hotLoopsCache: removeLoopFromList(state.hotLoopsCache, id),
+            bestLoopsCache: removeLoopFromList(state.bestLoopsCache, id),
+            likedLoopsCache: removeLoopFromList(state.likedLoopsCache, id),
+            publicLoopCodeCache: nextPublicLoopCodeCache,
+            loopCommentsCache: nextLoopCommentsCache,
+            loopRemixesCache: nextLoopRemixesCache,
+          }) as AppState
+        })
+      },
+
+      invalidateBrowseCaches: what => {
+        set(state => ({
+          isPublicLoopsCacheStale: what.public ? true : state.isPublicLoopsCacheStale,
+          isHotLoopsCacheStale: what.hot ? true : state.isHotLoopsCacheStale,
+          isBestLoopsCacheStale: what.best ? true : state.isBestLoopsCacheStale,
+          isLikedLoopsCacheStale: what.liked ? true : state.isLikedLoopsCacheStale,
+        }))
       },
 
       toggleLike: async loopId => {
