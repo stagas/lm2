@@ -70,15 +70,15 @@ export function SidebarLoops(
     runtime.setPlayingLoopId(null)
   }
 
-  const pickFallbackLoopId = (closingId: string, preferNew: boolean) => {
+  const pickFallbackLoopId = (closingId: string, preferFirst: boolean) => {
     const other = loops.filter(loop => loop.data.id !== closingId)
-    if (preferNew) {
-      const untitled = other.find(loop => loop.isNew && loop.data.title.startsWith('Untitled'))
-      if (untitled) return untitled.data.id
-      const draft = other.find(loop => loop.isNew)
-      if (draft) return draft.data.id
-      return null
+    if (preferFirst) {
+      return other[0]?.data.id ?? null
     }
+    const untitled = other.find(loop => loop.isNew && loop.data.title.startsWith('Untitled'))
+    if (untitled) return untitled.data.id
+    const draft = other.find(loop => loop.isNew)
+    if (draft) return draft.data.id
     return other[0]?.data.id ?? null
   }
 
@@ -269,10 +269,10 @@ export function SidebarLoops(
     handleNewLoop()
   }, [hasHydrated, isSessionLoading, localLoops.length, serverLoops.length])
 
-  const switchAwayFrom = (closingId: string, preferNew: boolean) => {
+  const switchAwayFrom = (closingId: string, preferFirst: boolean) => {
     if (currentLoopId !== closingId && selectedLoopId !== closingId) return
 
-    const nextId = pickFallbackLoopId(closingId, preferNew)
+    const nextId = pickFallbackLoopId(closingId, preferFirst)
     if (nextId) {
       setCurrentLoopId(nextId)
       setSelectedLoopId(nextId)
@@ -280,7 +280,7 @@ export function SidebarLoops(
       return
     }
 
-    if (preferNew) {
+    if (loops.length === 0) {
       handleNewLoop(closingId)
       return
     }
@@ -542,8 +542,6 @@ export function SidebarLoops(
               onPause={pause}
               onStop={stop}
               canSave={sessionData != null}
-              hideCloseWhenNotDirty={loop.data.id === lastUntitledId
-                && (loops.length === 1 || currentLoopId === loop.data.id)}
               onClose={() => handleClose(loop)}
               onEditDetails={details => handleEditDetails(loop, details)}
               onSave={details => handleSave(loop, details)}
