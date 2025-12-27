@@ -914,22 +914,49 @@ export const useAppStore = create<AppState>()(
                 }
                 schedulePersistSessionViews()
 
-                const base = get().bases[toId]?.code ?? initialValues.get(toId) ?? ''
+                const baseEntry = get().bases[toId]
+                const initial = initialValues.get(toId) ?? ''
+                const base = baseEntry?.code ?? initial
                 const shouldPersist = shouldPersistBuffer(toId, snapshot, base)
+                const baseKnown = baseEntry != null || isLocalId(toId) || initial.length > 0
+                const isDirty = baseKnown ? snapshot.value !== base : false
 
                 set(state => {
                   const has = state.buffers[toId] != null
+                  const wasDirty = state.dirtyById[toId] === true
+                  const dirtyChanged = isDirty ? !wasDirty : wasDirty
                   if (shouldPersist) {
+                    if (!dirtyChanged && has && state.buffers[toId] === snapshot) return state
                     return {
                       buffers: {
                         ...state.buffers,
                         [toId]: snapshot,
                       },
+                      dirtyById: isDirty
+                        ? { ...state.dirtyById, [toId]: true }
+                        : (() => {
+                          if (!wasDirty) return state.dirtyById
+                          const { [toId]: _, ...rest } = state.dirtyById
+                          return rest
+                        })(),
                     }
                   }
-                  if (!has) return state
-                  const { [toId]: _, ...rest } = state.buffers
-                  return { buffers: rest }
+                  if (!has && !dirtyChanged) return state
+                  const next: Partial<AppState> = {}
+                  if (has) {
+                    const { [toId]: _, ...rest } = state.buffers
+                    next.buffers = rest
+                  }
+                  if (dirtyChanged) {
+                    if (isDirty) {
+                      next.dirtyById = { ...state.dirtyById, [toId]: true }
+                    }
+                    else {
+                      const { [toId]: _, ...rest } = state.dirtyById
+                      next.dirtyById = rest
+                    }
+                  }
+                  return next as AppState
                 })
               }, 120),
             )
@@ -962,6 +989,57 @@ export const useAppStore = create<AppState>()(
 
           const selectedLoopId = state.selectedLoopId === fromId ? toId : state.selectedLoopId
           return { buffers, bases, dirtyById, selectedLoopId }
+        })
+
+        // `moveBuffer()` can cancel a pending persist timer (from the source id) that would've updated `dirtyById`.
+        // Sync the destination id immediately so the loops list reflects dirty state without requiring another edit.
+        const moved = codeFiles.get(toId)
+        if (!moved) return
+        const snapshot = moved.getState()
+        sessionViews[toId] = {
+          caret: snapshot.inputState.caret,
+          selection: snapshot.inputState.selection,
+          scrollX: snapshot.scrollX,
+          scrollY: snapshot.scrollY,
+        }
+        schedulePersistSessionViews()
+        const baseEntry = get().bases[toId]
+        const initial = initialValues.get(toId) ?? ''
+        const base = baseEntry?.code ?? initial
+        const shouldPersist = shouldPersistBuffer(toId, snapshot, base)
+        const baseKnown = baseEntry != null || isLocalId(toId) || initial.length > 0
+        set(state => {
+          const isDirty = baseKnown ? snapshot.value !== base : false
+          const hasDirty = state.dirtyById[toId] === true
+
+          const needsDirtyChange = isDirty ? !hasDirty : hasDirty
+          const hasBuffer = state.buffers[toId] != null
+          const shouldDropBuffer = !shouldPersist && hasBuffer
+          const shouldSetBuffer = shouldPersist && (!hasBuffer || state.buffers[toId] !== snapshot)
+
+          if (!needsDirtyChange && !shouldDropBuffer && !shouldSetBuffer) return state
+
+          const next: Partial<AppState> = {}
+
+          if (shouldSetBuffer) {
+            next.buffers = { ...state.buffers, [toId]: snapshot }
+          }
+          else if (shouldDropBuffer) {
+            const { [toId]: _, ...rest } = state.buffers
+            next.buffers = rest
+          }
+
+          if (needsDirtyChange) {
+            if (isDirty) {
+              next.dirtyById = { ...state.dirtyById, [toId]: true }
+            }
+            else {
+              const { [toId]: _, ...rest } = state.dirtyById
+              next.dirtyById = rest
+            }
+          }
+
+          return next as AppState
         })
       },
 
