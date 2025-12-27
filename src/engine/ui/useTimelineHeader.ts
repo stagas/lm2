@@ -36,7 +36,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
-  const labelsRef = useRef(useEngineDspStore.getState().timelineLabels ?? [])
+  const labelsRef = useRef(useEngineDspStore.getState().uiTimelineLabels ?? [])
 
   useEffect(() => {
     timelineTimeRef.current = null
@@ -48,7 +48,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
 
   useEffect(() => {
     const unsub = useEngineDspStore.subscribe(state => {
-      const next = state.timelineLabels ?? []
+      const next = state.uiTimelineLabels ?? []
       if (labelsRef.current === next) return
       labelsRef.current = next
     })

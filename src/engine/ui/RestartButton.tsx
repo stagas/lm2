@@ -12,7 +12,7 @@ export function RestartButton(
 
   return (
     <button
-      className="min-w-[17px] w-[17px] bg-neutral-800 text-white"
+      className="min-w-[17px] w-[17px] bg-neutral-800 text-white select-none"
       onPointerDown={() => {
         if (!canControlPlayback) {
           if (currentLoop) {
