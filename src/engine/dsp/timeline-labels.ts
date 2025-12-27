@@ -4,7 +4,7 @@ export function buildTimelineLabels(labels: TimelineLabel[], bars: number | unde
   const sorted = [...labels].sort((a, b) => a.bar - b.bar)
   if (bars === undefined) return sorted
 
-  const endBar = bars + 1
+  const endBar = bars
   const hasEnd = sorted.some(l => l.bar === endBar && l.text === 'end')
   if (hasEnd) return sorted
 

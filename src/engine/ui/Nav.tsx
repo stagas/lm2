@@ -1,4 +1,4 @@
-import { ChatCircleIcon, ChatIcon, HeartIcon } from '@phosphor-icons/react'
+import { ChatCircleIcon, ChatIcon, HeartIcon, ShareIcon, ShareNetworkIcon } from '@phosphor-icons/react'
 import { Logo } from '../../components/Logo.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
@@ -52,11 +52,11 @@ function LoopTitle(
   const title = loopData?.title ?? ''
   const artist = loopData?.artist ?? ''
   const remixOf = loopData?.remixOf
-  const likesCount = loopData?.likesCount ?? 0
-  const commentsCount = loopData?.commentsCount ?? 0
+  const likesCount = 42 // loopData?.likesCount ?? 0
+  const commentsCount = 2 // loopData?.commentsCount ?? 0
   return (
-    <div className="whitespace-nowrap text-2xl mr-4 pl-4 h-full gap-4 flex items-center justify-center font-[Turret_Road] font-bold">
-      <div className="flex flex-col items-end">
+    <div className="whitespace-nowrap text-2xl mr-4 pl-4 h-full flex items-center justify-center">
+      <div className="flex flex-col items-end font-[Turret_Road] font-bold">
         <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent">
           {artist} - {title}
         </span>
@@ -66,15 +66,24 @@ function LoopTitle(
           </span>
         )}
       </div>
-      <div className="flex flex-col">
-        <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
+      <div className="flex flex-col items-center ml-2.5 mr-2">
+        <button title="Share" className="text-neutral-500 hover:text-white cursor-pointer">
+          <ShareNetworkIcon weight="light" size={24} />
+        </button>
+      </div>
+      <div className="flex flex-col items-start">
+        <button title="Like"
+          className="text-neutral-500 hover:text-white cursor-pointer font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm"
+        >
           <HeartIcon size={16} />
           <span className="relative top-[1.35px] left-[1px]">{likesCount}</span>
-        </div>
-        <div className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm">
+        </button>
+        <button title="Comments"
+          className="-mt-[1px] text-neutral-500 hover:text-white cursor-pointer font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm"
+        >
           <ChatIcon size={16} />
           <span className="relative top-[1.35px] left-[1px]">{commentsCount}</span>
-        </div>
+        </button>
       </div>
     </div>
   )
