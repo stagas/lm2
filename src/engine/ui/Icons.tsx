@@ -1,12 +1,12 @@
 export const GradientIcon = ({ path, size = 24 }: { path: string; size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 256 256" className="group/gradient">
+  <svg width={size} height={size} viewBox="0 0 256 256">
     <defs>
       <linearGradient id="gradient" x1="0" y1="0" x2=".75" y2=".75">
         <stop offset="0%" stopColor="#f97316" /> {/* orange-500 */}
         <stop offset="100%" stopColor="#ef4444" /> {/* red-500 */}
       </linearGradient>
     </defs>
-    <path d={path} fill="url(#gradient)" className="group-hover/gradient:fill-[#ff0]" />
+    <path d={path} fill="url(#gradient)" />
   </svg>
 )
 

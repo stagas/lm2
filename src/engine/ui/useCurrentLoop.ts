@@ -68,6 +68,7 @@ export function useCurrentLoop(): Loop | null {
       code: '',
       likesCount: 0,
       commentsCount: 0,
+      remixesCount: 0,
       isPublic: false,
       timestamp: 0,
     }

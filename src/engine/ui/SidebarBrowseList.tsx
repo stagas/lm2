@@ -1,8 +1,11 @@
-import { ChatIcon, CircleNotchIcon, HeartIcon, PlayIcon, TrashIcon } from '@phosphor-icons/react'
+import { ChatIcon, CircleNotchIcon, GitForkIcon, HeartIcon, PlayIcon, RepeatIcon,
+  TrashIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MouseButtons } from 'utils/mouse-buttons'
 import type { CommentData, LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
+import { RadialGradient } from '../../components/RadialGradient.tsx'
+import { Spinner, SpinnerLarge, SpinnerSmall } from '../../components/Spinner.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { PauseGradientIcon, PlayGradientIcon } from './Icons.tsx'
 import { useRestartLoop } from './useRestartLoop.tsx'
@@ -60,14 +63,14 @@ function CommentsPanel(
         ? (isLoading ? null : <div className="text-xs text-neutral-500">No comments yet.</div>)
         : (
           <div className="flex flex-col gap-2">
-            {comments.map(c => {
+            {comments.sort((a, b) => a.timestamp - b.timestamp).map(c => {
               const canDelete = userId != null && (isOwner || c.author.id === userId)
               return (
-                <div key={c.id} className="flex flex-row items-start gap-2">
+                <div key={c.id} className="flex flex-row items-start gap-2 border-b border-neutral-800 pb-2 px-1.5">
                   <div className="flex-1 flex flex-col gap-0.5">
                     <div className="text-xs text-neutral-400 flex flex-row items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <span className="text-neutral-200 font-semibold">{c.author.name}</span>{' '}
+                        <span className="text-neutral-400 font-semibold">{c.author.name}</span>{' '}
                         <span className="text-neutral-600">{formatAge(c.timestamp)}</span>
                       </div>
                       {canDelete && (
@@ -87,7 +90,7 @@ function CommentsPanel(
                         </button>
                       )}
                     </div>
-                    <div className="text-xs text-neutral-200 whitespace-pre-wrap">{c.content}</div>
+                    <div className="text-xs text-neutral-400 whitespace-pre-wrap">{c.content}</div>
                   </div>
                 </div>
               )
@@ -113,26 +116,21 @@ function CommentsPanel(
                   onSubmit()
                 }}
               />
-              <div className="flex flex-row items-center justify-between">
-                <div className="text-[11px] text-neutral-600">Ctrl+Enter to send</div>
-                <button
-                  className="text-xs px-2 py-1 rounded-md bg-neutral-200 text-neutral-950 hover:bg-white disabled:bg-neutral-600 disabled:text-neutral-900"
-                  disabled={isPosting || draft.trim().length === 0}
-                  onPointerDown={e => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onSubmit()
-                  }}
-                >
-                  {isPosting
-                    ? (
-                      <span className="inline-flex flex-row items-center gap-1">
-                        <CircleNotchIcon size={14} className="animate-spin" />
-                        Sending
-                      </span>
-                    )
-                    : 'Send'}
-                </button>
+              <div className="flex flex-row h-6 items-center justify-between">
+                <div className="text-[11px] text-neutral-600">Ctrl+Enter to post</div>
+                {isPosting ? <CircleNotchIcon size={16} className="animate-spin" /> : (
+                  <button
+                    className="text-xs px-2 py-1 rounded-md bg-gradient-to-br from-neutral-300 to-neutral-500 text-black hover:from-neutral-200 hover:to-neutral-400 disabled:opacity-30"
+                    disabled={draft.trim().length === 0}
+                    onPointerDown={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onSubmit()
+                    }}
+                  >
+                    Post
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -262,6 +260,7 @@ function BrowseItem(
   const handleDeleteComment = (comment: CommentData) => {
     if (userId == null) return
     if (deletingCommentId) return
+    if (!confirm(`Are you sure you want to delete this comment?`)) return
     setDeletingCommentId(comment.id)
     void deleteLoopComment(loop.id, comment.id, comment.timestamp)
       .finally(() => setDeletingCommentId(null))
@@ -277,20 +276,21 @@ function BrowseItem(
     <>
       <div
         data-loop-id={loop.id}
-        className={`flex flex-row px-3 py-2 border-b border-neutral-700 hover:bg-neutral-900 gap-2 justify-between ${
-          isSelected ? 'bg-neutral-900' : ''
-        }`}
+        className={`flex flex-row px-3 py-2 border-b border-neutral-700 gap-2 justify-between
+          bg-gradient-to-b ${isSelected ? 'from-neutral-700 to-black' : 'from-black to-neutral-900'}
+          hover:to-neutral-800
+        `}
         onPointerDown={handleOpen}
       >
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-0.5">
           <div className="flex flex-row gap-2">
             <div className="flex flex-col w-full">
               <span className="text-sm">{loop.artist} - {loop.title}</span>
             </div>
           </div>
-          <div className="flex flex-row self-start justify-center gap-2">
-            <div
-              className={`text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm ${likeClass}`}
+          <div className="flex flex-row self-start justify-center gap-2 text-xs">
+            <button
+              className={`text-neutral-500 flex flex-row items-center justify-center font-normal ${likeClass}`}
               onPointerDown={e => {
                 e.stopPropagation()
                 if (!canLike) return
@@ -298,20 +298,25 @@ function BrowseItem(
               }}
             >
               <HeartIcon weight={heartWeight} size={16} />
-              <span className="relative top-[1.35px] left-[1px]">{loop.likesCount}</span>
-            </div>
-            <div
-              className="text-neutral-500 font-[Space_Grotesk] flex flex-row items-center justify-center font-normal text-sm hover:text-white cursor-pointer"
+              <span className="relative left-[1px]">{loop.likesCount}</span>
+            </button>
+            <button
+              className="text-neutral-500 flex flex-row items-center justify-center font-normal hover:text-white cursor-pointer"
               onPointerDown={e => {
                 e.stopPropagation()
                 handleToggleComments()
               }}
             >
               <ChatIcon size={16} />
-              <span className="relative top-[1.35px] left-[1px]">{loop.commentsCount}</span>
-            </div>
-            <div className="text-neutral-500 font-normal">
-              <span className="relative top-[.3px] text-sm">{formatAge(loop.timestamp)}</span>
+              <span className="relative left-[1px]">{loop.commentsCount}</span>
+            </button>
+            <button className="text-neutral-500 flex flex-row items-center justify-center font-normal hover:text-white cursor-pointer">
+              <RepeatIcon size={16} className="relative top-[.3px]" />
+              <span className="relative left-[1px]">{loop.remixesCount}</span>
+            </button>
+            <div className="text-neutral-500 flex flex-row items-center justify-center font-normal">
+              <div className="h-4"></div>
+              <span className="relative">{formatAge(loop.timestamp)}</span>
             </div>
           </div>
         </div>
@@ -364,7 +369,9 @@ function BrowseItem(
   )
 }
 
-export function SidebarBrowseList({ loops, emptyLabel }: { loops: LoopData[]; emptyLabel: string }) {
+export function SidebarBrowseList(
+  { loops, emptyLabel, isLoading }: { loops: LoopData[]; emptyLabel: string; isLoading?: boolean },
+) {
   const sessionData = useAppStore(state => state.sessionData)
   const toggleLike = useAppStore(state => state.toggleLike)
   const refreshLikedLoops = useAppStore(state => state.refreshLikedLoops)
@@ -427,6 +434,15 @@ export function SidebarBrowseList({ loops, emptyLabel }: { loops: LoopData[]; em
   }, [loops, prefetchPublicLoopCodes])
 
   if (loops.length === 0) {
+    if (isLoading) {
+      return (
+        <div className="flex h-full items-center justify-center py-8">
+          <RadialGradient>
+            <SpinnerSmall />
+          </RadialGradient>
+        </div>
+      )
+    }
     return <div className="px-3 py-2 text-xs text-neutral-500">{emptyLabel}</div>
   }
 

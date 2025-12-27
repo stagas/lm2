@@ -37,8 +37,13 @@ export const Spinner = ({ lineWidth = 2.8 }: { lineWidth?: number }) => (
   </svg>
 )
 
+export const SpinnerSmall = () => (
+  <div className="w-6 h-6">
+    <Spinner lineWidth={2} />
+  </div>
+)
 export const SpinnerLarge = () => (
-  <div className="w-8 h-8 relative">
+  <div className="w-8 h-8">
     <Spinner lineWidth={1.75} />
   </div>
 )

@@ -29,6 +29,7 @@ export type LoopKv = {
   code: string
   timestamp: number
   isPublic: boolean
+  remixOfId?: string
 }
 
 export type PublicLoopKv = readonly [
@@ -37,6 +38,7 @@ export type PublicLoopKv = readonly [
   artistId: string,
   likesCount: number,
   commentsCount: number,
+  remixesCount: number,
   title: string,
   timestamp: number,
 ]
@@ -61,5 +63,8 @@ export const k = {
   loopLike: (loopId: string, userId: string) => ['lk', loopId, userId] as const,
   loopLikeCount: (loopId: string) => ['lkc', loopId] as const,
   loopCommentCount: (loopId: string) => ['cc', loopId] as const,
+  loopRemixCount: (loopId: string) => ['rc', loopId] as const,
   loopComment: (loopId: string, timestamp: number, commentId: string) => ['c', loopId, timestamp, commentId] as const,
+  migrationsVersion: () => ['m', 'v'] as const,
+  migration: (version: number) => ['m', version] as const,
 }
