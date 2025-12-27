@@ -5,7 +5,11 @@ const isAlpha = (c: string) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') 
 const isAlphaNum = (c: string) => isAlpha(c) || isDigit(c)
 const isIdentContinue = (c: string) => isAlphaNum(c) || c === '#'
 
+const lexCache = new Map<string, { tokens: Token[]; errors: LexError[] }>()
+
 export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
+  const cached = lexCache.get(src)
+  if (cached) return cached
   const t: Token[] = []
   const e: LexError[] = []
 
@@ -297,5 +301,7 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
   }
 
   t.push({ kind: 'eof', lexeme: '', line, column: col, length: 0 })
-  return { tokens: t, errors: e }
+  const result = { tokens: t, errors: e }
+  lexCache.set(src, result)
+  return result
 }

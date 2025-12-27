@@ -2,17 +2,18 @@ import type { LangError } from '../lang/errors.ts'
 import { type SourceLocation } from '../lib/mini-source-map.ts'
 import {
   type AnalyserRef,
+  type ArrayLiteralRef,
   type AtRef,
+  type BranchMarkRef,
   type CompressorRef,
+  type EuclidRef,
   type EveryRef,
   type LfoRef,
   type LpRef,
-  type SlicerRef,
-  type ArrayLiteralRef,
-  type BranchMarkRef,
   type MiniSequenceRef,
   type NumberWithParamsInfo,
   type SampleDef,
+  type SlicerRef,
   type TimelineSequenceRef,
 } from './bytecode/bytecode.ts'
 

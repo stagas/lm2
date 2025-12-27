@@ -27,10 +27,16 @@ const locFrom = (a: { line: number; column: number; length: number },
 
 const locOf = (n: { loc: Loc } | Loc) => ('loc' in n ? n.loc : n)
 
+const parseCache = new Map<string, { program: Program; errors: LangError[] }>()
+
 export function parse(src: string, tokens: Token[]): { program: Program; errors: LangError[] } {
+  const cached = parseCache.get(src)
+  if (cached) return cached
   const p = new Parser(src, tokens)
   const program = p.parseProgram()
-  return { program, errors: p.errors }
+  const result = { program, errors: p.errors }
+  parseCache.set(src, result)
+  return result
 }
 
 class Parser {
