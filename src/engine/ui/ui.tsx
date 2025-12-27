@@ -10,6 +10,7 @@ import { Nav } from './Nav.tsx'
 import { RouterProvider } from './router.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import { useCurrentLoop } from './useCurrentLoop.ts'
+import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
 
 function Intro({ isFadingOut = false, isFadingIn = true }: { isFadingOut?: boolean; isFadingIn?: boolean }) {
@@ -50,7 +51,8 @@ export function EngineUI() {
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
   const preloadSamples = useEngineDspStore(state => state.preloadSamples)
   const currentLoop = useCurrentLoop()
-  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext
+  const isEditorBusy = useIsEditorBusy()
+  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext || !currentLoop || isEditorBusy
 
   const [showIntro, setShowIntro] = useState(true)
   const [isFadingIn, setIsFadingIn] = useState(true)
