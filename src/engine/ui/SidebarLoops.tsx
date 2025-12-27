@@ -481,22 +481,201 @@ export function SidebarLoops(
 
     const userName = sessionData?.user.name ?? loop.data.artist
     const userId = sessionData?.user.id ?? loop.data.artistId
+    const timestamp = Date.now()
+    const isPublic = loop.data.isPublic ?? false
     const newLoopData: LoopData = {
       ...loop.data,
       ...details,
       id,
-      timestamp: 0,
+      timestamp,
       code: '',
       artist: userName,
       artistId: userId,
+      isPublic,
     }
-    setLoopBase(id, state.value, 0)
+    setLoopBase(id, state.value, timestamp)
     addLocalLoop(newLoopData)
     const newLoop = new Loop({ ...newLoopData, code: state.value }, codeFile)
     setCurrentLoopId(id)
     setSelectedLoopId(id)
     didInitialCenterRef.current = false
     setLoops(prev => [...prev, newLoop])
+
+    if (sessionData) {
+      const localId = id
+      const serverId = newId(6)
+      const epoch = bumpLoopEpoch(localId)
+      const code = state.value
+      void (async () => {
+        try {
+          optimisticUpsertBrowseLoop({
+            ...loop.data,
+            id: serverId,
+            title,
+            artist: sessionData.user.name,
+            artistId: sessionData.user.id,
+            code,
+            isPublic,
+            timestamp,
+          })
+          invalidateBrowseCaches({ hot: true, best: true, liked: true })
+          const res = await api.upsertLoop(serverId, {
+            title,
+            code,
+            isPublic,
+            epoch,
+          })
+          if (!isLoopEpochLatest(localId, res.epoch)) return
+          renameLoopEpoch(localId, serverId)
+          moveBuffer(localId, serverId)
+          const codeFile = newLoop.codeFile
+          setLoopBase(serverId, code, timestamp)
+          preserveScrollPos(() => {
+            const runtime = useEngineRuntimeStore.getState()
+            if (runtime.playingLoopId === localId) {
+              useEngineUiStore.getState().renameLoopId(localId, serverId)
+              runtime.setPlayingLoopId(serverId)
+            }
+
+            setLoops(prev =>
+              prev.map(l =>
+                l.data.id === localId
+                  ? new Loop({ ...l.data, id: serverId, title, isPublic, timestamp, code }, codeFile)
+                  : l
+              )
+            )
+            setCurrentLoopId(prev => prev === localId ? serverId : prev)
+            setSelectedLoopId(serverId)
+            didInitialCenterRef.current = false
+          })
+          upsertServerLoopCache({
+            id: serverId,
+            title,
+            artist: sessionData.user.name,
+            artistId: sessionData.user.id,
+            code,
+            likesCount: 0,
+            commentsCount: 0,
+            remixesCount: 0,
+            isPublic,
+            timestamp,
+          })
+          removeLocalLoop(localId)
+        }
+        catch (e) {
+          if (!isLoopEpochLatest(localId, epoch)) return
+          optimisticDeleteBrowseLoop(serverId)
+          invalidateBrowseCaches({ public: true, hot: true, best: true, liked: true })
+          setApiError(e instanceof Error ? e.message : String(e))
+        }
+      })()
+    }
+  }
+  const handleSaveAsRemix = (loop: Loop, details: Partial<LoopData>) => {
+    const state = loop.codeFile.getState()
+    const title = details.title ?? loop.data.title
+    const id = makeLocalId()
+    const codeFile = getCodeFile(id, state.value)
+    codeFile.setState(state)
+
+    loop.codeFile.value = loop.data.code ?? ''
+
+    const userName = sessionData?.user.name ?? loop.data.artist
+    const userId = sessionData?.user.id ?? loop.data.artistId
+    const timestamp = Date.now()
+    const remixOfId = loop.data.id
+    const isPublic = loop.data.isPublic ?? false
+    const newLoopData: LoopData = {
+      ...loop.data,
+      ...details,
+      id,
+      timestamp,
+      code: '',
+      artist: userName,
+      artistId: userId,
+      remixOfId,
+      isPublic,
+    }
+    setLoopBase(id, state.value, timestamp)
+    addLocalLoop(newLoopData)
+    const newLoop = new Loop({ ...newLoopData, code: state.value }, codeFile)
+    setCurrentLoopId(id)
+    setSelectedLoopId(id)
+    didInitialCenterRef.current = false
+    setLoops(prev => [...prev, newLoop])
+
+    if (sessionData) {
+      const localId = id
+      const serverId = newId(6)
+      const epoch = bumpLoopEpoch(localId)
+      const code = state.value
+      void (async () => {
+        try {
+          optimisticUpsertBrowseLoop({
+            ...loop.data,
+            id: serverId,
+            title,
+            artist: sessionData.user.name,
+            artistId: sessionData.user.id,
+            code,
+            isPublic,
+            timestamp,
+            remixOfId,
+          })
+          invalidateBrowseCaches({ hot: true, best: true, liked: true })
+          const res = await api.upsertLoop(serverId, {
+            title,
+            code,
+            isPublic,
+            epoch,
+            remixOfId,
+          })
+          if (!isLoopEpochLatest(localId, res.epoch)) return
+          renameLoopEpoch(localId, serverId)
+          moveBuffer(localId, serverId)
+          const codeFile = newLoop.codeFile
+          setLoopBase(serverId, code, timestamp)
+          preserveScrollPos(() => {
+            const runtime = useEngineRuntimeStore.getState()
+            if (runtime.playingLoopId === localId) {
+              useEngineUiStore.getState().renameLoopId(localId, serverId)
+              runtime.setPlayingLoopId(serverId)
+            }
+
+            setLoops(prev =>
+              prev.map(l =>
+                l.data.id === localId
+                  ? new Loop({ ...l.data, id: serverId, title, isPublic, timestamp, code, remixOfId }, codeFile)
+                  : l
+              )
+            )
+            setCurrentLoopId(prev => prev === localId ? serverId : prev)
+            setSelectedLoopId(serverId)
+            didInitialCenterRef.current = false
+          })
+          upsertServerLoopCache({
+            id: serverId,
+            title,
+            artist: sessionData.user.name,
+            artistId: sessionData.user.id,
+            code,
+            likesCount: 0,
+            commentsCount: 0,
+            remixesCount: 0,
+            remixOfId,
+            isPublic,
+            timestamp,
+          })
+          removeLocalLoop(localId)
+        }
+        catch (e) {
+          if (!isLoopEpochLatest(localId, epoch)) return
+          optimisticDeleteBrowseLoop(serverId)
+          invalidateBrowseCaches({ public: true, hot: true, best: true, liked: true })
+          setApiError(e instanceof Error ? e.message : String(e))
+        }
+      })()
+    }
   }
   const handleClose = (loop: Loop) => {
     const base = useAppStore.getState().getLoopBase(loop.data.id, loop.data.code ?? '')
@@ -616,6 +795,7 @@ export function SidebarLoops(
               onEditDetails={details => handleEditDetails(loop, details)}
               onSave={details => handleSave(loop, details)}
               onSaveAsNew={details => handleSaveAsNew(loop, details)}
+              onSaveAsRemix={details => handleSaveAsRemix(loop, details)}
             />
           ))
         })()}
@@ -646,6 +826,7 @@ export function SidebarLoops(
                           isLoading={loadingLoopId === loop.data.id}
                           onClose={() => handleClose(loop)}
                           onSaveAsNew={details => handleSaveAsNew(loop, details)}
+                          onSaveAsRemix={details => handleSaveAsRemix(loop, details)}
                         />
                       ))}
                   </>
@@ -692,6 +873,7 @@ export function SidebarLoops(
                     onEditDetails={details => handleEditDetails(loop, details)}
                     onSave={details => handleSave(loop, details)}
                     onSaveAsNew={details => handleSaveAsNew(loop, details)}
+                    onSaveAsRemix={details => handleSaveAsRemix(loop, details)}
                   />
                 ))}
             </>

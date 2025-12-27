@@ -72,6 +72,7 @@ export const LoopItem = ({
   canSave = true,
   onSave,
   onSaveAsNew,
+  onSaveAsRemix,
   onEditDetails,
   onDelete,
   onClose,
@@ -87,6 +88,7 @@ export const LoopItem = ({
   canSave?: boolean
   onSave?: (details: Partial<LoopData>) => void
   onSaveAsNew?: (details: Partial<LoopData>) => void
+  onSaveAsRemix?: (details: Partial<LoopData>) => void
   onEditDetails?: (details: Partial<LoopData>) => void
   onDelete?: () => void
   onClose?: () => void
@@ -231,6 +233,10 @@ export const LoopItem = ({
   }
 
   const handleSaveAsRemix = () => {
+    setIsEditingDetails(false)
+    setIsSaving(false)
+    setLoopTitle(loop.data.title)
+    onSaveAsRemix?.({ title: loopTitle })
   }
 
   useEffect(() => {
