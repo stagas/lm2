@@ -242,6 +242,20 @@ export const useAppStore = create<AppState>()(
         const nextSessionData: SessionData = { ...sessionData, likedLoopIds }
         set({ sessionState: 'signedIn', sessionData: nextSessionData })
 
+        set(state => {
+          const { id: userId, name: userName } = nextSessionData.user
+          let changed = false
+          const nextLocalLoops = state.localLoops.map(loop => {
+            if (!isLocalId(loop.id)) return loop
+            if (loop.artistId !== 'local' && loop.artist !== 'local') return loop
+            if (loop.artistId === userId && loop.artist === userName) return loop
+            changed = true
+            return { ...loop, artist: userName, artistId: userId }
+          })
+          if (!changed) return {} as AppState
+          return { localLoops: nextLocalLoops } as AppState
+        })
+
         const prevUserId = get().serverLoopsUserId
         const prevCache = get().serverLoopsCache
 

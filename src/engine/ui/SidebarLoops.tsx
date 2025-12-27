@@ -260,7 +260,10 @@ export function SidebarLoops(
     count = count + 1
     const title = `${baseTitle} ${count}`
     const id = makeLocalId()
-    const data: LoopData = { ...currentLoop.data, id, title, code: '', timestamp: 0 }
+    const userName = sessionData?.user.name ?? currentLoop.data.artist
+    const userId = sessionData?.user.id ?? currentLoop.data.artistId
+    const data: LoopData = { ...currentLoop.data, id, title, code: '', timestamp: 0, artist: userName,
+      artistId: userId }
 
     const codeFile = getCodeFile(id, data.code ?? '')
     codeFile.setState(currentLoop.codeFile.getState())
@@ -272,7 +275,8 @@ export function SidebarLoops(
     setCurrentLoopId(id)
     setSelectedLoopId(id)
     didInitialCenterRef.current = false
-  }, [currentLoop])
+  }, [addLocalLoop, currentLoop, getCodeFile, loops, sessionData?.user.id, sessionData?.user.name, setLoopBase,
+    setSelectedLoopId])
 
   useEffect(() => {
     if (isSessionLoading) return
