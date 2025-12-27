@@ -473,6 +473,19 @@ export function encodeLangToVmOps(
     return idx
   }
 
+  const MAX_LFO_INDEX = 63
+  const clampLfoIndex = (n: number) => Math.max(0, Math.min(MAX_LFO_INDEX, Math.floor(Number(n || 0))))
+  const usedLfoIndices = new Set<number>([0])
+  let nextLfoIndex = 1
+  const allocLfoIndex = (): number => {
+    if (nextLfoIndex > MAX_LFO_INDEX) return MAX_LFO_INDEX
+    while (usedLfoIndices.has(nextLfoIndex) && nextLfoIndex < MAX_LFO_INDEX) nextLfoIndex++
+    const idx = nextLfoIndex
+    usedLfoIndices.add(idx)
+    nextLfoIndex = Math.min(MAX_LFO_INDEX, idx + 1)
+    return idx
+  }
+
   const MAX_TRIG_INDEX = 255
   const clampTrigIndex = (n: number) => Math.max(0, Math.min(MAX_TRIG_INDEX, Math.floor(Number(n || 0))))
 
@@ -596,6 +609,12 @@ export function encodeLangToVmOps(
       const isAnalyser = calleeName === 'analyser'
       const isCompressor = calleeName === 'compressor'
       const isLp = calleeName === 'lp'
+      const isLfo = calleeName === 'lfosine'
+        || calleeName === 'lfotri'
+        || calleeName === 'lfosaw'
+        || calleeName === 'lforamp'
+        || calleeName === 'lfosqr'
+        || calleeName === 'lfosah'
       const isOut = calleeName === 'out' || calleeName === 'solo'
       const isLabel = calleeName === 'label'
       const isFreesound = calleeName === 'freesound'
@@ -668,6 +687,27 @@ export function encodeLangToVmOps(
 
         if (!namedIndexArg) {
           const idx = allocLpIndex()
+          return {
+            ...expr,
+            callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }],
+          }
+        }
+      }
+
+      if (isLfo) {
+        const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
+        const idxVal = namedIndexArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = clampLfoIndex(Number(idxVal.value ?? 0))
+          usedLfoIndices.add(idx)
+          namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (!namedIndexArg) {
+          const idx = allocLfoIndex()
           return {
             ...expr,
             callee,
