@@ -32,7 +32,7 @@ import {
 } from '../bytecode/bytecode.ts'
 import { DEFAULT_DSP_SOURCE, DEFAULT_SEQUENCES } from '../constants.ts'
 import { DspStruct } from '../dsp/assembly.ts'
-import { createProgramInstance, type ProgramDataView } from '../dsp/program.ts'
+import { createProgramInstance, type ProgramDataView, type VmCompileSnapshot } from '../dsp/program.ts'
 import { type LoadedSample, SampleLoader } from '../dsp/sample-loader.ts'
 import { buildTimelineLabels } from '../dsp/timeline-labels.ts'
 import { createVisualWasm } from '../dsp/visual-wasm.ts'
@@ -51,6 +51,7 @@ function f32ToU32(v: number): number {
 
 type PendingDspUpdate = {
   source: string
+  vm?: VmCompileSnapshot
   resolve: (value: string[] | undefined) => void
   reject: (reason: unknown) => void
 }
@@ -107,7 +108,7 @@ export type EngineDspState = {
   initialize: () => Promise<void>
   dispose: () => void
   updateWasmBinary: () => Promise<void>
-  updateDspSource: (source: string) => Promise<string[] | undefined>
+  updateDspSource: (source: string, vm?: VmCompileSnapshot) => Promise<string[] | undefined>
   preloadSamples: (source: string) => Promise<void>
   playLoop: (loopId: string, source: string, startSample?: number) => Promise<void>
   setUiCompilePreview: (next: {
@@ -137,6 +138,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
   const dspUpdateQueue = {
     isProcessing: false,
     pendingSource: undefined as string | undefined,
+    pendingVm: undefined as VmCompileSnapshot | undefined,
     requests: [] as PendingDspUpdate[],
   }
 
@@ -353,7 +355,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     return get().sequences
   }
 
-  async function runQueuedDspUpdate(source: string): Promise<string[] | undefined> {
+  async function runQueuedDspUpdate(source: string, vm?: VmCompileSnapshot): Promise<string[] | undefined> {
     const runtime = useEngineRuntimeStore.getState()
     if (!runtime.program1 || !runtime.program2) return undefined
 
@@ -375,6 +377,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         apply: false,
         setData: false,
         compareAgainst: comparisonReference,
+        vm,
       })
 
       if (runtime.worklet && runtime.audioContext) {
@@ -466,6 +469,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         setData: true,
         compareAgainst: primaryResult.previousData,
         copyVersionFrom: primaryResult.previousData,
+        vm,
       })
 
       const swap = runtime.programSwap
@@ -628,12 +632,18 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       while (dspUpdateQueue.requests.length) {
         const batch = dspUpdateQueue.requests.splice(0)
         const sourceToBuild = dspUpdateQueue.pendingSource ?? batch[batch.length - 1].source
+        const last = batch[batch.length - 1]
+        const pendingVm = dspUpdateQueue.pendingVm
+        const vmToBuild = (pendingVm && pendingVm.source === sourceToBuild)
+          ? pendingVm
+          : (last?.vm && last.vm.source === sourceToBuild ? last.vm : undefined)
         dspUpdateQueue.pendingSource = undefined
+        dspUpdateQueue.pendingVm = undefined
 
         try {
           // Bounded so the queue cannot hang forever if a wait primitive gets stuck.
           const result = await Promise.race([
-            runQueuedDspUpdate(sourceToBuild),
+            runQueuedDspUpdate(sourceToBuild, vmToBuild),
             new Promise<string[] | undefined>((_resolve, reject) => {
               setTimeout(() => reject(new Error('DSP update timed out')), 6000)
             }),
@@ -657,12 +667,13 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     }
   }
 
-  function enqueueDspUpdate(source: string) {
+  function enqueueDspUpdate(source: string, vm?: VmCompileSnapshot) {
     // Mark that the store is processing updates so UI can show applying state.
     set({ isUpdatingDsp: true })
     return new Promise<string[] | undefined>((resolve, reject) => {
-      dspUpdateQueue.requests.push({ source, resolve, reject })
+      dspUpdateQueue.requests.push({ source, vm, resolve, reject })
       dspUpdateQueue.pendingSource = source
+      dspUpdateQueue.pendingVm = vm
       void processDspQueue()
     })
   }
@@ -866,12 +877,12 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       })
     },
 
-    updateDspSource: (source: string) => {
+    updateDspSource: (source: string, vm?: VmCompileSnapshot) => {
       const runtime = useEngineRuntimeStore.getState()
       if (!runtime.program1 || !runtime.program2) {
         return Promise.resolve(undefined)
       }
-      return enqueueDspUpdate(source)
+      return enqueueDspUpdate(source, vm)
     },
 
     updateWasmBinary: async () => {

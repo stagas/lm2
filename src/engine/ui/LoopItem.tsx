@@ -22,7 +22,6 @@ import { useAppStore } from '../../app/store.ts'
 import { useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { PauseGradientIcon } from './Icons.tsx'
 import { Loop } from './loop.ts'
-import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
 
 const LoopItemButton = (
@@ -96,15 +95,11 @@ export const LoopItem = ({
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [loopTitle, setLoopTitle] = useState(loop.data.title)
-  const code = useCodeFileValue(loop.codeFile)
   const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
   const playbackState = useEngineRuntimeStore(state => state.playbackState)
   const setViewSampleCount = useEngineUiStore(state => state.setViewSampleCount)
   const globalSampleCount = useEngineRuntimeStore(state => state.globalSampleCount)
-  const base = useAppStore(state => state.bases[loop.data.id])
-  const wasDirty = useAppStore(state => state.dirtyById[loop.data.id] === true)
-  const baseCode = base?.code ?? loop.data.code ?? ''
-  const isDirty = loop.data.code == null ? wasDirty : code !== baseCode
+  const isDirty = useAppStore(state => state.dirtyById[loop.data.id] === true)
   const isPlaying = playbackState === 'running'
   const isActive = playingLoopId === loop.data.id
   const isLive = isPlaying && isActive

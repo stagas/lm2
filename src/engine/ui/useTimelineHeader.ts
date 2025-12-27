@@ -15,8 +15,6 @@ export function useTimelineHeader(currentLoopId: string | null) {
   const loop = useEngineRuntimeStore(state => state.loop)
   const setLoop = useEngineRuntimeStore(state => state.setLoop)
   const clearLoop = useEngineRuntimeStore(state => state.clearLoop)
-  const timelineLabels = useEngineDspStore(state => state.timelineLabels)
-  const uiTimelineLabels = useEngineDspStore(state => state.uiTimelineLabels)
   const uiZeroBased = useEngineUiStore(state => state.zeroBasedTimelines)
 
   const {
@@ -38,6 +36,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
+  const labelsRef = useRef(useEngineDspStore.getState().timelineLabels ?? [])
 
   useEffect(() => {
     timelineTimeRef.current = null
@@ -47,8 +46,16 @@ export function useTimelineHeader(currentLoopId: string | null) {
     isFirstFrameRef.current = true
   }, [currentLoopId])
 
+  useEffect(() => {
+    const unsub = useEngineDspStore.subscribe(state => {
+      const next = state.timelineLabels ?? []
+      if (labelsRef.current === next) return
+      labelsRef.current = next
+    })
+    return unsub
+  }, [])
+
   const timelineHeader = useMemo((): EditorHeader => {
-    const labels = [...(uiTimelineLabels ?? timelineLabels ?? [])].sort((a, b) => a.bar - b.bar)
     const defaultLabelColor = 'rgba(255, 220, 0, 0.9)'
 
     const getPointerTimeSeconds = (pointerX: number) => {
@@ -163,6 +170,8 @@ export function useTimelineHeader(currentLoopId: string | null) {
         timelineLayoutRef.current = { viewX: vx, viewWidth: vw }
 
         if (!audioContext || !bpmValue || !globalSampleCount) return
+
+        const labels = [...(labelsRef.current ?? [])].sort((a, b) => a.bar - b.bar)
 
         const viewX = vx + PIANOROLL_KEY_WIDTH
         const viewW = vw
@@ -382,8 +391,6 @@ export function useTimelineHeader(currentLoopId: string | null) {
     loop,
     seekToSample,
     setLoop,
-    timelineLabels,
-    uiTimelineLabels,
     uiZeroBased,
   ])
 

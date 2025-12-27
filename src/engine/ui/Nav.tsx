@@ -7,7 +7,6 @@ import { PauseGradientIcon, PlayGradientIcon, StopGradientIcon } from './Icons.t
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { RestartButton } from './RestartButton.tsx'
-import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useLoopView } from './useLoopView.ts'
 
 function PlaybackButton({ icon, onClick }: { icon: React.ReactNode; onClick: () => void }) {
@@ -93,13 +92,8 @@ export function Nav({
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
   const bpmValue = useEngineRuntimeStore(state => state.bpmValue)
   const globalSampleCount = useEngineRuntimeStore(state => state.globalSampleCount)
-  const uiTimelineLabels = useEngineDspStore(state => state.uiTimelineLabels)
-  const uiTimelineRefs = useEngineDspStore(state => state.uiTimelineRefs)
-  const uiBars = useEngineDspStore(state => state.uiBars)
   const uiZeroBased = useEngineUiStore(state => state.zeroBasedTimelines)
 
-  // Subscribe for rerenders while editing, but read from `codeFile.value` on demand.
-  useCodeFileValue(currentLoop?.codeFile)
   const { globalSampleCount: viewGlobalSampleCount, seekToSample, canControlPlayback } = useLoopView(
     currentLoop?.data.id ?? null,
   )
@@ -115,9 +109,6 @@ export function Nav({
         audioContext={audioContext}
         bpmValue={bpmValue}
         globalSampleCount={viewGlobalSampleCount ?? globalSampleCount}
-        timelineRefs={uiTimelineRefs}
-        timelineLabels={uiTimelineLabels}
-        bars={uiBars}
         zeroBased={uiZeroBased}
         seekToSample={seekToSample}
         timelineWindowRef={timelineWindowRef}

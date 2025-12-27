@@ -13,6 +13,12 @@ import { useEngineDspStore } from '../store.ts'
 import { createGreyVerticalGradient } from './grey-gradient.ts'
 import { getCurrentTheme } from './theme.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
+import {
+  createWidgetCanvas,
+  getWidgetContext,
+  type Widget2DContext,
+  type WidgetCanvas,
+} from './widget-canvas.ts'
 
 type UseSampleWidgetParams = {
   program1: ProgramInstance | undefined
@@ -32,40 +38,23 @@ type NeedleState = {
   playing: boolean
 }
 
-type WaveCanvas = OffscreenCanvas | HTMLCanvasElement
-
-type Any2DContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
-
 type WaveCache = {
-  ch0Buffer: ArrayBuffer
   pxW: number
   pxH: number
   dpr: number
   bg: string
-  canvas: WaveCanvas
-}
-
-function createWaveCanvas(pxW: number, pxH: number): WaveCanvas {
-  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(pxW, pxH)
-  const canvas = document.createElement('canvas')
-  canvas.width = pxW
-  canvas.height = pxH
-  return canvas
-}
-
-function getWaveContext(canvas: WaveCanvas): Any2DContext | null {
-  return canvas.getContext('2d') as Any2DContext | null
+  canvas: WidgetCanvas
 }
 
 function renderWaveformToCanvas(
-  canvas: WaveCanvas,
+  canvas: WidgetCanvas,
   ch0: Float32Array<ArrayBuffer>,
   w: number,
   h: number,
   dpr: number,
   bg: string,
 ) {
-  const ctx = getWaveContext(canvas)
+  const ctx = getWidgetContext(canvas) as Widget2DContext | null
   if (!ctx) return
 
   const pxW = Math.max(1, Math.floor(w * dpr))
@@ -147,8 +136,7 @@ function drawSample(
   w: number,
   h: number,
   ch0: Float32Array<ArrayBuffer>,
-  waveRef: React.RefObject<Map<number, WaveCache>>,
-  sampleIndex: number,
+  waveRef: React.RefObject<WeakMap<ArrayBuffer, Map<string, WaveCache>>>,
   needle: NeedleState | undefined,
 ) {
   if (w <= 1 || h <= 1) return
@@ -165,14 +153,20 @@ function drawSample(
   const pxH = Math.max(1, Math.floor(h * dpr))
   const bg = theme.background
 
-  const cached = waveRef.current.get(sampleIndex)
+  const key = `${pxW}:${pxH}:${dpr}:${bg}`
+  const buf = ch0.buffer
+  let byBuf = waveRef.current.get(buf)
+  if (!byBuf) {
+    byBuf = new Map()
+    waveRef.current.set(buf, byBuf)
+  }
+
+  const cached = byBuf.get(key)
   let canvas = cached?.canvas
-  if (!cached || cached.ch0Buffer !== ch0.buffer || cached.pxW !== pxW || cached.pxH !== pxH || cached.dpr !== dpr
-    || cached.bg !== bg || !canvas)
-  {
-    canvas = createWaveCanvas(pxW, pxH)
+  if (!cached || cached.pxW !== pxW || cached.pxH !== pxH || cached.dpr !== dpr || cached.bg !== bg || !canvas) {
+    canvas = createWidgetCanvas(pxW, pxH)
     renderWaveformToCanvas(canvas, ch0, w, h, dpr, bg)
-    waveRef.current.set(sampleIndex, { ch0Buffer: ch0.buffer, pxW, pxH, dpr, bg, canvas })
+    byBuf.set(key, { pxW, pxH, dpr, bg, canvas })
   }
 
   c.drawImage(canvas, 0, 0, w, h)
@@ -204,7 +198,7 @@ export function useSampleWidget({
 }: UseSampleWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const lastWritePosRef = useRef<number>(0)
   const needleRef = useRef<Map<number, NeedleState>>(new Map())
-  const waveRef = useRef<Map<number, WaveCache>>(new Map())
+  const waveRef = useRef<WeakMap<ArrayBuffer, Map<string, WaveCache>>>(new WeakMap())
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
@@ -214,7 +208,6 @@ export function useSampleWidget({
   useEffect(() => {
     lastWritePosRef.current = 0
     needleRef.current.clear()
-    waveRef.current.clear()
     predictedSampleCountRef.current = null
     lastWallTimeRef.current = null
     isFirstFrameRef.current = true
@@ -346,7 +339,7 @@ export function useSampleWidget({
     }
 
     const needle = needleRef.current.get(sampleIndex)
-    drawSample(c, x, widgetY, w, h, ch0, waveRef, sampleIndex, needle)
+    drawSample(c, x, widgetY, w, h, ch0, waveRef, needle)
   }, [])
 
   const widgets = useMemo((): EditorWidget[] => {

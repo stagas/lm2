@@ -8,7 +8,6 @@ import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { DspSourceEditor } from './DspSourceEditor.tsx'
 import { Nav } from './Nav.tsx'
 import { Sidebar } from './Sidebar.tsx'
-import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useCurrentLoop } from './useCurrentLoop.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
 
@@ -51,9 +50,7 @@ export function EngineUI() {
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
   const preloadSamples = useEngineDspStore(state => state.preloadSamples)
   const currentLoop = useCurrentLoop()
-  const code = useCodeFileValue(currentLoop?.codeFile)
-  const isAwaitingCode = currentLoop != null && currentLoop.data.code == null && code.length === 0
-  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || isLoopLoading || isAwaitingCode
+  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || isLoopLoading
     || !audioContext
     || !currentLoop
 
@@ -78,8 +75,10 @@ export function EngineUI() {
   useLayoutEffect(() => {
     if (!currentLoop) return
     if (!audioContext) return
+    if (isLoopLoading) return
     const loopId = currentLoop.data.id
-    const hasCode = code.length > 0
+    const source = currentLoop.codeFile.value
+    const hasCode = source.length > 0
 
     const prev = didPreloadRef.current
     const changedLoop = prev.loopId !== loopId
@@ -87,8 +86,8 @@ export function EngineUI() {
     if (!changedLoop && !becameReady) return
 
     didPreloadRef.current = { loopId, hadCode: hasCode }
-    void preloadSamples(code)
-  }, [audioContext, code, currentLoop, preloadSamples])
+    void preloadSamples(source)
+  }, [audioContext, currentLoop, isLoopLoading, preloadSamples])
 
   useEffect(() => {
     if (shouldWait || !showIntro) return
