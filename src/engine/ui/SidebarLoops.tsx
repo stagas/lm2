@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { LoopData } from '../../../deno/types.ts'
 import { useSessionData } from '../../app/hooks/useSessionData.ts'
 import { useAppStore } from '../../app/store.ts'
-import { Spinner } from '../../components/Spinner.tsx'
+import { SpinnerSmall } from '../../components/Spinner.tsx'
 import { isLocalId, makeLocalId, newId } from '../../utils/id.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { AuthForm } from './AuthForm.tsx'
@@ -215,6 +215,7 @@ export function SidebarLoops(
       code: '',
       likesCount: 0,
       commentsCount: 0,
+      remixesCount: 0,
       isPublic: false,
       timestamp: 0,
     }
@@ -364,6 +365,7 @@ export function SidebarLoops(
               code,
               likesCount: 0,
               commentsCount: 0,
+              remixesCount: 0,
               isPublic,
               timestamp,
             })
@@ -568,9 +570,7 @@ export function SidebarLoops(
                 )
                 : (
                   <div className="w-full h-full flex items-center justify-center">
-                    <div className="w-6 h-6">
-                      <Spinner lineWidth={2} />
-                    </div>
+                    <SpinnerSmall />
                   </div>
                 )}
             </>

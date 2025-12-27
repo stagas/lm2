@@ -42,8 +42,9 @@ export class API {
       artistId: r[2],
       likesCount: r[3],
       commentsCount: r[4],
-      title: r[5],
-      timestamp: r[6],
+      remixesCount: r[5],
+      title: r[6],
+      timestamp: r[7],
       isPublic: true,
     }))
   }

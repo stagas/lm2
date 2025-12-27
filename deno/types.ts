@@ -29,6 +29,7 @@ export type LoopData = {
   code?: string
   likesCount: number
   commentsCount: number
+  remixesCount: number
   remixOf?: LoopData
   isPublic?: boolean
   timestamp?: number
@@ -41,6 +42,7 @@ export type PublicLoopListEntry = readonly [
   artistId: string,
   likesCount: number,
   commentsCount: number,
+  remixesCount: number,
   title: string,
   timestamp: number,
 ]
@@ -54,6 +56,7 @@ export const LoopDataSchema: z.ZodType<LoopData> = z.lazy(() =>
     code: z.string().optional(),
     likesCount: z.number().int(),
     commentsCount: z.number().int(),
+    remixesCount: z.number().int(),
     remixOf: LoopDataSchema.optional(),
     isPublic: z.boolean().optional(),
     timestamp: z.number().int().optional(),
@@ -90,5 +93,6 @@ export const LoopUpsertRequestSchema = z.object({
   title: z.string().min(1),
   code: z.string(),
   isPublic: z.boolean(),
+  remixOfId: z.string().min(1).nullable().optional(),
 }).strict()
 export type LoopUpsertRequest = z.infer<typeof LoopUpsertRequestSchema>
