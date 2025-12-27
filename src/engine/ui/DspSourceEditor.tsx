@@ -62,10 +62,8 @@ export function DspSourceEditor(
   },
 ) {
   const isEditorBusy = useIsEditorBusy()
-  const code = currentLoop?.codeFile.value ?? ''
-  const isAwaitingCode = currentLoop != null && currentLoop.data.code == null && code.length === 0
 
-  if (isEditorBusy || isAwaitingCode || !currentLoop) {
+  if (!currentLoop || isEditorBusy) {
     return (
       <RadialGradient>
         <SpinnerLarge />
@@ -149,6 +147,7 @@ function DspSourceEditorReady(
   // to avoid a one-render lag during loop switches.
   useCodeFileValue(currentLoop?.codeFile)
   const code = currentLoop?.codeFile.value ?? ''
+  const isAwaitingCode = currentLoop.data.code == null && code.length === 0
   const loopId = currentLoop?.data.id ?? null
   const loopBase = useAppStore(state => (loopId ? state.bases[loopId]?.code : undefined))
   const sessionData = useAppStore(state => state.sessionData)
@@ -199,7 +198,6 @@ function DspSourceEditorReady(
 
     const existing = localLoops.find(l => l.remixOfId === loopId || l.remixOf?.id === loopId)
     const localId = existing?.id ?? makeLocalId()
-    moveBuffer(loopId, localId)
     if (!existing) {
       addLocalLoop({
         id: localId,
@@ -216,6 +214,9 @@ function DspSourceEditorReady(
         timestamp: 0,
       })
     }
+    // Important ordering: `moveBuffer()` also moves `selectedLoopId` when it matches `loopId`.
+    // Ensure the local remix loop exists first so the editor doesn't briefly unmount mid-edit.
+    moveBuffer(loopId, localId)
     const runtime = useEngineRuntimeStore.getState()
     if (runtime.playingLoopId === loopId) {
       useEngineUiStore.getState().renameLoopId(loopId, localId)
@@ -749,14 +750,6 @@ function DspSourceEditorReady(
     return next
   }, [currentLoop?.codeFile])
 
-  if (isPreloadingSamples || isAwaitingSamples) {
-    return (
-      <RadialGradient>
-        <SpinnerLarge />
-      </RadialGradient>
-    )
-  }
-
   return (
     <div className="flex flex-row gap-2 w-full h-full relative">
       <div className="bg-gray-900 text-white text-sm w-full h-full">
@@ -790,6 +783,13 @@ function DspSourceEditorReady(
           onBeforeDraw={onBeforeDrawCombined}
         />
       </div>
+      {(isAwaitingCode || isPreloadingSamples || isAwaitingSamples) && (
+        <div className="absolute inset-0 z-40 pointer-events-none">
+          <RadialGradient>
+            <SpinnerLarge />
+          </RadialGradient>
+        </div>
+      )}
       {
         /* {error && (
         <div className="bg-red-900 text-red-200 p-2 rounded-md text-sm">

@@ -17,6 +17,7 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   const setLoopLoading = useAppStore(state => state.setLoopLoading)
   const upsertServerLoopCache = useAppStore(state => state.upsertServerLoopCache)
   const didFetchIdRef = useRef<string | null>(null)
+  const loopLoadingReqRef = useRef(0)
 
   const withLoading = useCallback((fn: () => Promise<void>) => {
     setIsLoading(true)
@@ -24,16 +25,19 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   }, [])
 
   useEffect(() => {
+    loopLoadingReqRef.current++
     if (loopId == null) {
       didFetchIdRef.current = null
       setLoopData(null)
       setIsLoading(false)
+      setLoopLoading(false)
       return
     }
     if (isLocalId(loopId)) {
       didFetchIdRef.current = loopId
       setLoopData(null)
       setIsLoading(false)
+      setLoopLoading(false)
       return
     }
 
@@ -93,8 +97,10 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   ])
 
   useEffect(() => {
+    const req = ++loopLoadingReqRef.current
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        if (loopLoadingReqRef.current !== req) return
         setLoopLoading(isLoading)
       })
     })
