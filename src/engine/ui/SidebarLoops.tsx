@@ -38,6 +38,9 @@ export function SidebarLoops(
   const optimisticUpsertBrowseLoop = useAppStore(state => state.optimisticUpsertBrowseLoop)
   const optimisticDeleteBrowseLoop = useAppStore(state => state.optimisticDeleteBrowseLoop)
   const invalidateBrowseCaches = useAppStore(state => state.invalidateBrowseCaches)
+  const bumpLoopEpoch = useAppStore(state => state.bumpLoopEpoch)
+  const isLoopEpochLatest = useAppStore(state => state.isLoopEpochLatest)
+  const renameLoopEpoch = useAppStore(state => state.renameLoopEpoch)
   const getCodeFile = useAppStore(state => state.getCodeFile)
   const moveBuffer = useAppStore(state => state.moveBuffer)
   const dropBuffer = useAppStore(state => state.dropBuffer)
@@ -74,7 +77,9 @@ export function SidebarLoops(
   }
 
   const pickFallbackLoopId = (closingId: string, preferFirst: boolean) => {
-    const other = loops.filter(loop => loop.data.id !== closingId)
+    const other = loops.sort((a, b) => (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0)).filter(loop =>
+      loop.data.id !== closingId
+    )
     if (preferFirst) {
       return other[0]?.data.id ?? null
     }
@@ -109,7 +114,13 @@ export function SidebarLoops(
           codeFile.value = code
         }
         if (!seen.has(data.id)) {
-          next.push(new Loop({ ...prevLoop?.data, ...dataWithCode }, codeFile))
+          const prevData = prevLoop?.data
+          const prevTs = prevData?.timestamp ?? 0
+          const nextTs = dataWithCode.timestamp ?? 0
+          const merged = prevData && prevTs > nextTs
+            ? { ...dataWithCode, ...prevData }
+            : { ...prevData, ...dataWithCode }
+          next.push(new Loop(merged, codeFile))
           seen.add(data.id)
         }
       }
@@ -251,7 +262,9 @@ export function SidebarLoops(
     const id = makeLocalId()
     const data: LoopData = { ...currentLoop.data, id, title, code: '', timestamp: 0 }
 
-    const codeFile = getCodeFile(id, currentLoop.codeFile.value)
+    const codeFile = getCodeFile(id, data.code ?? '')
+    codeFile.setState(currentLoop.codeFile.getState())
+    setLoopBase(id, data.code ?? '', 0)
     const loop = new Loop(data, codeFile)
 
     addLocalLoop(data)
@@ -308,7 +321,7 @@ export function SidebarLoops(
       && isSameCode
     if (isNoopSave) return
 
-    const timestamp = loop.data.timestamp !== 0 && isSameCode ? loop.data.timestamp : Date.now()
+    const timestamp = Date.now()
 
     preserveScrollPos(() => {
       setLoopBase(loop.data.id, loop.codeFile.value, timestamp)
@@ -330,6 +343,7 @@ export function SidebarLoops(
       if (sessionData && isLocalId(loop.data.id)) {
         const localId = loop.data.id
         const serverId = newId(6)
+        const epoch = bumpLoopEpoch(localId)
         const state = loop.codeFile.getState()
         const code = state.value
         void (async () => {
@@ -347,12 +361,15 @@ export function SidebarLoops(
               ...(remixOfId ? { remixOfId } : {}),
             })
             invalidateBrowseCaches({ hot: true, best: true, liked: true })
-            await api.upsertLoop(serverId, {
+            const res = await api.upsertLoop(serverId, {
               title,
               code,
               isPublic,
+              epoch,
               ...(remixOfId ? { remixOfId } : {}),
             })
+            if (!isLoopEpochLatest(localId, res.epoch)) return
+            renameLoopEpoch(localId, serverId)
             moveBuffer(localId, serverId)
             const codeFile = loop.codeFile
             setLoopBase(serverId, code, timestamp)
@@ -390,6 +407,7 @@ export function SidebarLoops(
             removeLocalLoop(localId)
           }
           catch (e) {
+            if (!isLoopEpochLatest(localId, epoch)) return
             optimisticDeleteBrowseLoop(serverId)
             invalidateBrowseCaches({ public: true, hot: true, best: true, liked: true })
             setApiError(e instanceof Error ? e.message : String(e))
@@ -397,9 +415,20 @@ export function SidebarLoops(
         })()
       }
       else if (sessionData && !isLocalId(loop.data.id)) {
+        const epoch = bumpLoopEpoch(loop.data.id)
         void (async () => {
           try {
             const remixOfId = loop.data.remixOf?.id
+            upsertServerLoopCache({
+              ...loop.data,
+              title,
+              artist: sessionData.user.name,
+              artistId: sessionData.user.id,
+              code: loop.codeFile.value,
+              isPublic,
+              timestamp,
+              remixOfId,
+            })
             optimisticUpsertBrowseLoop({
               ...loop.data,
               title,
@@ -409,12 +438,14 @@ export function SidebarLoops(
               ...(remixOfId ? { remixOfId } : {}),
             })
             invalidateBrowseCaches({ hot: true, best: true, liked: true })
-            await api.upsertLoop(loop.data.id, {
+            const res = await api.upsertLoop(loop.data.id, {
               title,
               code: loop.codeFile.value,
               isPublic,
+              epoch,
               ...(remixOfId ? { remixOfId } : {}),
             })
+            if (!isLoopEpochLatest(loop.data.id, res.epoch)) return
             upsertServerLoopCache({
               ...loop.data,
               title,
@@ -427,6 +458,7 @@ export function SidebarLoops(
             })
           }
           catch (e) {
+            if (!isLoopEpochLatest(loop.data.id, epoch)) return
             invalidateBrowseCaches({ public: true, hot: true, best: true, liked: true })
             setApiError(e instanceof Error ? e.message : String(e))
           }
@@ -502,6 +534,7 @@ export function SidebarLoops(
     if (!confirm(`Are you sure you want to delete "${loop.data.title}"?`)) return
     stopIfPlaying(loop.data.id)
     if (sessionData && !isLocalId(loop.data.id)) {
+      const epoch = bumpLoopEpoch(loop.data.id)
       void (async () => {
         try {
           setSessionData({
@@ -515,10 +548,12 @@ export function SidebarLoops(
             dropBuffer(loop.data.id)
             setLoops(prev => prev.filter(l => l.data.id !== loop.data.id))
           })
-          const next = await api.deleteLoop(loop.data.id)
-          setSessionData(next)
+          const res = await api.deleteLoop(loop.data.id, epoch)
+          if (!isLoopEpochLatest(loop.data.id, res.epoch)) return
+          setSessionData(res.sessionData)
         }
         catch (e) {
+          if (!isLoopEpochLatest(loop.data.id, epoch)) return
           invalidateBrowseCaches({ public: true, hot: true, best: true, liked: true })
           setApiError(e instanceof Error ? e.message : String(e))
         }

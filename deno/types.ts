@@ -98,9 +98,22 @@ export const UpdateArtistNameRequestSchema = z.object({
 export type UpdateArtistNameRequest = z.infer<typeof UpdateArtistNameRequestSchema>
 
 export const LoopUpsertRequestSchema = z.object({
+  epoch: z.string().min(1),
   title: z.string().min(1),
   code: z.string(),
   isPublic: z.boolean(),
   remixOfId: z.string().min(1).nullable().optional(),
 }).strict()
 export type LoopUpsertRequest = z.infer<typeof LoopUpsertRequestSchema>
+
+export const OkEpochResponseSchema = z.object({
+  ok: z.literal(true),
+  epoch: z.string().min(1),
+}).strict()
+export type OkEpochResponse = z.infer<typeof OkEpochResponseSchema>
+
+export const SessionEpochResponseSchema = z.object({
+  epoch: z.string().min(1),
+  sessionData: SessionDataSchema,
+}).strict()
+export type SessionEpochResponse = z.infer<typeof SessionEpochResponseSchema>

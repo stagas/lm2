@@ -2,7 +2,7 @@ import { CodeFile, type CodeFileState, type InputState } from 'mini-code'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { CommentData, LoopData, SessionData } from '../../deno/types.ts'
-import { isLocalId } from '../utils/id.ts'
+import { isLocalId, newId } from '../utils/id.ts'
 import { API } from './api.ts'
 
 type EditorViewState = {
@@ -31,6 +31,7 @@ interface AppState {
   serverLoopsUserId: string | null
   serverLoopsCache: LoopData[]
   upsertServerLoopCache: (loop: LoopData) => void
+  hasFetchedPublicLoops: boolean
   publicLoopsCache: LoopData[]
   hotLoopsCache: LoopData[]
   bestLoopsCache: LoopData[]
@@ -42,6 +43,11 @@ interface AppState {
   publicLoopCodeCache: Record<string, string>
   loopCommentsCache: Record<string, CommentData[]>
   loopRemixesCache: Record<string, LoopData[]>
+  loopEpochById: Record<string, string>
+  bumpLoopEpoch: (loopId: string) => string
+  isLoopEpochLatest: (loopId: string, epoch: string) => boolean
+  renameLoopEpoch: (fromId: string, toId: string) => void
+  dropLoopEpoch: (loopId: string) => void
   refreshPublicLoops: () => Promise<void>
   refreshHotLoops: () => Promise<void>
   refreshBestLoops: () => Promise<void>
@@ -153,6 +159,7 @@ export const useAppStore = create<AppState>()(
       setHasHydrated: hasHydrated => set({ hasHydrated }),
       serverLoopsUserId: null,
       serverLoopsCache: [],
+      hasFetchedPublicLoops: false,
       publicLoopsCache: [],
       hotLoopsCache: [],
       bestLoopsCache: [],
@@ -164,6 +171,30 @@ export const useAppStore = create<AppState>()(
       publicLoopCodeCache: {},
       loopCommentsCache: {},
       loopRemixesCache: {},
+      loopEpochById: {},
+      bumpLoopEpoch: loopId => {
+        const epoch = newId(8)
+        set(state => ({ loopEpochById: { ...state.loopEpochById, [loopId]: epoch } }))
+        return epoch
+      },
+      isLoopEpochLatest: (loopId, epoch) => get().loopEpochById[loopId] === epoch,
+      renameLoopEpoch: (fromId, toId) => {
+        set(state => {
+          const epoch = state.loopEpochById[fromId]
+          if (!epoch) return state
+          const next = { ...state.loopEpochById, [toId]: epoch }
+          delete next[fromId]
+          return { loopEpochById: next } as AppState
+        })
+      },
+      dropLoopEpoch: loopId => {
+        set(state => {
+          if (state.loopEpochById[loopId] == null) return state
+          const next = { ...state.loopEpochById }
+          delete next[loopId]
+          return { loopEpochById: next } as AppState
+        })
+      },
 
       setSessionData: sessionData => {
         if (!sessionData) {
@@ -288,7 +319,7 @@ export const useAppStore = create<AppState>()(
       refreshPublicLoops: async () => {
         const api = get().api
         const loops = await api.fetchPublicLoops()
-        set({ publicLoopsCache: loops, isPublicLoopsCacheStale: false })
+        set({ publicLoopsCache: loops, isPublicLoopsCacheStale: false, hasFetchedPublicLoops: true })
       },
 
       refreshHotLoops: async () => {
@@ -427,6 +458,7 @@ export const useAppStore = create<AppState>()(
       toggleLike: async loopId => {
         const prevSession = get().sessionData
         if (!prevSession) return
+        const epoch = get().bumpLoopEpoch(loopId)
 
         const wasLiked = prevSession.likedLoopIds.includes(loopId)
         const optimisticLiked = !wasLiked
@@ -465,7 +497,9 @@ export const useAppStore = create<AppState>()(
         })
 
         try {
-          const nextSession = await get().api.toggleLike(loopId)
+          const res = await get().api.toggleLike(loopId, epoch)
+          if (!get().isLoopEpochLatest(loopId, res.epoch)) return
+          const nextSession = res.sessionData
           get().setSessionData(nextSession)
 
           const actualLiked = nextSession.likedLoopIds.includes(loopId)
@@ -497,6 +531,7 @@ export const useAppStore = create<AppState>()(
           })
         }
         catch {
+          if (!get().isLoopEpochLatest(loopId, epoch)) return
           get().setSessionData(prevSession)
           const revertDelta = wasLiked ? 1 : -1
           set(state => {
