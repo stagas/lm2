@@ -1,5 +1,6 @@
 import { FireSimpleIcon, HeartIcon, StarIcon, TimerIcon } from '@phosphor-icons/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
 import { AuthForm } from './AuthForm.tsx'
 import { SidebarBrowseList } from './SidebarBrowseList.tsx'
@@ -30,6 +31,8 @@ export function SidebarBrowse() {
   const [isHotLoading, setIsHotLoading] = useState(false)
   const [isBestLoading, setIsBestLoading] = useState(false)
   const [isLikedLoading, setIsLikedLoading] = useState(false)
+  const [likedViewLoops, setLikedViewLoops] = useState<LoopData[]>([])
+  const prevLikedIdsRef = useRef<Set<string> | null>(null)
 
   useEffect(() => {
     setTimeout(() => {
@@ -61,10 +64,54 @@ export function SidebarBrowse() {
   useEffect(() => {
     if (tab !== 'liked') return
     if (!sessionData) return
+    if (sessionData.likedLoopIds.length === 0) return
     if (likedLoops.length > 0 && !isLikedLoopsCacheStale) return
     setIsLikedLoading(true)
     void refreshLikedLoops().finally(() => setIsLikedLoading(false))
-  }, [isLikedLoopsCacheStale, likedLoops.length, refreshLikedLoops, sessionData?.user.id, tab])
+  }, [isLikedLoopsCacheStale, likedLoops.length, refreshLikedLoops, sessionData, tab])
+
+  useEffect(() => {
+    if (tab === 'liked') return
+    if (likedViewLoops.length === 0) return
+    setLikedViewLoops([])
+  }, [likedViewLoops.length, tab])
+
+  useEffect(() => {
+    if (tab !== 'liked') return
+    setLikedViewLoops(prev => {
+      if (prev.length === 0) return likedLoops
+      const byId = new Map(likedLoops.map(l => [l.id, l] as const))
+      const merged = prev.map(l => byId.get(l.id) ?? l)
+      const ids = new Set(merged.map(l => l.id))
+      const next = likedLoops.filter(l => !ids.has(l.id))
+      if (next.length === 0) return merged
+      return [...next, ...merged]
+    })
+  }, [likedLoops, tab])
+
+  useEffect(() => {
+    if (tab !== 'liked') {
+      prevLikedIdsRef.current = null
+      return
+    }
+
+    const curr = new Set(sessionData?.likedLoopIds ?? [])
+    const prev = prevLikedIdsRef.current
+    prevLikedIdsRef.current = curr
+    if (!prev) return
+
+    const added = new Set(Array.from(curr).filter(id => !prev.has(id)))
+    const removed = new Set(Array.from(prev).filter(id => !curr.has(id)))
+    if (added.size === 0 && removed.size === 0) return
+
+    setLikedViewLoops(loops =>
+      loops.map(loop => {
+        const delta = (added.has(loop.id) ? 1 : 0) + (removed.has(loop.id) ? -1 : 0)
+        if (delta === 0) return loop
+        return { ...loop, likesCount: Math.max(0, loop.likesCount + delta) }
+      })
+    )
+  }, [sessionData?.likedLoopIds, sessionData?.user.id, tab])
 
   const content = useMemo(() => {
     if (tab === 'new') {
@@ -84,7 +131,8 @@ export function SidebarBrowse() {
         </div>
       )
     }
-    return <SidebarBrowseList loops={likedLoops} emptyLabel="No liked loops yet." isLoading={isLikedLoading} />
+    const loops = likedViewLoops.length === 0 ? likedLoops : likedViewLoops
+    return <SidebarBrowseList loops={loops} emptyLabel="No liked loops yet." isLoading={isLikedLoading} />
   }, [
     api,
     bestLoops,
@@ -94,6 +142,7 @@ export function SidebarBrowse() {
     isLikedLoading,
     isLoading,
     likedLoops,
+    likedViewLoops,
     hotLoops,
     publicLoops,
     sessionData,
