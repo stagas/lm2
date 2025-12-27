@@ -20,18 +20,20 @@ import { MouseButtons } from 'utils/mouse-buttons'
 import type { LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
 import { useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
-import { PauseGradientIcon } from './Icons.tsx'
+import { PauseGradientIcon, PlayGradientIcon } from './Icons.tsx'
 import { Loop } from './loop.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
 
 const LoopItemButton = (
   {
     icon,
+    hoverIcon = icon,
     title,
     onClick,
     className,
   }: {
     icon: React.ReactNode
+    hoverIcon?: React.ReactNode
     title: string
     onClick: ((e: React.PointerEvent<HTMLButtonElement>) => void) | undefined
     className?: string
@@ -39,7 +41,7 @@ const LoopItemButton = (
 ) => (
   <button
     title={title}
-    className={`p-1 bg-gradient-to-br from-neutral-300 to-neutral-500 rounded-md text-black hover:from-neutral-200 hover:to-neutral-400 ${
+    className={`p-1 group bg-gradient-to-br from-neutral-300 to-neutral-500 rounded-md text-black hover:from-neutral-200 hover:to-neutral-400 ${
       className ?? ''
     }`}
     onContextMenu={e => e.preventDefault()}
@@ -54,7 +56,8 @@ const LoopItemButton = (
       onClick?.(e)
     }}
   >
-    {icon}
+    <div className="group-hover:hidden">{icon}</div>
+    <div className="hidden group-hover:block">{hoverIcon}</div>
   </button>
 )
 
@@ -377,7 +380,8 @@ export const LoopItem = ({
           <LoopItemButton
             title="Play"
             className={isLive ? 'text-orange-600' : undefined}
-            icon={isLive ? <PauseGradientIcon size={16} /> : <PlayIcon weight="regular" size={16} />}
+            icon={isLive ? <PlayGradientIcon size={16} /> : <PlayIcon weight="regular" size={16} />}
+            hoverIcon={isLive ? <PauseGradientIcon size={16} /> : <PlayIcon weight="regular" size={16} />}
             onClick={handlePlayClick}
           />
         </div>

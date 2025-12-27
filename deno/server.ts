@@ -18,7 +18,9 @@ import {
   type LoopData,
   LoopDataSchema,
   LoopUpsertRequestSchema,
+  OkEpochResponseSchema,
   type PublicLoopListEntry,
+  SessionEpochResponseSchema,
   type SessionData,
   SessionDataSchema,
   UpdateArtistNameRequestSchema,
@@ -32,6 +34,7 @@ const fieldLabel: Record<string, string> = {
   artistName: 'Name',
   email: 'Email',
   password: 'Password',
+  epoch: 'Epoch',
   title: 'Title',
   code: 'Code',
   isPublic: 'Public',
@@ -417,6 +420,12 @@ app.post('/api/loop/:id/like', async c => {
     return c.json(err.body, err.status)
   }
 
+  const epoch = c.req.query('epoch')?.trim() ?? ''
+  if (epoch.length === 0) {
+    const err = jsonError('Epoch is required', 400)
+    return c.json(err.body, err.status)
+  }
+
   const id = c.req.param('id')
   const kv = await getKv()
 
@@ -475,7 +484,7 @@ app.post('/api/loop/:id/like', async c => {
 
   await a.commit()
   if (nextLiked) await appendHotLoopEvent(kv, id)
-  return c.json(sessionToApi(nextSession))
+  return c.json(SessionEpochResponseSchema.parse({ epoch, sessionData: sessionToApi(nextSession) }))
 })
 
 app.get('/api/loop/:id/comments', async c => {
@@ -825,6 +834,7 @@ app.put('/api/loop/:id', async c => {
   }
 
   const data = parsed.data
+  const epoch = data.epoch
   const nextRemixOfId = (() => {
     if (data.remixOfId === undefined) return prevLoop?.remixOfId
     if (data.remixOfId === null) return undefined
@@ -852,7 +862,7 @@ app.put('/api/loop/:id', async c => {
     userId: session.userId,
     title: data.title,
     code: data.code,
-    timestamp: (prevLoop?.code === data.code ? prevLoop.timestamp : timestamp) ?? timestamp,
+    timestamp,
     isPublic: data.isPublic,
     remixOfId: nextRemixOfId,
   }
@@ -910,13 +920,19 @@ app.put('/api/loop/:id', async c => {
   await a.commit()
 
   if (becamePublic) await appendHotLoopEvent(kv, id)
-  return c.json({ ok: true })
+  return c.json(OkEpochResponseSchema.parse({ ok: true, epoch }))
 })
 
 app.delete('/api/loop/:id', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
     const err = jsonError('Not authenticated', 401)
+    return c.json(err.body, err.status)
+  }
+
+  const epoch = c.req.query('epoch')?.trim() ?? ''
+  if (epoch.length === 0) {
+    const err = jsonError('Epoch is required', 400)
     return c.json(err.body, err.status)
   }
 
@@ -969,7 +985,7 @@ app.delete('/api/loop/:id', async c => {
   }
   await a.commit()
 
-  return c.json(sessionToApi(nextSession))
+  return c.json(SessionEpochResponseSchema.parse({ epoch, sessionData: sessionToApi(nextSession) }))
 })
 
 const port = Number.parseInt(Deno.env.get('PORT') ?? '8787', 10) || 8787

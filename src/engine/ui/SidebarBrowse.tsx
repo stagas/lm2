@@ -10,6 +10,7 @@ export function SidebarBrowse() {
   const setSessionData = useAppStore(state => state.setSessionData)
 
   const publicLoops = useAppStore(state => state.publicLoopsCache)
+  const hasFetchedPublicLoops = useAppStore(state => state.hasFetchedPublicLoops)
   const hotLoops = useAppStore(state => state.hotLoopsCache)
   const bestLoops = useAppStore(state => state.bestLoopsCache)
   const likedLoops = useAppStore(state => state.likedLoopsCache)
@@ -31,11 +32,17 @@ export function SidebarBrowse() {
   const [isLikedLoading, setIsLikedLoading] = useState(false)
 
   useEffect(() => {
+    setTimeout(() => {
+      document.querySelector('textarea')?.focus({ preventScroll: true })
+    }, 0)
+  }, [tab])
+
+  useEffect(() => {
     if (tab !== 'new') return
-    if (publicLoops.length > 0 && !isPublicLoopsCacheStale) return
+    if (hasFetchedPublicLoops && !isPublicLoopsCacheStale) return
     setIsLoading(true)
     void refreshPublicLoops().finally(() => setIsLoading(false))
-  }, [isPublicLoopsCacheStale, publicLoops.length, refreshPublicLoops, tab])
+  }, [hasFetchedPublicLoops, isPublicLoopsCacheStale, refreshPublicLoops, tab])
 
   useEffect(() => {
     if (tab !== 'hot') return
@@ -61,7 +68,8 @@ export function SidebarBrowse() {
 
   const content = useMemo(() => {
     if (tab === 'new') {
-      return <SidebarBrowseList loops={publicLoops} emptyLabel="No new loops yet." isLoading={isLoading} />
+      const loops = isLoading && !hasFetchedPublicLoops ? [] : publicLoops
+      return <SidebarBrowseList loops={loops} emptyLabel="No new loops yet." isLoading={isLoading} />
     }
     if (tab === 'hot') {
       return <SidebarBrowseList loops={hotLoops} emptyLabel="No hot loops yet." isLoading={isHotLoading} />
@@ -80,6 +88,7 @@ export function SidebarBrowse() {
   }, [
     api,
     bestLoops,
+    hasFetchedPublicLoops,
     isBestLoading,
     isHotLoading,
     isLikedLoading,

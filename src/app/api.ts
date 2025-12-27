@@ -1,4 +1,12 @@
-import type { CommentData, LoopData, LoopUpsertRequest, PublicLoopListEntry, SessionData } from '../../deno/types.ts'
+import type {
+  CommentData,
+  LoopData,
+  LoopUpsertRequest,
+  OkEpochResponse,
+  PublicLoopListEntry,
+  SessionData,
+  SessionEpochResponse,
+} from '../../deno/types.ts'
 
 export class API {
   constructor(private fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {}
@@ -113,8 +121,8 @@ export class API {
     return await this.requestJson<LoopData[]>('/api/liked-loops')
   }
 
-  async toggleLike(loopId: string): Promise<SessionData> {
-    return await this.requestJson<SessionData>(`/api/loop/${encodeURIComponent(loopId)}/like`, {
+  async toggleLike(loopId: string, epoch: string): Promise<SessionEpochResponse> {
+    return await this.requestJson<SessionEpochResponse>(`/api/loop/${encodeURIComponent(loopId)}/like?epoch=${encodeURIComponent(epoch)}`, {
       method: 'POST',
     })
   }
@@ -166,16 +174,16 @@ export class API {
     await this.requestJson<{ ok: true }>('/api/auth/logout', { method: 'POST' })
   }
 
-  async upsertLoop(id: string, body: LoopUpsertRequest): Promise<void> {
-    await this.requestJson<{ ok: true }>(`/api/loop/${encodeURIComponent(id)}`, {
+  async upsertLoop(id: string, body: LoopUpsertRequest): Promise<OkEpochResponse> {
+    return await this.requestJson<OkEpochResponse>(`/api/loop/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     })
   }
 
-  async deleteLoop(id: string): Promise<SessionData> {
-    return await this.requestJson<SessionData>(`/api/loop/${encodeURIComponent(id)}`, {
+  async deleteLoop(id: string, epoch: string): Promise<SessionEpochResponse> {
+    return await this.requestJson<SessionEpochResponse>(`/api/loop/${encodeURIComponent(id)}?epoch=${encodeURIComponent(epoch)}`, {
       method: 'DELETE',
     })
   }
