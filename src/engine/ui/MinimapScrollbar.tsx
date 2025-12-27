@@ -12,7 +12,7 @@ import {
   evalCompiledTimelineAtBeat,
   parseCompiledTimeline,
 } from '../dsp/timeline-history.ts'
-import { useEngineRuntimeStore } from '../store.ts'
+import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
 import { RestartButton } from './RestartButton.tsx'
 import { useTheme } from './theme.ts'
@@ -51,6 +51,9 @@ export function MinimapScrollbar({
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
+  const timelineRefsRef = useRef<TimelineSequenceRef[] | undefined>(timelineRefs)
+  const timelineLabelsRef = useRef<TimelineLabel[] | undefined>(timelineLabels)
+  const barsRef = useRef<number | undefined>(bars)
   const timelineCacheRef = useRef<Map<number, {
     sequence: string
     width: number
@@ -63,9 +66,40 @@ export function MinimapScrollbar({
   const theme = useTheme()
 
   const currentSampleRef = useRef(0)
-  const barCount = Math.max(1, Math.floor(bars ?? DEFAULT_BARS))
   const canvasDimsRef = useRef({ width: 0, height: 0, pixelRatio: 1 })
   const isValidRef = useRef(false)
+
+  useEffect(() => {
+    timelineRefsRef.current = timelineRefs
+  }, [timelineRefs])
+
+  useEffect(() => {
+    timelineLabelsRef.current = timelineLabels
+  }, [timelineLabels])
+
+  useEffect(() => {
+    barsRef.current = bars
+  }, [bars])
+
+  useEffect(() => {
+    const unsub = useEngineDspStore.subscribe(state => {
+      const nextRefs = state.timelineRefs
+      if (timelineRefsRef.current !== nextRefs) {
+        timelineRefsRef.current = nextRefs
+      }
+
+      const nextLabels = state.timelineLabels
+      if (timelineLabelsRef.current !== nextLabels) {
+        timelineLabelsRef.current = nextLabels
+      }
+
+      const nextBars = state.bars
+      if (barsRef.current !== nextBars) {
+        barsRef.current = nextBars
+      }
+    })
+    return unsub
+  }, [])
 
   const seekFromPointer = useCallback((clientX: number) => {
     const canvas = canvasRef.current
@@ -79,12 +113,13 @@ export function MinimapScrollbar({
     const clampedRatio = Math.max(0, Math.min(1, relativeX / width))
     const bpm = bpmValue?.[0] || 60
     const barLengthSeconds = (BEATS_PER_BAR * 60) / bpm
+    const barCount = Math.max(1, Math.floor(barsRef.current ?? DEFAULT_BARS))
     const totalSeconds = barLengthSeconds * barCount
     const totalSamples = Math.max(1, Math.floor(totalSeconds * audioContext.sampleRate))
     const targetSampleCount = Math.max(0, Math.floor(clampedRatio * totalSamples))
     currentSampleRef.current = targetSampleCount
     seekToSample(targetSampleCount)
-  }, [audioContext, barCount, bpmValue, seekToSample])
+  }, [audioContext, bpmValue, seekToSample])
 
   const toggleLoopFromPointer = useCallback((clientX: number) => {
     if (!canControlPlayback) return
@@ -101,6 +136,7 @@ export function MinimapScrollbar({
     const bpm = bpmValue?.[0] || 60
     const barLengthSeconds = (BEATS_PER_BAR * 60) / bpm
 
+    const barCount = Math.max(1, Math.floor(barsRef.current ?? DEFAULT_BARS))
     const barIndex = Math.max(0, Math.min(barCount - 1, Math.floor(clampedRatio * barCount)))
     const barNumber = barIndex + 1
     const groupStartNumber = Math.floor((barNumber - 1) / 4) * 4 + 1
@@ -128,7 +164,7 @@ export function MinimapScrollbar({
       currentSampleRef.current = startSample
       seekToSample(startSample)
     }
-  }, [audioContext, barCount, bpmValue, canControlPlayback, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
+  }, [audioContext, bpmValue, canControlPlayback, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
     event.preventDefault()
@@ -174,9 +210,13 @@ export function MinimapScrollbar({
 
     const bpm = bpmValue?.[0] || 60
     const barLengthSeconds = (BEATS_PER_BAR * 60) / bpm
+    const barCount = Math.max(1, Math.floor(barsRef.current ?? DEFAULT_BARS))
     const totalSeconds = barLengthSeconds * barCount
     const sampleRate = audioContext?.sampleRate ?? 44100
     const totalSamples = Math.max(1, Math.floor(totalSeconds * sampleRate))
+
+    const timelineLabels = timelineLabelsRef.current
+    const timelineRefs = timelineRefsRef.current
 
     const windowData = timelineWindowRef.current
     const startRatio = Math.max(0, Math.min(1, windowData.windowStartTime / totalSeconds))
@@ -389,13 +429,10 @@ export function MinimapScrollbar({
     ctx.fillRect(Math.max(0, playheadX - 1.5), 0, 3, height)
   }, [
     audioContext,
-    barCount,
     bpmValue,
     canControlPlayback,
     globalSampleCount,
     loop,
-    timelineLabels,
-    timelineRefs,
     timelineWindowRef,
     zeroBased,
   ])

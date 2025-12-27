@@ -20,6 +20,7 @@ import {
   extractBarsFromSource,
   extractTimelineLabelsFromSource,
 } from '../bytecode/bytecode.ts'
+import type { VmCompileSnapshot } from '../dsp/program.ts'
 import { buildTimelineLabels } from '../dsp/timeline-labels.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import type { WidgetCompileResult } from '../types.ts'
@@ -110,33 +111,30 @@ function DspSourceEditorReady(
     }
   }
 
-  const {
-    dspSource,
-    preloadSamples,
-    updateDspSource,
-    uiDspSource,
-    uiSequences,
-    uiMiniRefs,
-    uiTimelineRefs,
-    uiTimelineLabels,
-    uiMiniSourceMaps,
-    uiAnalyserRefs,
-    uiCompressorRefs,
-    uiLpRefs,
-    uiSlicerRefs,
-    uiLfoRefs,
-    uiEveryRefs,
-    uiAtRefs,
-    uiEuclidRefs,
-    uiArrayLiterals,
-    uiBranchMarks,
-    uiNumberParams,
-    uiSampleDefs,
-    loadedSamples,
-    isPreloadingSamples,
-    isProgramSwapPending,
-    isUpdatingDsp,
-  } = useEngineDspStore()
+  const dspSource = useEngineDspStore(state => state.dspSource)
+  const preloadSamples = useEngineDspStore(state => state.preloadSamples)
+  const updateDspSource = useEngineDspStore(state => state.updateDspSource)
+  const sequences = useEngineDspStore(state => state.sequences)
+  const miniRefs = useEngineDspStore(state => state.miniRefs)
+  const timelineRefs = useEngineDspStore(state => state.timelineRefs)
+  const timelineLabels = useEngineDspStore(state => state.timelineLabels)
+  const miniSourceMaps = useEngineDspStore(state => state.miniSourceMaps)
+  const analyserRefs = useEngineDspStore(state => state.analyserRefs)
+  const compressorRefs = useEngineDspStore(state => state.compressorRefs)
+  const lpRefs = useEngineDspStore(state => state.lpRefs)
+  const slicerRefs = useEngineDspStore(state => state.slicerRefs)
+  const lfoRefs = useEngineDspStore(state => state.lfoRefs)
+  const everyRefs = useEngineDspStore(state => state.everyRefs)
+  const atRefs = useEngineDspStore(state => state.atRefs)
+  const euclidRefs = useEngineDspStore(state => state.euclidRefs)
+  const arrayLiterals = useEngineDspStore(state => state.arrayLiterals)
+  const branchMarks = useEngineDspStore(state => state.branchMarks)
+  const numberParams = useEngineDspStore(state => state.numberParams)
+  const sampleDefs = useEngineDspStore(state => state.sampleDefs)
+  const loadedSamples = useEngineDspStore(state => state.loadedSamples)
+  const isPreloadingSamples = useEngineDspStore(state => state.isPreloadingSamples)
+  const isProgramSwapPending = useEngineDspStore(state => state.isProgramSwapPending)
+  const isUpdatingDsp = useEngineDspStore(state => state.isUpdatingDsp)
 
   const {
     isProgramReady,
@@ -299,64 +297,64 @@ function DspSourceEditorReady(
   }, [compileErrors, dspError])
 
   const widgetCompileState = useMemo((): WidgetCompileResult => {
-    if (code === uiDspSource) {
+    if (code === dspSource) {
       return {
-        dspSource: uiDspSource,
-        sequences: uiSequences,
-        miniRefs: uiMiniRefs,
-        timelineRefs: uiTimelineRefs,
-        miniSourceMaps: uiMiniSourceMaps,
-        analyserRefs: uiAnalyserRefs,
-        compressorRefs: uiCompressorRefs,
-        lpRefs: uiLpRefs,
-        slicerRefs: uiSlicerRefs,
-        lfoRefs: uiLfoRefs,
-        everyRefs: uiEveryRefs,
-        euclidRefs: uiEuclidRefs,
-        atRefs: uiAtRefs,
-        arrayLiterals: uiArrayLiterals,
-        branchMarks: uiBranchMarks,
-        numberParams: uiNumberParams,
-        sampleDefs: uiSampleDefs,
+        dspSource,
+        sequences,
+        miniRefs,
+        timelineRefs,
+        miniSourceMaps,
+        analyserRefs,
+        compressorRefs,
+        lpRefs,
+        slicerRefs,
+        lfoRefs,
+        everyRefs,
+        euclidRefs,
+        atRefs,
+        arrayLiterals,
+        branchMarks,
+        numberParams,
+        sampleDefs,
         errors: [],
       }
     }
 
     if (previewCompile.errors.length) {
       return {
-        dspSource: uiDspSource,
-        sequences: uiSequences,
-        miniRefs: uiMiniRefs,
-        timelineRefs: uiTimelineRefs,
-        miniSourceMaps: uiMiniSourceMaps,
-        analyserRefs: uiAnalyserRefs,
-        compressorRefs: uiCompressorRefs,
-        lpRefs: uiLpRefs,
-        slicerRefs: uiSlicerRefs,
-        lfoRefs: uiLfoRefs,
-        everyRefs: uiEveryRefs,
-        atRefs: uiAtRefs,
-        euclidRefs: uiEuclidRefs,
-        arrayLiterals: uiArrayLiterals,
-        branchMarks: uiBranchMarks,
-        numberParams: uiNumberParams,
-        sampleDefs: uiSampleDefs,
+        dspSource,
+        sequences,
+        miniRefs,
+        timelineRefs,
+        miniSourceMaps,
+        analyserRefs,
+        compressorRefs,
+        lpRefs,
+        slicerRefs,
+        lfoRefs,
+        everyRefs,
+        atRefs,
+        euclidRefs,
+        arrayLiterals,
+        branchMarks,
+        numberParams,
+        sampleDefs,
         errors: previewCompile.errors,
       }
     }
 
-    const sequences = previewCompile.miniSequences ?? []
-    const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map(s => {
+    const previewSequences = previewCompile.miniSequences ?? []
+    const previewMiniSourceMaps: Array<Map<number, SourceLocation> | undefined> = previewSequences.map(s => {
       const compiled = compileMiniNotation(s)
       return buildMiniSourceMap(compiled.nodes, compiled.bytecode)
     })
 
     return {
       dspSource: code,
-      sequences,
+      sequences: previewSequences,
       miniRefs: previewCompile.miniRefs ?? [],
       timelineRefs: previewCompile.timelineRefs ?? [],
-      miniSourceMaps,
+      miniSourceMaps: previewMiniSourceMaps,
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
       lpRefs: previewCompile.lpRefs ?? [],
@@ -373,24 +371,38 @@ function DspSourceEditorReady(
     }
   }, [
     code,
+    dspSource,
+    sequences,
+    miniRefs,
+    timelineRefs,
+    miniSourceMaps,
+    analyserRefs,
+    compressorRefs,
+    lpRefs,
+    slicerRefs,
+    lfoRefs,
+    everyRefs,
+    atRefs,
+    euclidRefs,
+    arrayLiterals,
+    branchMarks,
+    numberParams,
+    sampleDefs,
     previewCompile,
-    uiDspSource,
-    uiSequences,
-    uiMiniRefs,
-    uiTimelineRefs,
-    uiMiniSourceMaps,
-    uiAnalyserRefs,
-    uiCompressorRefs,
-    uiLpRefs,
-    uiSlicerRefs,
-    uiLfoRefs,
-    uiEveryRefs,
-    uiAtRefs,
-    uiArrayLiterals,
-    uiBranchMarks,
-    uiNumberParams,
-    uiSampleDefs,
   ])
+
+  const timelineLabelsForView = useMemo(() => {
+    if (code === dspSource) return timelineLabels
+    if (hasCompileErrors) return timelineLabels
+
+    const labelsExtracted = extractTimelineLabelsFromSource(code)
+    if (labelsExtracted.errors.length) return timelineLabels
+
+    const barsExtracted = extractBarsFromSource(code)
+    if (barsExtracted.errors.length) return timelineLabels
+
+    return buildTimelineLabels(labelsExtracted.labels, barsExtracted.bars)
+  }, [code, dspSource, hasCompileErrors, timelineLabels])
 
   const isAwaitingSamples = useMemo(() => {
     if (hasCompileErrors) return false
@@ -418,86 +430,45 @@ function DspSourceEditorReady(
 
   const runtimeProgram = isProgramSwapPending ? program2 : program1
 
-  useLayoutEffect(() => {
-    if (!currentLoop) return
-    if (isPlayingLoop) return
-    if (code === uiDspSource) return
-
-    const target = previewTargetRef.current
-    if (!target) return
-
-    target.ops.fill(0)
-    target.literals.fill(0)
-
-    const result = encodeLangToVmOps(code, target)
-    if (result.errors.length) return
-
-    const sequences = result.miniSequences ?? []
-    const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map(s => {
-      const compiled = compileMiniNotation(s)
-      return buildMiniSourceMap(compiled.nodes, compiled.bytecode)
-    })
-
-    const labelsExtracted = extractTimelineLabelsFromSource(code)
-    if (labelsExtracted.errors.length) return
-
-    const barsExtracted = extractBarsFromSource(code)
-    if (barsExtracted.errors.length) return
-
-    const bars = barsExtracted.bars
-    const timelineLabels = buildTimelineLabels(labelsExtracted.labels, bars)
-
-    useEngineDspStore.getState().setUiCompilePreview({
-      source: code,
-      sequences,
-      miniRefs: result.miniRefs ?? [],
-      timelineRefs: result.timelineRefs ?? [],
-      timelineLabels,
-      bars,
-      miniSourceMaps,
-      analyserRefs: result.analyserRefs ?? [],
-      compressorRefs: result.compressorRefs ?? [],
-      lpRefs: result.lpRefs ?? [],
-      slicerRefs: result.slicerRefs ?? [],
-      lfoRefs: result.lfoRefs ?? [],
-      everyRefs: result.everyRefs ?? [],
-      atRefs: result.atRefs ?? [],
-      euclidRefs: result.euclidRefs ?? [],
-      arrayLiterals: result.arrayLiterals ?? [],
-      branchMarks: result.branchMarks ?? [],
-      numberParams: result.numberParams ?? [],
-      sampleDefs: result.sampleDefs ?? [],
-    })
-  }, [code, currentLoop, isPlayingLoop, uiDspSource])
-
   const handleApply = async () => {
     if (!isProgramReady) return
     if (hasCompileErrors) return
     const requested = code
     try {
       onDspError(undefined)
-      await updateDspSource(requested)
+      const target = previewTargetRef.current
+      const vm: VmCompileSnapshot | undefined = target && previewCompile.errors.length === 0
+        ? {
+          source: requested,
+          ops: new Int32Array(target.ops),
+          literals: new Float32Array(target.literals),
+          result: previewCompile,
+        }
+        : undefined
+      await updateDspSource(requested, vm)
     }
     catch (err) {
       onDspError(err instanceof Error ? err.message : String(err))
     }
   }
 
+  const isLive = isPlayingLoop && playbackState === 'running'
+
   useLayoutEffect(() => {
     if (currentLoop && currentLoop.data.code == null && code.length === 0) return
-    if (!isPlayingLoop) return
+    if (!isLive) return
     void handleApply()
-  }, [currentLoop, isProgramReady, isPlayingLoop])
+  }, [currentLoop, isProgramReady, isLive])
 
   useEffect(() => {
     if (!isProgramReady) return
     if (!currentLoop) return
-    if (!isPlayingLoop) return
+    if (!isLive) return
     if (hasCompileErrors) return
     if (code === dspSource) return
 
     void handleApply()
-  }, [code, currentLoop?.data.id, dspSource, hasCompileErrors, isProgramReady, isPlayingLoop])
+  }, [code, currentLoop?.data.id, dspSource, hasCompileErrors, isProgramReady, isLive])
 
   const frameRef = useRef<Array<SeqFrame | undefined>>([])
   const controlStateRef = useRef<Map<number, SeqControlState>>(new Map())
@@ -528,7 +499,7 @@ function DspSourceEditorReady(
     sequences: widgetCompileState.sequences,
     miniSourceMaps: widgetCompileState.miniSourceMaps,
     miniRefs: widgetCompileState.miniRefs,
-    timelineLabels: uiTimelineLabels,
+    timelineLabels: timelineLabelsForView,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
@@ -541,11 +512,11 @@ function DspSourceEditorReady(
     bpmValue,
     globalSampleCount,
     timelineRefs: widgetCompileState.timelineRefs,
-    timelineLabels: uiTimelineLabels,
+    timelineLabels: timelineLabelsForView,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
-    isLive: isPlayingLoop,
+    isLive,
     resetKey,
   })
 
@@ -558,7 +529,7 @@ function DspSourceEditorReady(
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
-    isLive: isPlayingLoop,
+    isLive,
     resetKey,
   })
 
@@ -568,7 +539,7 @@ function DspSourceEditorReady(
     analyserRefs: widgetCompileState.analyserRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
-    isLive: isPlayingLoop,
+    isLive,
     playbackState,
     sampleRate: audioContext?.sampleRate,
   })
@@ -579,7 +550,7 @@ function DspSourceEditorReady(
     compressorRefs: widgetCompileState.compressorRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
-    isLive: isPlayingLoop,
+    isLive,
     playbackState,
     sampleRate: audioContext?.sampleRate,
   })
@@ -591,7 +562,7 @@ function DspSourceEditorReady(
     filterRefs: widgetCompileState.lpRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
-    isLive: isPlayingLoop,
+    isLive,
     playbackState,
   })
 
@@ -609,7 +580,7 @@ function DspSourceEditorReady(
     lfoRefs: widgetCompileState.lfoRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
-    isLive: isPlayingLoop,
+    isLive,
     playbackState,
   })
 
@@ -622,7 +593,7 @@ function DspSourceEditorReady(
     euclidRefs: widgetCompileState.euclidRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
-    isLive: isPlayingLoop,
+    isLive,
     playbackState,
   })
 
@@ -784,7 +755,7 @@ function DspSourceEditorReady(
 
   return (
     <div className="flex flex-row gap-2 w-full h-full relative">
-      <div className="bg-gray-900 text-white font-mono text-sm w-full h-full">
+      <div className="bg-gray-900 text-white text-sm w-full h-full">
         {headerErrorText.length > 0 && (
           <div className="absolute top-0 left-[37px] right-0 h-[40px] z-50">
             <div className="h-full w-full flex items-center gap-2 px-2 bg-[#f00a] border-b border-red-700 text-red-100">

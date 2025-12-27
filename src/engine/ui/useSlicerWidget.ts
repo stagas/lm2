@@ -1,8 +1,9 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import type { SlicerRef } from '../bytecode/bytecode.ts'
 import { detectSlices } from '../dsp/detect-slices.ts'
 import { useEngineDspStore } from '../store.ts'
+import { createWidgetCanvas, getWidgetContext, type WidgetCanvas } from './widget-canvas.ts'
 
 type UseSlicerWidgetParams = {
   slicerRefs?: SlicerRef[]
@@ -11,11 +12,17 @@ type UseSlicerWidgetParams = {
 }
 
 type SliceCache = {
-  ch0Buffer: ArrayBuffer
   thresholdKey: number
   len: number
   points: Int32Array
   count: number
+}
+
+type SliceImgCache = {
+  pxW: number
+  pxH: number
+  dpr: number
+  canvas: WidgetCanvas
 }
 
 function formatNorm(v: number): string {
@@ -23,17 +30,56 @@ function formatNorm(v: number): string {
   return s.replace(/\.?0+$/, '').replace(/^0\./, '.')
 }
 
+function renderSlicesToCanvas(
+  canvas: WidgetCanvas,
+  points: Int32Array,
+  count: number,
+  len: number,
+  pxW: number,
+  pxH: number,
+  dpr: number,
+) {
+  const c = getWidgetContext(canvas)
+  if (!c) return
+
+  c.save()
+  c.setTransform(1, 0, 0, 1, 0, 0)
+  c.clearRect(0, 0, pxW, pxH)
+
+  c.strokeStyle = 'rgba(234, 88, 12, .7)'
+  c.lineWidth = 1.35 * dpr
+
+  c.fillStyle = 'rgba(234, 88, 12, 0.9)'
+  c.font = `${7 * dpr}pt "Space Mono"`
+  c.textAlign = 'left'
+  c.textBaseline = 'top'
+
+  for (let i = 0; i < count; i++) {
+    const p = points[i] ?? 0
+    const t = p / len
+    const clamped = t < 0 ? 0 : t > 1 ? 1 : t
+    const col = Math.min(pxW - 1, Math.max(0, Math.floor(clamped * pxW)))
+    const x = col + 0.5
+
+    c.beginPath()
+    c.moveTo(x, 0)
+    c.lineTo(x, pxH)
+    c.stroke()
+
+    const s = count <= 1 ? 0 : (i / (count - 1))
+    c.fillText(formatNorm(s), x + 2 * dpr, 2 * dpr)
+  }
+
+  c.restore()
+}
+
 export function useSlicerWidget({
   slicerRefs,
-  dspSource,
   showWidgets,
 }: UseSlicerWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const refs = slicerRefs ?? []
-  const cacheRef = useRef<Map<string, SliceCache>>(new Map())
-
-  useEffect(() => {
-    cacheRef.current.clear()
-  }, [dspSource])
+  const sliceRef = useRef<WeakMap<ArrayBuffer, Map<number, SliceCache>>>(new WeakMap())
+  const imgRef = useRef<WeakMap<ArrayBuffer, Map<string, SliceImgCache>>>(new WeakMap())
 
   const draw = useCallback((
     c: CanvasRenderingContext2D,
@@ -52,57 +98,51 @@ export function useSlicerWidget({
     if (!ch0 || ch0.length <= 1) return
 
     const thresholdKey = ((ref.threshold || 0) * 1000) | 0
-    const key = `${ref.sampleIndex}:${thresholdKey}`
-    const cached = cacheRef.current.get(key)
+    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
+    const pxW = Math.max(1, Math.floor(w * dpr))
+    const pxH = Math.max(1, Math.floor(h * dpr))
 
+    const buf = ch0.buffer
+    let byBuf = imgRef.current.get(buf)
+    if (!byBuf) {
+      byBuf = new Map()
+      imgRef.current.set(buf, byBuf)
+    }
+
+    const key = `${thresholdKey}:${pxW}:${pxH}:${dpr}`
+    const cached = byBuf.get(key)
+    const canvas = cached?.canvas
+    if (cached && cached.pxW === pxW && cached.pxH === pxH && cached.dpr === dpr && canvas) {
+      c.drawImage(canvas, viewX, widgetY, w, h)
+      return
+    }
+
+    let sliceByBuf = sliceRef.current.get(buf)
+    if (!sliceByBuf) {
+      sliceByBuf = new Map()
+      sliceRef.current.set(buf, sliceByBuf)
+    }
+
+    const sliceCached = sliceByBuf.get(thresholdKey)
+    const len = ch0.length
     let points: Int32Array
     let count: number
-    if (!cached || cached.ch0Buffer !== ch0.buffer || cached.thresholdKey !== thresholdKey
-      || cached.len !== ch0.length)
-    {
+    if (!sliceCached || sliceCached.len !== len || sliceCached.thresholdKey !== thresholdKey) {
       const res = detectSlices(ch0, ref.threshold || 0, 512)
       points = res.points
       count = res.count | 0
-      cacheRef.current.set(key, { ch0Buffer: ch0.buffer, thresholdKey, len: ch0.length, points, count })
+      sliceByBuf.set(thresholdKey, { thresholdKey, len, points, count })
     }
     else {
-      points = cached.points
-      count = cached.count | 0
+      points = sliceCached.points
+      count = sliceCached.count | 0
     }
 
     if (count <= 0) return
-
-    c.save()
-    c.translate(viewX, widgetY)
-
-    c.strokeStyle = 'rgba(234, 88, 12, .7)'
-    c.lineWidth = 1.35
-
-    c.fillStyle = 'rgba(234, 88, 12, 0.9)'
-    c.font = '7pt "Space Mono"'
-    c.textAlign = 'left'
-    c.textBaseline = 'top'
-
-    const len = ch0.length
-    const dpr = window.devicePixelRatio
-    const pxW = Math.max(1, Math.floor(w * dpr))
-    for (let i = 0; i < count; i++) {
-      const p = points[i] ?? 0
-      const t = p / len
-      const clamped = t < 0 ? 0 : t > 1 ? 1 : t
-      const col = Math.min(pxW - 1, Math.max(0, Math.floor(clamped * pxW)))
-      const x = (col + 0.5) / dpr
-
-      c.beginPath()
-      c.moveTo(x, 0)
-      c.lineTo(x, h)
-      c.stroke()
-
-      const s = count <= 1 ? 0 : (i / (count - 1))
-      c.fillText(formatNorm(s), x + 2, 2)
-    }
-
-    c.restore()
+    const off = createWidgetCanvas(pxW, pxH)
+    renderSlicesToCanvas(off, points, count, len, pxW, pxH, dpr)
+    byBuf.set(key, { pxW, pxH, dpr, canvas: off })
+    c.drawImage(off, viewX, widgetY, w, h)
   }, [])
 
   const widgets = useMemo((): EditorWidget[] => {

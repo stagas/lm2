@@ -114,6 +114,13 @@ export type Program = Awaited<ReturnType<typeof createProgram>>
 export type ProgramDataView = ReturnType<typeof createProgramDataView>
 export type ProgramInstance = Awaited<ReturnType<typeof createProgramInstance>>
 
+export type VmCompileSnapshot = {
+  source: string
+  ops: Int32Array
+  literals: Float32Array
+  result: ReturnType<typeof encodeLangToVmOps>
+}
+
 function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataView): Map<number, SourceLocation> {
   const compiled = compileMiniNotation(sequence)
   const target = data.arrays[arrayIndex]
@@ -152,6 +159,7 @@ function updateTimelineSequence(
 function buildProgram(
   data: ProgramDataView,
   dspSource: string,
+  vm?: VmCompileSnapshot,
 ): {
   sequences: string[]
   timelineSequences: TimelineSequenceDef[]
@@ -174,12 +182,13 @@ function buildProgram(
   bpm?: number
   bars?: number
 } {
+  const compiled = (vm && vm.source === dspSource)
+    ? (data.ops.set(vm.ops), data.literals.set(vm.literals), vm.result)
+    : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
+
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs,
     compressorRefs, lpRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
-    numberParams, numberLiterals, bpm, bars, sampleDefs } = encodeLangToVmOps(dspSource, {
-      ops: data.ops,
-      literals: data.literals,
-    })
+    numberParams, numberLiterals, bpm, bars, sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
@@ -213,6 +222,7 @@ type CompileOptions = {
   setData?: boolean
   compareAgainst?: ProgramDataView
   copyVersionFrom?: ProgramDataView
+  vm?: VmCompileSnapshot
 }
 
 export type ProgramBuildDiff = {
@@ -491,7 +501,7 @@ async function createProgram(
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
           lpRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
-          numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source)
+          numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
