@@ -26,6 +26,7 @@ import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../s
 import type { WidgetCompileResult } from '../types.ts'
 import { functionDefinitions } from './function-definitions.ts'
 import type { Loop } from './loop.ts'
+import { useRouter } from './router.tsx'
 import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
@@ -95,6 +96,7 @@ function DspSourceEditorReady(
     onDspError: (error: string | undefined) => void
   },
 ) {
+  const { navigate } = useRouter()
   const codeFileKeyByFileRef = useRef<WeakMap<CodeFile, string>>(new WeakMap())
   const nextCodeFileKeyRef = useRef(0)
 
@@ -220,7 +222,7 @@ function DspSourceEditorReady(
       runtime.setPlayingLoopId(localId)
     }
     setSelectedLoopId(localId)
-    useEngineUiStore.getState().setSidebarTab('loops')
+    navigate('/my')
   }, [
     addLocalLoop,
     code,
@@ -233,6 +235,7 @@ function DspSourceEditorReady(
     sessionData?.loops,
     sessionData?.user.id,
     sessionData?.user.name,
+    navigate,
     setSelectedLoopId,
   ])
 

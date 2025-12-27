@@ -1,15 +1,23 @@
-import { ChatIcon, CircleNotchIcon, GitForkIcon, HeartIcon, PlayIcon, RepeatIcon,
-  TrashIcon } from '@phosphor-icons/react'
+import {
+  ChatIcon,
+  CircleNotchIcon,
+  HeartIcon,
+  PlayIcon,
+  RepeatIcon,
+  TrashIcon,
+} from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MouseButtons } from 'utils/mouse-buttons'
 import type { CommentData, LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
-import { Spinner, SpinnerLarge, SpinnerSmall } from '../../components/Spinner.tsx'
+import { SpinnerSmall } from '../../components/Spinner.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { PauseGradientIcon, PlayGradientIcon } from './Icons.tsx'
+import { useRouter } from './router.tsx'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
+import { toSlug } from './util.ts'
 
 function formatAge(timestamp: number | undefined) {
   if (!timestamp) return ''
@@ -210,6 +218,7 @@ function BrowseItem(
     userId: string | null
   },
 ) {
+  const { navigate } = useRouter()
   const restartLoop = useRestartLoop()
   const playLoop = useEngineDspStore(state => state.playLoop)
   const pause = useEngineRuntimeStore(state => state.pause)
@@ -370,7 +379,16 @@ function BrowseItem(
         <div className="flex flex-col gap-1">
           <div className="flex flex-row gap-2">
             <div className="flex flex-col w-full">
-              <span className="text-sm">{loop.artist} - {loop.title}</span>
+              <span className="text-sm">
+                <span className="cursor-pointer hover:text-orange-500" onPointerDown={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  navigate(`/artist/${loop.artistId}/${toSlug(loop.artist)}`)
+                }}>
+                  {loop.artist}
+                </span>{' '}
+                - {loop.title}
+              </span>
               {remixOf && (
                 <div className="flex flex-row text-xs text-neutral-500 font-normal items-center gap-1">
                   <span className="">remix of:</span>

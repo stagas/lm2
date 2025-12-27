@@ -7,6 +7,7 @@ import { useEngine } from '../dsp/program.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { DspSourceEditor } from './DspSourceEditor.tsx'
 import { Nav } from './Nav.tsx'
+import { RouterProvider } from './router.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import { useCurrentLoop } from './useCurrentLoop.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
@@ -132,24 +133,26 @@ export function EngineUI() {
   }
 
   return (
-    <>
-      {showIntro && <Intro key="intro" isFadingIn={isFadingIn} isFadingOut={isFadingOut} />}
-      <div className="flex flex-col">
-        <Nav
-          timelineWindowRef={timelineWindowRef}
-          currentLoop={currentLoop}
-          onDspError={setDspError}
-        />
-        <div className="flex flex-row h-[calc(100dvh-61px)]">
-          <Sidebar />
-          <DspSourceEditor
-            timelineHeader={timelineHeader}
+    <RouterProvider>
+      <>
+        {showIntro && <Intro key="intro" isFadingIn={isFadingIn} isFadingOut={isFadingOut} />}
+        <div className="flex flex-col">
+          <Nav
+            timelineWindowRef={timelineWindowRef}
             currentLoop={currentLoop}
-            dspError={dspError}
             onDspError={setDspError}
           />
+          <div className="flex flex-row h-[calc(100dvh-61px)]">
+            <Sidebar />
+            <DspSourceEditor
+              timelineHeader={timelineHeader}
+              currentLoop={currentLoop}
+              dspError={dspError}
+              onDspError={setDspError}
+            />
+          </div>
         </div>
-      </div>
-    </>
+      </>
+    </RouterProvider>
   )
 }
