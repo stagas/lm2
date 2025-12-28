@@ -69,7 +69,7 @@ All values are runtime values tagged with their type.
   * Helper functions such as `isNaN()` and `isFinite()` are provided.
   * When used with bitwise operators, values are cast to 32-bit integers.
   * Numeric literals may use `k` suffix to denote thousands (e.g., `10k` = `10000`, `5.2k` = `5200`).
-  * Numeric slider suffix: `value (min max)` annotates a numeric literal with a slider range for the editor UI, evaluates to `value`.
+  * Numeric slider suffix: `value (min max [exp])` annotates a numeric literal with a slider range for the editor UI, evaluates to `value`. The optional `exp` parameter applies exponential scaling to the slider interaction (values from 0.0001 to 1000).
 
 * **String**
 

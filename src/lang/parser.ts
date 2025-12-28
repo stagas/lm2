@@ -602,7 +602,8 @@ class Parser {
         if (expr.kind === 'number') {
           const minTok = this.cur()
           const maxTok = this.tokens[this.i + 1]
-          const endTok = this.tokens[this.i + 2]
+          const expTok = this.tokens[this.i + 2]
+          const endTok = this.tokens[this.i + (expTok?.kind === 'number' ? 3 : 2)]
           if (minTok.kind === 'number' && maxTok?.kind === 'number' && endTok?.kind === 'r_paren') {
             const minPrecision = decimalsOf(minTok.lexeme)
             const maxPrecision = decimalsOf(maxTok.lexeme)
@@ -610,7 +611,12 @@ class Parser {
             const precision = Math.max(minPrecision, maxPrecision, valuePrecision)
             this.next()
             this.next()
-            this.next()
+            let exp: number | undefined
+            if (expTok?.kind === 'number') {
+              exp = Number(expTok.value)
+              this.next()
+            }
+            this.next() // consume r_paren
             expr = {
               ...expr,
               slider: {
@@ -620,6 +626,7 @@ class Parser {
                   ? (endTok.column + endTok.length - expr.loc.column)
                   : expr.loc.length,
                 precision,
+                exp,
               },
             }
             continue

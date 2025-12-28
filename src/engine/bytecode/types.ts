@@ -246,6 +246,7 @@ export type NumberWithParamsInfo = {
   max: number
   literalIndex?: number
   precision: number
+  exp?: number
 }
 
 export type NumberLiteralInfo = {

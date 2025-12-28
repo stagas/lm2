@@ -536,6 +536,11 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
         number += line[i]
         i++
       }
+      // Check for 'k' suffix right after the number
+      if (i < line.length && line[i] === 'k') {
+        number += 'k'
+        i++
+      }
       tokens.push({ type: 'number', content: number, length: number.length })
       continue
     }
