@@ -1,4 +1,4 @@
-import react from '@vitejs/plugin-react-swc'
+import preact from '@preact/preset-vite'
 import fs from 'node:fs'
 import path from 'node:path'
 import { type ConfigEnv, defineConfig, loadEnv, type Plugin, type UserConfig } from 'vite'
@@ -28,7 +28,16 @@ export default ({ mode }: ConfigEnv): UserConfig => {
 
   return defineConfig({
     plugins: [
-      react(),
+      preact({
+        exclude: [
+          '**/as/assembly/constants.ts',
+          '**/src/engine/util.ts',
+          '**/engine/dsp/**',
+          '**/src/lib/wasm-setup.ts',
+          '**/utils/**',
+          '**/src/lib/wasm-sourcemap.ts',
+        ],
+      }),
       openInEditor({ cmd: 'cursor' }),
       coopCoep(),
       assemblyScript({
@@ -54,6 +63,13 @@ export default ({ mode }: ConfigEnv): UserConfig => {
         ]
         : []),
     ],
+    resolve: {
+      alias: {
+        'react': 'preact/compat',
+        'react-dom': 'preact/compat',
+        'react/jsx-runtime': 'preact/jsx-runtime',
+      },
+    },
     root: '.',
     clearScreen: false,
     server: {

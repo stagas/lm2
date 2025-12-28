@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'preact/hooks'
 import { BRANCH_HISTORY_ENTRY_SIZE, BRANCH_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { BranchMarkRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
@@ -124,5 +124,3 @@ export function useBranchWidget({
 
   return { widgets, onBeforeDraw }
 }
-
-

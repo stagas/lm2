@@ -10,7 +10,7 @@ import {
   useEffect,
   useRef,
   useState,
-} from 'react'
+} from 'preact/hooks'
 import { DEBUG } from '../constants.ts'
 import { useEngineUiStore } from '../store.ts'
 import { BytecodeInspector } from './BytecodeInspector.tsx'
@@ -21,7 +21,7 @@ import { SidebarSettings } from './SidebarSettings.tsx'
 
 export type SidebarTab = 'loops' | 'browse' | 'compiled' | 'settings'
 
-const SidebarTabIcon: Record<SidebarTab, React.ReactNode> = {
+const SidebarTabIcon: Record<SidebarTab, preact.ComponentChildren> = {
   loops: <WaveformIcon weight="regular" size={16} />,
   browse: <GlobeIcon weight="regular" size={16} />,
   compiled: <ArticleIcon weight="regular" size={16} />,

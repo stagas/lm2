@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import {
   CHUNK_SIZE,
   SAMPLE_NEEDLE_DATA_OFFSET,
@@ -136,7 +136,7 @@ function drawSample(
   w: number,
   h: number,
   ch0: Float32Array<ArrayBuffer>,
-  waveRef: React.RefObject<WeakMap<ArrayBuffer, Map<string, WaveCache>>>,
+  waveRef: preact.RefObject<WeakMap<ArrayBuffer, Map<string, WaveCache>>>,
   needle: NeedleState | undefined,
 ) {
   if (w <= 1 || h <= 1) return

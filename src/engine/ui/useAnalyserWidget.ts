@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import type { Ring } from 'utils/ring'
 import WaveFFT from '../../../vendor/WaveFFT/WaveFFT.js'
 import { WaveformBuffer } from '../../lib/waveform-buffer.ts'

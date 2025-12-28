@@ -1,9 +1,9 @@
 import { useEngineRuntimeStore } from '../store.ts'
 
 export type PredictedSampleCountState = {
-  predictedSampleCountRef: React.RefObject<number | null>
-  lastWallTimeRef: React.RefObject<number | null>
-  isFirstFrameRef: React.RefObject<boolean>
+  predictedSampleCountRef: preact.RefObject<number | null>
+  lastWallTimeRef: preact.RefObject<number | null>
+  isFirstFrameRef: preact.RefObject<boolean>
 }
 
 export function updatePredictedSampleCount(

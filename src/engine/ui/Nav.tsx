@@ -1,4 +1,4 @@
-import { ChatCircleIcon, ChatIcon, HeartIcon, RepeatIcon, ShareIcon, ShareNetworkIcon } from '@phosphor-icons/react'
+import { ShareNetworkIcon } from '@phosphor-icons/react'
 import { useAppStore } from '../../app/store.ts'
 import { Logo } from '../../components/Logo.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
@@ -6,10 +6,9 @@ import type { TimelineWindow } from '../types.ts'
 import { PauseGradientIcon, PlayGradientIcon, StopGradientIcon } from './Icons.tsx'
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
-import { RestartButton } from './RestartButton.tsx'
 import { useLoopView } from './useLoopView.ts'
 
-function PlaybackButton({ icon, onClick }: { icon: React.ReactNode; onClick: () => void }) {
+function PlaybackButton({ icon, onClick }: { icon: preact.ComponentChildren; onClick: () => void }) {
   return (
     <button onPointerDown={onClick} className="w-10 h-8 flex items-center justify-center text-orange-600">
       {icon}
@@ -85,7 +84,7 @@ export function Nav({
   currentLoop,
   onDspError,
 }: {
-  timelineWindowRef: React.RefObject<TimelineWindow>
+  timelineWindowRef: preact.RefObject<TimelineWindow>
   currentLoop: Loop | null
   onDspError: (error: string | undefined) => void
 }) {

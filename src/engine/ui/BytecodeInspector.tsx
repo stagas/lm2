@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'preact/hooks'
 import type { LangError } from '../../lang/errors.ts'
 import { analyze } from '../../lang/pipeline.ts'
 import { useEngineDspStore, useFontStore } from '../store.ts'

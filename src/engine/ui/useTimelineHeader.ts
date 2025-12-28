@@ -1,5 +1,5 @@
 import type { EditorHeader } from 'mini-code'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'preact/hooks'
 import { MouseButtons } from 'utils/mouse-buttons'
 import { FUTURE_BARS, PAST_BARS, TIME_WINDOW_BARS } from '../../../as/assembly/constants.ts'
 import { PIANOROLL_KEY_WIDTH } from '../constants.ts'

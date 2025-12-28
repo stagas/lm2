@@ -1,5 +1,5 @@
 import { FilePlusIcon, GitBranchIcon } from '@phosphor-icons/react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LoopData } from '../../../deno/types.ts'
 import { useSessionData } from '../../app/hooks/useSessionData.ts'
 import { useAppStore } from '../../app/store.ts'
@@ -16,7 +16,7 @@ export function SidebarLoops(
     apiError,
     setApiError,
   }: {
-    scrollContainerRef: React.RefObject<HTMLDivElement | null>
+    scrollContainerRef: preact.RefObject<HTMLDivElement | null>
     apiError: string | null
     setApiError: (error: string | null) => void
   },

@@ -1,6 +1,6 @@
 import type { EditorWidget } from 'mini-code'
-import type React from 'react'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import type React from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import {
   TRIG_DATA_OFFSET,
   TRIG_ENTRY_SIZE,
@@ -209,7 +209,8 @@ export function useTrigWidget({
       TRIG_HISTORY_SIZE,
     )
     updateTrigStates(euclidStRef, nowMod, pred.sampleRate, fadeSeconds)
-  }, [showWidgets, isLive, playbackState, everies.length, ats.length, euclids.length, program1?.program.trigHistory, audioContext, globalSampleCount])
+  }, [showWidgets, isLive, playbackState, everies.length, ats.length, euclids.length, program1?.program.trigHistory,
+    audioContext, globalSampleCount])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
@@ -283,5 +284,3 @@ export function useTrigWidget({
 
   return { widgets, onBeforeDraw }
 }
-
-

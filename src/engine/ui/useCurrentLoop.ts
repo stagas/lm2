@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'preact/hooks'
 import type { LoopData } from '../../../deno/types.ts'
 import { useLoopData } from '../../app/hooks/useLoopData.ts'
 import { useSessionData } from '../../app/hooks/useSessionData.ts'

@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import {
   FUTURE_BARS,
   HISTORY_DATA_OFFSET,
@@ -57,8 +57,8 @@ type UseSequenceParams = {
   dspSource: string
   showWidgets: boolean
   isPlaying: boolean
-  frameRef: React.RefObject<Array<SeqFrame | undefined>>
-  controlStateRef: React.RefObject<Map<number, SeqControlState>>
+  frameRef: preact.RefObject<Array<SeqFrame | undefined>>
+  controlStateRef: preact.RefObject<Map<number, SeqControlState>>
   resetKey?: string | number | null
 }
 

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect } from 'preact/hooks'
 import { toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
 import {

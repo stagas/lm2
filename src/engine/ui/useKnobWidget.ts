@@ -1,6 +1,6 @@
 import type { CodeFile, EditorWidget, Theme } from 'mini-code'
-import type React from 'react'
-import { useMemo, useRef } from 'react'
+import type React from 'preact/hooks'
+import { useMemo, useRef } from 'preact/hooks'
 import { updateValueWithSpacing } from './code-number-edit.ts'
 
 export type KnobInfo = {
@@ -61,8 +61,8 @@ export class KnobWidget {
     private info: KnobInfo,
     private theme: Theme,
     private codeFile: CodeFile,
-    private dragStateRef: React.RefObject<DragState | null>,
-    private rafRef: React.RefObject<number | null>,
+    private dragStateRef: preact.RefObject<DragState | null>,
+    private rafRef: preact.RefObject<number | null>,
   ) {
     this.knobKey = `${info.line}-${info.column}`
     this.currentWidth = Math.max(8, info.length * 8)

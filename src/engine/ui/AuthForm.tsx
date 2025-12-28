@@ -1,5 +1,5 @@
 import { CircleNotchIcon } from '@phosphor-icons/react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'preact/hooks'
 import type { SessionData } from '../../../deno/types.ts'
 import type { API } from '../../app/api.ts'
 

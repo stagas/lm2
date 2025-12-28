@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'preact/hooks'
 import type { SlicerRef } from '../bytecode/bytecode.ts'
 import { detectSlices } from '../dsp/detect-slices.ts'
 import { useEngineDspStore } from '../store.ts'
