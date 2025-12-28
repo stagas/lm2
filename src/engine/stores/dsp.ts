@@ -912,8 +912,31 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const runtime = useEngineRuntimeStore.getState()
       const ui = useEngineUiStore.getState()
       const prevId = runtime.playingLoopId
-      startSample ??= ui.viewSampleCountByLoopId[loopId] ?? 0
+      startSample ??= ui.viewSampleCountByLoopId[loopId]
+      const setSampleCount = async (sample: number) => {
+        // Seek while paused/stopped so the new loop doesn't inherit the previous playhead.
+        {
+          const control = useEngineRuntimeStore.getState().control
+          const seekSampleCount = useEngineRuntimeStore.getState().seekSampleCount
+          if (control && seekSampleCount) {
+            Atomics.store(seekSampleCount, 0, startSample)
+            Atomics.store(control, 0, ControlOp.SeekImmediate)
+          }
+        }
 
+        // Wait for the worklet to publish the new playhead before "claiming" the loop as playing.
+        // This avoids a brief UI smooth from the previous loop's playhead under the new loop id.
+        {
+          const globalSampleCount = useEngineRuntimeStore.getState().globalSampleCount
+          if (globalSampleCount) {
+            for (let i = 0; i < 10; i++) {
+              const curr = Atomics.load(globalSampleCount, 0)
+              if (curr === startSample) break
+              await new Promise<void>(resolve => setTimeout(resolve, 2.5))
+            }
+          }
+        }
+      }
       // If the source has compile errors, don't start playback and don't surface it as a runtime error.
       compilePreviewTarget.ops.fill(0)
       compilePreviewTarget.literals.fill(0)
@@ -923,6 +946,10 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       // If the requested loop is already the playing loop, avoid reloading or resetting.
       if (prevId === loopId) {
         if (runtime.playbackState !== 'running') {
+          // Adjust the start sample
+          if (startSample != null) await setSampleCount(startSample)
+
+          // Start playback
           runtime.start()
         }
         return
@@ -1060,28 +1087,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
 
       await get().updateDspSource(source)
 
-      // Seek while paused/stopped so the new loop doesn't inherit the previous playhead.
-      {
-        const control = useEngineRuntimeStore.getState().control
-        const seekSampleCount = useEngineRuntimeStore.getState().seekSampleCount
-        if (control && seekSampleCount) {
-          Atomics.store(seekSampleCount, 0, startSample)
-          Atomics.store(control, 0, ControlOp.SeekImmediate)
-        }
-      }
-
-      // Wait for the worklet to publish the new playhead before "claiming" the loop as playing.
-      // This avoids a brief UI smooth from the previous loop's playhead under the new loop id.
-      {
-        const globalSampleCount = useEngineRuntimeStore.getState().globalSampleCount
-        if (globalSampleCount) {
-          for (let i = 0; i < 10; i++) {
-            const curr = Atomics.load(globalSampleCount, 0)
-            if (curr === startSample) break
-            await new Promise<void>(resolve => setTimeout(resolve, 2.5))
-          }
-        }
-      }
+      await setSampleCount(startSample)
 
       useEngineRuntimeStore.getState().setPlayingLoopId(loopId)
 

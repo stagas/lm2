@@ -22,7 +22,7 @@ export function SidebarLoops(
   },
 ) {
   const selectedLoopId = useAppStore(state => state.selectedLoopId)
-  const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
+  const [currentLoopId, setCurrentLoopId] = useState<string | null>(selectedLoopId)
   const [loops, setLoops] = useState<Loop[]>([])
   const [queuedPlay, setQueuedPlay] = useState<{ loopId: string } | null>(null)
   const scrollPosRef = useRef(0)
@@ -91,7 +91,7 @@ export function SidebarLoops(
     return other[0]?.data.id ?? null
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!hasHydrated) return
     setLoops(prev => {
       const prevById = new Map(prev.map(loop => [loop.data.id, loop]))

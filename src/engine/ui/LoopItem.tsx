@@ -146,7 +146,7 @@ export const LoopItem = ({
 
   const handlePlayClick = runWhenLoopReady<HTMLButtonElement>(async e => {
     const isRight = (e.buttons & MouseButtons.Right) !== 0
-    const isRestart = ((e.buttons & MouseButtons.Middle) !== 0) || e.ctrlKey
+    const isRestart = ((e.buttons & MouseButtons.Middle) !== 0) || (e.ctrlKey || e.metaKey)
 
     if (isRight) {
       onClick()

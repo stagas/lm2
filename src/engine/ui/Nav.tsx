@@ -1,4 +1,5 @@
 import { ShareNetworkIcon } from '@phosphor-icons/react'
+import { MouseButtons } from 'utils/mouse-buttons'
 import { useAppStore } from '../../app/store.ts'
 import { Logo } from '../../components/Logo.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
@@ -7,8 +8,12 @@ import { PauseGradientIcon, PlayGradientIcon, StopGradientIcon } from './Icons.t
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
 import { useLoopView } from './useLoopView.ts'
+import { useRestartLoop } from './useRestartLoop.tsx'
 
-function PlaybackButton({ icon, onClick }: { icon: preact.ComponentChildren; onClick: () => void }) {
+function PlaybackButton(
+  { icon, onClick }: { icon: preact.ComponentChildren;
+    onClick: (e: preact.TargetedPointerEvent<HTMLButtonElement>) => void },
+) {
   return (
     <button onPointerDown={onClick} className="w-10 h-8 flex items-center justify-center text-orange-600">
       {icon}
@@ -20,20 +25,44 @@ export function PlaybackControls({
   currentLoop,
   onDspError,
 }: { currentLoop: Loop | null; onDspError: (error: string | undefined) => void }) {
+  const playbackState = useEngineRuntimeStore(state => state.playbackState)
+  const restartLoop = useRestartLoop()
   const playLoop = useEngineDspStore(state => state.playLoop)
   const pause = useEngineRuntimeStore(state => state.pause)
+  const start = useEngineRuntimeStore(state => state.start)
   const stop = useEngineRuntimeStore(state => state.stop)
+  const setViewSampleCount = useEngineUiStore(state => state.setViewSampleCount)
+  const globalSampleCount = useEngineRuntimeStore(state => state.globalSampleCount)
 
   return (
     <div className="flex items-center justify-center mx-2">
-      <PlaybackButton icon={<PlayGradientIcon />} onClick={() => {
-        if (!currentLoop) return
-        onDspError(undefined)
-        void playLoop(currentLoop.data.id, currentLoop.codeFile.value).catch(err => {
-          onDspError(err instanceof Error ? err.message : String(err))
-        })
+      <PlaybackButton icon={<PlayGradientIcon />}
+        onClick={async (e: preact.TargetedPointerEvent<HTMLButtonElement>) => {
+          if (!currentLoop) return
+          onDspError(undefined)
+          let startSample: number | undefined
+          if ((e.buttons & MouseButtons.Middle) || (e.ctrlKey || e.metaKey)) {
+            if (playbackState === 'running') {
+              await restartLoop()
+              return
+            }
+            startSample = 0
+          }
+          void playLoop(currentLoop.data.id, currentLoop.codeFile.value, startSample).catch(err => {
+            onDspError(err instanceof Error ? err.message : String(err))
+          })
+        }} />
+      <PlaybackButton icon={<PauseGradientIcon />} onClick={() => {
+        if (playbackState === 'running') {
+          pause()
+          if (currentLoop && globalSampleCount) {
+            setViewSampleCount(currentLoop.data.id, Atomics.load(globalSampleCount, 0))
+          }
+        }
+        else {
+          start()
+        }
       }} />
-      <PlaybackButton icon={<PauseGradientIcon />} onClick={pause} />
       <PlaybackButton icon={<StopGradientIcon />} onClick={stop} />
     </div>
   )

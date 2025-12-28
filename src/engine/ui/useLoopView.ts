@@ -39,6 +39,7 @@ export function useLoopView(loopId: string | null): {
   const seekToSample = useCallback((targetSampleCount: number) => {
     if (!loopId) return
     if (isPlayingLoop) {
+      setViewSampleCount(loopId, targetSampleCount)
       seekToPlaybackSample(targetSampleCount)
       return
     }
