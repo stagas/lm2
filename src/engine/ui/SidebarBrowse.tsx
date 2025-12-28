@@ -37,6 +37,15 @@ const artistNameFromPathname = (pathname: string) => {
 const isArtistWithoutIdPath = (pathname: string) =>
   pathname === '/artist' || (pathname.startsWith('/artist/') && artistIdFromPathname(pathname) == null)
 
+const isBrowsePathname = (pathname: string) => {
+  if (pathname === '/' || pathname === '') return true
+  if (pathname === '/hot') return true
+  if (pathname === '/best') return true
+  if (pathname === '/likes') return true
+  if (pathname === '/artist' || pathname.startsWith('/artist/')) return true
+  return false
+}
+
 export function SidebarBrowse() {
   const { pathname, navigate } = useRouter()
   const sessionData = useAppStore(state => state.sessionData)
@@ -60,8 +69,14 @@ export function SidebarBrowse() {
   const refreshLikedLoops = useAppStore(state => state.refreshLikedLoops)
 
   type BrowseTab = 'new' | 'hot' | 'best' | 'liked' | 'artist'
-  const tab = useMemo(() => browseTabFromPathname(pathname) as BrowseTab, [pathname])
-  const routeArtistId = useMemo(() => artistIdFromPathname(pathname), [pathname])
+  const [browsePathname, setBrowsePathname] = useState(() => (isBrowsePathname(pathname) ? pathname : '/'))
+  useEffect(() => {
+    if (!isBrowsePathname(pathname)) return
+    setBrowsePathname(prev => (prev === pathname ? prev : pathname))
+  }, [pathname])
+
+  const tab = useMemo(() => browseTabFromPathname(browsePathname) as BrowseTab, [browsePathname])
+  const routeArtistId = useMemo(() => artistIdFromPathname(browsePathname), [browsePathname])
   const [isNewLoading, setIsNewLoading] = useState(false)
   const [isArtistLoading, setIsArtistLoading] = useState(false)
   const [isHotLoading, setIsHotLoading] = useState(false)
@@ -95,12 +110,11 @@ export function SidebarBrowse() {
   }, [navigate, pathname, sessionData, sessionFetchState])
 
   useEffect(() => {
-    if (tab !== 'artist') return
-    if (routeArtistId) return
+    if (pathname !== '/artist') return
     const ownId = sessionData?.user.id
     if (!ownId) return
     navigate(`/artist/${ownId}/${toSlug(sessionData?.user.name ?? '')}`, { replace: true })
-  }, [navigate, routeArtistId, sessionData?.user.id, tab])
+  }, [navigate, pathname, sessionData?.user.id, sessionData?.user.name])
 
   useEffect(() => {
     if (tab !== 'new') return
@@ -215,9 +229,9 @@ export function SidebarBrowse() {
       byId.set(loop.id, loop)
     }
     const loops = Array.from(byId.values()).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
-    const artistName = (loops[0]?.artist ?? artistNameFromPathname(pathname)) || artistId
+    const artistName = (loops[0]?.artist ?? artistNameFromPathname(browsePathname)) || artistId
     return { artistId, artistName, loops }
-  }, [bestLoops, hotLoops, likedLoops, pathname, publicLoops, routeArtistId, sessionData, tab])
+  }, [bestLoops, browsePathname, hotLoops, likedLoops, publicLoops, routeArtistId, sessionData, tab])
 
   const content = useMemo(() => {
     if (tab === 'new') {
