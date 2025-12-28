@@ -210,12 +210,14 @@ function BrowseItem(
     canLike,
     onToggleLike,
     userId,
+    hideArtist = false,
   }: {
     loop: LoopData
     isLiked: boolean
     canLike: boolean
     onToggleLike: () => void
     userId: string | null
+    hideArtist?: boolean
   },
 ) {
   const { navigate } = useRouter()
@@ -292,6 +294,7 @@ function BrowseItem(
     }
 
     if (isRestart) {
+      handleOpen()
       if (isActive) {
         void restartLoop()
         if (playbackState !== 'running') {
@@ -314,6 +317,7 @@ function BrowseItem(
 
     if (isActive && playbackState === 'running') {
       pause()
+      handleOpen()
       return
     }
 
@@ -321,6 +325,7 @@ function BrowseItem(
       setSelectedLoopId(loop.id)
       const code = await getPublicLoopCode(loop.id)
       await playLoop(loop.id, code)
+      handleOpen()
     })()
   }
 
@@ -373,7 +378,7 @@ function BrowseItem(
       <div
         data-loop-id={loop.id}
         className={`flex flex-row px-3 py-2 border-b border-neutral-700 gap-2 justify-between select-none cursor-pointer
-          bg-gradient-to-b ${isSelected ? 'from-neutral-700 to-black' : 'from-black to-neutral-900'}
+          bg-gradient-to-b ${isSelected ? 'from-neutral-700 to-neutral-900' : 'from-black to-neutral-900'}
           hover:to-neutral-800
         `}
         onPointerDown={handleOpen}
@@ -382,15 +387,22 @@ function BrowseItem(
           <div className="flex flex-row gap-2">
             <div className="flex flex-col w-full">
               <span className="text-sm">
-                <span className="cursor-pointer hover:text-orange-500" onPointerDown={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  navigate(`/artist/${loop.artistId}/${toSlug(loop.artist)}`)
-                }}>
-                  {loop.artist}
-                </span>{' '}
+                {!hideArtist && (
+                  <>
+                    <span className="cursor-pointer hover:text-orange-500" onPointerDown={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      navigate(`/artist/${loop.artistId}/${toSlug(loop.artist)}`)
+                    }}>
+                      {loop.artist}
+                    </span>{' '}
+                    <span className="cursor-pointer hover:text-orange-500" onClick={handleOpen}>
+                      -{' '}
+                    </span>
+                  </>
+                )}
                 <span className="cursor-pointer hover:text-orange-500" onClick={handleOpen}>
-                  - {loop.title}
+                  {loop.title}
                 </span>
               </span>
               {remixOf && (
@@ -510,7 +522,8 @@ function BrowseItem(
 }
 
 export function SidebarBrowseList(
-  { loops, emptyLabel, isLoading }: { loops: LoopData[]; emptyLabel: string; isLoading?: boolean },
+  { loops, emptyLabel, isLoading, hideArtist = false }: { loops: LoopData[]; emptyLabel: string; isLoading?: boolean;
+    hideArtist?: boolean },
 ) {
   const sessionData = useAppStore(state => state.sessionData)
   const toggleLike = useAppStore(state => state.toggleLike)
@@ -604,6 +617,7 @@ export function SidebarBrowseList(
           isLiked={likedIds.has(loop.id)}
           canLike={userId != null && loop.artistId !== userId}
           userId={userId}
+          hideArtist={hideArtist}
           onToggleLike={() => void toggleLike(loop.id)}
         />
       ))}

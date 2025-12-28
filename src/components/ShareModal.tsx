@@ -1,3 +1,4 @@
+import { ShareNetworkIcon } from '@phosphor-icons/react'
 import { useState } from 'preact/hooks'
 import { SocialIcon } from 'react-social-icons'
 import { Modal } from './Modal.tsx'
@@ -63,7 +64,12 @@ export function ShareModal({ isOpen, onClose, trackUrl, trackTitle, userName }: 
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Share Loop"
+      title={
+        <div className="flex items-center gap-4 font-[Turret_Road] font-extrabold text-2xl">
+          <ShareNetworkIcon weight="light" size={24} className="relative -top-[1.5px]" />
+          <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent">Share Loop</span>
+        </div>
+      }
       width="max-w-md w-full"
       maxWidth="max-w-md"
       className="mx-4"

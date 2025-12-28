@@ -2,6 +2,8 @@ import { FireSimpleIcon, HeartIcon, StarIcon, TimerIcon, UserIcon } from '@phosp
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
+import { RadialGradient } from '../../components/RadialGradient.tsx'
+import { SpinnerSmall } from '../../components/Spinner.tsx'
 import { AuthForm } from './AuthForm.tsx'
 import { useRouter } from './router.tsx'
 import { SidebarBrowseList } from './SidebarBrowseList.tsx'
@@ -21,6 +23,15 @@ const artistIdFromPathname = (pathname: string) => {
   const rest = pathname.slice('/artist/'.length)
   const id = rest.split('/')[0] || ''
   return id.length > 0 ? id : null
+}
+
+const artistNameFromPathname = (pathname: string) => {
+  if (!pathname.startsWith('/artist/')) return ''
+  const rest = pathname.slice('/artist/'.length)
+  const slug = rest.split('/')[1] || ''
+  const raw = decodeURIComponent(slug).trim()
+  if (!raw) return ''
+  return raw.replaceAll('-', ' ')
 }
 
 const isArtistWithoutIdPath = (pathname: string) =>
@@ -51,7 +62,8 @@ export function SidebarBrowse() {
   type BrowseTab = 'new' | 'hot' | 'best' | 'liked' | 'artist'
   const tab = useMemo(() => browseTabFromPathname(pathname) as BrowseTab, [pathname])
   const routeArtistId = useMemo(() => artistIdFromPathname(pathname), [pathname])
-  const [isLoading, setIsLoading] = useState(false)
+  const [isNewLoading, setIsNewLoading] = useState(false)
+  const [isArtistLoading, setIsArtistLoading] = useState(false)
   const [isHotLoading, setIsHotLoading] = useState(false)
   const [isBestLoading, setIsBestLoading] = useState(false)
   const [isLikedLoading, setIsLikedLoading] = useState(false)
@@ -93,9 +105,25 @@ export function SidebarBrowse() {
   useEffect(() => {
     if (tab !== 'new') return
     if (hasFetchedPublicLoops && !isPublicLoopsCacheStale) return
-    setIsLoading(true)
-    void refreshPublicLoops().finally(() => setIsLoading(false))
+    setIsNewLoading(true)
+    void refreshPublicLoops().finally(() => setIsNewLoading(false))
   }, [hasFetchedPublicLoops, isPublicLoopsCacheStale, refreshPublicLoops, tab])
+
+  useEffect(() => {
+    if (tab !== 'artist') return
+    if (!routeArtistId) return
+    if (sessionData?.user.id && routeArtistId === sessionData.user.id) return
+    if (hasFetchedPublicLoops && !isPublicLoopsCacheStale) return
+    setIsArtistLoading(true)
+    void refreshPublicLoops().finally(() => setIsArtistLoading(false))
+  }, [
+    hasFetchedPublicLoops,
+    isPublicLoopsCacheStale,
+    refreshPublicLoops,
+    routeArtistId,
+    sessionData?.user.id,
+    tab,
+  ])
 
   useEffect(() => {
     if (tab !== 'hot') return
@@ -169,7 +197,15 @@ export function SidebarBrowse() {
     if (!artistId) return { artistId: null, artistName: '', loops: [] as LoopData[] }
 
     if (sessionData?.user.id && artistId === sessionData.user.id) {
-      const loops = (sessionData.loops ?? []).slice().sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+      const loops = (sessionData.loops ?? []).map(loop => {
+        // Merge with public loop metadata for likes/comments counts
+        const publicLoop = [...publicLoops, ...hotLoops, ...bestLoops, ...likedLoops]
+          .find(l => l.id === loop.id)
+        if (publicLoop) {
+          return { ...loop, likesCount: publicLoop.likesCount, commentsCount: publicLoop.commentsCount }
+        }
+        return loop
+      }).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
       return { artistId, artistName: sessionData.user.name, loops }
     }
 
@@ -179,14 +215,14 @@ export function SidebarBrowse() {
       byId.set(loop.id, loop)
     }
     const loops = Array.from(byId.values()).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
-    const artistName = loops[0]?.artist ?? artistId
+    const artistName = (loops[0]?.artist ?? artistNameFromPathname(pathname)) || artistId
     return { artistId, artistName, loops }
-  }, [bestLoops, hotLoops, likedLoops, publicLoops, routeArtistId, sessionData, tab])
+  }, [bestLoops, hotLoops, likedLoops, pathname, publicLoops, routeArtistId, sessionData, tab])
 
   const content = useMemo(() => {
     if (tab === 'new') {
-      const loops = isLoading && !hasFetchedPublicLoops ? [] : publicLoops
-      return <SidebarBrowseList loops={loops} emptyLabel="No new loops yet." isLoading={isLoading} />
+      const loops = isNewLoading && !hasFetchedPublicLoops ? [] : publicLoops
+      return <SidebarBrowseList loops={loops} emptyLabel="No new loops yet." isLoading={isNewLoading} />
     }
     if (tab === 'hot') {
       return <SidebarBrowseList loops={hotLoops} emptyLabel="No hot loops yet." isLoading={isHotLoading} />
@@ -197,6 +233,7 @@ export function SidebarBrowse() {
     if (tab === 'artist') {
       const artistName = artistView?.artistName ?? ''
       const loops = artistView?.loops ?? []
+      const showSpinner = loops.length === 0 && (isArtistLoading || !hasFetchedPublicLoops)
       if (!artistName && !sessionData) {
         return (
           <div className="p-3 flex flex-col gap-2 border-b border-neutral-800">
@@ -205,15 +242,25 @@ export function SidebarBrowse() {
         )
       }
       return (
-        <div className="flex flex-col">
-          <div className="p-3 flex flex-col gap-1 border-b border-neutral-800">
-            <div className="flex flex-col items-start font-[Turret_Road] font-bold">
-              <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-2xl">
-                {artistName}
-              </span>
-            </div>
-          </div>
-          <SidebarBrowseList loops={loops} emptyLabel="No loops yet." />
+        <div className="flex flex-col h-full">
+          {showSpinner
+            ? (
+              <div className="flex flex-1 w-full h-full items-center justify-center">
+                <RadialGradient>
+                  <SpinnerSmall />
+                </RadialGradient>
+              </div>
+            )
+            : (
+              <div className="p-3 flex flex-col gap-1 border-b border-neutral-800">
+                <div className="flex flex-col items-start font-[Turret_Road] font-bold">
+                  <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-2xl">
+                    {artistName}
+                  </span>
+                </div>
+              </div>
+            )}
+          <SidebarBrowseList loops={loops} emptyLabel={showSpinner ? '' : 'No loops yet.'} hideArtist={true} />
         </div>
       )
     }
@@ -231,10 +278,11 @@ export function SidebarBrowse() {
     artistView,
     bestLoops,
     hasFetchedPublicLoops,
+    isArtistLoading,
     isBestLoading,
     isHotLoading,
     isLikedLoading,
-    isLoading,
+    isNewLoading,
     likedLoops,
     likedViewLoops,
     hotLoops,

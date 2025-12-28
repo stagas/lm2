@@ -44,8 +44,15 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
     const isPublicLoop = publicLoopsCache.some(l => l.id === loopId) || likedLoopsCache.some(l => l.id === loopId)
     const fetchKey = `${loopId}:${isPublicLoop ? 'public' : 'private'}`
     if (isPublicLoop) {
-      if (base != null || currentLoop?.data.code != null) {
-        didFetchKeyRef.current = fetchKey
+      const meta = publicLoopsCache.find(l => l.id === loopId) ?? likedLoopsCache.find(l => l.id === loopId)
+      const needsMeta = meta?.artistId === 'unknown'
+      const hasCode = base != null || currentLoop?.data.code != null
+
+      if (hasCode) {
+        if (didFetchKeyRef.current !== fetchKey) {
+          didFetchKeyRef.current = fetchKey
+          if (needsMeta) void getPublicLoopCode(loopId)
+        }
         setLoopData(null)
         setIsLoading(false)
         return
@@ -55,7 +62,11 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
 
       const fetch = async () => {
         const code = await getPublicLoopCode(loopId)
-        setLoopBase(loopId, code, currentLoop?.data.timestamp)
+        const state = useAppStore.getState()
+        const ts = state.publicLoopsCache.find(l => l.id === loopId)?.timestamp
+          ?? state.likedLoopsCache.find(l => l.id === loopId)?.timestamp
+          ?? currentLoop?.data.timestamp
+        setLoopBase(loopId, code, ts)
         const codeFile = getCodeFile(loopId, code)
         if (codeFile.value.length === 0 && code.length > 0) {
           codeFile.value = code

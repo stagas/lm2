@@ -1,10 +1,11 @@
+import { XIcon } from '@phosphor-icons/react'
 import { createPortal } from 'preact/compat'
 import { useEffect } from 'preact/hooks'
 
 interface ModalProps {
   isOpen: boolean
   onClose: () => void
-  title?: string
+  title?: preact.ComponentChildren
   width?: string
   maxWidth?: string
   className?: string
@@ -25,7 +26,8 @@ export function Modal({
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden'
-    } else {
+    }
+    else {
       document.body.style.overflow = ''
     }
 
@@ -58,7 +60,7 @@ export function Modal({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
       <div
-        className={`bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl ${width} ${maxWidth} ${className}`}
+        className={`bg-neutral-900 border border-[#333] shadow-xl ${width} ${maxWidth} ${className}`}
         onClick={handleBackdropClick}
       >
         {title && (
@@ -69,7 +71,7 @@ export function Modal({
               className="text-[#888] hover:text-white text-2xl leading-none"
               aria-label="Close modal"
             >
-              ×
+              <XIcon weight="light" size={24} />
             </button>
           </div>
         )}
@@ -78,6 +80,6 @@ export function Modal({
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   )
 }

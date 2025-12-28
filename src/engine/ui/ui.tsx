@@ -7,14 +7,16 @@ import { useEngine } from '../dsp/program.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { DspSourceEditor } from './DspSourceEditor.tsx'
 import { Nav } from './Nav.tsx'
-import { RouterProvider } from './router.tsx'
+import { RouterProvider, useRouter } from './router.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import { useCurrentLoop } from './useCurrentLoop.ts'
+import { useFontsLoaded } from './useFontsLoaded.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
-import { useRouter } from './router.tsx'
 
-function Intro({ isFadingOut = false, isFadingIn = true }: { isFadingOut?: boolean; isFadingIn?: boolean }) {
+function Intro(
+  { isFadingOut = false, isFadingIn = true }: { isFadingOut?: boolean; isFadingIn?: boolean },
+) {
   return (
     <div
       className={`z-50 fixed inset-0 w-[100dvw] h-[100dvh] transition-opacity duration-[1000ms] ease-in-out ${
@@ -24,22 +26,28 @@ function Intro({ isFadingOut = false, isFadingIn = true }: { isFadingOut?: boole
       }`}
     >
       <div className="w-full h-full bg-black flex items-center justify-center">
-        <RadialGradient>
-          <div
-            className={`flex w-full h-full items-center justify-center transition-all ease-in-out ${
-              isFadingOut
-                ? 'duration-[1000ms] scale-y-[1.15] scale-x-[1.25] -translate-y-2.5'
-                : isFadingIn && !isFadingOut
-                ? 'duration-[700ms] opacity-0 scale-y-[1.025] scale-x-[1.1] translate-y-1.5'
-                : 'duration-[700ms] opacity-100 scale-100 translate-0'
-            }`}
-          >
-            <div className="absolute w-full h-full inset-0 z-10 flex flex-col gap-1 items-center justify-center">
-              <Logo size="3.5em" text="loopmaster" />
-              <SpinnerLarge />
+        <div
+          className={`w-full h-full transition-opacity duration-[800ms] ease-in-out ${
+            isFadingIn ? 'opacity-0' : 'opacity-100'
+          }`}
+        >
+          <RadialGradient>
+            <div
+              className={`flex w-full h-full items-center justify-center transition-all ease-in-out ${
+                isFadingOut
+                  ? 'duration-[1000ms] scale-y-[1.15] scale-x-[1.25] -translate-y-2.5'
+                  : isFadingIn && !isFadingOut
+                  ? 'duration-[700ms] opacity-0 scale-y-[1.025] scale-x-[1.1] translate-y-1'
+                  : 'duration-[700ms] opacity-100 scale-100 translate-0'
+              }`}
+            >
+              <div className="absolute w-full h-full inset-0 z-10 flex flex-col gap-1 items-center justify-center">
+                <Logo size="3.5em" text="loopmaster" />
+                <SpinnerLarge />
+              </div>
             </div>
-          </div>
-        </RadialGradient>
+          </RadialGradient>
+        </div>
       </div>
     </div>
   )
@@ -89,7 +97,7 @@ function RouterContent({
 
   return (
     <>
-      {showIntro && <Intro key="intro" isFadingIn={isFadingIn} isFadingOut={isFadingOut} />}
+      {showIntro && <Intro isFadingIn={isFadingIn} isFadingOut={isFadingOut} />}
       <div className="flex flex-col">
         <Nav
           timelineWindowRef={timelineWindowRef}
@@ -119,6 +127,7 @@ export function EngineUI() {
   const preloadSamples = useEngineDspStore(state => state.preloadSamples)
   const currentLoop = useCurrentLoop()
   const isEditorBusy = useIsEditorBusy()
+  const fontsLoaded = useFontsLoaded()
 
   const routeLoopId = useMemo(() => {
     const pathname = window.location.pathname || '/'
@@ -142,11 +151,12 @@ export function EngineUI() {
   const { timelineHeader, timelineWindowRef } = useTimelineHeader(currentLoop?.data.id ?? null)
 
   useEffect(() => {
+    if (!fontsLoaded) return
+    animationIntroTimeRef.current = performance.now()
     requestAnimationFrame(() => {
-      animationIntroTimeRef.current = performance.now()
       setIsFadingIn(false)
     })
-  }, [])
+  }, [fontsLoaded])
 
   const didPreloadRef = useRef<{ loopId: string | null; hadCode: boolean }>({ loopId: null, hadCode: false })
 
@@ -203,10 +213,6 @@ export function EngineUI() {
     })()
     return () => window.clearTimeout(t1)
   }, [shouldWait, showIntro])
-
-  if (!isInitialized && showIntro) {
-    return <Intro key="intro" isFadingIn={isFadingIn} isFadingOut={isFadingOut} />
-  }
 
   return (
     <RouterProvider>
