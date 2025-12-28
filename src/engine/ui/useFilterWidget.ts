@@ -454,17 +454,17 @@ export function useFilterWidget({
       : `${cutoff.toFixed(0)}Hz`
 
     if (ref.filterType === 'peak') {
-      c.fillText(`cutoff ${cutTxt}`, 6, chartH - 20)
-      c.fillText(`gain ${gain >= 0 ? '+' : ''}${gain.toFixed(1)}dB`, 6, chartH - 10)
-      c.fillText(`q ${q.toFixed(3)}`, 6, chartH)
+      c.fillText(`c:${cutTxt}`, 6, chartH - 20)
+      c.fillText(`q:${q.toFixed(3)}`, 6, chartH - 10)
+      c.fillText(`g:${gain >= 0 ? '+' : ''}${gain.toFixed(1)}dB`, 6, chartH)
     }
     else if (ref.filterType === 'ls' || ref.filterType === 'hs') {
-      c.fillText(`cutoff ${cutTxt}`, 6, chartH - 10)
-      c.fillText(`gain ${gain >= 0 ? '+' : ''}${gain.toFixed(1)}dB`, 6, chartH)
+      c.fillText(`c:${cutTxt}`, 6, chartH - 10)
+      c.fillText(`g:${gain >= 0 ? '+' : ''}${gain.toFixed(1)}dB`, 6, chartH)
     }
     else {
-      c.fillText(`cutoff ${cutTxt}`, 6, chartH - 10)
-      c.fillText(`q ${q.toFixed(3)}`, 6, chartH)
+      c.fillText(`c:${cutTxt}`, 6, chartH - 10)
+      c.fillText(`q:${q.toFixed(3)}`, 6, chartH)
     }
 
     c.restore()
