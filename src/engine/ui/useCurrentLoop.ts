@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'preact/hooks'
 import type { LoopData } from '../../../deno/types.ts'
 import { useLoopData } from '../../app/hooks/useLoopData.ts'
 import { useSessionData } from '../../app/hooks/useSessionData.ts'
@@ -24,6 +24,35 @@ export function useCurrentLoop(): Loop | null {
   const selectedLoopId = useAppStore(state => state.selectedLoopId)
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const getCodeFile = useAppStore(state => state.getCodeFile)
+  const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
+  const upsertPublicLoopCache = useAppStore(state => state.upsertPublicLoopCache)
+
+  // When landing on /loop/<id>, prefer that loop immediately (before picking defaults).
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return
+    const pathname = window.location.pathname || '/'
+    const match = pathname.match(/^\/loop\/([^/]+)$/)
+    const id = match ? match[1] : null
+    if (!id) return
+
+    // Ensure the loop exists in the browse caches early so `currentLoop` can materialize immediately.
+    // Code will be fetched via `useLoopData` once the loop is recognized as public.
+    upsertPublicLoopCache({
+      id,
+      title: 'Loading…',
+      artist: 'Unknown',
+      artistId: 'unknown',
+      code: undefined,
+      likesCount: 0,
+      commentsCount: 0,
+      remixesCount: 0,
+      isPublic: true,
+      timestamp: 0,
+    })
+
+    if (selectedLoopId === id) return
+    setSelectedLoopId(id)
+  }, [selectedLoopId, setSelectedLoopId, upsertPublicLoopCache])
 
   const serverLoops = useMemo(() => {
     if (sessionData) return sessionData.loops
@@ -63,6 +92,7 @@ export function useCurrentLoop(): Loop | null {
   useEffect(() => {
     if (isSessionLoading) return
     if (!hasHydrated) return
+    if (useAppStore.getState().selectedLoopId != null) return
     if (didEnsureInitialLoopRef.current) return
     if (localLoops.length > 0) return
     if (serverLoops.length > 0) return
@@ -105,6 +135,56 @@ export function useCurrentLoop(): Loop | null {
     const first = localLoops[0]?.id ?? serverLoops[0]?.id ?? null
     if (first) setSelectedLoopId(first)
   }, [hasHydrated, localLoops, selectedLoopId, serverLoops, setSelectedLoopId])
+
+  // Fetch loop data if selectedLoopId is set but not found in any cache
+  useEffect(() => {
+    if (!selectedLoopId) return
+    if (!hasHydrated) return
+
+    // Check if loop already exists in any cache
+    const existsInLocal = localLoops.some(l => l.id === selectedLoopId)
+    const existsInServer = serverLoops.some(l => l.id === selectedLoopId)
+    const existsInBrowse = browseLoops.some(l => l.id === selectedLoopId)
+
+    if (existsInLocal || existsInServer || existsInBrowse) return
+
+    // If not found, try to fetch as public loop
+    const fetchLoop = async () => {
+      try {
+        const code = await getPublicLoopCode(selectedLoopId)
+        // If we get code, it means the loop exists and was fetched
+        // The getPublicLoopCode function should populate the cache
+      } catch (error) {
+        console.warn(`Failed to fetch loop ${selectedLoopId}:`, error)
+        // If the loop doesn't exist, create a placeholder local loop
+        // so the user can still work with it
+        const placeholderLoop: LoopData = {
+          id: selectedLoopId,
+          title: 'Loading...',
+          artist: 'Unknown',
+          artistId: 'unknown',
+          code: '',
+          likesCount: 0,
+          commentsCount: 0,
+          remixesCount: 0,
+          isPublic: false,
+          timestamp: 0,
+        }
+        addLocalLoop(placeholderLoop)
+      }
+    }
+
+    fetchLoop()
+  }, [
+    selectedLoopId,
+    hasHydrated,
+    isSessionLoading,
+    localLoops,
+    serverLoops,
+    browseLoops,
+    getPublicLoopCode,
+    addLocalLoop,
+  ])
 
   const baseLoopData = useMemo((): LoopData | null => {
     if (!selectedLoopId) return null

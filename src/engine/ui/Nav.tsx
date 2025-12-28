@@ -1,7 +1,9 @@
 import { ShareNetworkIcon } from '@phosphor-icons/react'
+import { useState } from 'preact/hooks'
 import { MouseButtons } from 'utils/mouse-buttons'
 import { useAppStore } from '../../app/store.ts'
 import { Logo } from '../../components/Logo.tsx'
+import { ShareModal } from '../../components/ShareModal.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
 import { PauseGradientIcon, PlayGradientIcon, StopGradientIcon } from './Icons.tsx'
@@ -71,6 +73,7 @@ export function PlaybackControls({
 function LoopTitle(
   { loop }: { loop: Loop | null },
 ) {
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const loopData = loop?.data
   const title = loopData?.title ?? ''
   const artist = loopData?.artist ?? ''
@@ -87,24 +90,44 @@ function LoopTitle(
   const likesCount = loopData?.likesCount ?? 0
   const commentsCount = loopData?.commentsCount ?? 0
   const remixesCount = loopData?.remixesCount ?? 0
+
+  const trackUrl = loopData ? `${window.location.origin}/loop/${loopData.id}` : ''
+  const trackTitle = title
+  const userName = artist
+
   return (
-    <div className="whitespace-nowrap text-2xl mr-4 pl-4 h-full flex items-center justify-center">
-      <div className="flex flex-col items-end font-[Turret_Road] font-bold">
-        <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent">
-          {artist} - {title}
-        </span>
-        {remixOf && (
-          <span className="-mt-1 bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-sm">
-            remix of: {remixOf.artist} - {remixOf.title}
+    <>
+      <div className="whitespace-nowrap text-2xl mr-4 pl-4 h-full flex items-center justify-center">
+        <div className="flex flex-col items-end font-[Turret_Road] font-bold">
+          <span className="bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent">
+            {artist} - {title}
           </span>
+          {remixOf && (
+            <span className="-mt-1 bg-gradient-to-br from-orange-400 to-red-600 bg-clip-text text-transparent text-sm">
+              remix of: {remixOf.artist} - {remixOf.title}
+            </span>
+          )}
+        </div>
+        {loop && !loop.isNew && loop.data.isPublic && (
+          <div className="flex flex-col items-center ml-2.5 -mr-0.5">
+            <button
+              title="Share"
+              className="text-neutral-500 hover:text-white cursor-pointer"
+              onClick={() => setIsShareModalOpen(true)}
+            >
+              <ShareNetworkIcon weight="light" size={24} />
+            </button>
+          </div>
         )}
       </div>
-      <div className="flex flex-col items-center ml-2.5 -mr-0.5">
-        <button title="Share" className="text-neutral-500 hover:text-white cursor-pointer">
-          <ShareNetworkIcon weight="light" size={24} />
-        </button>
-      </div>
-    </div>
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        trackUrl={trackUrl}
+        trackTitle={trackTitle}
+        userName={userName}
+      />
+    </>
   )
 }
 

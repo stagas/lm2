@@ -16,7 +16,7 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   const [isLoading, setIsLoading] = useState(false)
   const setLoopLoading = useAppStore(state => state.setLoopLoading)
   const upsertServerLoopCache = useAppStore(state => state.upsertServerLoopCache)
-  const didFetchIdRef = useRef<string | null>(null)
+  const didFetchKeyRef = useRef<string | null>(null)
   const loopLoadingReqRef = useRef(0)
 
   const withLoading = useCallback((fn: () => Promise<void>) => {
@@ -27,14 +27,14 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   useEffect(() => {
     loopLoadingReqRef.current++
     if (loopId == null) {
-      didFetchIdRef.current = null
+      didFetchKeyRef.current = null
       setLoopData(null)
       setIsLoading(false)
       setLoopLoading(false)
       return
     }
     if (isLocalId(loopId)) {
-      didFetchIdRef.current = loopId
+      didFetchKeyRef.current = `${loopId}:local`
       setLoopData(null)
       setIsLoading(false)
       setLoopLoading(false)
@@ -42,15 +42,16 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
     }
 
     const isPublicLoop = publicLoopsCache.some(l => l.id === loopId) || likedLoopsCache.some(l => l.id === loopId)
+    const fetchKey = `${loopId}:${isPublicLoop ? 'public' : 'private'}`
     if (isPublicLoop) {
       if (base != null || currentLoop?.data.code != null) {
-        didFetchIdRef.current = loopId
+        didFetchKeyRef.current = fetchKey
         setLoopData(null)
         setIsLoading(false)
         return
       }
-      if (didFetchIdRef.current === loopId) return
-      didFetchIdRef.current = loopId
+      if (didFetchKeyRef.current === fetchKey) return
+      didFetchKeyRef.current = fetchKey
 
       const fetch = async () => {
         const code = await getPublicLoopCode(loopId)
@@ -66,13 +67,13 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
     }
 
     if (base != null || currentLoop?.data.code != null) {
-      didFetchIdRef.current = loopId
+      didFetchKeyRef.current = fetchKey
       setLoopData(null)
       setIsLoading(false)
       return
     }
-    if (didFetchIdRef.current === loopId) return
-    didFetchIdRef.current = loopId
+    if (didFetchKeyRef.current === fetchKey) return
+    didFetchKeyRef.current = fetchKey
 
     const fetch = async () => {
       const data = await api.fetchLoopData(loopId)
@@ -98,10 +99,14 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
 
   useEffect(() => {
     const req = ++loopLoadingReqRef.current
+    if (isLoading) {
+      setLoopLoading(true)
+      return
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (loopLoadingReqRef.current !== req) return
-        setLoopLoading(isLoading)
+        setLoopLoading(false)
       })
     })
   }, [isLoading, setLoopLoading])

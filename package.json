@@ -29,6 +29,7 @@
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "preact": "^10.28.1",
+    "react-social-icons": "^6.25.0",
     "zod": "^3.25.76",
     "zustand": "^5.0.9"
   }
