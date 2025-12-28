@@ -482,7 +482,7 @@ export function useFilterWidget({
         line: ref.aboveLoc.line,
         column: ref.aboveLoc.column,
         length: Math.max(1, ref.aboveLoc.length),
-        height: 56,
+        height: 40,
         render: (ctx, x, y, w, h, _vx, _vw) => {
           drawFilter(ctx, ref, y, h, x, w)
         },

@@ -318,13 +318,11 @@ function collectLpNumberLiterals(src: string, program: Program): NumberWithParam
     if (expr.kind === 'call') {
       const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
       const filterType = getFilterType(calleeName)
-      if (filterType === 'lp') {
-        // For lp() calls, collect all top-level number literals
-        for (const a of expr.args ?? []) {
-          if (!a) continue
-          if (a.kind === 'pos' || a.kind === 'named') {
-            collectNumbersFromExpr(a.value)
-          }
+      if (filterType) {
+        // Collect number literals from the 2nd parameter (cutoff) of filter calls
+        const secondArg = expr.args?.[1]
+        if (secondArg && (secondArg.kind === 'pos' || secondArg.kind === 'named')) {
+          collectNumbersFromExpr(secondArg.value)
         }
       }
 
