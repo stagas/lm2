@@ -471,16 +471,16 @@ export function encodeLangToVmOps(
     return idx
   }
 
-  const MAX_LP_INDEX = 63
-  const clampLpIndex = (n: number) => Math.max(0, Math.min(MAX_LP_INDEX, Math.floor(Number(n || 0))))
-  const usedLpIndices = new Set<number>([0])
-  let nextLpIndex = 1
-  const allocLpIndex = (): number => {
-    if (nextLpIndex > MAX_LP_INDEX) return MAX_LP_INDEX
-    while (usedLpIndices.has(nextLpIndex) && nextLpIndex < MAX_LP_INDEX) nextLpIndex++
-    const idx = nextLpIndex
-    usedLpIndices.add(idx)
-    nextLpIndex = Math.min(MAX_LP_INDEX, idx + 1)
+  const MAX_FILTER_INDEX = 63
+  const clampFilterIndex = (n: number) => Math.max(0, Math.min(MAX_FILTER_INDEX, Math.floor(Number(n || 0))))
+  const usedFilterIndices = new Set<number>([0])
+  let nextFilterIndex = 1
+  const allocFilterIndex = (): number => {
+    if (nextFilterIndex > MAX_FILTER_INDEX) return MAX_FILTER_INDEX
+    while (usedFilterIndices.has(nextFilterIndex) && nextFilterIndex < MAX_FILTER_INDEX) nextFilterIndex++
+    const idx = nextFilterIndex
+    usedFilterIndices.add(idx)
+    nextFilterIndex = Math.min(MAX_FILTER_INDEX, idx + 1)
     return idx
   }
 
@@ -619,7 +619,14 @@ export function encodeLangToVmOps(
       const isTimeline = calleeName === 'timeline'
       const isAnalyser = calleeName === 'analyser'
       const isCompressor = calleeName === 'compressor'
-      const isLp = calleeName === 'lp'
+      const isFilter = calleeName === 'lp'
+        || calleeName === 'hp'
+        || calleeName === 'bp'
+        || calleeName === 'bs'
+        || calleeName === 'ls'
+        || calleeName === 'hs'
+        || calleeName === 'peak'
+        || calleeName === 'ap'
       const isLfo = calleeName === 'lfosine'
         || calleeName === 'lfotri'
         || calleeName === 'lfosaw'
@@ -685,19 +692,19 @@ export function encodeLangToVmOps(
         }
       }
 
-      if (isLp) {
+      if (isFilter) {
         const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
         const idxVal = namedIndexArg?.value
 
         if (idxVal?.kind === 'number') {
-          const idx = clampLpIndex(Number(idxVal.value ?? 0))
-          usedLpIndices.add(idx)
+          const idx = clampFilterIndex(Number(idxVal.value ?? 0))
+          usedFilterIndices.add(idx)
           namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
           return { ...expr, callee, args }
         }
 
         if (!namedIndexArg) {
-          const idx = allocLpIndex()
+          const idx = allocFilterIndex()
           return {
             ...expr,
             callee,

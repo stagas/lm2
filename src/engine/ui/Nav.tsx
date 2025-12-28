@@ -28,6 +28,7 @@ export function PlaybackControls({
   onDspError,
 }: { currentLoop: Loop | null; onDspError: (error: string | undefined) => void }) {
   const playbackState = useEngineRuntimeStore(state => state.playbackState)
+  const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
   const restartLoop = useRestartLoop()
   const playLoop = useEngineDspStore(state => state.playLoop)
   const pause = useEngineRuntimeStore(state => state.pause)
@@ -43,16 +44,23 @@ export function PlaybackControls({
           if (!currentLoop) return
           onDspError(undefined)
           let startSample: number | undefined
+          let isRestart = false
           if ((e.buttons & MouseButtons.Middle) || (e.ctrlKey || e.metaKey)) {
             if (playbackState === 'running') {
               await restartLoop()
               return
             }
             startSample = 0
+            isRestart = true
           }
-          void playLoop(currentLoop.data.id, currentLoop.codeFile.value, startSample).catch(err => {
-            onDspError(err instanceof Error ? err.message : String(err))
-          })
+          if (!isRestart && playingLoopId === currentLoop.data.id && playbackState !== 'running') {
+            start()
+          }
+          else {
+            void playLoop(currentLoop.data.id, currentLoop.codeFile.value, startSample).catch(err => {
+              onDspError(err instanceof Error ? err.message : String(err))
+            })
+          }
         }} />
       <PlaybackButton icon={<PauseGradientIcon />} onClick={() => {
         if (playbackState === 'running') {
