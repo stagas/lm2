@@ -115,6 +115,12 @@ export enum VmBuiltin {
   LfoRamp = VmSym.LfoRamp,
   LfoSqr = VmSym.LfoSqr,
   LfoSah = VmSym.LfoSah,
+  White = VmSym.White,
+  Gauss = VmSym.Gauss,
+  Pink = VmSym.Pink,
+  Brown = VmSym.Brown,
+  Smooth = VmSym.Smooth,
+  Fractal = VmSym.Fractal,
 }
 
 export const VM_FUNC_HEADER: i32 = -2

@@ -25,18 +25,45 @@ export function callPwm(
   length: i32,
 ): void {
   // Positional fallback: (hz, width, offset, trig)
-  let hzTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
-  let hzNum = posCount >= 1 ? posNums[0] : 0.0
-  let hzAux = posCount >= 1 ? posAux[0] : 0
-  let widthTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
-  let widthNum = posCount >= 2 ? posNums[1] : 0.0
-  let widthAux = posCount >= 2 ? posAux[1] : 0
-  let offsetTag = posCount >= 3 ? (posTags[2] as VmTag) : VmTag.Num
-  let offsetNum = posCount >= 3 ? posNums[2] : 0.0
-  let offsetAux = posCount >= 3 ? posAux[2] : 0
-  let trigTag = posCount >= 4 ? (posTags[3] as VmTag) : VmTag.Num
-  let trigNum = posCount >= 4 ? posNums[3] : 0.0
-  let trigAux = posCount >= 4 ? posAux[3] : 0
+  let hzTag: VmTag = VmTag.Num
+  let hzNum: f64 = 0.0
+  let hzAux: i32 = 0
+
+  let widthTag: VmTag = VmTag.Num
+  let widthNum: f64 = 0.0
+  let widthAux: i32 = 0
+
+  let offsetTag: VmTag = VmTag.Num
+  let offsetNum: f64 = 0.0
+  let offsetAux: i32 = 0
+
+  let trigTag: VmTag = VmTag.Num
+  let trigNum: f64 = 0.0
+  let trigAux: i32 = 0
+
+  if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
+    hzTag = posTags[0] as VmTag
+    hzNum = posNums[0]
+    hzAux = posAux[0]
+  }
+
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    widthTag = posTags[1] as VmTag
+    widthNum = posNums[1]
+    widthAux = posAux[1]
+  }
+
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
+    offsetTag = posTags[2] as VmTag
+    offsetNum = posNums[2]
+    offsetAux = posAux[2]
+  }
+
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    trigTag = posTags[3] as VmTag
+    trigNum = posNums[3]
+    trigAux = posAux[3]
+  }
 
   // Named overrides (hz/width/offset/trig)
   for (let i = 0; i < namedCount; i++) {

@@ -249,10 +249,10 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     if (start < 0 || end > src.length) return null
 
     const token = src.slice(start, end)
-    const match = token.match(/^-?\d*\.?\d*/)
+    const match = token.match(/^-?\d*\.?\d*k?/)
     const raw = match?.[0] ?? ''
     if (!raw) return null
-    const value = Number.parseFloat(raw)
+    const value = Number.parseFloat(raw.replace('k', '')) * (raw.includes('k') ? 1000 : 1)
     if (!Number.isFinite(value)) return null
     return { value, range: { start, end } }
   }
@@ -942,10 +942,20 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       compilePreviewTarget.literals.fill(0)
       const preview = encodeLangToVmOps(source, compilePreviewTarget)
       if (preview.errors.length) return
+      const vm: VmCompileSnapshot = {
+        source,
+        ops: new Int32Array(compilePreviewTarget.ops),
+        literals: new Float32Array(compilePreviewTarget.literals),
+        result: preview,
+      }
 
       // If the requested loop is already the playing loop, avoid reloading or resetting.
       if (prevId === loopId) {
         if (runtime.playbackState !== 'running') {
+          // Ensure edits made while stopped/paused are applied before audio resumes,
+          // so the first chunk doesn't use stale literals/program data.
+          await get().updateDspSource(source, vm)
+
           // Adjust the start sample
           if (startSample != null) await setSampleCount(startSample)
 
@@ -983,6 +993,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           setData: true,
           compareAgainst: comparisonReference,
           copyVersionFrom: comparisonReference,
+          vm,
         })
 
         if (runtime.worklet && runtime.audioContext) {
@@ -1085,7 +1096,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         return
       }
 
-      await get().updateDspSource(source)
+      await get().updateDspSource(source, vm)
 
       await setSampleCount(startSample)
 

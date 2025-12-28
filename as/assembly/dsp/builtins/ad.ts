@@ -25,19 +25,37 @@ export function callAd(
   length: i32,
 ): void {
   // attack (required, no default)
-  let attackTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
-  let attackNum = posCount >= 1 ? posNums[0] : 0.0
-  let attackAux = posCount >= 1 ? posAux[0] : 0
+  let attackTag: VmTag = VmTag.Num
+  let attackNum: f64 = 0.0
+  let attackAux: i32 = 0
 
   // decay (required, no default)
-  let decayTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
-  let decayNum = posCount >= 2 ? posNums[1] : 0.0
-  let decayAux = posCount >= 2 ? posAux[1] : 0
+  let decayTag: VmTag = VmTag.Num
+  let decayNum: f64 = 0.0
+  let decayAux: i32 = 0
 
   // trig (optional, default 0)
-  let trigTag = posCount >= 3 ? (posTags[2] as VmTag) : VmTag.Num
-  let trigNum = posCount >= 3 ? posNums[2] : 0.0
-  let trigAux = posCount >= 3 ? posAux[2] : 0
+  let trigTag: VmTag = VmTag.Num
+  let trigNum: f64 = 0.0
+  let trigAux: i32 = 0
+
+  if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
+    attackTag = posTags[0] as VmTag
+    attackNum = posNums[0]
+    attackAux = posAux[0]
+  }
+
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    decayTag = posTags[1] as VmTag
+    decayNum = posNums[1]
+    decayAux = posAux[1]
+  }
+
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
+    trigTag = posTags[2] as VmTag
+    trigNum = posNums[2]
+    trigAux = posAux[2]
+  }
 
   // Check for named parameters
   for (let i = 0; i < namedCount; i++) {

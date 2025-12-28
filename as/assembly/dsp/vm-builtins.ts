@@ -5,21 +5,15 @@ import { callAd } from './builtins/ad'
 import { callAdsr } from './builtins/adsr'
 import { callAnalyser } from './builtins/analyser'
 import { callAt } from './builtins/at'
+import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
 import { callCompressor } from './builtins/compressor'
 import { callDegree } from './builtins/degree'
-import { callEvery } from './builtins/every'
 import { callEuclid } from './builtins/euclid'
+import { callEvery } from './builtins/every'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
-import { callLp } from './builtins/lp'
-import { callHp } from './builtins/hp'
-import { callBp } from './builtins/bp'
-import { callBs } from './builtins/bs'
-import { callLs } from './builtins/ls'
-import { callHs } from './builtins/hs'
-import { callPeak } from './builtins/peak'
-import { callAp } from './builtins/ap'
 import { callMap } from './builtins/map'
 import { callMini } from './builtins/mini'
+import { callBrown, callFractal, callGauss, callPink, callSmooth, callWhite } from './builtins/noise'
 import { callNote } from './builtins/note'
 import { callOut } from './builtins/out'
 import { callPhasor } from './builtins/phasor'
@@ -39,7 +33,7 @@ import { callSum } from './builtins/sum'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { Dsp } from './dsp'
-import { NamedArgs, VmBuiltin, VmTag } from './types'
+import { VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
 import { VmStack } from './vm-stack'
 
@@ -445,6 +439,42 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Slew) {
       callSlew(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.White) {
+      callWhite(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Gauss) {
+      callGauss(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Pink) {
+      callPink(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Brown) {
+      callBrown(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Smooth) {
+      callSmooth(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Fractal) {
+      callFractal(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

@@ -25,18 +25,45 @@ export function callSlew(
   length: i32,
 ): void {
   // Positional fallback: (in, up, down, exp)
-  let inTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
-  let inNum = posCount >= 1 ? posNums[0] : 0.0
-  let inAux = posCount >= 1 ? posAux[0] : 0
-  let upTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
-  let upNum = posCount >= 2 ? posNums[1] : 0.0
-  let upAux = posCount >= 2 ? posAux[1] : 0
-  let downTag = posCount >= 3 ? (posTags[2] as VmTag) : VmTag.Num
-  let downNum = posCount >= 3 ? posNums[2] : 0.0
-  let downAux = posCount >= 3 ? posAux[2] : 0
-  let expTag = posCount >= 4 ? (posTags[3] as VmTag) : VmTag.Num
-  let expNum = posCount >= 4 ? posNums[3] : 1.0
-  let expAux = posCount >= 4 ? posAux[3] : 0
+  let inTag: VmTag = VmTag.Num
+  let inNum: f64 = 0.0
+  let inAux: i32 = 0
+
+  let upTag: VmTag = VmTag.Num
+  let upNum: f64 = 0.0
+  let upAux: i32 = 0
+
+  let downTag: VmTag = VmTag.Num
+  let downNum: f64 = 0.0
+  let downAux: i32 = 0
+
+  let expTag: VmTag = VmTag.Num
+  let expNum: f64 = 1.0
+  let expAux: i32 = 0
+
+  if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
+    inTag = posTags[0] as VmTag
+    inNum = posNums[0]
+    inAux = posAux[0]
+  }
+
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    upTag = posTags[1] as VmTag
+    upNum = posNums[1]
+    upAux = posAux[1]
+  }
+
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
+    downTag = posTags[2] as VmTag
+    downNum = posNums[2]
+    downAux = posAux[2]
+  }
+
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    expTag = posTags[3] as VmTag
+    expNum = posNums[3]
+    expAux = posAux[3]
+  }
 
   // Named overrides (in/up/down/exp)
   for (let i = 0; i < namedCount; i++) {

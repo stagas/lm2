@@ -40,9 +40,15 @@ export function callNote(
   length: i32,
   dsp: Dsp,
 ): void {
-  const midiTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
-  const midiNum = posCount >= 1 ? posNums[0] : 0.0
-  const midiAux = posCount >= 1 ? posAux[0] : 0
+  let midiTag: VmTag = VmTag.Num
+  let midiNum: f64 = 0.0
+  let midiAux: i32 = 0
+
+  if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
+    midiTag = posTags[0] as VmTag
+    midiNum = posNums[0]
+    midiAux = posAux[0]
+  }
 
   const tuneTag = dsp.tuneTag as VmTag
   const tuneNum = dsp.tuneNum

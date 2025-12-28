@@ -226,6 +226,30 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Slew)
       return
     }
+    if (sym === VmSym.White) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.White)
+      return
+    }
+    if (sym === VmSym.Gauss) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Gauss)
+      return
+    }
+    if (sym === VmSym.Pink) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Pink)
+      return
+    }
+    if (sym === VmSym.Brown) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Brown)
+      return
+    }
+    if (sym === VmSym.Smooth) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Smooth)
+      return
+    }
+    if (sym === VmSym.Fractal) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Fractal)
+      return
+    }
     if (sym === VmSym.T) {
       const outIndex = audio.getTRamp(length, program)
       stack.push(VmTag.Audio, 0.0, outIndex)

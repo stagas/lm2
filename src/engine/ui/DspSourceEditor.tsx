@@ -823,6 +823,12 @@ function DspSourceEditorReady(
           functionDefinitions={functionDefinitions}
           isAnimating={true}
           gutter={true}
+          keyOverride={e => {
+            if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
+              return false
+            }
+            return true
+          }}
           onBeforeDraw={onBeforeDrawCombined}
         />
       </div>

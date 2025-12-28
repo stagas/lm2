@@ -42,13 +42,25 @@ export function callDegree(
   length: i32,
   dsp: Dsp,
 ): void {
-  const degTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
-  const degNum = posCount >= 1 ? posNums[0] : 0.0
-  const degAux = posCount >= 1 ? posAux[0] : 0
+  let degTag: VmTag = VmTag.Num
+  let degNum: f64 = 0.0
+  let degAux: i32 = 0
 
-  const adjTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
-  const adjNum = posCount >= 2 ? posNums[1] : 0.0
-  const adjAux = posCount >= 2 ? posAux[1] : 0
+  let adjTag: VmTag = VmTag.Num
+  let adjNum: f64 = 0.0
+  let adjAux: i32 = 0
+
+  if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
+    degTag = posTags[0] as VmTag
+    degNum = posNums[0]
+    degAux = posAux[0]
+  }
+
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    adjTag = posTags[1] as VmTag
+    adjNum = posNums[1]
+    adjAux = posAux[1]
+  }
 
   const tuneTag = dsp.tuneTag as VmTag
   const tuneNum = dsp.tuneNum

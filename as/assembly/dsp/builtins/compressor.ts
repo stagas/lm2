@@ -31,33 +31,75 @@ export function callCompressor(
     return
   }
 
-  let inTag: VmTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
-  let inNum: f64 = posCount >= 1 ? posNums[0] : 0.0
-  let inAux: i32 = posCount >= 1 ? posAux[0] : 0
+  let inTag: VmTag = VmTag.Num
+  let inNum: f64 = 0.0
+  let inAux: i32 = 0
 
-  let attackTag: VmTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
-  let attackNum: f64 = posCount >= 2 ? posNums[1] : 0.01
-  let attackAux: i32 = posCount >= 2 ? posAux[1] : 0
+  let attackTag: VmTag = VmTag.Num
+  let attackNum: f64 = 0.01
+  let attackAux: i32 = 0
 
-  let releaseTag: VmTag = posCount >= 3 ? (posTags[2] as VmTag) : VmTag.Num
-  let releaseNum: f64 = posCount >= 3 ? posNums[2] : 0.1
-  let releaseAux: i32 = posCount >= 3 ? posAux[2] : 0
+  let releaseTag: VmTag = VmTag.Num
+  let releaseNum: f64 = 0.1
+  let releaseAux: i32 = 0
 
-  let thresholdTag: VmTag = posCount >= 4 ? (posTags[3] as VmTag) : VmTag.Num
-  let thresholdNum: f64 = posCount >= 4 ? posNums[3] : -24.0
-  let thresholdAux: i32 = posCount >= 4 ? posAux[3] : 0
+  let thresholdTag: VmTag = VmTag.Num
+  let thresholdNum: f64 = -24.0
+  let thresholdAux: i32 = 0
 
-  let ratioTag: VmTag = posCount >= 5 ? (posTags[4] as VmTag) : VmTag.Num
-  let ratioNum: f64 = posCount >= 5 ? posNums[4] : 4.0
-  let ratioAux: i32 = posCount >= 5 ? posAux[4] : 0
+  let ratioTag: VmTag = VmTag.Num
+  let ratioNum: f64 = 4.0
+  let ratioAux: i32 = 0
 
-  let kneeTag: VmTag = posCount >= 6 ? (posTags[5] as VmTag) : VmTag.Num
-  let kneeNum: f64 = posCount >= 6 ? posNums[5] : 6.0
-  let kneeAux: i32 = posCount >= 6 ? posAux[5] : 0
+  let kneeTag: VmTag = VmTag.Num
+  let kneeNum: f64 = 6.0
+  let kneeAux: i32 = 0
 
-  let keyTag: VmTag = posCount >= 7 ? (posTags[6] as VmTag) : VmTag.Undef
-  let keyNum: f64 = posCount >= 7 ? posNums[6] : 0.0
-  let keyAux: i32 = posCount >= 7 ? posAux[6] : 0
+  let keyTag: VmTag = VmTag.Undef
+  let keyNum: f64 = 0.0
+  let keyAux: i32 = 0
+
+  if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
+    inTag = posTags[0] as VmTag
+    inNum = posNums[0]
+    inAux = posAux[0]
+  }
+
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    attackTag = posTags[1] as VmTag
+    attackNum = posNums[1]
+    attackAux = posAux[1]
+  }
+
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
+    releaseTag = posTags[2] as VmTag
+    releaseNum = posNums[2]
+    releaseAux = posAux[2]
+  }
+
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    thresholdTag = posTags[3] as VmTag
+    thresholdNum = posNums[3]
+    thresholdAux = posAux[3]
+  }
+
+  if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
+    ratioTag = posTags[4] as VmTag
+    ratioNum = posNums[4]
+    ratioAux = posAux[4]
+  }
+
+  if (posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null) {
+    kneeTag = posTags[5] as VmTag
+    kneeNum = posNums[5]
+    kneeAux = posAux[5]
+  }
+
+  if (posCount >= 7 && posTags[6] !== VmTag.Undef && posTags[6] !== VmTag.Null) {
+    keyTag = posTags[6] as VmTag
+    keyNum = posNums[6]
+    keyAux = posAux[6]
+  }
 
   let index: i32 = 0
 

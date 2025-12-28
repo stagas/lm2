@@ -34,21 +34,45 @@ export function callPeak(
 
   let peakIndex: i32 = 0
 
-  let inTag = posTags[0] as VmTag
-  let inNum = posNums[0]
-  let inAux = posAux[0]
+  let inTag: VmTag = VmTag.Num
+  let inNum: f64 = 0.0
+  let inAux: i32 = 0
 
-  let cutTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
-  let cutNum = posCount >= 2 ? posNums[1] : 1000.0
-  let cutAux = posCount >= 2 ? posAux[1] : 0
+  let cutTag: VmTag = VmTag.Num
+  let cutNum: f64 = 1000.0
+  let cutAux: i32 = 0
 
-  let qTag = posCount >= 3 ? (posTags[2] as VmTag) : VmTag.Num
-  let qNum = posCount >= 3 ? posNums[2] : 1.0
-  let qAux = posCount >= 3 ? posAux[2] : 0
+  let qTag: VmTag = VmTag.Num
+  let qNum: f64 = DEFAULT_Q
+  let qAux: i32 = 0
 
-  let gainTag = posCount >= 4 ? (posTags[3] as VmTag) : VmTag.Num
-  let gainNum = posCount >= 4 ? posNums[3] : 0.0
-  let gainAux = posCount >= 4 ? posAux[3] : 0
+  let gainTag: VmTag = VmTag.Num
+  let gainNum: f64 = 0.0
+  let gainAux: i32 = 0
+
+  if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
+    inTag = posTags[0] as VmTag
+    inNum = posNums[0]
+    inAux = posAux[0]
+  }
+
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    cutTag = posTags[1] as VmTag
+    cutNum = posNums[1]
+    cutAux = posAux[1]
+  }
+
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
+    qTag = posTags[2] as VmTag
+    qNum = posNums[2]
+    qAux = posAux[2]
+  }
+
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    gainTag = posTags[3] as VmTag
+    gainNum = posNums[3]
+    gainAux = posAux[3]
+  }
 
   // Named overrides (cut/q/gain)
   for (let i = 0; i < namedCount; i++) {
