@@ -21,6 +21,7 @@ export function SidebarLoops(
     setApiError: (error: string | null) => void
   },
 ) {
+  const selectedLoopId = useAppStore(state => state.selectedLoopId)
   const [currentLoopId, setCurrentLoopId] = useState<string | null>(null)
   const [loops, setLoops] = useState<Loop[]>([])
   const [queuedPlay, setQueuedPlay] = useState<{ loopId: string } | null>(null)
@@ -50,7 +51,6 @@ export function SidebarLoops(
   const addLocalLoop = useAppStore(state => state.addLocalLoop)
   const updateLocalLoop = useAppStore(state => state.updateLocalLoop)
   const removeLocalLoop = useAppStore(state => state.removeLocalLoop)
-  const selectedLoopId = useAppStore(state => state.selectedLoopId)
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
   const playLoop = useEngineDspStore(state => state.playLoop)
   const pause = useEngineRuntimeStore(state => state.pause)
@@ -77,9 +77,10 @@ export function SidebarLoops(
   }
 
   const pickFallbackLoopId = (closingId: string, preferFirst: boolean) => {
-    const other = loops.sort((a, b) => (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0)).filter(loop =>
-      loop.data.id !== closingId
-    )
+    const other = [
+      ...loops.filter(loop => loop.isNew),
+      ...loops.filter(loop => !loop.isNew).sort((a, b) => (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0)),
+    ].filter(loop => loop.data.id !== closingId)
     if (preferFirst) {
       return other[0]?.data.id ?? null
     }
@@ -127,7 +128,7 @@ export function SidebarLoops(
 
       return next
     })
-  }, [bases, getCodeFile, hasHydrated, localLoops, serverLoops])
+  }, [bases, hasHydrated, localLoops, serverLoops])
 
   useEffect(() => {
     if (currentLoopId != null) return
@@ -140,6 +141,7 @@ export function SidebarLoops(
 
   useEffect(() => {
     if (!currentLoopId) return
+    if (loops.length === 0) return
     if (loops.some(loop => loop.data.id === currentLoopId)) return
     setCurrentLoopId(null)
     didInitialCenterRef.current = false
