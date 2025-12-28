@@ -25,21 +25,55 @@ export function callAdsr(
   length: i32,
 ): void {
   // Positional fallback: (attack, decay, sustain, release, trig)
-  let attackTag = posCount >= 1 ? (posTags[0] as VmTag) : VmTag.Num
-  let attackNum = posCount >= 1 ? posNums[0] : 0.0
-  let attackAux = posCount >= 1 ? posAux[0] : 0
-  let decayTag = posCount >= 2 ? (posTags[1] as VmTag) : VmTag.Num
-  let decayNum = posCount >= 2 ? posNums[1] : 0.0
-  let decayAux = posCount >= 2 ? posAux[1] : 0
-  let sustainTag = posCount >= 3 ? (posTags[2] as VmTag) : VmTag.Num
-  let sustainNum = posCount >= 3 ? posNums[2] : 0.0
-  let sustainAux = posCount >= 3 ? posAux[2] : 0
-  let releaseTag = posCount >= 4 ? (posTags[3] as VmTag) : VmTag.Num
-  let releaseNum = posCount >= 4 ? posNums[3] : 0.0
-  let releaseAux = posCount >= 4 ? posAux[3] : 0
-  let trigTag = posCount >= 5 ? (posTags[4] as VmTag) : VmTag.Num
-  let trigNum = posCount >= 5 ? posNums[4] : 0.0
-  let trigAux = posCount >= 5 ? posAux[4] : 0
+  let attackTag: VmTag = VmTag.Num
+  let attackNum: f64 = 0.0
+  let attackAux: i32 = 0
+
+  let decayTag: VmTag = VmTag.Num
+  let decayNum: f64 = 0.0
+  let decayAux: i32 = 0
+
+  let sustainTag: VmTag = VmTag.Num
+  let sustainNum: f64 = 0.0
+  let sustainAux: i32 = 0
+
+  let releaseTag: VmTag = VmTag.Num
+  let releaseNum: f64 = 0.0
+  let releaseAux: i32 = 0
+
+  let trigTag: VmTag = VmTag.Num
+  let trigNum: f64 = 0.0
+  let trigAux: i32 = 0
+
+  if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
+    attackTag = posTags[0] as VmTag
+    attackNum = posNums[0]
+    attackAux = posAux[0]
+  }
+
+  if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
+    decayTag = posTags[1] as VmTag
+    decayNum = posNums[1]
+    decayAux = posAux[1]
+  }
+
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
+    sustainTag = posTags[2] as VmTag
+    sustainNum = posNums[2]
+    sustainAux = posAux[2]
+  }
+
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    releaseTag = posTags[3] as VmTag
+    releaseNum = posNums[3]
+    releaseAux = posAux[3]
+  }
+
+  if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
+    trigTag = posTags[4] as VmTag
+    trigNum = posNums[4]
+    trigAux = posAux[4]
+  }
 
   // Named overrides (attack/decay/sustain/release/trig)
   for (let i = 0; i < namedCount; i++) {

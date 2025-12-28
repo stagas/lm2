@@ -1,6 +1,7 @@
 import type { Loc, Program } from '../../lang/ast.ts'
+import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault,
+  getPosArg } from './extract-call-utils.ts'
 import { tryEvalConstNumber } from './helpers.ts'
-import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault, getPosArg } from './extract-call-utils.ts'
 import type { FilterRef, FilterType } from './types.ts'
 
 const MAX_FILTER_INDEX = 63
@@ -25,20 +26,29 @@ function isKnobParamName(name: string): name is 'cutoff' | 'q' | 'gain' {
 
 function getFilterType(calleeName: string): FilterType | null {
   switch (calleeName) {
-    case 'lp': return 'lp'
-    case 'hp': return 'hp'
-    case 'bp': return 'bp'
-    case 'bs': return 'bs'
-    case 'ls': return 'ls'
-    case 'hs': return 'hs'
-    case 'peak': return 'peak'
-    case 'ap': return 'ap'
-    default: return null
+    case 'lp':
+      return 'lp'
+    case 'hp':
+      return 'hp'
+    case 'bp':
+      return 'bp'
+    case 'bs':
+      return 'bs'
+    case 'ls':
+      return 'ls'
+    case 'hs':
+      return 'hs'
+    case 'peak':
+      return 'peak'
+    case 'ap':
+      return 'ap'
+    default:
+      return null
   }
 }
 
-function getDefaultParams(filterType: FilterType) {
-  const baseParams = { cutoff: 1000, q: 1 }
+function getDefaultParams(filterType: FilterType): { cutoff: number; q: number; gain?: number } {
+  const baseParams = { cutoff: 1000, q: 0.707 }
   switch (filterType) {
     case 'ls':
     case 'hs':
@@ -268,6 +278,3 @@ function visit(src: string, program: Program): FilterRef[] {
 export function extractFiltersFromProgramWithRefs(src: string, program: Program): FilterRef[] {
   return visit(src, program)
 }
-
-
-

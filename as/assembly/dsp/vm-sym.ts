@@ -89,4 +89,13 @@ export enum VmSym {
   LfoRamp,
   LfoSqr,
   LfoSah,
+  White,
+  Gauss,
+  Pink,
+  Brown,
+  Smooth,
+  Fractal,
+  Rate,
+  Curve,
+  Octaves,
 }

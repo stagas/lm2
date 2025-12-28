@@ -83,13 +83,19 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
       advance()
       while (isDigit(peek())) advance()
     }
+    let isKilo = false
+    if (peek() === 'k') {
+      advance()
+      isKilo = true
+    }
     const s = src.slice(start, i)
-    const n = Number(s)
+    const n = Number(s.replace('k', ''))
     if (Number.isNaN(n)) {
       addError('Invalid number', start, startLine, startCol)
       return
     }
-    add('number', start, startLine, startCol, n)
+    const value = isKilo ? n * 1000 : n
+    add('number', start, startLine, startCol, value)
   }
 
   const readIdentifier = (start: number, startLine: number, startCol: number) => {

@@ -59,6 +59,12 @@ export enum Op {
   Hs,
   Peak,
   Ap,
+  White,
+  Gauss,
+  Pink,
+  Brown,
+  Smooth,
+  Fractal,
 }
 
 export enum SeqOp {

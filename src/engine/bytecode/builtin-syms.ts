@@ -45,6 +45,12 @@ export const builtinSyms: Record<string, number> = {
   lforamp: VmSym.LfoRamp,
   lfosqr: VmSym.LfoSqr,
   lfosah: VmSym.LfoSah,
+  white: VmSym.White,
+  gauss: VmSym.Gauss,
+  pink: VmSym.Pink,
+  brown: VmSym.Brown,
+  smooth: VmSym.Smooth,
+  fractal: VmSym.Fractal,
   // Runtime directive globals (stable ids so VM can provide defaults)
   tune: VmSym.Tune,
   octave: VmSym.Octave,
@@ -87,6 +93,7 @@ export const builtinSyms: Record<string, number> = {
   threshold: VmSym.Threshold,
   ratio: VmSym.Ratio,
   knee: VmSym.Knee,
+  gain: VmSym.Gain,
   // Named args for analyser()
   index: VmSym.Index,
   // Named args for timeline()
@@ -102,4 +109,8 @@ export const builtinSyms: Record<string, number> = {
   // Named args for mini/play
   hz: VmSym.Hz,
   seq: VmSym.Seq,
+  // Named args for smooth()/fractal()
+  rate: VmSym.Rate,
+  curve: VmSym.Curve,
+  octaves: VmSym.Octaves,
 }

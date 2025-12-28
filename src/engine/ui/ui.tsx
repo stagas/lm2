@@ -19,7 +19,7 @@ function Intro(
 ) {
   return (
     <div
-      className={`z-50 fixed inset-0 w-[100dvw] h-[100dvh] transition-opacity duration-[1000ms] ease-in-out ${
+      className={`z-[99999999999] fixed inset-0 w-[100dvw] h-[100dvh] transition-opacity duration-[1000ms] ease-in-out ${
         isFadingOut
           ? 'opacity-0 pointer-events-none'
           : 'opacity-100'

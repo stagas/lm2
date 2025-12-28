@@ -27,6 +27,7 @@
         "npm:assemblyscript@~0.28.9",
         "npm:concurrently@^9.2.1",
         "npm:preact@^10.28.1",
+        "npm:react-social-icons@^6.25.0",
         "npm:typescript@^5.9.3",
         "npm:vite@^7.3.0",
         "npm:zod@^3.25.76",

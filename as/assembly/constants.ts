@@ -1,3 +1,5 @@
+export const DEFAULT_Q: f64 = 0.7071067811865476
+
 export const RING_BUFFER_SIZE = 16384
 export const CHUNK_SIZE = 128
 export const ARRAY_SIZE = 1024

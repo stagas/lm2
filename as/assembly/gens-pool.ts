@@ -9,6 +9,7 @@ import { Every } from './gen/every'
 import { Gen } from './gen/gen'
 import { LfoRamp, LfoSah, LfoSaw, LfoSine, LfoSqr, LfoTri } from './gen/lfo'
 import { Mini } from './gen/mini'
+import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from './gen/noise'
 import { Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
@@ -85,6 +86,12 @@ export class GensPool {
   private lfoRamps: GenPool<LfoRamp> = new GenPool<LfoRamp>(() => new LfoRamp())
   private lfoSqrs: GenPool<LfoSqr> = new GenPool<LfoSqr>(() => new LfoSqr())
   private lfoSahs: GenPool<LfoSah> = new GenPool<LfoSah>(() => new LfoSah())
+  private whites: GenPool<WhiteNoise> = new GenPool<WhiteNoise>(() => new WhiteNoise())
+  private gausses: GenPool<GaussNoise> = new GenPool<GaussNoise>(() => new GaussNoise())
+  private pinks: GenPool<PinkNoise> = new GenPool<PinkNoise>(() => new PinkNoise())
+  private browns: GenPool<BrownNoise> = new GenPool<BrownNoise>(() => new BrownNoise())
+  private smooths: GenPool<SmoothNoise> = new GenPool<SmoothNoise>(() => new SmoothNoise())
+  private fractals: GenPool<FractalNoise> = new GenPool<FractalNoise>(() => new FractalNoise())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -119,6 +126,12 @@ export class GensPool {
     this.lfoRamps.resetIndex()
     this.lfoSqrs.resetIndex()
     this.lfoSahs.resetIndex()
+    this.whites.resetIndex()
+    this.gausses.resetIndex()
+    this.pinks.resetIndex()
+    this.browns.resetIndex()
+    this.smooths.resetIndex()
+    this.fractals.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -154,6 +167,12 @@ export class GensPool {
     this.lfoRamps.reset()
     this.lfoSqrs.reset()
     this.lfoSahs.reset()
+    this.whites.reset()
+    this.gausses.reset()
+    this.pinks.reset()
+    this.browns.reset()
+    this.smooths.reset()
+    this.fractals.reset()
   }
 
   get(op: Op): Gen {
@@ -224,6 +243,18 @@ export class GensPool {
         return this.lfoSqrs.get()
       case Op.LfoSah:
         return this.lfoSahs.get()
+      case Op.White:
+        return this.whites.get()
+      case Op.Gauss:
+        return this.gausses.get()
+      case Op.Pink:
+        return this.pinks.get()
+      case Op.Brown:
+        return this.browns.get()
+      case Op.Smooth:
+        return this.smooths.get()
+      case Op.Fractal:
+        return this.fractals.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -261,5 +292,11 @@ export class GensPool {
     this.lfoRamps.copyFrom(source.lfoRamps)
     this.lfoSqrs.copyFrom(source.lfoSqrs)
     this.lfoSahs.copyFrom(source.lfoSahs)
+    this.whites.copyFrom(source.whites)
+    this.gausses.copyFrom(source.gausses)
+    this.pinks.copyFrom(source.pinks)
+    this.browns.copyFrom(source.browns)
+    this.smooths.copyFrom(source.smooths)
+    this.fractals.copyFrom(source.fractals)
   }
 }
