@@ -671,7 +671,7 @@ function DspSourceEditorReady(
 
   const { widgets: sliderWidgets } = useSliderWidget({
     showWidgets,
-    numberParams: widgetCompileState.numberParams,
+    numberParams: widgetCompileState.numberParams?.filter(p => !(p.min === 20 && p.max === 20000)),
     theme,
     codeFile: currentLoop?.codeFile,
   })
@@ -720,8 +720,24 @@ function DspSourceEditorReady(
       }
     }
 
+    // Add knobs for lp number literals (min=20, max=20000)
+    for (const param of widgetCompileState.numberParams ?? []) {
+      if (param.min === 20 && param.max === 20000) {
+        out.push({
+          line: param.line,
+          column: param.column,
+          length: param.length,
+          value: param.value,
+          min: param.min,
+          max: param.max,
+          precision: param.precision ?? 0,
+          mode: 'exp2',
+        })
+      }
+    }
+
     return out
-  }, [widgetCompileState.compressorRefs, widgetCompileState.lpRefs])
+  }, [widgetCompileState.compressorRefs, widgetCompileState.lpRefs, widgetCompileState.numberParams])
 
   const { widgets: knobWidgets } = useKnobWidget({
     showWidgets,

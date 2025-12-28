@@ -2,7 +2,7 @@ import type { Loc, Program } from '../../lang/ast.ts'
 import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault,
   getPosArg } from './extract-call-utils.ts'
 import { tryEvalConstNumber } from './helpers.ts'
-import type { FilterRef, FilterType } from './types.ts'
+import type { FilterRef, FilterType, NumberWithParamsInfo } from './types.ts'
 
 const MAX_FILTER_INDEX = 63
 
@@ -116,6 +116,39 @@ function visit(src: string, program: Program): FilterRef[] {
             const v = tryEvalConstNumber(a.value)
             if (v == null || !Number.isFinite(v)) continue
             if (!a.value?.loc) continue
+
+            // For lp calls, don't create standard knob params if the argument contains number literals
+            // The literals will get their own knobs
+            if (filterType === 'lp') {
+              let hasLiterals = false
+              function checkForLiterals(expr: any): void {
+                if (!expr) return
+                if (expr.kind === 'number') {
+                  hasLiterals = true
+                  return
+                }
+                if (expr.kind === 'binary') {
+                  checkForLiterals(expr.left)
+                  checkForLiterals(expr.right)
+                }
+                else if (expr.kind === 'unary' || expr.kind === 'postfix') {
+                  checkForLiterals(expr.expr)
+                }
+                else if (expr.kind === 'member') {
+                  checkForLiterals(expr.object)
+                  if (expr.computed) checkForLiterals(expr.index)
+                }
+                else if (expr.kind === 'array') {
+                  for (const it of expr.items ?? []) checkForLiterals(it)
+                }
+                else if (expr.kind === 'object') {
+                  for (const p of expr.props ?? []) checkForLiterals(p.value)
+                }
+              }
+              checkForLiterals(a.value)
+              if (hasLiterals) continue
+            }
+
             seen.add(name)
             knobParams.push({ name, value: v, valueLoc: a.value.loc })
             continue
@@ -275,6 +308,200 @@ function visit(src: string, program: Program): FilterRef[] {
   return refs
 }
 
+function collectLpNumberLiterals(src: string, program: Program): NumberWithParamsInfo[] {
+  const refs: NumberWithParamsInfo[] = []
+  const lineStarts = buildLineStartsForLocs(src)
+
+  function visitExpr(expr: any): void {
+    if (!expr) return
+
+    if (expr.kind === 'call') {
+      const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
+      const filterType = getFilterType(calleeName)
+      if (filterType === 'lp') {
+        // For lp() calls, collect all top-level number literals
+        for (const a of expr.args ?? []) {
+          if (!a) continue
+          if (a.kind === 'pos' || a.kind === 'named') {
+            collectNumbersFromExpr(a.value)
+          }
+        }
+      }
+
+      visitExpr(expr.callee)
+      for (const a of expr.args ?? []) {
+        if (a?.kind === 'pos' || a?.kind === 'named') visitExpr(a.value)
+      }
+      return
+    }
+
+    // ... other expression types remain the same
+    if (expr.kind === 'binary') {
+      visitExpr(expr.left)
+      visitExpr(expr.right)
+      return
+    }
+
+    if (expr.kind === 'assign') {
+      visitExpr(expr.target)
+      visitExpr(expr.value)
+      return
+    }
+
+    if (expr.kind === 'unary' || expr.kind === 'postfix') {
+      visitExpr(expr.expr)
+      return
+    }
+
+    if (expr.kind === 'member') {
+      visitExpr(expr.object)
+      if (expr.computed) visitExpr(expr.index)
+      return
+    }
+
+    if (expr.kind === 'array') {
+      for (const it of expr.items ?? []) visitExpr(it)
+      return
+    }
+
+    if (expr.kind === 'object') {
+      for (const p of expr.props ?? []) visitExpr(p.value)
+      return
+    }
+
+    if (expr.kind === 'if') {
+      visitExpr(expr.test)
+      if (expr.then?.kind === 'block') visitStmt(expr.then)
+      else visitExpr(expr.then)
+      if (expr.else) {
+        if (expr.else.kind === 'block') visitStmt(expr.else)
+        else visitExpr(expr.else)
+      }
+      return
+    }
+
+    if (expr.kind === 'func') {
+      if (expr.body?.kind === 'block') visitStmt(expr.body)
+      else visitExpr(expr.body)
+      return
+    }
+  }
+
+  function collectNumbersFromExpr(expr: any): void {
+    if (!expr) return
+
+    if (expr.kind === 'number') {
+      refs.push({
+        line: expr.loc.line,
+        column: expr.loc.column,
+        length: expr.loc.length,
+        widgetLength: expr.loc.length,
+        value: Number(expr.value ?? 0),
+        min: 20,
+        max: 20000,
+        precision: 0,
+      })
+      return
+    }
+
+    // Recurse into expressions to collect all number literals
+    if (expr.kind === 'binary') {
+      collectNumbersFromExpr(expr.left)
+      collectNumbersFromExpr(expr.right)
+      return
+    }
+
+    if (expr.kind === 'unary' || expr.kind === 'postfix') {
+      collectNumbersFromExpr(expr.expr)
+      return
+    }
+
+    if (expr.kind === 'member') {
+      collectNumbersFromExpr(expr.object)
+      if (expr.computed) collectNumbersFromExpr(expr.index)
+      return
+    }
+
+    if (expr.kind === 'array') {
+      for (const it of expr.items ?? []) collectNumbersFromExpr(it)
+      return
+    }
+
+    if (expr.kind === 'object') {
+      for (const p of expr.props ?? []) collectNumbersFromExpr(p.value)
+      return
+    }
+
+    // Don't collect from calls, functions, etc. - only literals and their containing expressions
+  }
+
+  function visitStmt(stmt: any): void {
+    if (!stmt) return
+    if (stmt.kind === 'expr_stmt') {
+      visitExpr(stmt.expr)
+      return
+    }
+    if (stmt.kind === 'block') {
+      for (const s of stmt.body ?? []) visitStmt(s)
+      return
+    }
+    if (stmt.kind === 'for') {
+      if (stmt.head?.kind === 'c_style') {
+        if (stmt.head.init) visitExpr(stmt.head.init)
+        if (stmt.head.test) visitExpr(stmt.head.test)
+        if (stmt.head.update) visitExpr(stmt.head.update)
+      }
+      else {
+        visitExpr(stmt.head?.iterable)
+      }
+      visitStmt(stmt.body)
+      return
+    }
+    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+      visitExpr(stmt.test)
+      visitStmt(stmt.body)
+      return
+    }
+    if (stmt.kind === 'switch') {
+      visitExpr(stmt.test)
+      for (const c of stmt.cases ?? []) {
+        if (c.test) visitExpr(c.test)
+        for (const s of c.body ?? []) visitStmt(s)
+      }
+      return
+    }
+    if (stmt.kind === 'try') {
+      visitStmt(stmt.body)
+      if (stmt.catchBody) visitStmt(stmt.catchBody)
+      if (stmt.finallyBody) visitStmt(stmt.finallyBody)
+      return
+    }
+    if (stmt.kind === 'throw') {
+      visitExpr(stmt.value)
+      return
+    }
+    if (stmt.kind === 'return') {
+      if (stmt.value) visitExpr(stmt.value)
+      return
+    }
+    if (stmt.kind === 'label') {
+      visitStmt(stmt.stmt)
+      return
+    }
+    if (stmt.kind === 'destructure') {
+      visitExpr(stmt.value)
+      return
+    }
+  }
+
+  for (const s of program.body) visitStmt(s as any)
+  return refs
+}
+
 export function extractFiltersFromProgramWithRefs(src: string, program: Program): FilterRef[] {
   return visit(src, program)
+}
+
+export function extractLpNumberLiterals(src: string, program: Program): NumberWithParamsInfo[] {
+  return collectLpNumberLiterals(src, program)
 }

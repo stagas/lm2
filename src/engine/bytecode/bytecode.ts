@@ -22,7 +22,7 @@ import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
 import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
 import { extractLfosFromProgramWithRefs } from './extract-lfo.ts'
-import { extractFiltersFromProgramWithRefs } from './extract-filter.ts'
+import { extractFiltersFromProgramWithRefs, extractLpNumberLiterals } from './extract-filter.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
@@ -415,7 +415,18 @@ export function encodeLangToVmOps(
   let everyRefs: EveryRef[] = []
   let atRefs: AtRef[] = []
   let euclidRefs: EuclidRef[] = []
-  const numberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
+  const explicitNumberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
+  const lpNumberLiterals = extractLpNumberLiterals(src, parsed.program).filter(p => p.line > 0)
+
+  // Create a set of locations that already have explicit sliders
+  const explicitSliderKeys = new Set(explicitNumberParams.map(p => `${p.line}:${p.column}:${p.length}`))
+
+  // Filter out lp number literals that already have explicit sliders
+  const filteredLpNumberLiterals = lpNumberLiterals.filter(p =>
+    !explicitSliderKeys.has(`${p.line}:${p.column}:${p.length}`)
+  )
+
+  const numberParams = [...explicitNumberParams, ...filteredLpNumberLiterals]
   const numberLiterals = extractNumberLiteralsFromProgram(parsed.program).filter(p => p.line > 0)
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
   const sliderKeys = new Set(numberParams.map(p => sliderKeyOf(p)))
