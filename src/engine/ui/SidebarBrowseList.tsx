@@ -262,6 +262,8 @@ function BrowseItem(
   const isPlaying = playbackState === 'running'
 
   const handleOpen = () => {
+    // Navigate to /loop/<id> for browse loops (they should be public)
+    navigate(`/loop/${loop.id}`)
     if (sessionData?.loops.some(l => l.id === loop.id)) {
       setSelectedLoopId(loop.id)
       return
@@ -387,7 +389,9 @@ function BrowseItem(
                 }}>
                   {loop.artist}
                 </span>{' '}
-                - {loop.title}
+                <span className="cursor-pointer hover:text-orange-500" onClick={handleOpen}>
+                  - {loop.title}
+                </span>
               </span>
               {remixOf && (
                 <div className="flex flex-row text-xs text-neutral-500 font-normal items-center gap-1">

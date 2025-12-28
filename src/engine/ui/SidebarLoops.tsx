@@ -9,6 +9,7 @@ import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../s
 import { AuthForm } from './AuthForm.tsx'
 import { DEFAULT_LOOP_CODE, Loop } from './loop.ts'
 import { LoopItem } from './LoopItem.tsx'
+import { useRouter } from './router.tsx'
 
 export function SidebarLoops(
   {
@@ -55,6 +56,7 @@ export function SidebarLoops(
   const playLoop = useEngineDspStore(state => state.playLoop)
   const pause = useEngineRuntimeStore(state => state.pause)
   const stop = useEngineRuntimeStore(state => state.stop)
+  const { navigate } = useRouter()
 
   const serverLoops = useMemo(() => {
     if (sessionData) return sessionData.loops
@@ -150,6 +152,15 @@ export function SidebarLoops(
   const currentLoop = useMemo(() => loops.find(loop => loop.data.id === currentLoopId), [loops, currentLoopId])
   const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const loadingLoopId = isLoopLoading ? currentLoopId : null
+
+  const handleLoopSelect = useCallback((loopId: string) => {
+    setCurrentLoopId(loopId)
+    // Navigate to /loop/<id> for public, non-new loops
+    const loop = loops.find(l => l.data.id === loopId)
+    if (loop && !loop.isNew && loop.data.isPublic) {
+      navigate(`/loop/${loopId}`)
+    }
+  }, [loops, navigate])
 
   useLayoutEffect(() => {
     if (currentLoopId == null) return
@@ -784,7 +795,7 @@ export function SidebarLoops(
               loop={loop}
               isCurrent={currentLoopId === loop.data.id}
               isLoading={loadingLoopId === loop.data.id}
-              onClick={() => setCurrentLoopId(loop.data.id)}
+              onClick={() => handleLoopSelect(loop.data.id)}
               onPlay={() => {
                 setQueuedPlay({ loopId: loop.data.id })
                 setCurrentLoopId(loop.data.id)
@@ -817,7 +828,7 @@ export function SidebarLoops(
                           key={loop.data.id}
                           loop={loop}
                           isCurrent={currentLoopId === loop.data.id}
-                          onClick={() => setCurrentLoopId(loop.data.id)}
+                          onClick={() => handleLoopSelect(loop.data.id)}
                           onPlay={() => {
                             setQueuedPlay({ loopId: loop.data.id })
                             setCurrentLoopId(loop.data.id)
@@ -861,7 +872,7 @@ export function SidebarLoops(
                     key={loop.data.id}
                     loop={loop}
                     isCurrent={currentLoopId === loop.data.id}
-                    onClick={() => setCurrentLoopId(loop.data.id)}
+                    onClick={() => handleLoopSelect(loop.data.id)}
                     onPlay={() => {
                       setQueuedPlay({ loopId: loop.data.id })
                       setCurrentLoopId(loop.data.id)

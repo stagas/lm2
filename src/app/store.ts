@@ -651,10 +651,15 @@ export const useAppStore = create<AppState>()(
             publicLoopCodeCache: { ...state.publicLoopCodeCache, [loopId]: code },
             publicLoopsCache: (() => {
               const idx = state.publicLoopsCache.findIndex(l => l.id === loopId)
-              if (idx === -1) return state.publicLoopsCache
-              const prev = state.publicLoopsCache[idx]!
               const { code: _code, comments: _comments, ...rest } = data
-              return state.publicLoopsCache.map((l, i) => i === idx ? { ...prev, ...rest } : l)
+              const loopData = { ...rest, isPublic: true } as LoopData
+              if (idx === -1) {
+                // Loop not in cache, add it
+                return [...state.publicLoopsCache, loopData]
+              }
+              // Loop exists, update it
+              const prev = state.publicLoopsCache[idx]!
+              return state.publicLoopsCache.map((l, i) => i === idx ? { ...prev, ...loopData } : l)
             })(),
           }))
           return code

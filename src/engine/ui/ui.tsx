@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useAppStore } from '../../app/store.ts'
 import { Logo } from '../../components/Logo.tsx'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
@@ -12,6 +12,7 @@ import { Sidebar } from './Sidebar.tsx'
 import { useCurrentLoop } from './useCurrentLoop.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
+import { useRouter } from './router.tsx'
 
 function Intro({ isFadingOut = false, isFadingIn = true }: { isFadingOut?: boolean; isFadingIn?: boolean }) {
   return (
@@ -44,15 +45,92 @@ function Intro({ isFadingOut = false, isFadingIn = true }: { isFadingOut?: boole
   )
 }
 
+function RouterContent({
+  showIntro,
+  isFadingIn,
+  isFadingOut,
+  timelineWindowRef,
+  currentLoop,
+  dspError,
+  timelineHeader,
+  hasHydrated,
+  onDspError,
+}: {
+  showIntro: boolean
+  isFadingIn: boolean
+  isFadingOut: boolean
+  timelineWindowRef: preact.RefObject<any>
+  currentLoop: any
+  dspError: string | undefined
+  timelineHeader: any
+  hasHydrated: boolean
+  onDspError: (error: string | undefined) => void
+}) {
+  // Parse loop ID from URL path like /loop/<id>
+  const { pathname } = useRouter()
+  const loopIdFromUrl = useMemo(() => {
+    const match = pathname.match(/^\/loop\/([^/]+)$/)
+    return match ? match[1] : null
+  }, [pathname])
+
+  // Initialize selected loop from URL if present
+  useEffect(() => {
+    if (!hasHydrated) return
+    if (!loopIdFromUrl) return
+
+    const setSelectedLoopId = useAppStore.getState().setSelectedLoopId
+    const currentSelectedId = useAppStore.getState().selectedLoopId
+
+    // Only set if not already set or different
+    if (currentSelectedId !== loopIdFromUrl) {
+      setSelectedLoopId(loopIdFromUrl)
+    }
+  }, [hasHydrated, loopIdFromUrl])
+
+  return (
+    <>
+      {showIntro && <Intro key="intro" isFadingIn={isFadingIn} isFadingOut={isFadingOut} />}
+      <div className="flex flex-col">
+        <Nav
+          timelineWindowRef={timelineWindowRef}
+          currentLoop={currentLoop}
+          onDspError={onDspError}
+        />
+        <div className="flex flex-row h-[calc(100dvh-61px)]">
+          <Sidebar />
+          <DspSourceEditor
+            timelineHeader={timelineHeader}
+            currentLoop={currentLoop}
+            dspError={dspError}
+            onDspError={onDspError}
+          />
+        </div>
+      </div>
+    </>
+  )
+}
+
 export function EngineUI() {
   const { isInitialized } = useEngine()
   const hasHydrated = useAppStore(state => state.hasHydrated)
+  const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const isProgramReady = useEngineRuntimeStore(state => state.isProgramReady)
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
   const preloadSamples = useEngineDspStore(state => state.preloadSamples)
   const currentLoop = useCurrentLoop()
   const isEditorBusy = useIsEditorBusy()
-  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext || !currentLoop || isEditorBusy
+
+  const routeLoopId = useMemo(() => {
+    const pathname = window.location.pathname || '/'
+    const match = pathname.match(/^\/loop\/([^/]+)$/)
+    return match ? match[1] : null
+  }, [])
+
+  const isRouteLoopReady = routeLoopId == null ? true : currentLoop?.data.id === routeLoopId
+
+  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext || !currentLoop
+    || !isRouteLoopReady
+    || isLoopLoading || isEditorBusy
 
   const [showIntro, setShowIntro] = useState(true)
   const [isFadingIn, setIsFadingIn] = useState(true)
@@ -132,25 +210,17 @@ export function EngineUI() {
 
   return (
     <RouterProvider>
-      <>
-        {showIntro && <Intro key="intro" isFadingIn={isFadingIn} isFadingOut={isFadingOut} />}
-        <div className="flex flex-col">
-          <Nav
-            timelineWindowRef={timelineWindowRef}
-            currentLoop={currentLoop}
-            onDspError={setDspError}
-          />
-          <div className="flex flex-row h-[calc(100dvh-61px)]">
-            <Sidebar />
-            <DspSourceEditor
-              timelineHeader={timelineHeader}
-              currentLoop={currentLoop}
-              dspError={dspError}
-              onDspError={setDspError}
-            />
-          </div>
-        </div>
-      </>
+      <RouterContent
+        showIntro={showIntro}
+        isFadingIn={isFadingIn}
+        isFadingOut={isFadingOut}
+        timelineWindowRef={timelineWindowRef}
+        currentLoop={currentLoop}
+        dspError={dspError}
+        timelineHeader={timelineHeader}
+        hasHydrated={hasHydrated}
+        onDspError={setDspError}
+      />
     </RouterProvider>
   )
 }
