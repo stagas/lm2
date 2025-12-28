@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { useAppStore } from '../../app/store.ts'
 import { Logo } from '../../components/Logo.tsx'
 import { RadialGradient } from '../../components/RadialGradient.tsx'

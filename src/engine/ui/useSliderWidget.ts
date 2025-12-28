@@ -1,6 +1,6 @@
 import type { CodeFile, EditorWidget, Theme } from 'mini-code'
-import type React from 'react'
-import { useMemo, useRef } from 'react'
+import type React from 'preact/hooks'
+import { useMemo, useRef } from 'preact/hooks'
 import type { NumberWithParamsInfo } from '../bytecode/bytecode.ts'
 import { updateValueWithSpacing } from './code-number-edit.ts'
 
@@ -34,8 +34,8 @@ export class SliderWidget {
     private info: NumberWithParamsInfo,
     private theme: Theme,
     private codeFile: CodeFile,
-    private dragStateRef: React.RefObject<DragState | null>,
-    private rafRef: React.RefObject<number | null>,
+    private dragStateRef: preact.RefObject<DragState | null>,
+    private rafRef: preact.RefObject<number | null>,
   ) {
     this.sliderKey = `${info.line}-${info.column}`
     this.currentWidth = (info.widgetLength || info.length) * 8

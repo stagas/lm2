@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import { FILTER_DATA_OFFSET, FILTER_ENTRY_SIZE, FILTER_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { FilterRef } from '../bytecode/types.ts'
 import type { ProgramInstance } from '../dsp/program.ts'

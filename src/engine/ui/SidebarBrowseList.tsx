@@ -6,7 +6,7 @@ import {
   RepeatIcon,
   TrashIcon,
 } from '@phosphor-icons/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { MouseButtons } from 'utils/mouse-buttons'
 import type { CommentData, LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
@@ -117,7 +117,7 @@ function CommentsPanel(
                 placeholder="Leave a comment…"
                 className="w-full text-xs bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1.5 text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
                 rows={3}
-                onChange={e => setDraft(e.target.value)}
+                onChange={e => setDraft((e.target as HTMLTextAreaElement).value)}
                 onKeyDown={e => {
                   if (e.key !== 'Enter') return
                   if (!e.ctrlKey && !e.metaKey) return
@@ -269,7 +269,7 @@ function BrowseItem(
     setSelectedLoopId(loop.id)
   }
 
-  const handleTogglePlay = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleTogglePlay = (e: preact.TargetedPointerEvent<HTMLDivElement>) => {
     const isRight = (e.buttons & MouseButtons.Right) !== 0
     const isRestart = ((e.buttons & MouseButtons.Middle) !== 0) || e.ctrlKey
 

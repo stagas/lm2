@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import type { LoopData } from '../../../deno/types.ts'
 import type { Loop } from '../../engine/ui/loop.ts'
-import { useAppStore } from '../store.ts'
 import { isLocalId } from '../../utils/id.ts'
+import { useAppStore } from '../store.ts'
 
 export function useLoopData(loopId: string | null, currentLoop: Loop | undefined) {
   const api = useAppStore(state => state.api)

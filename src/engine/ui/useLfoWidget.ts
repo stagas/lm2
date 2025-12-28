@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import { LFO_DATA_OFFSET, LFO_ENTRY_SIZE, LFO_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { LfoRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'

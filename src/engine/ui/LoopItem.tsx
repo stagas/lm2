@@ -16,7 +16,7 @@ import {
   useEffect,
   useRef,
   useState,
-} from 'react'
+} from 'preact/hooks'
 import { MouseButtons } from 'utils/mouse-buttons'
 import type { LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
@@ -33,10 +33,10 @@ const LoopItemButton = (
     onClick,
     className,
   }: {
-    icon: React.ReactNode
-    hoverIcon?: React.ReactNode
+    icon: preact.ComponentChildren
+    hoverIcon?: preact.ComponentChildren
     title: string
-    onClick: ((e: React.PointerEvent<HTMLButtonElement>) => void) | undefined
+    onClick: ((e: preact.TargetedPointerEvent<HTMLButtonElement>) => void) | undefined
     className?: string
   },
 ) => (
@@ -112,8 +112,8 @@ export const LoopItem = ({
   const shouldHideClose = hideCloseWhenNotDirty && loop.isNew && !isDirty
 
   type PendingPointerHandler = {
-    handler: (event: React.PointerEvent<HTMLElement>) => void
-    event: React.PointerEvent<HTMLElement>
+    handler: (event: preact.TargetedPointerEvent<HTMLElement>) => void
+    event: preact.TargetedPointerEvent<HTMLElement>
   }
 
   const pendingPointerHandlersRef = useRef<PendingPointerHandler[]>([])
@@ -127,8 +127,8 @@ export const LoopItem = ({
   }, [isLoading, loop.data.code])
 
   const runWhenLoopReady = useCallback(
-    <E extends HTMLElement>(handler?: (event: React.PointerEvent<E>) => void) => {
-      return (event: React.PointerEvent<E>) => {
+    <E extends HTMLElement>(handler?: (event: preact.TargetedPointerEvent<E>) => void) => {
+      return (event: preact.TargetedPointerEvent<E>) => {
         if (!handler) return
         if (!isLoading && loop.data.code != null) {
           handler(event)
@@ -136,8 +136,8 @@ export const LoopItem = ({
         }
         onClick()
         pendingPointerHandlersRef.current.push({
-          handler: handler as unknown as (event: React.PointerEvent<HTMLElement>) => void,
-          event: event as unknown as React.PointerEvent<HTMLElement>,
+          handler: handler as unknown as (event: preact.TargetedPointerEvent<HTMLElement>) => void,
+          event: event as unknown as preact.TargetedPointerEvent<HTMLElement>,
         })
       }
     },

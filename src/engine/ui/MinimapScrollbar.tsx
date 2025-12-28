@@ -1,9 +1,8 @@
 import {
-  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useRef,
-} from 'react'
+} from 'preact/hooks'
 import { MouseButton } from 'utils/mouse-buttons'
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import type { TimelineLabel, TimelineSequenceRef } from '../bytecode/bytecode.ts'
@@ -26,7 +25,7 @@ type MinimapScrollbarProps = {
   bars?: number
   zeroBased: boolean
   seekToSample: (targetSampleCount: number) => void
-  timelineWindowRef: React.RefObject<TimelineWindow>
+  timelineWindowRef: preact.RefObject<TimelineWindow>
   canControlPlayback?: boolean
 }
 
@@ -166,7 +165,7 @@ export function MinimapScrollbar({
     }
   }, [audioContext, bpmValue, canControlPlayback, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
 
-  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const handlePointerDown = useCallback((event: preact.TargetedPointerEvent<HTMLCanvasElement>) => {
     event.preventDefault()
 
     if (event.buttons & MouseButton.Right) {
@@ -218,7 +217,7 @@ export function MinimapScrollbar({
     const timelineLabels = timelineLabelsRef.current
     const timelineRefs = timelineRefsRef.current
 
-    const windowData = timelineWindowRef.current
+    const windowData = timelineWindowRef.current ?? { windowStartTime: 0, windowEndTime: totalSeconds }
     const startRatio = Math.max(0, Math.min(1, windowData.windowStartTime / totalSeconds))
     const endRatio = Math.max(0, Math.min(1, windowData.windowEndTime / totalSeconds))
     const viewportWidth = Math.max(0, width * (endRatio - startRatio))

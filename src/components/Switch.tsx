@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 export function Switch({
   checked,
@@ -21,7 +21,7 @@ export function Switch({
 
   const isOn = checked === undefined ? internal : checked
 
-  function toggle(e: React.PointerEvent<HTMLButtonElement>) {
+  function toggle(e: preact.TargetedPointerEvent<HTMLButtonElement>) {
     e.stopPropagation()
     if (disabled) return
     const next = !isOn

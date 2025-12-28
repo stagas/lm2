@@ -6,7 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-} from 'react'
+} from 'preact/hooks'
 import { LITERALS_COUNT, OPS_COUNT } from '../../../as/assembly/constants.ts'
 import { useAppStore } from '../../app/store.ts'
 import { RadialGradient } from '../../components/RadialGradient.tsx'

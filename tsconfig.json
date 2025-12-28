@@ -17,7 +17,7 @@
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "react",
+    "jsxImportSource": "preact",
     "useDefineForClassFields": true,
     "exactOptionalPropertyTypes": false,
     "experimentalDecorators": true,

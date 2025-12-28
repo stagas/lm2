@@ -1,5 +1,5 @@
 import { CheckIcon, CircleNotchIcon, PencilIcon } from '@phosphor-icons/react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { useAppStore } from '../../app/store.ts'
 import Switch from '../../components/Switch.tsx'
 import { useEngineUiStore } from '../store.ts'
@@ -7,7 +7,7 @@ import { AuthForm } from './AuthForm.tsx'
 
 function SidebarSettingsSwitch(
   { children, onClick, checked, onChange }: {
-    children: React.ReactNode
+    children: preact.ComponentChildren
     onClick: (checked: boolean) => void
     checked: boolean
     onChange: (checked: boolean) => void

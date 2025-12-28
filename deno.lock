@@ -21,15 +21,12 @@
     "packageJson": {
       "dependencies": [
         "npm:@phosphor-icons/react@^2.1.10",
+        "npm:@preact/preset-vite@^2.10.2",
         "npm:@types/audioworklet@^0.0.88",
         "npm:@types/bun@^1.3.5",
-        "npm:@types/react-dom@^19.2.3",
-        "npm:@types/react@^19.2.7",
-        "npm:@vitejs/plugin-react-swc@^4.2.2",
         "npm:assemblyscript@~0.28.9",
         "npm:concurrently@^9.2.1",
-        "npm:react-dom@^19.2.3",
-        "npm:react@^19.2.3",
+        "npm:preact@^10.28.1",
         "npm:typescript@^5.9.3",
         "npm:vite@^7.3.0",
         "npm:zod@^3.25.76",

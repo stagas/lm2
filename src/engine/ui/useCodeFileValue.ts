@@ -1,5 +1,5 @@
 import { type CodeFile } from 'mini-code'
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'preact/hooks'
 
 export function useCodeFileValue(codeFile: CodeFile | undefined) {
   const [value, setValue] = useState(codeFile?.value ?? '')
@@ -19,5 +19,3 @@ export function useCodeFileValue(codeFile: CodeFile | undefined) {
 
   return value
 }
-
-

@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext } from 'preact/compat'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'preact/hooks'
 
 type NavigateOptions = {
   replace?: boolean
@@ -24,8 +25,10 @@ const normalizeToPathname = (to: string) => {
   }
 }
 
-export function RouterProvider({ children }: { children: React.ReactNode }) {
-  const [pathname, setPathname] = useState(() => (typeof window === 'undefined' ? '/' : window.location.pathname || '/'))
+export function RouterProvider({ children }: { children: preact.ComponentChildren }) {
+  const [pathname, setPathname] = useState(
+    () => (typeof window === 'undefined' ? '/' : window.location.pathname || '/'),
+  )
 
   useEffect(() => {
     const onPopState = () => setPathname(window.location.pathname || '/')
@@ -52,5 +55,3 @@ export function useRouter() {
   if (!value) throw new Error('useRouter must be used within RouterProvider')
   return value
 }
-
-
