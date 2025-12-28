@@ -315,7 +315,7 @@ export const LoopItem = ({
                     }
                   }
                 }}
-                onChange={e => setLoopTitle(e.target.value)}
+                onChange={e => setLoopTitle((e.target as HTMLInputElement).value)}
               />
               {!loop.isNew && !isDirty && (
                 <LoopItemButton title="Delete" icon={<TrashIcon weight="regular" size={16} />} onClick={onDelete} />
