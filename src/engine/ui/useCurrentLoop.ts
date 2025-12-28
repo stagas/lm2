@@ -35,20 +35,30 @@ export function useCurrentLoop(): Loop | null {
     const id = match ? match[1] : null
     if (!id) return
 
-    // Ensure the loop exists in the browse caches early so `currentLoop` can materialize immediately.
-    // Code will be fetched via `useLoopData` once the loop is recognized as public.
-    upsertPublicLoopCache({
-      id,
-      title: 'Loading…',
-      artist: 'Unknown',
-      artistId: 'unknown',
-      code: undefined,
-      likesCount: 0,
-      commentsCount: 0,
-      remixesCount: 0,
-      isPublic: true,
-      timestamp: 0,
-    })
+    const state = useAppStore.getState()
+    const hasLoop = state.localLoops.some(l => l.id === id)
+      || state.serverLoopsCache.some(l => l.id === id)
+      || state.publicLoopsCache.some(l => l.id === id)
+      || state.hotLoopsCache.some(l => l.id === id)
+      || state.bestLoopsCache.some(l => l.id === id)
+      || state.likedLoopsCache.some(l => l.id === id)
+
+    if (!hasLoop) {
+      // Ensure the loop exists in the browse caches early so `currentLoop` can materialize immediately.
+      // Code and metadata will be fetched via `useLoopData` once the loop is recognized as public.
+      upsertPublicLoopCache({
+        id,
+        title: 'Loading…',
+        artist: 'Unknown',
+        artistId: 'unknown',
+        code: undefined,
+        likesCount: 0,
+        commentsCount: 0,
+        remixesCount: 0,
+        isPublic: true,
+        timestamp: 0,
+      })
+    }
 
     if (selectedLoopId === id) return
     setSelectedLoopId(id)

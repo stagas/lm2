@@ -98,7 +98,12 @@ export class MiniEvents {
     this.reader.update(bytecode$, opEnd)
     this.emitter.update(eventBuffer, cycleStartSample, cycleLength, cycleSamples, windowStart, windowEnd)
 
-    const cycle = cycleSamples > 0.0 ? i32(Mathf.floor((cycleStartSample as f32) / cycleSamples)) : 0
+    // `cycleStartSample` is often produced via float math then truncated to i32 in callers.
+    // Using floor(cycleStartSample / cycleSamples) can undercount by 1 at boundaries (e.g. 0.99999..),
+    // which makes angle-groups (<...>) repeat the first choice for one extra cycle.
+    const cycle = cycleSamples > 0.0
+      ? i32(Math.round((cycleStartSample as f64) / (cycleSamples as f64)))
+      : 0
     this.evaluateGroup(
       this.reader,
       opStart,
