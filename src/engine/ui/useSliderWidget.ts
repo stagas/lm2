@@ -72,7 +72,18 @@ export class SliderWidget {
         const max = Math.max(this.info.min, this.info.max)
         value = clamp(value, min, max)
         const range = max - min
-        const normalized = range > 0 ? clamp((value - min) / range, 0, 1) : 0
+        let normalized: number
+        if (range > 0) {
+          const linearNormalized = clamp((value - min) / range, 0, 1)
+          if (this.info.exp && this.info.exp !== 1) {
+            // Apply exponential scaling for display
+            normalized = Math.pow(linearNormalized, 1 / this.info.exp)
+          } else {
+            normalized = linearNormalized
+          }
+        } else {
+          normalized = 0
+        }
 
         ctx.fillStyle = this.theme.colors.function || '#666'
         ctx.fillRect(x + this.padding, y + height / 2 - 1, width - this.padding * 2, 2)
@@ -98,7 +109,14 @@ export class SliderWidget {
         const range = max - min
         const normalized = clamp((offsetX - this.padding - this.handleRadius) / (trackWidth - 2 * this.handleRadius), 0,
           1)
-        const value = clamp(min + normalized * range, min, max)
+        let value: number
+        if (this.info.exp && this.info.exp !== 1) {
+          // Apply exponential scaling for interaction
+          const expNormalized = Math.pow(normalized, this.info.exp)
+          value = clamp(min + expNormalized * range, min, max)
+        } else {
+          value = clamp(min + normalized * range, min, max)
+        }
 
         this.dragStateRef.current = {
           key: this.sliderKey,
@@ -145,7 +163,13 @@ export class SliderWidget {
         const trackWidth = drag.width - this.padding * 2
         const normalized = clamp((offsetX - this.padding - this.handleRadius) / (trackWidth - 2 * this.handleRadius), 0,
           1)
-        drag.value = clamp(drag.min + normalized * (drag.max - drag.min), drag.min, drag.max)
+        if (this.info.exp && this.info.exp !== 1) {
+          // Apply exponential scaling for interaction
+          const expNormalized = Math.pow(normalized, this.info.exp)
+          drag.value = clamp(drag.min + expNormalized * (drag.max - drag.min), drag.min, drag.max)
+        } else {
+          drag.value = clamp(drag.min + normalized * (drag.max - drag.min), drag.min, drag.max)
+        }
 
         if (this.rafRef.current) cancelAnimationFrame(this.rafRef.current)
         this.rafRef.current = requestAnimationFrame(() => {

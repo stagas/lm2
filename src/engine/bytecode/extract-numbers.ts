@@ -22,6 +22,7 @@ export function extractNumberParamsFromProgram(program: Program): NumberWithPara
         min,
         max,
         precision: expr.slider.precision,
+        exp: expr.slider.exp,
       })
       return
     }
