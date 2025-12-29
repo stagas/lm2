@@ -14,6 +14,7 @@ import { PIANOROLL_BAR_COLOR_EVEN, PIANOROLL_BAR_COLOR_ODD, PIANOROLL_KEY_WIDTH 
 import type { ProgramInstance } from '../dsp/program.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 import { applySmoothing } from '../util.ts'
+import type { GridOwnerByLine } from './grid-owner.ts'
 import { useTheme } from './theme.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
@@ -64,6 +65,7 @@ type UsePianorollParams = {
   dspSource: string
   showWidgets: boolean
   isPlaying: boolean
+  gridOwnerByLine?: GridOwnerByLine
   resetKey?: string | number | null
 }
 
@@ -78,6 +80,7 @@ export function usePianorollWidget({
   dspSource,
   showWidgets,
   isPlaying,
+  gridOwnerByLine,
   resetKey,
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
@@ -230,6 +233,7 @@ export function usePianorollWidget({
     viewX: number,
     viewWidth: number,
     seqColor?: string,
+    drawGrid = true,
   ) => {
     if (!audioContext || !bpmValue) return
     const st = pianorollStateRef.current.get(seqIndex)
@@ -363,25 +367,27 @@ export function usePianorollWidget({
     //   }
     // }
 
-    const firstBarStart = Math.max(0, Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds)
-    for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
-      const barIndex = Math.round(barStart / barLengthSeconds)
-      const isEvenBar = barIndex % 2 === 0
-      const barX = (barStart - windowStartTime) * PIXELS_PER_SECOND
-      const barWidth = barLengthSeconds * PIXELS_PER_SECOND
-      c.fillStyle = isEvenBar ? PIANOROLL_BAR_COLOR_EVEN : PIANOROLL_BAR_COLOR_ODD
-      c.fillRect(barX, 0, barWidth, h)
-    }
+    if (drawGrid) {
+      const firstBarStart = Math.max(0, Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds)
+      for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
+        const barIndex = Math.round(barStart / barLengthSeconds)
+        const isEvenBar = barIndex % 2 === 0
+        const barX = (barStart - windowStartTime) * PIXELS_PER_SECOND
+        const barWidth = barLengthSeconds * PIXELS_PER_SECOND
+        c.fillStyle = isEvenBar ? PIANOROLL_BAR_COLOR_EVEN : PIANOROLL_BAR_COLOR_ODD
+        c.fillRect(barX, 0, barWidth, h)
+      }
 
-    const firstCycleStart = Math.floor(windowStartTime / cycleLengthSeconds) * cycleLengthSeconds
-    for (let cycleStart = firstCycleStart; cycleStart < windowEndTime; cycleStart += cycleLengthSeconds) {
-      const cycleX = (cycleStart - windowStartTime) * PIXELS_PER_SECOND
-      c.strokeStyle = 'rgba(0, 0, 0, 1.0)'
-      c.lineWidth = 0.25
-      c.beginPath()
-      c.moveTo(cycleX, 0)
-      c.lineTo(cycleX, h)
-      c.stroke()
+      const firstCycleStart = Math.floor(windowStartTime / cycleLengthSeconds) * cycleLengthSeconds
+      for (let cycleStart = firstCycleStart; cycleStart < windowEndTime; cycleStart += cycleLengthSeconds) {
+        const cycleX = (cycleStart - windowStartTime) * PIXELS_PER_SECOND
+        c.strokeStyle = 'rgba(0, 0, 0, 1.0)'
+        c.lineWidth = 0.25
+        c.beginPath()
+        c.moveTo(cycleX, 0)
+        c.lineTo(cycleX, h)
+        c.stroke()
+      }
     }
 
     const ev = st.frameEv
@@ -532,6 +538,15 @@ export function usePianorollWidget({
       const map = miniSourceMaps[ref.seqIndex]
       if (!map) continue
 
+      const owner = gridOwnerByLine?.get(ref.loc.line)
+      const drawGrid = !gridOwnerByLine || (
+        owner?.kind === 'pianoroll'
+        && owner.seqIndex === ref.seqIndex
+        && owner.line === ref.loc.line
+        && owner.column === ref.loc.column
+        && owner.length === ref.loc.length
+      )
+
       out.push({
         type: 'above',
         line: ref.loc.line,
@@ -539,13 +554,13 @@ export function usePianorollWidget({
         length: 1,
         height: 40,
         render: (ctx, _x, y, _w, h, vx, vw) => {
-          drawPianoroll(ctx, ref.seqIndex, y, h, vx, vw, ref.color)
+          drawPianoroll(ctx, ref.seqIndex, y, h, vx, vw, ref.color, drawGrid)
         },
       })
     }
 
     return out
-  }, [showWidgets, miniSourceMaps, miniRefs, dspSource, drawPianoroll])
+  }, [showWidgets, miniSourceMaps, miniRefs, dspSource, drawPianoroll, gridOwnerByLine])
 
   return { widgets, onBeforeDraw }
 }

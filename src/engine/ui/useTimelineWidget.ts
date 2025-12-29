@@ -18,6 +18,7 @@ import {
   type TimelineSeg,
 } from '../dsp/timeline-history.ts'
 import { applySmoothing } from '../util.ts'
+import type { GridOwnerByLine } from './grid-owner.ts'
 import { useTheme } from './theme.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
@@ -39,6 +40,7 @@ type UseTimelineParams = {
   showWidgets: boolean
   isPlaying: boolean
   isLive: boolean
+  gridOwnerByLine?: GridOwnerByLine
   resetKey?: string | number | null
 }
 
@@ -53,6 +55,7 @@ export function useTimelineWidget({
   showWidgets,
   isPlaying,
   isLive,
+  gridOwnerByLine,
   resetKey,
 }: UseTimelineParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const stateRef = useRef<Map<number, TimelineState>>(new Map())
@@ -153,6 +156,7 @@ export function useTimelineWidget({
     viewX: number,
     viewWidth: number,
     seqColor?: string,
+    drawGrid = true,
   ) => {
     if (!audioContext || !bpmValue) return
     const st = stateRef.current.get(seqIndex)
@@ -190,28 +194,30 @@ export function useTimelineWidget({
     // c.fillStyle = 'rgba(75, 75, 75, 0.3)'
     // c.fillRect(0, 0, w, h)
 
-    // Grid (alternating bar fills like pianoroll)
-    const firstBarStart = Math.max(0, Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds)
     const windowEndTime = windowStartTime + TIME_WINDOW_BARS * barLengthSeconds
-    for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
-      const barIndex = Math.round(barStart / barLengthSeconds)
-      const isEvenBar = barIndex % 2 === 0
-      const barX = (barStart - windowStartTime) * pixelsPerSecond
-      const barWidth = barLengthSeconds * pixelsPerSecond
-      c.fillStyle = isEvenBar ? PIANOROLL_BAR_COLOR_EVEN : PIANOROLL_BAR_COLOR_ODD
-      c.fillRect(barX, 0, barWidth, h)
-    }
+    if (drawGrid) {
+      // Grid (alternating bar fills like pianoroll)
+      const firstBarStart = Math.max(0, Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds)
+      for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
+        const barIndex = Math.round(barStart / barLengthSeconds)
+        const isEvenBar = barIndex % 2 === 0
+        const barX = (barStart - windowStartTime) * pixelsPerSecond
+        const barWidth = barLengthSeconds * pixelsPerSecond
+        c.fillStyle = isEvenBar ? PIANOROLL_BAR_COLOR_EVEN : PIANOROLL_BAR_COLOR_ODD
+        c.fillRect(barX, 0, barWidth, h)
+      }
 
-    // Beat boundaries (like pianoroll)
-    c.strokeStyle = 'rgba(0, 0, 0, 1.0)'
-    c.lineWidth = 0.25
-    const firstBeatStart = Math.floor(windowStartTime / beatLengthSeconds) * beatLengthSeconds
-    for (let beatStart = firstBeatStart; beatStart < windowEndTime; beatStart += beatLengthSeconds) {
-      const px = (beatStart - windowStartTime) * pixelsPerSecond
-      c.beginPath()
-      c.moveTo(px, 0)
-      c.lineTo(px, h)
-      c.stroke()
+      // Beat boundaries (like pianoroll)
+      c.strokeStyle = 'rgba(0, 0, 0, 1.0)'
+      c.lineWidth = 0.25
+      const firstBeatStart = Math.floor(windowStartTime / beatLengthSeconds) * beatLengthSeconds
+      for (let beatStart = firstBeatStart; beatStart < windowEndTime; beatStart += beatLengthSeconds) {
+        const px = (beatStart - windowStartTime) * pixelsPerSecond
+        c.beginPath()
+        c.moveTo(px, 0)
+        c.lineTo(px, h)
+        c.stroke()
+      }
     }
 
     // Value line: sample per-pixel but detect exact segment boundaries and draw
@@ -361,6 +367,15 @@ export function useTimelineWidget({
 
     const out: EditorWidget[] = []
     for (const ref of timelineRefs) {
+      const owner = gridOwnerByLine?.get(ref.loc.line)
+      const drawGrid = !gridOwnerByLine || (
+        owner?.kind === 'timeline'
+        && owner.seqIndex === ref.seqIndex
+        && owner.line === ref.loc.line
+        && owner.column === ref.loc.column
+        && owner.length === ref.loc.length
+      )
+
       out.push({
         type: 'above',
         line: ref.loc.line,
@@ -370,12 +385,12 @@ export function useTimelineWidget({
         pointerDown: (x, y, offsetX, offsetY) => {
         },
         render: (ctx, _x, y, _w, h, vx, vw) => {
-          drawTimeline(ctx, ref.seqIndex, y, h, vx, vw, ref.color)
+          drawTimeline(ctx, ref.seqIndex, y, h, vx, vw, ref.color, drawGrid)
         },
       })
     }
     return out
-  }, [showWidgets, timelineRefs, dspSource, drawTimeline])
+  }, [showWidgets, timelineRefs, dspSource, drawTimeline, gridOwnerByLine])
 
   return { widgets, onBeforeDraw }
 }

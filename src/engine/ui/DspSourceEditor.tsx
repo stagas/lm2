@@ -25,6 +25,7 @@ import { buildTimelineLabels } from '../dsp/timeline-labels.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import type { WidgetCompileResult } from '../types.ts'
 import { functionDefinitions } from './function-definitions.ts'
+import type { GridOwner, GridOwnerByLine } from './grid-owner.ts'
 import type { Loop } from './loop.ts'
 import { useRouter } from './router.tsx'
 import { useTheme } from './theme.ts'
@@ -528,6 +529,36 @@ function DspSourceEditorReady(
   const isLiveView = loopId != null && loopId === (playingLoopId ?? lastPlayingLoopIdRef.current)
   const resetKey = `${currentLoop?.data.id ?? ''}:${playingLoopId ?? ''}`
 
+  const gridOwnerByLine = useMemo((): GridOwnerByLine => {
+    const byLine = new Map<number, GridOwner>()
+    const consider = (owner: GridOwner) => {
+      const existing = byLine.get(owner.line)
+      if (!existing || owner.column < existing.column) byLine.set(owner.line, owner)
+    }
+
+    for (const ref of widgetCompileState.timelineRefs ?? []) {
+      consider({
+        kind: 'timeline',
+        seqIndex: ref.seqIndex,
+        line: ref.loc.line,
+        column: ref.loc.column,
+        length: ref.loc.length,
+      })
+    }
+
+    for (const ref of widgetCompileState.miniRefs ?? []) {
+      consider({
+        kind: 'pianoroll',
+        seqIndex: ref.seqIndex,
+        line: ref.loc.line,
+        column: ref.loc.column,
+        length: ref.loc.length,
+      })
+    }
+
+    return byLine
+  }, [widgetCompileState.miniRefs, widgetCompileState.timelineRefs])
+
   const { widgets: sequenceWidgets, onBeforeDraw } = useSequenceWidget({
     program1: runtimeProgram,
     audioContext,
@@ -557,6 +588,7 @@ function DspSourceEditorReady(
     showWidgets,
     isPlaying: isPlaybackRunningForView,
     resetKey,
+    gridOwnerByLine,
   })
 
   const { widgets: timelineWidgets, onBeforeDraw: onBeforeDrawTimeline } = useTimelineWidget({
@@ -571,6 +603,7 @@ function DspSourceEditorReady(
     isPlaying: isPlaybackRunningForView,
     isLive,
     resetKey,
+    gridOwnerByLine,
   })
 
   const { widgets: timelineSequenceWidgets, onBeforeDraw: onBeforeDrawTimelineSequence } = useTimelineSequenceWidget({
