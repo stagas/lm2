@@ -99,4 +99,7 @@ export enum VmSym {
   Curve,
   Octaves,
   Glide,
+  Delay,
+  Seconds,
+  Feedback,
 }

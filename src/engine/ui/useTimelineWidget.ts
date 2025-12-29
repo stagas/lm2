@@ -187,7 +187,7 @@ export function useTimelineWidget({
     const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
     const windowEndTime = windowStartTime + TIME_WINDOW_BARS * barLengthSeconds
     for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
-      const barIndex = Math.floor(barStart / barLengthSeconds)
+      const barIndex = Math.round(barStart / barLengthSeconds)
       const isEvenBar = barIndex % 2 === 0
       const barX = (barStart - windowStartTime) * pixelsPerSecond
       const barWidth = barLengthSeconds * pixelsPerSecond
@@ -290,28 +290,34 @@ export function useTimelineWidget({
     c.strokeStyle = 'rgba(0, 0, 0, 0.6)'
     c.lineWidth = 0.25
     const circleRadius = 3
+    const drawnPositions = new Set<number>()
+    const drawCircleAt = (px: number, value: number) => {
+      const y = (1 - value) * (h - 2) + 1
+      const key = Math.round(px) * 1_000_000 + Math.round(y)
+      if (drawnPositions.has(key)) return
+      drawnPositions.add(key)
+      c.beginPath()
+      c.arc(px, y, circleRadius, 0, Math.PI * 2)
+      c.fill()
+      c.stroke()
+    }
+
     for (let j = 0; j < segs.length; j++) {
       const s = segs[j]!
       const sample = s.startSample
       const px = sampleToPx(sample)
       if (px < 0 || px > w) continue
 
-      const drawCircle = (value: number) => {
-        const y = (1 - value) * (h - 2) + 1
-        c.beginPath()
-        c.arc(px, y, circleRadius, 0, Math.PI * 2)
-        c.fill()
-        c.stroke()
-      }
-
       const beforeSample = sample > windowStartSample ? Math.max(windowStartSample, sample - 1) : null
-      if (j > 0 && beforeSample != null && beforeSample < sample) {
+      const isCycleStart = Math.round(sample) === 0
+      if (!isCycleStart && j > 0 && beforeSample != null && beforeSample < sample) {
         const valueBefore = getTimelineValueAtSample(segs, beforeSample)
-        drawCircle(valueBefore)
+        const beforePx = sampleToPx(beforeSample)
+        drawCircleAt(beforePx, valueBefore)
       }
 
       const valueAtBoundary = getTimelineValueAtSample(segs, sample)
-      drawCircle(valueAtBoundary)
+      drawCircleAt(px, valueAtBoundary)
     }
 
     // Current time marker

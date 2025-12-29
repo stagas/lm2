@@ -158,11 +158,17 @@ export function useTimelineSequenceWidget({
 
       for (let si = 0; si < tokens.length; si++) {
         const t = tokens[si]!
+        // Skip tokens that are completely invalid (both from and to are implicit)
+        if (t.fromTokenStart < 0 && t.toTokenStart < 0) continue
+
         const renderToken = (
           role: 'from' | 'to',
           tokenStart: number,
           tokenLength: number,
         ) => {
+          // Skip rendering for implicit tokens (outside string area)
+          if (tokenStart < 0) return
+
           const length = Math.max(1, tokenLength)
           const absStart = ref.start + tokenStart
           const absEnd = absStart + length

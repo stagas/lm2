@@ -10,7 +10,7 @@ import {
 } from '../../../as/assembly/constants.ts'
 import type { SourceLocation } from '../../lib/mini-source-map.ts'
 import { frequencyToMidi, midiToNoteName } from '../../mini/util.ts'
-import type { MiniSequenceRef, TimelineLabel } from '../bytecode/bytecode.ts'
+import { extractScaleFromSource, type MiniSequenceRef, type TimelineLabel } from '../bytecode/bytecode.ts'
 import { PIANOROLL_KEY_WIDTH } from '../constants.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { useEngineRuntimeStore } from '../store.ts'
@@ -88,6 +88,12 @@ export function usePianorollWidget({
 
   const theme = useTheme()
 
+  const defaultScaleIndex = useMemo(() => {
+    const extracted = extractScaleFromSource(dspSource)
+    if (extracted.errors.length) return undefined
+    return extracted.scale
+  }, [dspSource])
+
   useEffect(() => {
     pianorollStateRef.current.clear()
     predictedSampleCountRef.current = null
@@ -155,6 +161,7 @@ export function usePianorollWidget({
         windowEndSample,
         bpm,
         sampleRate,
+        scaleIndex: defaultScaleIndex,
       })
 
       const activeMask = st.activeMask
@@ -359,7 +366,7 @@ export function usePianorollWidget({
 
     const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
     for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
-      const barIndex = Math.floor(barStart / barLengthSeconds)
+      const barIndex = Math.round(barStart / barLengthSeconds)
       const isEvenBar = barIndex % 2 === 0
       const barX = (barStart - windowStartTime) * PIXELS_PER_SECOND
       const barWidth = barLengthSeconds * PIXELS_PER_SECOND

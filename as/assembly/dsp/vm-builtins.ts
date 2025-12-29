@@ -10,6 +10,7 @@ import { callCompressor } from './builtins/compressor'
 import { callDegree } from './builtins/degree'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
+import { callDelay } from './builtins/delay'
 import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callMap } from './builtins/map'
@@ -299,6 +300,12 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Glide) {
       callGlide(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Delay) {
+      callDelay(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
       return
     }
 

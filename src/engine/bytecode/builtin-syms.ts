@@ -52,6 +52,7 @@ export const builtinSyms: Record<string, number> = {
   brown: VmSym.Brown,
   smooth: VmSym.Smooth,
   fractal: VmSym.Fractal,
+  delay: VmSym.Delay,
   // Runtime directive globals (stable ids so VM can provide defaults)
   tune: VmSym.Tune,
   octave: VmSym.Octave,
@@ -62,6 +63,7 @@ export const builtinSyms: Record<string, number> = {
   R: VmSym.R,
   // Named args for post()
   cb: VmSym.Cb,
+  callback: VmSym.Cb,
   // Named args for adsr()
   attack: VmSym.Attack,
   decay: VmSym.Decay,
@@ -114,4 +116,6 @@ export const builtinSyms: Record<string, number> = {
   rate: VmSym.Rate,
   curve: VmSym.Curve,
   octaves: VmSym.Octaves,
+  seconds: VmSym.Seconds,
+  feedback: VmSym.Feedback,
 }

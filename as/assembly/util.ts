@@ -24,6 +24,19 @@ export function fract(value: f64): f64 {
   return value - Math.floor(value)
 }
 
+export function applyCurve(t: f64, curve: f64): f64 {
+  if (curve > 0.0) return Math.pow(t, curve)
+  if (curve < 0.0) {
+    const base: f64 = -curve
+    // mirrored complement: make e-<n> be the exact opposite of e< n >
+    // so e-10(t) == 1 - (1 - t)^10
+    if (base > 0.0) {
+      return 1.0 - Math.pow(1.0 - t, base)
+    }
+  }
+  return t
+}
+
 export function roundToDecimals(value: f64, decimals: f64): f64 {
   const factor: f64 = Math.pow(10, decimals)
   return Math.round(value * factor) / factor

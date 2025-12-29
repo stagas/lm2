@@ -254,6 +254,10 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Fractal)
       return
     }
+    if (sym === VmSym.Delay) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Delay)
+      return
+    }
     if (sym === VmSym.T) {
       const outIndex = audio.getTRamp(length, program)
       stack.push(VmTag.Audio, 0.0, outIndex)

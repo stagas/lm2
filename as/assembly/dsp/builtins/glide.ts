@@ -6,6 +6,7 @@ import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
+import { applyCurve } from '../../util'
 
 // @ts-ignore
 
@@ -13,22 +14,6 @@ function wrapIndex(i: i32, len: i32): i32 {
   let j: i32 = i % len
   if (j < 0) j += len
   return j
-}
-
-function applyCurve(t: f64, curve: f64): f64 {
-  if (curve > 0.0) return Math.pow(t, curve)
-  if (curve < 0.0) {
-    const base: f64 = -curve
-    if (base > 0.0) {
-      const den: f64 = Math.log(base)
-      if (den !== 0.0) {
-        const tf: f64 = t as f64
-        const num: f64 = Math.log(1.0 + (base - 1.0) * tf)
-        return num / den
-      }
-    }
-  }
-  return t
 }
 
 export function callGlide(
@@ -132,7 +117,7 @@ export function callGlide(
     const i1: i32 = wrapIndex(i0 + 1, n)
     const localBeat: f64 = beatAbs - (c as f64) * stepBeats
     const t: f64 = stepBeats > 0.0 ? localBeat / stepBeats : 0.0
-    const curve: f32 = load<f32>(e$)
+    const curve: f64 = load<f32>(e$) as f64
     p = applyCurve(t, curve)
 
     const a: f64 = dsp.arrays.elemNum[start + i0]

@@ -121,8 +121,13 @@ export type VmCompileSnapshot = {
   result: ReturnType<typeof encodeLangToVmOps>
 }
 
-function updateSequence(sequence: string, arrayIndex: number, data: ProgramDataView): Map<number, SourceLocation> {
-  const compiled = compileMiniNotation(sequence)
+function updateSequence(
+  sequence: string,
+  arrayIndex: number,
+  data: ProgramDataView,
+  scaleIndex: number | undefined,
+): Map<number, SourceLocation> {
+  const compiled = compileMiniNotation(sequence, scaleIndex === undefined ? {} : { defaultScale: { scaleIndex } })
   const target = data.arrays[arrayIndex]
 
   // Write new bytecode without clearing first to avoid race condition
@@ -181,6 +186,7 @@ function buildProgram(
   sampleDefs: SampleDef[]
   bpm?: number
   bars?: number
+  scale?: number
 } {
   const compiled = (vm && vm.source === dspSource)
     ? (data.ops.set(vm.ops), data.literals.set(vm.literals), vm.result)
@@ -188,7 +194,7 @@ function buildProgram(
 
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs,
     compressorRefs, lpRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
-    numberParams, numberLiterals, bpm, bars, sampleDefs } = compiled
+    numberParams, numberLiterals, bpm, bars, scale, sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
@@ -214,6 +220,7 @@ function buildProgram(
     sampleDefs: sampleDefs ?? [],
     bpm,
     bars,
+    scale,
   }
 }
 
@@ -501,7 +508,7 @@ async function createProgram(
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
           lpRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
-          numberLiterals, sampleDefs, bpm, bars } = buildProgram(newData, source, options.vm)
+          numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -519,7 +526,7 @@ async function createProgram(
               newData.arrays[arrayIndex].raw[3] = oldArray.raw[3]
             }
 
-            miniSourceMaps[arrayIndex] = updateSequence(sequence, arrayIndex, newData)
+            miniSourceMaps[arrayIndex] = updateSequence(sequence, arrayIndex, newData, scale)
           }
 
           for (let i = 0; i < timelineSequences.length; i++) {

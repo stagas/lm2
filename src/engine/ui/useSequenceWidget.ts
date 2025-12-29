@@ -13,6 +13,7 @@ import {
 import type { SourceLocation } from '../../lib/mini-source-map.ts'
 import { splitValueAndModifiers } from '../../mini/tokenizer.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
+import { extractScaleFromSource } from '../bytecode/bytecode.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
@@ -203,6 +204,12 @@ export function useSequenceWidget({
 
   const controls = new Map<number, number>()
 
+  const defaultScaleIndex = useMemo(() => {
+    const extracted = extractScaleFromSource(dspSource)
+    if (extracted.errors.length) return undefined
+    return extracted.scale
+  }, [dspSource])
+
   useEffect(() => {
     predictedSampleCountRef.current = null
     lastWallTimeRef.current = null
@@ -299,6 +306,7 @@ export function useSequenceWidget({
         windowEndSample,
         bpm,
         sampleRate,
+        scaleIndex: defaultScaleIndex,
       })
 
       for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
