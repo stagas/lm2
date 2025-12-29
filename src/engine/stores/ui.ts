@@ -7,6 +7,7 @@ export type EngineUiState = {
   zeroBasedTimelines: boolean
   showFunctionDefinitions: boolean
   showWidgets: boolean
+  wordWrap: boolean
   sidebarTab: SidebarTab
 
   setViewSampleCount: (loopId: string, sampleCount: number) => void
@@ -14,6 +15,7 @@ export type EngineUiState = {
   setZeroBasedTimelines: (zeroBased: boolean) => void
   setShowFunctionDefinitions: (showFunctionDefinitions: boolean) => void
   setShowWidgets: (showWidgets: boolean) => void
+  setWordWrap: (wordWrap: boolean) => void
   setSidebarTab: (sidebarTab: SidebarTab) => void
 }
 
@@ -23,6 +25,7 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
     zeroBasedTimelines: false,
     showFunctionDefinitions: true,
     showWidgets: true,
+    wordWrap: true,
     sidebarTab: 'loops',
 
     setViewSampleCount: (loopId: string, sampleCount: number) => {
@@ -63,6 +66,10 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
 
     setShowWidgets: (showWidgets: boolean) => {
       set({ showWidgets: showWidgets })
+    },
+
+    setWordWrap: (wordWrap: boolean) => {
+      set({ wordWrap: wordWrap })
     },
 
     setSidebarTab: (sidebarTab: SidebarTab) => {

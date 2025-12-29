@@ -146,7 +146,7 @@ function DspSourceEditorReady(
     playbackState,
   } = useEngineRuntimeStore()
 
-  const { showFunctionDefinitions, showWidgets: uiShowWidgets } = useEngineUiStore()
+  const { showFunctionDefinitions, showWidgets: uiShowWidgets, wordWrap } = useEngineUiStore()
   const theme = useTheme()
   // Subscribe for rerenders while editing, but use `codeFile.value` for synchronous reads
   // to avoid a one-render lag during loop switches.
@@ -958,6 +958,7 @@ function DspSourceEditorReady(
             functionDefinitions={functionDefinitions}
             isAnimating={true}
             gutter={true}
+            wordWrap={wordWrap}
             keyOverride={handleKeyDown}
             onBeforeDraw={onBeforeDrawCombined}
           />
