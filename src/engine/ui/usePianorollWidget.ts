@@ -422,7 +422,7 @@ export function usePianorollWidget({
       const ex = x + 0.5
       const ew = Math.max(2, eventWidth) - 1
       const ey = y + 0.5
-      const eh = keyHeight - 1
+      const eh = Math.max(1, keyHeight - 1)
 
       c.globalAlpha = velocity * 0.9 + 0.1
 
