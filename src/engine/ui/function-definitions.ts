@@ -598,7 +598,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         description: 'Fall rate when signal decreases (defaults to up rate if ≤ 0)',
       },
       {
-        name: 'exp',
+        name: 'exponent',
         type: 'number',
         optional: true,
         defaultValue: 1,
@@ -634,6 +634,25 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description: 'Maps over an array and returns a new array with the results.',
     examples: [
       '[1,2,3].map(x -> x * 2)',
+    ],
+  },
+  '.glide': {
+    name: '.glide',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Step duration in bars (1 = 4 beats)' },
+      {
+        name: 'exponent',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Curve shape: 1=linear, >0 uses pow(t,exp), <0 uses logarithmic curve base=-exp',
+      },
+    ],
+    returnType: 'number',
+    description: 'Iterates numeric array values on a beat-locked bar division and glides between them.',
+    examples: [
+      '[0,1,0.25,0.75].glide(1) |> out($)',
+      '[100,200,400,800].glide(bar:0.5, exponent:2) |> sine(hz:$) |> out($)',
     ],
   },
   '.sum': {

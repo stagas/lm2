@@ -670,15 +670,22 @@ class Compiler {
     }
 
     // `array.sum()` is compiled as `sum(array)` to avoid GET_PROP in the VM encoder.
-    if (expr.callee.kind === 'member' && expr.callee.computed === false && expr.callee.prop === 'sum') {
+    const compileMemberCallAsBuiltin = (name: string): boolean => {
+      if (expr.callee.kind !== 'member' || expr.callee.computed !== false) return false
+      if (expr.callee.prop !== name) return false
+
       const recvTemp = `%recv${this.callTempId++}`
       this.compileExpr(expr.callee.object)
       this.emit({ op: 'STORE', name: this.nameConst(recvTemp) })
       this.emit({ op: 'POP' })
 
-      this.emit({ op: 'LOAD', name: this.nameConst('sum') })
+      this.emit({ op: 'LOAD', name: this.nameConst(name) })
 
-      const temps: Array<{ kind: 'pos'; temp: string } | { kind: 'named'; temp: string; name: string }> = []
+      type CallTempArg =
+        | { kind: 'pos'; temp: string }
+        | { kind: 'named'; temp: string; name: string }
+
+      const temps: CallTempArg[] = []
       const tmp = () => `%arg${this.callTempId++}`
 
       for (const a of expr.args) {
@@ -720,8 +727,13 @@ class Compiler {
       }
 
       this.emit({ op: 'CALL', pos: posTemps.length, named: namedTemps.length })
-      return
+      return true
     }
+
+    // `array.sum()` is compiled as `sum(array)` to avoid GET_PROP in the VM encoder.
+    if (compileMemberCallAsBuiltin('sum')) return
+    // `array.glide(bar, exp?)` is compiled as `glide(array, bar, exp?)` to avoid GET_PROP in the VM encoder.
+    if (compileMemberCallAsBuiltin('glide')) return
 
     this.compileExpr(expr.callee)
     type TempArg =

@@ -10,6 +10,7 @@ import { callCompressor } from './builtins/compressor'
 import { callDegree } from './builtins/degree'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
+import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callMap } from './builtins/map'
 import { callMini } from './builtins/mini'
@@ -191,7 +192,7 @@ export class VmBuiltins {
 
     // Coerce arrays-of-nums / arrays-of-audio to a scalar by summing (like `array.sum()`),
     // so passing `[a,b,c]` into a numeric/audio parameter works naturally.
-    if (calleeAux !== VmBuiltin.Map && calleeAux !== VmBuiltin.Sum) {
+    if (calleeAux !== VmBuiltin.Map && calleeAux !== VmBuiltin.Sum && calleeAux !== VmBuiltin.Glide) {
       for (let i = 0; i < posCount; i++) {
         this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
       }
@@ -291,6 +292,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Sum) {
       callSum(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Glide) {
+      callGlide(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
       return
     }

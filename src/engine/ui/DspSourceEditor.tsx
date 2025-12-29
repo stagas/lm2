@@ -40,6 +40,7 @@ import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
 import { useLfoWidget } from './useLfoWidget.ts'
 import { useLoopView } from './useLoopView.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
+import { useRestartLoop } from './useRestartLoop.tsx'
 import { useSampleWidget } from './useSampleWidget.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
 import { useSlicerWidget } from './useSlicerWidget.ts'
@@ -132,6 +133,7 @@ function DspSourceEditorReady(
   const isProgramSwapPending = useEngineDspStore(state => state.isProgramSwapPending)
   const isUpdatingDsp = useEngineDspStore(state => state.isUpdatingDsp)
   const setUiCompilePreview = useEngineDspStore(state => state.setUiCompilePreview)
+  const restartLoop = useRestartLoop()
 
   const {
     isProgramReady,
@@ -809,9 +811,88 @@ function DspSourceEditorReady(
     return next
   }, [currentLoop?.codeFile])
 
+  const didSeeCodeRef = useRef<{ key: string; did: boolean }>({ key: '', did: false })
+  if (didSeeCodeRef.current.key !== codeEditorKey) {
+    didSeeCodeRef.current = { key: codeEditorKey, did: false }
+  }
+  if (!didSeeCodeRef.current.did && code.length > 0) {
+    didSeeCodeRef.current.did = true
+  }
+
+  const editorGateRef = useRef<{ key: string; allow: boolean }>({ key: '', allow: false })
+  if (editorGateRef.current.key !== codeEditorKey) {
+    editorGateRef.current = { key: codeEditorKey, allow: false }
+  }
+
+  const isBootingCode = isAwaitingCode && !didSeeCodeRef.current.did
+  const hasSavedScroll = currentLoop.codeFile.scrollX !== 0 || currentLoop.codeFile.scrollY !== 0
+  const expectsWidgets = showWidgets && (
+    (widgetCompileState.sampleDefs?.length ?? 0) > 0
+    || (widgetCompileState.analyserRefs?.length ?? 0) > 0
+    || (widgetCompileState.compressorRefs?.length ?? 0) > 0
+    || (widgetCompileState.lpRefs?.length ?? 0) > 0
+    || (widgetCompileState.slicerRefs?.length ?? 0) > 0
+    || (widgetCompileState.lfoRefs?.length ?? 0) > 0
+    || (widgetCompileState.everyRefs?.length ?? 0) > 0
+    || (widgetCompileState.atRefs?.length ?? 0) > 0
+    || (widgetCompileState.euclidRefs?.length ?? 0) > 0
+    || (widgetCompileState.arrayLiterals?.length ?? 0) > 0
+    || (widgetCompileState.branchMarks?.length ?? 0) > 0
+    || (widgetCompileState.timelineRefs?.length ?? 0) > 0
+    || (widgetCompileState.sequences?.length ?? 0) > 0
+    || (widgetCompileState.numberParams?.length ?? 0) > 0
+    || knobs.length > 0
+  )
+
+  const shouldDelayEditorMount = !editorGateRef.current.allow
+    && hasSavedScroll
+    && (isBootingCode || (expectsWidgets && widgets.length === 0))
+
+  if (!editorGateRef.current.allow && !shouldDelayEditorMount) {
+    editorGateRef.current.allow = true
+  }
+
+  const showEditor = editorGateRef.current.allow
+
+  const handleKeyDown = useCallback((e: KeyboardEvent | preact.TargetedKeyboardEvent<HTMLTextAreaElement>) => {
+    const metaKey = e.ctrlKey || e.metaKey
+    if (e.key === 'r' && metaKey) {
+      return false
+    }
+    if (e.key === ' ' && metaKey) {
+      const runtime = useEngineRuntimeStore.getState()
+      if (runtime.playbackState === 'running') {
+        if (!e.altKey) runtime.pause()
+        else void restartLoop()
+      }
+      else {
+        ;(async () => {
+          if (e.altKey) {
+            await restartLoop()
+          }
+          if (!runtime.playingLoopId) {
+            void useEngineDspStore.getState().playLoop(currentLoop.data.id, currentLoop.codeFile.value, 0)
+          }
+          else {
+            runtime.start()
+          }
+        })()
+      }
+      return false
+    }
+    return true
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [handleKeyDown])
+
   return (
     <div className="flex flex-row gap-2 w-full h-full relative">
-      <div className="bg-gray-900 text-white text-sm w-full h-full">
+      <div className="text-white text-sm w-full h-full">
         {headerErrorText.length > 0 && (
           <div className="absolute top-0 left-[37px] right-0 h-[40px] z-50">
             <div className="h-full w-full flex items-center gap-2 px-2 bg-[#f00a] border-b border-red-700 text-red-100">
@@ -827,28 +908,25 @@ function DspSourceEditorReady(
             </div>
           </div>
         )}
-        <CodeEditor
-          key={codeEditorKey}
-          codeFile={currentLoop?.codeFile}
-          widgets={widgets}
-          errors={editorErrors}
-          header={timelineHeader}
-          theme={theme}
-          tokenizer={tokenizer}
-          hideFunctionSignatures={!showFunctionDefinitions}
-          functionDefinitions={functionDefinitions}
-          isAnimating={true}
-          gutter={true}
-          keyOverride={e => {
-            if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
-              return false
-            }
-            return true
-          }}
-          onBeforeDraw={onBeforeDrawCombined}
-        />
+        {showEditor && (
+          <CodeEditor
+            key={codeEditorKey}
+            codeFile={currentLoop?.codeFile}
+            widgets={widgets}
+            errors={editorErrors}
+            header={timelineHeader}
+            theme={theme}
+            tokenizer={tokenizer}
+            hideFunctionSignatures={!showFunctionDefinitions}
+            functionDefinitions={functionDefinitions}
+            isAnimating={true}
+            gutter={true}
+            keyOverride={handleKeyDown}
+            onBeforeDraw={onBeforeDrawCombined}
+          />
+        )}
       </div>
-      {(isAwaitingCode || isPreloadingSamples || isAwaitingSamples) && (
+      {(isBootingCode || isPreloadingSamples || isAwaitingSamples || !showEditor) && (
         <div className="absolute inset-0 z-40 pointer-events-none">
           <RadialGradient>
             <SpinnerLarge />

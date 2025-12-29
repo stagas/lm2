@@ -1145,7 +1145,7 @@ async function fetchWasmBinary() {
 }
 
 async function createWorklet() {
-  const audioContext = new AudioContext({ latencyHint: 1 })
+  const audioContext = new AudioContext({ latencyHint: 0.05 })
   window.addEventListener('pointerdown', () => {
     audioContext.resume()
   }, { once: true })

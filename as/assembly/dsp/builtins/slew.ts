@@ -83,7 +83,7 @@ export function callSlew(
       downNum = nameNums[i]
       downAux = nameAux[i]
     }
-    else if (k === VmSym.Exp) {
+    else if (k === VmSym.Exponent) {
       expTag = nameTags[i] as VmTag
       expNum = nameNums[i]
       expAux = nameAux[i]
