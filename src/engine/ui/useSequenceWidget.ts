@@ -208,7 +208,7 @@ export function useSequenceWidget({
     lastWallTimeRef.current = null
     isFirstFrameRef.current = true
     frameRef.current = []
-    controlStateRef.current.clear()
+    controlStateRef.current?.clear()
   }, [resetKey])
 
   const onBeforeDraw = useCallback(() => {
@@ -249,7 +249,7 @@ export function useSequenceWidget({
       const seq = sequences[seqIndex]
       if (!seq) continue
 
-      const st = controlStateRef.current.get(seqIndex) ?? {
+      const st = controlStateRef.current?.get(seqIndex) ?? {
         octaveHistory: null,
         transposeHistory: null,
         scaleHistory: null,
@@ -381,7 +381,7 @@ export function useSequenceWidget({
       st.fadingScale = applyFadeToControls(st.fadingScale, controls, currentSampleCount, sampleRate, FADEOUT_SECONDS)
       st.fadingSwing = applyFadeToControls(st.fadingSwing, controls, currentSampleCount, sampleRate, FADEOUT_SECONDS)
 
-      controlStateRef.current.set(seqIndex, st)
+      controlStateRef.current?.set(seqIndex, st)
       nextFrame[seqIndex] = { events, controls }
     }
 
@@ -426,11 +426,11 @@ export function useSequenceWidget({
               column: span.column,
               length: span.length,
               render: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
-                const f = frameRef.current[seqIndex]
+                const f = frameRef.current?.[seqIndex]
                 const a = f?.controls.get(opIndex) ?? 0
                 if (a <= 0) return
                 const [r, g, b] = [255, 255, 255]
-                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.25 * a})`
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.25 * (a ** 0.25)})`
                 ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
               },
             })
@@ -449,10 +449,10 @@ export function useSequenceWidget({
             column: span.column,
             length: span.length,
             render: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
-              const f = frameRef.current[seqIndex]
+              const f = frameRef.current?.[seqIndex]
               const a = f?.events.get(opIndex) ?? 0
               if (a <= 0) return
-              ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
+              ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * (a ** 0.25)})`
               ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
             },
           })
