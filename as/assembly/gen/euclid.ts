@@ -7,6 +7,7 @@ export class Euclid extends Gen {
   offset$: usize = 0
   bar$: usize = 0
 
+  @inline
   private static floorDivF64(a: f64, b: f64): i32 {
     return i32(Math.floor(a / b))
   }

@@ -1,6 +1,5 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
-import { luminate } from 'utils/rgb'
 import {
   FUTURE_BARS,
   HISTORY_DATA_OFFSET,
@@ -11,7 +10,7 @@ import {
 import type { SourceLocation } from '../../lib/mini-source-map.ts'
 import { frequencyToMidi, midiToNoteName } from '../../mini/util.ts'
 import { extractScaleFromSource, type MiniSequenceRef, type TimelineLabel } from '../bytecode/bytecode.ts'
-import { PIANOROLL_KEY_WIDTH } from '../constants.ts'
+import { PIANOROLL_BAR_COLOR_EVEN, PIANOROLL_BAR_COLOR_ODD, PIANOROLL_KEY_WIDTH } from '../constants.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 import { applySmoothing } from '../util.ts'
@@ -364,13 +363,13 @@ export function usePianorollWidget({
     //   }
     // }
 
-    const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
+    const firstBarStart = Math.max(0, Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds)
     for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
       const barIndex = Math.round(barStart / barLengthSeconds)
       const isEvenBar = barIndex % 2 === 0
       const barX = (barStart - windowStartTime) * PIXELS_PER_SECOND
       const barWidth = barLengthSeconds * PIXELS_PER_SECOND
-      c.fillStyle = isEvenBar ? 'rgba(255, 255, 255, 0.09)' : 'rgba(255, 255, 255, 0.12)'
+      c.fillStyle = isEvenBar ? PIANOROLL_BAR_COLOR_EVEN : PIANOROLL_BAR_COLOR_ODD
       c.fillRect(barX, 0, barWidth, h)
     }
 

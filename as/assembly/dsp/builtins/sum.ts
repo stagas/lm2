@@ -7,7 +7,7 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-
+@inline
 export function callSum(
   posCount: i32,
   nameSyms: StaticArray<i32>,

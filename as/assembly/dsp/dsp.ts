@@ -66,10 +66,12 @@ export class Dsp {
   private ifThenAux: StaticArray<i32> = new StaticArray<i32>(64)
   private ifThenHas: StaticArray<i32> = new StaticArray<i32>(64)
 
+  @inline
   reset(): void {
     this.program.reset()
   }
 
+  @inline
   private recordBranch(ifPc: i32, branchPc: i32): void {
     if (ifPc <= 0 || branchPc <= 0) return
     // Best-effort ring buffer for UI widgets (no atomics needed).
@@ -396,6 +398,7 @@ export class Dsp {
     return ret
   }
 
+  @inline
   private vmCall(pos: i32, named: i32, length: i32, left$: usize, right$: usize): void {
     this.builtins.call(
       pos,
@@ -410,12 +413,14 @@ export class Dsp {
     )
   }
 
+  @inline
   vmInvokeFunc(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
   {
     this.vmInvokeFuncInternal(funcPc, argCount, argTags, argNums, argAux, length, left$, right$, true)
   }
 
+  @inline
   vmInvokeFuncKeepOuts(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
   {
@@ -683,6 +688,7 @@ export class Dsp {
     }
   }
 
+  @inline
   private processVm(left$: usize, right$: usize, begin: i32, length: i32): void {
     const startSampleCount = globalSampleCount
     const incoming = this.program.data

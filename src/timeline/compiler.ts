@@ -55,8 +55,7 @@ function tokenizeTimelineNotation(input: string): TimelineToken[] {
   return tokens
 }
 
-function parseTimelineNotation(input: string): TimelinePoint[] {
-  const tokens = tokenizeTimelineNotation(input)
+function parseTimelineNotation(tokens: TimelineToken[]): TimelinePoint[] {
   const points: TimelinePoint[] = []
 
   for (const t of tokens) {
@@ -83,14 +82,23 @@ function parseTimelineNotation(input: string): TimelinePoint[] {
   return points
 }
 
-function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; totalBars: number } {
-  if (points.length === 0) return { segments: [], totalBars: 0 }
+function compilePoints(points: TimelinePoint[]): {
+  segments: TimelineSegment[]
+  totalBars: number
+  endValue: number
+  endTokenIndex: number
+  endTokenStart: number
+  endTokenLength: number
+} {
+  if (points.length === 0) {
+    return { segments: [], totalBars: 0, endValue: 0, endTokenIndex: -1, endTokenStart: -1, endTokenLength: -1 }
+  }
 
   const pts = points
     .map(p => ({ ...p, bar: p.bar }))
     .filter(p => p.bar >= 0)
 
-  if (pts.length === 0) return { segments: [], totalBars: 0 }
+  if (pts.length === 0) return { segments: [], totalBars: 0, endValue: 0, endTokenIndex: -1, endTokenStart: -1, endTokenLength: -1 }
 
   // Ensure there's always an implicit 0,0 point unless one is explicitly provided
   const hasZeroPoint = pts.some(p => p.bar === 0)
@@ -123,6 +131,10 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
     i++
   }
 
+  let endTokenIndex = activeTokenIndex
+  let endTokenStart = activeTokenStart
+  let endTokenLength = activeTokenLength
+
   for (; i < pts.length; i++) {
     const p = pts[i]!
     const nextT = p.bar
@@ -137,6 +149,9 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
       activeTokenIndex = p.tokenIndex
       activeTokenStart = p.tokenStart
       activeTokenLength = p.tokenLength
+      endTokenIndex = activeTokenIndex
+      endTokenStart = activeTokenStart
+      endTokenLength = activeTokenLength
       continue
     }
 
@@ -161,6 +176,9 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
     activeTokenIndex = p.tokenIndex
     activeTokenStart = p.tokenStart
     activeTokenLength = p.tokenLength
+    endTokenIndex = activeTokenIndex
+    endTokenStart = activeTokenStart
+    endTokenLength = activeTokenLength
   }
 
   let totalBars = t
@@ -181,12 +199,36 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
     })
   }
 
-  return { segments, totalBars }
+  return { segments, totalBars, endValue: v, endTokenIndex, endTokenStart, endTokenLength }
 }
 
 export function compileTimelineNotation(input: string, initialBeatDiv: number = 4) {
-  const points = parseTimelineNotation(input)
-  const { segments, totalBars } = compilePoints(points)
+  const tokens = tokenizeTimelineNotation(input)
+  const noWrap = tokens.some(t => t.text === '-')
+  const points = parseTimelineNotation(tokens)
+  const compiled = compilePoints(points)
+  const segments = compiled.segments
+  let totalBars = compiled.totalBars
+
+  if (noWrap && segments.length > 0) {
+    const last = segments[segments.length - 1]!
+    const lastValue = last.kind === TIMELINE_KIND_GLIDE ? last.endValue : last.startValue
+    if (lastValue !== compiled.endValue) {
+      segments.push({
+        kind: TIMELINE_KIND_HOLD,
+        durBars: 1,
+        startValue: compiled.endValue,
+        endValue: compiled.endValue,
+        exp: 1,
+        fromTokenIndex: compiled.endTokenIndex,
+        fromTokenStart: compiled.endTokenStart,
+        fromTokenLength: compiled.endTokenLength,
+        toTokenIndex: compiled.endTokenIndex,
+        toTokenStart: compiled.endTokenStart,
+        toTokenLength: compiled.endTokenLength,
+      })
+    }
+  }
   const beatsPerBar = initialBeatDiv > 0 ? initialBeatDiv : 4
 
   const segCount = segments.length
@@ -196,7 +238,8 @@ export function compileTimelineNotation(input: string, initialBeatDiv: number = 
   bytecode[0] = opLength
   bytecode[1] = TIMELINE_MAGIC
   bytecode[2] = segCount
-  bytecode[3] = totalBars
+  // If totalBars is negative, runtime treats the timeline as "no-wrap": after the end, keep last value forever.
+  bytecode[3] = noWrap ? -totalBars : totalBars
   // Durations are compiled to bars; runtime converts to beats via beatDiv (= beatsPerBar).
   bytecode[4] = beatsPerBar
 
@@ -209,7 +252,7 @@ export function compileTimelineNotation(input: string, initialBeatDiv: number = 
     bytecode[o++] = s.exp
   }
 
-  const tokens = segments.map(s => ({
+  const segmentTokens = segments.map(s => ({
     fromTokenIndex: s.fromTokenIndex,
     fromTokenStart: s.fromTokenStart,
     fromTokenLength: s.fromTokenLength,
@@ -218,5 +261,5 @@ export function compileTimelineNotation(input: string, initialBeatDiv: number = 
     toTokenLength: s.toTokenLength,
   }))
 
-  return { bytecode, tokens }
+  return { bytecode, tokens: segmentTokens, segments }
 }

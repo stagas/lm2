@@ -8,9 +8,9 @@ import { callAt } from './builtins/at'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
 import { callCompressor } from './builtins/compressor'
 import { callDegree } from './builtins/degree'
+import { callDelay } from './builtins/delay'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
-import { callDelay } from './builtins/delay'
 import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callMap } from './builtins/map'
@@ -129,6 +129,7 @@ export class VmBuiltins {
     aux[index] = 0
   }
 
+  @inline
   call(
     pos: i32,
     named: i32,

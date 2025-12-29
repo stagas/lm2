@@ -856,6 +856,7 @@ function DspSourceEditorReady(
   const showEditor = editorGateRef.current.allow
 
   const handleKeyDown = useCallback((e: KeyboardEvent | preact.TargetedKeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation()
     const metaKey = e.ctrlKey || e.metaKey
     if (e.key === 'r' && metaKey) {
       return false

@@ -9,6 +9,7 @@ import {
   HISTORY_WRITE_POS_OFFSET,
   PAST_BARS,
   TIMELINE_HEADER_SIZE,
+  TIMELINE_KIND_HOLD,
   TIMELINE_KIND_GLIDE,
   TIMELINE_MAGIC,
   TIMELINE_SEGMENT_SIZE,
@@ -40,12 +41,14 @@ export class Timeline extends Gen {
   private lastHistory$: usize = 0
   private lastVersion: i32 = -1
   private historyGeneratedUntilCycle: i32 = -1
+  private historyGeneratedUntilSample: i32 = 0
 
   reset(): void {
     this.lastBytecode$ = 0
     this.lastHistory$ = 0
     this.lastVersion = -1
     this.historyGeneratedUntilCycle = -1
+    this.historyGeneratedUntilSample = 0
   }
 
   copyFrom(other: Gen): void {
@@ -57,6 +60,7 @@ export class Timeline extends Gen {
     this.lastHistory$ = src.lastHistory$
     this.lastVersion = src.lastVersion
     this.historyGeneratedUntilCycle = src.historyGeneratedUntilCycle
+    this.historyGeneratedUntilSample = src.historyGeneratedUntilSample
   }
 
   private getStoredBeatDiv(bytecodeArray: StaticArray<f32>): f32 {
@@ -87,7 +91,10 @@ export class Timeline extends Gen {
     const dataStart: i32 = base + 1
     if (i32(bytecodeArray[dataStart]) !== TIMELINE_MAGIC) return
 
-    const totalUnits: f32 = this.getTotalUnits(bytecodeArray)
+    const totalUnitsSigned: f32 = this.getTotalUnits(bytecodeArray)
+    if (totalUnitsSigned === 0.0) return
+    const noWrap: bool = totalUnitsSigned < 0.0
+    const totalUnits: f32 = noWrap ? -totalUnitsSigned : totalUnitsSigned
     if (totalUnits <= 0.0) return
 
     const storedBeatDiv: f32 = this.getStoredBeatDiv(bytecodeArray)
@@ -107,12 +114,14 @@ export class Timeline extends Gen {
       this.lastHistory$ = this.history$
       this.lastVersion = -1
       this.historyGeneratedUntilCycle = -1
+      this.historyGeneratedUntilSample = 0
       memory.fill(changetype<usize>(historyArray), 0, (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4)
     }
 
     if (currentVersion !== this.lastVersion) {
       this.lastVersion = currentVersion
       this.historyGeneratedUntilCycle = -1
+      this.historyGeneratedUntilSample = 0
       memory.fill(changetype<usize>(historyArray), 0, (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4)
     }
 
@@ -131,6 +140,73 @@ export class Timeline extends Gen {
     const desiredEndSample: i32 = windowStartSample + lookAheadSamples
     const targetEndSample: i32 = desiredEndSample + i32(cycleSamplesF)
     const targetEndCycle: i32 = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamplesF)))
+
+    if (noWrap) {
+      if (this.historyGeneratedUntilSample >= targetEndSample) return
+
+      let historyWritePos: i32 = i32(historyArray[HISTORY_WRITE_POS_OFFSET])
+
+      const segCount: i32 = this.getSegmentCount(bytecodeArray)
+      const segBase: i32 = dataStart + TIMELINE_HEADER_SIZE
+
+      const writeTimeline: bool = this.historyGeneratedUntilSample === 0
+
+      let segStartF: f32 = 0.0
+      let lastValue: f32 = 0.0
+      for (let s: i32 = 0; s < segCount; s++) {
+        const segOffset: i32 = segBase + s * TIMELINE_SEGMENT_SIZE
+        const kind: i32 = i32(bytecodeArray[segOffset])
+        const durUnits: f32 = bytecodeArray[segOffset + 1]
+        if (durUnits <= 0.0) continue
+
+        const a: f32 = bytecodeArray[segOffset + 2]
+        const b: f32 = bytecodeArray[segOffset + 3]
+        lastValue = b
+
+        const durBeats: f32 = durUnits * beatDiv
+        const segDurSamples: f32 = durBeats * secondsPerBeat * sampleRate
+        const startSampleAbs: i32 = i32(segStartF)
+        const endSampleAbs: i32 = i32(segStartF + segDurSamples)
+        segStartF += segDurSamples
+
+        if (!writeTimeline) continue
+
+        const slot: i32 = historyWritePos & HISTORY_SIZE_MINUS_ONE
+        const historyIdx: i32 = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
+        const historyEntry: HistoryEntry = HistoryEntry.at(changetype<usize>(historyArray), historyIdx)
+        historyEntry.opIndex = kind as f32
+        historyEntry.voiceIndex = kind === TIMELINE_KIND_GLIDE ? bytecodeArray[segOffset + 4] : 0.0
+        historyEntry.value = a
+        historyEntry.velocity = b
+        historyEntry.startSample = startSampleAbs as f32
+        historyEntry.endSample = endSampleAbs as f32
+
+        historyWritePos = (historyWritePos + 1) & HISTORY_SIZE_MINUS_ONE
+      }
+
+      const timelineEndSample: i32 = i32(segStartF)
+      const holdStartSample: i32 = timelineEndSample > this.historyGeneratedUntilSample
+        ? timelineEndSample
+        : this.historyGeneratedUntilSample
+
+      if (targetEndSample > holdStartSample) {
+        const slot: i32 = historyWritePos & HISTORY_SIZE_MINUS_ONE
+        const historyIdx: i32 = HISTORY_DATA_OFFSET + slot * HISTORY_ENTRY_SIZE
+        const historyEntry: HistoryEntry = HistoryEntry.at(changetype<usize>(historyArray), historyIdx)
+        historyEntry.opIndex = (TIMELINE_KIND_HOLD as f32)
+        historyEntry.voiceIndex = 0.0
+        historyEntry.value = lastValue
+        historyEntry.velocity = lastValue
+        historyEntry.startSample = holdStartSample as f32
+        historyEntry.endSample = targetEndSample as f32
+
+        historyWritePos = (historyWritePos + 1) & HISTORY_SIZE_MINUS_ONE
+      }
+
+      this.historyGeneratedUntilSample = targetEndSample
+      historyArray[HISTORY_WRITE_POS_OFFSET] = historyWritePos as f32
+      return
+    }
 
     if (this.historyGeneratedUntilCycle >= targetEndCycle) return
 
@@ -195,7 +271,13 @@ export class Timeline extends Gen {
       return
     }
 
-    const totalUnits: f32 = this.getTotalUnits(bytecodeArray)
+    const totalUnitsSigned: f32 = this.getTotalUnits(bytecodeArray)
+    if (totalUnitsSigned === 0.0) {
+      memory.fill(out$, 0, (length << 2) as usize)
+      return
+    }
+    const noWrap: bool = totalUnitsSigned < 0.0
+    const totalUnits: f32 = noWrap ? -totalUnitsSigned : totalUnitsSigned
     if (totalUnits <= 0.0) {
       memory.fill(out$, 0, (length << 2) as usize)
       return
@@ -217,15 +299,30 @@ export class Timeline extends Gen {
       return
     }
 
+    let lastB: f32 = 0.0
+    for (let s: i32 = 0; s < segCount; s++) {
+      const segOffset: i32 = segBase + s * TIMELINE_SEGMENT_SIZE
+      const durUnits: f32 = bytecodeArray[segOffset + 1]
+      if (durUnits <= 0.0) continue
+      lastB = bytecodeArray[segOffset + 3]
+    }
+
     const beatsPerSample: f64 = (bpm as f64) / 60.0 / (sampleRate as f64)
     let beatAbs: f64 = (globalSampleCount as f64) * beatsPerSample
 
     for (let i: i32 = 0; i < length; i++) {
-      const cycle: f64 = Math.floor(beatAbs / cycleBeats)
-      const localBeat: f64 = beatAbs - cycle * cycleBeats
+      let localBeat: f64 = 0.0
+      if (noWrap) {
+        localBeat = beatAbs
+        if (localBeat < 0.0) localBeat = 0.0
+      }
+      else {
+        const cycle: f64 = Math.floor(beatAbs / cycleBeats)
+        localBeat = beatAbs - cycle * cycleBeats
+      }
 
       let accBeats: f64 = 0.0
-      let v: f32 = 0.0
+      let v: f32 = lastB
 
       for (let s: i32 = 0; s < segCount; s++) {
         const segOffset: i32 = segBase + s * TIMELINE_SEGMENT_SIZE

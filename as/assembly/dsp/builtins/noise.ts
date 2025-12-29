@@ -1,3 +1,4 @@
+// dprint-ignore-file
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from '../../gen/noise'
 import { Program } from '../../program'
 import { Op } from '../../shared'
@@ -6,6 +7,8 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 import { VmSym } from '../vm-sym'
 
+// @ts-ignore
+@inline
 export function callWhite(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -76,6 +79,8 @@ export function callWhite(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callGauss(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -146,6 +151,8 @@ export function callGauss(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callPink(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -216,6 +223,8 @@ export function callPink(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callBrown(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -286,6 +295,8 @@ export function callBrown(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callSmooth(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -327,63 +338,30 @@ export function callSmooth(
     }
   }
 
-  // Allow omitting middle args while still passing trig:
-  // - smooth(seed, trig)
-  // - smooth(seed, rate, trig)
-  // - smooth(seed, rate, curve, trig)
-  if (posCount === 2) {
+  if (posCount >= 2) {
     const t = posTags[1] as VmTag
     if (t !== VmTag.Undef && t !== VmTag.Null) {
+      rateTag = t
+      rateNum = posNums[1]
+      rateAux = posAux[1]
+    }
+  }
+
+  if (posCount >= 3) {
+    const t = posTags[2] as VmTag
+    if (t !== VmTag.Undef && t !== VmTag.Null) {
+      curveTag = t
+      curveNum = posNums[2]
+      curveAux = posAux[2]
+    }
+  }
+
+  if (posCount >= 4) {
+    const t = posTags[3] as VmTag
+    if (t !== VmTag.Undef && t !== VmTag.Null) {
       trigTag = t
-      trigNum = posNums[1]
-      trigAux = posAux[1]
-    }
-  }
-  else if (posCount === 3) {
-    {
-      const t = posTags[1] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        rateTag = t
-        rateNum = posNums[1]
-        rateAux = posAux[1]
-      }
-    }
-
-    {
-      const t = posTags[2] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        trigTag = t
-        trigNum = posNums[2]
-        trigAux = posAux[2]
-      }
-    }
-  }
-  else if (posCount >= 4) {
-    {
-      const t = posTags[1] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        rateTag = t
-        rateNum = posNums[1]
-        rateAux = posAux[1]
-      }
-    }
-
-    {
-      const t = posTags[2] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        curveTag = t
-        curveNum = posNums[2]
-        curveAux = posAux[2]
-      }
-    }
-
-    {
-      const t = posTags[3] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        trigTag = t
-        trigNum = posNums[3]
-        trigAux = posAux[3]
-      }
+      trigNum = posNums[3]
+      trigAux = posAux[3]
     }
   }
 
@@ -429,6 +407,8 @@ export function callSmooth(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callFractal(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -474,101 +454,39 @@ export function callFractal(
     }
   }
 
-  // Allow omitting middle args while still passing trig:
-  // - fractal(seed, trig)
-  // - fractal(seed, rate, trig)
-  // - fractal(seed, rate, octaves, trig)
-  // - fractal(seed, rate, octaves, gain, trig)
-  if (posCount === 2) {
+  if (posCount >= 2) {
     const t = posTags[1] as VmTag
     if (t !== VmTag.Undef && t !== VmTag.Null) {
+      rateTag = t
+      rateNum = posNums[1]
+      rateAux = posAux[1]
+    }
+  }
+
+  if (posCount >= 3) {
+    const t = posTags[2] as VmTag
+    if (t !== VmTag.Undef && t !== VmTag.Null) {
+      octavesTag = t
+      octavesNum = posNums[2]
+      octavesAux = posAux[2]
+    }
+  }
+
+  if (posCount >= 4) {
+    const t = posTags[3] as VmTag
+    if (t !== VmTag.Undef && t !== VmTag.Null) {
+      gainTag = t
+      gainNum = posNums[3]
+      gainAux = posAux[3]
+    }
+  }
+
+  if (posCount >= 5) {
+    const t = posTags[4] as VmTag
+    if (t !== VmTag.Undef && t !== VmTag.Null) {
       trigTag = t
-      trigNum = posNums[1]
-      trigAux = posAux[1]
-    }
-  }
-  else if (posCount === 3) {
-    {
-      const t = posTags[1] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        rateTag = t
-        rateNum = posNums[1]
-        rateAux = posAux[1]
-      }
-    }
-
-    {
-      const t = posTags[2] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        trigTag = t
-        trigNum = posNums[2]
-        trigAux = posAux[2]
-      }
-    }
-  }
-  else if (posCount === 4) {
-    {
-      const t = posTags[1] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        rateTag = t
-        rateNum = posNums[1]
-        rateAux = posAux[1]
-      }
-    }
-
-    {
-      const t = posTags[2] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        octavesTag = t
-        octavesNum = posNums[2]
-        octavesAux = posAux[2]
-      }
-    }
-
-    {
-      const t = posTags[3] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        trigTag = t
-        trigNum = posNums[3]
-        trigAux = posAux[3]
-      }
-    }
-  }
-  else if (posCount >= 5) {
-    {
-      const t = posTags[1] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        rateTag = t
-        rateNum = posNums[1]
-        rateAux = posAux[1]
-      }
-    }
-
-    {
-      const t = posTags[2] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        octavesTag = t
-        octavesNum = posNums[2]
-        octavesAux = posAux[2]
-      }
-    }
-
-    {
-      const t = posTags[3] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        gainTag = t
-        gainNum = posNums[3]
-        gainAux = posAux[3]
-      }
-    }
-
-    {
-      const t = posTags[4] as VmTag
-      if (t !== VmTag.Undef && t !== VmTag.Null) {
-        trigTag = t
-        trigNum = posNums[4]
-        trigAux = posAux[4]
-      }
+      trigNum = posNums[4]
+      trigAux = posAux[4]
     }
   }
 

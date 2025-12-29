@@ -7,6 +7,7 @@ export class AnalyserOutsPool {
       this.outs[i] = new StaticArray<f32>(RING_BUFFER_SIZE)
     }
   }
+  @inline
   get(index: i32): usize {
     return changetype<usize>(this.outs[index])
   }

@@ -9,7 +9,7 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-
+@inline
 export function callDelay(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -149,5 +149,6 @@ export function callDelay(
 
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
+
 
 

@@ -1025,10 +1025,10 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         description: 'Trigger that resets the seed to the current seed value when it crosses from ≤0 to >0' },
     ],
     returnType: 'number',
-    description: 'Continuous smooth noise stream in -1..1 (stateful, band-limited-ish).',
+    description: 'Continuous smooth noise stream in 0..1 (stateful, band-limited-ish).',
     examples: [
       'smooth() |> out($)',
-      'smooth(1234, rate:4, trig) |> out($)',
+      'smooth(1234, rate:4, trig:trig) |> out($)',
     ],
   },
   fractal: {
@@ -1046,10 +1046,10 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         description: 'Trigger that resets the seed to the current seed value when it crosses from ≤0 to >0' },
     ],
     returnType: 'number',
-    description: 'Multi-octave smooth variation (fBm-style) stream in -1..1 (stateful).',
+    description: 'Multi-octave smooth variation (fBm-style) stream in 0..1 (stateful).',
     examples: [
       'fractal() |> out($)',
-      'fractal(1234, rate:2, octaves:6, gain:.6, trig) |> out($)',
+      'fractal(1234, rate:2, octaves:6, gain:.6, trig:trig) |> out($)',
     ],
   },
 }

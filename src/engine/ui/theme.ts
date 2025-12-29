@@ -262,7 +262,7 @@ export const themes: Record<string, Omit<Theme, 'font'>> = {
     ['#777', '#aaa', '#fff'],
     '#ff0000',
     'transparent',
-    'transparent',
+    '#000c',
     '#333333',
     '#666666',
     '#333333',

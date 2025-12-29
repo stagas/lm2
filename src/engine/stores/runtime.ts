@@ -120,6 +120,22 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
     start: () => {
       const state = get()
       if (!state.control) return
+      if (state.playbackState === 'stopped' && state.seekSampleCount && state.playingLoopId) {
+        const uiTarget = useEngineUiStore.getState().viewSampleCountByLoopId[state.playingLoopId]
+        const prevTarget = Atomics.load(state.seekSampleCount, 0)
+        const target = Math.max(0, Math.floor(uiTarget ?? prevTarget))
+        Atomics.store(state.seekSampleCount, 0, target)
+        if (state.globalSampleCount) Atomics.store(state.globalSampleCount, 0, target)
+        Atomics.store(state.control, 0, ControlOp.SeekImmediate)
+        setTimeout(() => {
+          const next = get()
+          if (!next.control) return
+          Atomics.store(next.control, 0, ControlOp.Start)
+          set({ playbackState: 'running' })
+        }, 2.5)
+        return
+      }
+
       Atomics.store(state.control, 0, ControlOp.Start)
       set({ playbackState: 'running' })
     },

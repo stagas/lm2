@@ -15,11 +15,13 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-
+@inline
 function clampIndex(v: i32): i32 {
   return v < 0 ? 0 : v > 255 ? 255 : v
 }
 
+// @ts-ignore
+@inline
 export function callEvery(
   posCount: i32,
   nameSyms: StaticArray<i32>,

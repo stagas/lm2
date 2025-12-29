@@ -122,7 +122,7 @@ function parseModifiers(text: string): Modifiers {
         break
       }
       case '\\': {
-        const m = rest.match(/^([\d.]+)/)
+        const m = rest.match(/^(-?[\d.]+)/)
         if (m && m[1]) {
           mods.glide = parseFloat(m[1]!)
           i += m[0]!.length + 1
