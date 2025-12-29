@@ -145,7 +145,7 @@ function DspSourceEditorReady(
     playbackState,
   } = useEngineRuntimeStore()
 
-  const { showFunctionDefinitions } = useEngineUiStore()
+  const { showFunctionDefinitions, showWidgets: uiShowWidgets } = useEngineUiStore()
   const theme = useTheme()
   // Subscribe for rerenders while editing, but use `codeFile.value` for synchronous reads
   // to avoid a one-render lag during loop switches.
@@ -255,9 +255,11 @@ function DspSourceEditorReady(
   const compileErrors = previewCompile.errors ?? []
   const hasCompileErrors = compileErrors.length > 0
 
-  const showWidgets = currentLoop != null && (code.length > 0 || dspSource.length > 0)
+  const showWidgets = uiShowWidgets && (
+    currentLoop != null && (code.length > 0 || dspSource.length > 0)
     || isUpdatingDsp
     || hasCompileErrors
+  )
 
   const headerErrorText = useMemo(() => {
     const parts: string[] = []
