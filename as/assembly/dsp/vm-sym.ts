@@ -14,7 +14,7 @@ export enum VmSym {
   Degree,
   Down,
   Every,
-  Exp,
+  Exponent,
   In,
   Map,
   Mini,
@@ -98,4 +98,5 @@ export enum VmSym {
   Rate,
   Curve,
   Octaves,
+  Glide,
 }

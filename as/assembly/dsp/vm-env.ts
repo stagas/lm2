@@ -222,6 +222,10 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Sum)
       return
     }
+    if (sym === VmSym.Glide) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Glide)
+      return
+    }
     if (sym === VmSym.Slew) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Slew)
       return

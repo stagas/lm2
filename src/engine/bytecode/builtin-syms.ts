@@ -29,6 +29,7 @@ export const builtinSyms: Record<string, number> = {
   degree: VmSym.Degree,
   map: VmSym.Map,
   sum: VmSym.Sum,
+  glide: VmSym.Glide,
   slew: VmSym.Slew,
   lp: VmSym.Lp,
   hp: VmSym.Hp,
@@ -85,7 +86,7 @@ export const builtinSyms: Record<string, number> = {
   // Named args for slew()
   up: VmSym.Up,
   down: VmSym.Down,
-  exp: VmSym.Exp,
+  exponent: VmSym.Exponent,
   // Named args for sampler() and slicer()
   speed: VmSym.Speed,
   repeat: VmSym.Repeat,

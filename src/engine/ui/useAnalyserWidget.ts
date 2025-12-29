@@ -535,7 +535,7 @@ export function useAnalyserWidget({
       ampCanvasRef.current,
       analyserIndex,
       playbackState,
-      theme.background,
+      '#000',
     )
     drawWaveform(c, leftW + midW, 0, rightW, h, floats)
 
