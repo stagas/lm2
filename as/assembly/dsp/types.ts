@@ -122,6 +122,7 @@ export enum VmBuiltin {
   Brown = VmSym.Brown,
   Smooth = VmSym.Smooth,
   Fractal = VmSym.Fractal,
+  Delay = VmSym.Delay,
 }
 
 export const VM_FUNC_HEADER: i32 = -2

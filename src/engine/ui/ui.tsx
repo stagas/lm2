@@ -75,11 +75,13 @@ function RouterContent({
   onDspError: (error: string | undefined) => void
 }) {
   // Parse loop ID from URL path like /loop/<id>
-  const { pathname } = useRouter()
+  const { pathname, navigate } = useRouter()
   const loopIdFromUrl = useMemo(() => {
     const match = pathname.match(/^\/loop\/([^/]+)$/)
     return match ? match[1] : null
   }, [pathname])
+
+  const hasCheckedInitialNavigation = useRef(false)
 
   // Initialize selected loop from URL if present
   useEffect(() => {
@@ -94,6 +96,18 @@ function RouterContent({
       setSelectedLoopId(loopIdFromUrl)
     }
   }, [hasHydrated, loopIdFromUrl])
+
+  // Navigate to /my if we're at / and the current loop is new (only at init)
+  useEffect(() => {
+    if (hasCheckedInitialNavigation.current) return
+    if (!hasHydrated) return
+    if (!currentLoop) return
+    if (pathname !== '/') return
+    if (!currentLoop.isNew) return
+
+    hasCheckedInitialNavigation.current = true
+    navigate('/my')
+  }, [hasHydrated, currentLoop, pathname, navigate])
 
   return (
     <>

@@ -18,12 +18,13 @@ export type TimelineSeg = {
 }
 
 export function curveValue(t: number, curve: number): number {
-  if (curve > 0) return Math.pow(t, curve)
-  if (curve < 0) {
+  if (curve > 0.0) return Math.pow(t, curve)
+  if (curve < 0.0) {
     const base = -curve
-    if (base > 0) {
-      const den = Math.log(base)
-      if (den !== 0) return Math.log(1 + (base - 1) * t) / den
+    // mirrored complement: make e-<n> be the exact opposite of e< n >
+    // so e-10(t) == 1 - (1 - t)^10
+    if (base > 0.0) {
+      return 1.0 - Math.pow(1.0 - t, base)
     }
   }
   return t

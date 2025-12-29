@@ -734,6 +734,8 @@ class Compiler {
     if (compileMemberCallAsBuiltin('sum')) return
     // `array.glide(bar, exp?)` is compiled as `glide(array, bar, exp?)` to avoid GET_PROP in the VM encoder.
     if (compileMemberCallAsBuiltin('glide')) return
+    // `signal.delay(seconds, feedback?, cb?)` is compiled as `delay(signal, seconds, feedback?, cb?)`.
+    if (compileMemberCallAsBuiltin('delay')) return
 
     this.compileExpr(expr.callee)
     type TempArg =

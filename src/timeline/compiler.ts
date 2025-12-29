@@ -21,7 +21,7 @@ type TimelineSegment = {
 }
 
 const numRe = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)'
-const pointTokenRe = new RegExp(`^(${numRe}),(${numRe})(?:([el])(${numRe})?)?$`)
+const pointTokenRe = new RegExp(`^(${numRe}),(${numRe})(?:([e])(${numRe})?)?$`)
 
 type TimelineToken = {
   index: number
@@ -67,11 +67,7 @@ function parseTimelineNotation(input: string): TimelinePoint[] {
     const value = Number(m[2] ?? 0)
     const curveKind = m[3] ?? null
     const curveValue = Number(m[4] ?? 0)
-    const exp = curveKind === 'l'
-      ? -Math.abs(curveValue)
-      : curveKind === 'e'
-      ? curveValue
-      : null
+    const exp = curveKind === 'e' ? curveValue : null
 
     if (!Number.isFinite(bar) || !Number.isFinite(value)) continue
     points.push({
@@ -96,37 +92,30 @@ function compilePoints(points: TimelinePoint[]): { segments: TimelineSegment[]; 
 
   if (pts.length === 0) return { segments: [], totalBars: 0 }
 
+  // Ensure there's always an implicit 0,0 point unless one is explicitly provided
+  const hasZeroPoint = pts.some(p => p.bar === 0)
+  if (!hasZeroPoint) {
+    pts.unshift({
+      bar: 0,
+      value: 0,
+      exp: null,
+      tokenIndex: -1,
+      tokenStart: -1,
+      tokenLength: -1,
+    })
+  }
+
   const segments: TimelineSegment[] = []
 
   let i = 0
-  let t = pts[0]!.bar
+  let t = 0 // Always start at 0 since we guarantee a point at 0
   let v = pts[0]!.value
   let activeTokenIndex = pts[0]!.tokenIndex
   let activeTokenStart = pts[0]!.tokenStart
   let activeTokenLength = pts[0]!.tokenLength
 
-  // Establish initial value at t=0 (same-bar jumps at the start are allowed).
-  if (t > 0) {
-    segments.push({
-      kind: TIMELINE_KIND_HOLD,
-      durBars: t,
-      startValue: 0,
-      endValue: 0,
-      exp: 1,
-      fromTokenIndex: activeTokenIndex,
-      fromTokenStart: activeTokenStart,
-      fromTokenLength: activeTokenLength,
-      toTokenIndex: activeTokenIndex,
-      toTokenStart: activeTokenStart,
-      toTokenLength: activeTokenLength,
-    })
-  }
-  else {
-    t = 0
-  }
-
-  // Consume all points at the initial time to set the starting value.
-  while (i < pts.length && pts[i]!.bar === t) {
+  // Consume all points at the initial time (bar 0) to set the starting value.
+  while (i < pts.length && pts[i]!.bar === 0) {
     v = pts[i]!.value
     activeTokenIndex = pts[i]!.tokenIndex
     activeTokenStart = pts[i]!.tokenStart

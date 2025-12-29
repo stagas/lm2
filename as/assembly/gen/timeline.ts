@@ -14,6 +14,7 @@ import {
   TIMELINE_SEGMENT_SIZE,
 } from '../constants'
 import { Gen } from './gen'
+import { applyCurve } from '../util'
 
 @unmanaged
 class HistoryEntry {
@@ -241,22 +242,8 @@ export class Timeline extends Gen {
           }
           else {
             const curve: f32 = bytecodeArray[segOffset + 4]
-            const t: f32 = f32((localBeat - accBeats) / durBeats)
-            let p: f32 = t
-            if (curve > 0.0) {
-              p = Mathf.pow(t, curve)
-            }
-            else if (curve < 0.0) {
-              const base: f64 = (-curve) as f64
-              if (base > 0.0) {
-                const den: f64 = Math.log(base)
-                if (den !== 0.0) {
-                  const tf: f64 = t as f64
-                  const num: f64 = Math.log(1.0 + (base - 1.0) * tf)
-                  p = (num / den) as f32
-                }
-              }
-            }
+            const t: f64 = (localBeat - accBeats) / durBeats
+            const p: f32 = applyCurve(t, curve as f64) as f32
             v = a + (b - a) * p
           }
           break

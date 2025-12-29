@@ -666,6 +666,32 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'array.sum() |> out($)',
     ],
   },
+  '.delay': {
+    name: '.delay',
+    parameters: [
+      { name: 'seconds', type: 'number', description: 'Delay time in seconds (clamped to 0..10)' },
+      {
+        name: 'feedback',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Feedback amount; 0 produces a single echo only',
+      },
+      {
+        name: 'callback',
+        type: '(in: audio) -> audio',
+        optional: true,
+        defaultValue: 'x -> x',
+        description: 'Applied to the delayed signal before output and feedback',
+      },
+    ],
+    returnType: 'number',
+    description: 'Delay effect as a signal method; returns the delayed signal (wet only).',
+    examples: [
+      'sine(440).delay(.25) |> out($)',
+      'sine(220).delay(.35, feedback:.4, callback:x -> lp(x, cutoff:1000, q:.8)) |> out($)',
+    ],
+  },
   'note': {
     name: 'note',
     parameters: [

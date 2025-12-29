@@ -194,9 +194,10 @@ function tokenizeTimelineEntry(entry: string): Token[] {
   const tokens: Token[] = []
   let i = 0
 
-  // Match pattern: <bar>,<volume>[e<N>?|l<N>?]?
-  // Example: "33,1e1.5" or "65,0 " or "89,1e2 "
-  const match = entry.match(/^(\d+),([0-9.]+)([el])?([0-9.]*)(.*)$/)
+  // Match pattern: <bar>,<value>[e<N>?]?
+  // Example: "33,1e1.5" or "65,0 " or "89,1e-2 "
+  const numRe = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)'
+  const match = entry.match(new RegExp(`^(\\d+),(${numRe})(?:([e])(${numRe})?)?(.*)$`))
   if (!match) {
     // Fallback for malformed entries
     tokens.push({ type: 'default', content: entry, length: entry.length })
@@ -205,8 +206,8 @@ function tokenizeTimelineEntry(entry: string): Token[] {
 
   const bar = match[1]!
   const volume = match[2]!
-  const operator = match[3] // 'e' or 'l'
-  const operatorValue = match[4] // The number after e/l
+  const operator = match[3] // 'e'
+  const operatorValue = match[4] // The number after e
   const rest = match[5] // Any trailing modifiers
 
   // bar is 'number' color
@@ -216,11 +217,11 @@ function tokenizeTimelineEntry(entry: string): Token[] {
   // volume is 'string' color
   tokens.push({ type: 'parameter', content: volume, length: volume.length })
 
-  // e/l are 'operator' color
+  // e is 'operator' color
   if (operator) {
     tokens.push({ type: 'comment', content: operator, length: 1 })
 
-    // N after e/l is 'parameter' color
+    // N after e is 'parameter' color
     if (operatorValue) {
       tokens.push({ type: 'comment', content: operatorValue, length: operatorValue.length })
     }

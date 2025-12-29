@@ -18,6 +18,7 @@ type SeqBuffers = {
   history: Float32Array
   seq: string
   version: number
+  scaleIndex: number | undefined
 }
 
 export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string) {
@@ -53,16 +54,17 @@ export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string
       history,
       seq: '',
       version: 0,
+      scaleIndex: undefined,
     }
     seqs.set(seqIndex, st)
     return st
   }
 
-  const setMiniSequence = (seqIndex: number, seq: string): SeqBuffers => {
+  const setMiniSequence = (seqIndex: number, seq: string, scaleIndex: number | undefined): SeqBuffers => {
     const st = ensureSeqBuffers(seqIndex)
-    if (st.seq === seq) return st
+    if (st.seq === seq && st.scaleIndex === scaleIndex) return st
 
-    const compiled = compileMiniNotation(seq)
+    const compiled = compileMiniNotation(seq, scaleIndex === undefined ? {} : { defaultScale: { scaleIndex } })
     const bytecode = compiled.bytecode
 
     const maxSize = Math.min(bytecode.length, ARRAY_SIZE)
@@ -72,6 +74,7 @@ export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string
     st.array[3] = st.version
 
     st.seq = seq
+    st.scaleIndex = scaleIndex
     return st
   }
 
@@ -82,9 +85,10 @@ export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string
     windowEndSample: number
     bpm: number
     sampleRate: number
+    scaleIndex: number | undefined
   }): Float32Array => {
-    const { seqIndex, seq, windowStartSample, windowEndSample, bpm, sampleRate } = args
-    const st = setMiniSequence(seqIndex, seq)
+    const { seqIndex, seq, windowStartSample, windowEndSample, bpm, sampleRate, scaleIndex } = args
+    const st = setMiniSequence(seqIndex, seq, scaleIndex)
     ;(wasm.generateMiniHistoryWindow as any)(
       st.array$,
       st.history$,

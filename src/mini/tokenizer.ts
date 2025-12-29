@@ -40,6 +40,11 @@ export interface Node {
   source: NodeSource
 }
 
+export type DefaultScale = {
+  rootMidi?: number
+  scaleIndex?: number
+}
+
 const DEFAULT_MODS: Modifiers = {
   velocity: 1,
   hold: 0,
@@ -885,20 +890,26 @@ function tokensToNodesInternal(tokens: Token[], input: string): Node[] {
   return nodes
 }
 
-export function tokensToNodes(tokens: Token[], input: string): Node[] {
+export function tokensToNodes(
+  tokens: Token[],
+  input: string,
+  options: { defaultScale?: DefaultScale } = {},
+): Node[] {
   const nodes = tokensToNodesInternal(tokens, input)
 
   // Check if any scale nodes exist
   const hasScaleNode = nodes.some(node => node.type === 'scale')
     || nodes.some(node => node.type === 'group' && node.children.some(child => child.type === 'scale'))
 
-  // If no scale nodes found, prepend a default major scale (C4 major)
+  // If no scale nodes found, prepend a default scale (C4 major unless overridden by caller)
   if (!hasScaleNode) {
+    const rootMidi = options.defaultScale?.rootMidi ?? noteNameToMidi('c4')
+    const scaleIndex = options.defaultScale?.scaleIndex ?? SCALE_KEY_TO_INDEX.major ?? 0
     const defaultScaleNode: Node = {
       type: 'scale',
       angle: false,
       parallel: false,
-      values: [noteNameToMidi('c4'), SCALE_KEY_TO_INDEX.major ?? 0],
+      values: [rootMidi, scaleIndex],
       children: [],
       modifiers: getDefaultMods(),
       source: {

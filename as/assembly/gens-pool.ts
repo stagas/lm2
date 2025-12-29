@@ -16,6 +16,7 @@ import { Sine } from './gen/sine'
 import { Slew } from './gen/slew'
 import { Slicer } from './gen/slicer'
 import { Timeline } from './gen/timeline'
+import { Delay } from './gen/delay'
 import { Op } from './shared'
 
 export class GenPool<T extends Gen> {
@@ -92,6 +93,7 @@ export class GensPool {
   private browns: GenPool<BrownNoise> = new GenPool<BrownNoise>(() => new BrownNoise())
   private smooths: GenPool<SmoothNoise> = new GenPool<SmoothNoise>(() => new SmoothNoise())
   private fractals: GenPool<FractalNoise> = new GenPool<FractalNoise>(() => new FractalNoise())
+  private delays: GenPool<Delay> = new GenPool<Delay>(() => new Delay())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -132,6 +134,7 @@ export class GensPool {
     this.browns.resetIndex()
     this.smooths.resetIndex()
     this.fractals.resetIndex()
+    this.delays.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -173,6 +176,7 @@ export class GensPool {
     this.browns.reset()
     this.smooths.reset()
     this.fractals.reset()
+    this.delays.reset()
   }
 
   get(op: Op): Gen {
@@ -255,6 +259,8 @@ export class GensPool {
         return this.smooths.get()
       case Op.Fractal:
         return this.fractals.get()
+      case Op.Delay:
+        return this.delays.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -298,5 +304,6 @@ export class GensPool {
     this.browns.copyFrom(source.browns)
     this.smooths.copyFrom(source.smooths)
     this.fractals.copyFrom(source.fractals)
+    this.delays.copyFrom(source.delays)
   }
 }

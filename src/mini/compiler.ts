@@ -2,7 +2,7 @@ import { MINI_HEADER_SIZE } from '../../as/assembly/constants.ts'
 import type { MiniSourceMapEntry } from './bytecode.ts'
 import { allocateBytecode, writeCycleEndOp, writeCycleStartOp, writeEventOp, writeGroupEndOp, writeGroupStartOp,
   writeOctaveOp, writeRestOp, writeScaleOp, writeSwingOp, writeTransposeOp } from './bytecode.ts'
-import type { Node } from './tokenizer.ts'
+import type { DefaultScale, Node } from './tokenizer.ts'
 import { getDefaultMods, tokenize, tokensToNodes } from './tokenizer.ts'
 
 function compileNode(
@@ -58,10 +58,10 @@ function compileNode(
 
 export function compileMiniNotation(
   input: string,
-  options: { seed?: number } = {},
+  options: { seed?: number; defaultScale?: DefaultScale } = {},
 ) {
   const tokens = tokenize(input)
-  const nodes = tokensToNodes(tokens, input)
+  const nodes = tokensToNodes(tokens, input, { defaultScale: options.defaultScale })
 
   const root: Node = {
     type: 'group',
