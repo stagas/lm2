@@ -8,7 +8,7 @@ import {
 } from '../../../as/assembly/constants.ts'
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import type { TimelineLabel, TimelineSequenceRef } from '../bytecode/bytecode.ts'
-import { PIANOROLL_KEY_WIDTH } from '../constants.ts'
+import { PIANOROLL_BAR_COLOR_EVEN, PIANOROLL_BAR_COLOR_ODD, PIANOROLL_KEY_WIDTH } from '../constants.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import {
   getTimelineValue,
@@ -97,9 +97,14 @@ export function useTimelineWidget({
         frameSegs: [],
       }
 
-      st.sampleCount = sampleCount
-      if (st.timeSeconds == null) st.timeSeconds = timeSeconds
-      else st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
+      if (st.timeSeconds == null) {
+        st.sampleCount = sampleCount
+        st.timeSeconds = timeSeconds
+      }
+      else {
+        st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount, 100 * sampleRate))
+        st.timeSeconds = st.sampleCount / sampleRate
+      }
 
       const bpm = bpmValue?.[0] || 60
       const barLengthSeconds = (4 * 60) / bpm
@@ -108,14 +113,16 @@ export function useTimelineWidget({
 
       let segs: TimelineSeg[] = []
       if (isLive && program1) {
-        const history = program1.program.histories[seqIndex]
-        if (history) {
-          segs = readTimelineSegsFromHistory(history.raw, sampleRate, windowStartTime, windowEndTime)
+        // Prefer compiled timeline data in live mode. History is written concurrently by the audio
+        // thread and can be torn mid-write, which shows up as one-frame 0/1 flickers in the UI.
+        const array = program1.program.data?.arrays?.[seqIndex]
+        if (array) {
+          segs = readTimelineSegsFromCompiledTimeline(array.raw, sampleRate, bpm, windowStartTime, windowEndTime)
         }
         if (segs.length === 0) {
-          const array = program1.program.data?.arrays?.[seqIndex]
-          if (array) {
-            segs = readTimelineSegsFromCompiledTimeline(array.raw, sampleRate, bpm, windowStartTime, windowEndTime)
+          const history = program1.program.histories[seqIndex]
+          if (history) {
+            segs = readTimelineSegsFromHistory(history.raw, sampleRate, windowStartTime, windowEndTime)
           }
         }
       }
@@ -184,14 +191,14 @@ export function useTimelineWidget({
     // c.fillRect(0, 0, w, h)
 
     // Grid (alternating bar fills like pianoroll)
-    const firstBarStart = Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds
+    const firstBarStart = Math.max(0, Math.floor(windowStartTime / barLengthSeconds) * barLengthSeconds)
     const windowEndTime = windowStartTime + TIME_WINDOW_BARS * barLengthSeconds
     for (let barStart = firstBarStart; barStart < windowEndTime; barStart += barLengthSeconds) {
       const barIndex = Math.round(barStart / barLengthSeconds)
       const isEvenBar = barIndex % 2 === 0
       const barX = (barStart - windowStartTime) * pixelsPerSecond
       const barWidth = barLengthSeconds * pixelsPerSecond
-      c.fillStyle = isEvenBar ? 'rgba(255, 255, 255, 0.09)' : 'rgba(255, 255, 255, 0.12)'
+      c.fillStyle = isEvenBar ? PIANOROLL_BAR_COLOR_EVEN : PIANOROLL_BAR_COLOR_ODD
       c.fillRect(barX, 0, barWidth, h)
     }
 
@@ -221,9 +228,11 @@ export function useTimelineWidget({
 
     c.beginPath()
     let prevSample = windowStartSample
+    let started = false
     for (let px = 0; px <= w; px += 2) {
       const t = px / w
-      const sample = windowStartSample + t * timeWindowSeconds * sampleRate
+      let sample = windowStartSample + t * timeWindowSeconds * sampleRate
+      if (px >= w) sample -= 0.001
       if (sample < 0) continue
 
       const r = getTimelineValue(segs, si, sample)
@@ -231,9 +240,10 @@ export function useTimelineWidget({
       const v = r.v
       const y = (1 - v) * (h - 2) + 1
 
-      if (px === 0) {
+      if (!started) {
         c.moveTo(px, y)
         prevSample = sample
+        started = true
         continue
       }
 
@@ -258,7 +268,8 @@ export function useTimelineWidget({
         // compute exact x for boundary and y values on each side
         const boundaryPx = sampleToPx(boundaryFound)
         // value just before boundary (use sample-1) and at boundary (start value)
-        const beforeVal = getTimelineValueAtSample(segs, Math.max(0, boundaryFound - 1))
+        const beforeSample = Math.max(windowStartSample, boundaryFound - 1)
+        const beforeVal = getTimelineValueAtSample(segs, beforeSample)
         const afterVal = getTimelineValueAtSample(segs, boundaryFound)
         const yBefore = (1 - beforeVal) * (h - 2) + 1
         const yAfter = (1 - afterVal) * (h - 2) + 1
@@ -292,6 +303,7 @@ export function useTimelineWidget({
     const circleRadius = 3
     const drawnPositions = new Set<number>()
     const drawCircleAt = (px: number, value: number) => {
+      if (!(px > circleRadius && px < w - circleRadius)) return
       const y = (1 - value) * (h - 2) + 1
       const key = Math.round(px) * 1_000_000 + Math.round(y)
       if (drawnPositions.has(key)) return
@@ -305,12 +317,13 @@ export function useTimelineWidget({
     for (let j = 0; j < segs.length; j++) {
       const s = segs[j]!
       const sample = s.startSample
+      if (sample < 0) continue
       const px = sampleToPx(sample)
       if (px < 0 || px > w) continue
 
-      const beforeSample = sample > windowStartSample ? Math.max(windowStartSample, sample - 1) : null
+      const beforeSample = sample - 1
       const isCycleStart = Math.round(sample) === 0
-      if (!isCycleStart && j > 0 && beforeSample != null && beforeSample < sample) {
+      if (!isCycleStart && j > 0 && beforeSample >= 0 && beforeSample >= windowStartSample && beforeSample < sample) {
         const valueBefore = getTimelineValueAtSample(segs, beforeSample)
         const beforePx = sampleToPx(beforeSample)
         drawCircleAt(beforePx, valueBefore)

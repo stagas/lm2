@@ -1,29 +1,45 @@
+// dprint-ignore-file
+
+// @ts-ignore
+@inline
 export function clamp(value: f32, min: f32, max: f32): f32 {
   return Mathf.max(min, Mathf.min(value, max))
 }
 
+// @ts-ignore
+@inline
 export function clamp01(value: f32): f32 {
   return clamp(value, 0.0, 1.0)
 }
 
+// @ts-ignore
+@inline
 export function clamp01f64(value: f64): f64 {
   if (value < 0.0) return 0.0
   if (value > 1.0) return 1.0
   return value
 }
 
+// @ts-ignore
+@inline
 export function clamp11(value: f32): f32 {
   return clamp(value, -1.0, 1.0)
 }
 
+// @ts-ignore
+@inline
 export function clampNyquist(value: f32): f32 {
   return clamp(value, 0.0, nyquist)
 }
 
+// @ts-ignore
+@inline
 export function fract(value: f64): f64 {
   return value - Math.floor(value)
 }
 
+// @ts-ignore
+@inline
 export function applyCurve(t: f64, curve: f64): f64 {
   if (curve > 0.0) return Math.pow(t, curve)
   if (curve < 0.0) {
@@ -37,24 +53,34 @@ export function applyCurve(t: f64, curve: f64): f64 {
   return t
 }
 
+// @ts-ignore
+@inline
 export function roundToDecimals(value: f64, decimals: f64): f64 {
   const factor: f64 = Math.pow(10, decimals)
   return Math.round(value * factor) / factor
 }
 
+// @ts-ignore
+@inline
 export function floorToDecimals(value: f64, decimals: f64): f64 {
   const factor: f64 = Math.pow(10, decimals)
   return Math.floor(value * factor) / factor
 }
 
+// @ts-ignore
+@inline
 export function roundToFactor(value: f64, factor: f64): f64 {
   return Math.round(value * factor) / factor
 }
 
+// @ts-ignore
+@inline
 export function floorToFactor(value: f64, factor: f64): f64 {
   return Math.floor(value * factor) / factor
 }
 
+// @ts-ignore
+@inline
 export function seededRandom01(baseSeed: u32, cycle: f64, opIndex: i32, valueIndex: i32 = 0): f64 {
   let state: i32 = i32(baseSeed)
   state ^= i32(cycle) * 374761393

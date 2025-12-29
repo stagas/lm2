@@ -9,6 +9,7 @@ import {
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import type { TimelineSequenceRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
+import { curveValue } from '../dsp/timeline-history.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
@@ -41,22 +42,33 @@ function getActiveTimelineSegIndex(
   const segCount = Math.floor(arrayRaw[base + 2] as number)
   if (!Number.isFinite(segCount) || segCount <= 0) return null
 
-  const totalBars = arrayRaw[base + 3] as number
+  const totalBarsRaw = arrayRaw[base + 3] as number
+  const noWrap = totalBarsRaw < 0
+  const totalBars = Math.abs(totalBarsRaw)
   const beatDiv = arrayRaw[base + 4] as number
   if (!Number.isFinite(totalBars) || !Number.isFinite(beatDiv) || totalBars <= 0 || beatDiv <= 0) return null
 
   const cycleBeats = totalBars * beatDiv
   const beatsPerSample = (bpm / 60) / sampleRate
   const beatAbs = sampleCount * beatsPerSample
-  const cycle = Math.floor(beatAbs / cycleBeats)
-  const localBeat = beatAbs - cycle * cycleBeats
+  let localBeat = 0
+  if (noWrap) {
+    localBeat = Math.max(0, beatAbs)
+  }
+  else {
+    const cycle = Math.floor(beatAbs / cycleBeats)
+    localBeat = beatAbs - cycle * cycleBeats
+    if (localBeat < 0) localBeat += cycleBeats
+  }
 
   const segBase = base + 1 + TIMELINE_HEADER_SIZE
   let accBeats = 0
+  let lastValidSi = -1
   for (let si = 0; si < segCount; si++) {
     const segOffset = segBase + si * TIMELINE_SEGMENT_SIZE
     const durBars = arrayRaw[segOffset + 1] as number
     if (!durBars || durBars <= 0) continue
+    lastValidSi = si
     const durBeats = durBars * beatDiv
     if (localBeat < accBeats + durBeats) {
       const tt = durBeats > 0 ? (localBeat - accBeats) / durBeats : 0
@@ -65,6 +77,7 @@ function getActiveTimelineSegIndex(
     accBeats += durBeats
   }
 
+  if (noWrap && lastValidSi >= 0) return { si: lastValidSi, tt: 1 }
   return null
 }
 
@@ -142,18 +155,19 @@ export function useTimelineSequenceWidget({
     const lineStarts = buildLineStarts(dspSource)
     const out: EditorWidget[] = []
 
-    const tokensBySeqIndex = new Map<number, ReturnType<typeof compileTimelineNotation>['tokens']>()
-    const getTokens = (seqIndex: number, sequence: string) => {
-      const existing = tokensBySeqIndex.get(seqIndex)
+    const compiledBySeqIndex = new Map<number, ReturnType<typeof compileTimelineNotation> | undefined>()
+    const getCompiled = (seqIndex: number, sequence: string) => {
+      const existing = compiledBySeqIndex.get(seqIndex)
       if (existing) return existing
       const compiled = compileTimelineNotation(sequence)
-      const tokens = compiled.tokens ?? []
-      tokensBySeqIndex.set(seqIndex, tokens)
-      return tokens
+      compiledBySeqIndex.set(seqIndex, compiled)
+      return compiled
     }
 
     for (const ref of timelineRefs) {
-      const tokens = getTokens(ref.seqIndex, ref.sequence)
+      const compiled = getCompiled(ref.seqIndex, ref.sequence)
+      const tokens = compiled?.tokens ?? []
+      const segments = compiled?.segments ?? []
       if (tokens.length === 0) continue
 
       for (let si = 0; si < tokens.length; si++) {
@@ -183,9 +197,11 @@ export function useTimelineSequenceWidget({
                 if (!active || active.si !== si) return
 
                 const tt = active.tt
+                const curve = segments[si]?.exp ?? 1
+                const p = Math.max(0, Math.min(1, curveValue(tt, curve)))
                 const a = role === 'from'
-                  ? 0.25 + 0.75 * (1 - tt)
-                  : 0.25 + 0.75 * tt
+                  ? 0.25 + 0.75 * (1 - p)
+                  : 0.25 + 0.75 * p
 
                 const color = [255, 255, 255]
 

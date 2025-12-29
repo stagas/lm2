@@ -2,8 +2,9 @@ import { Ad } from './gen/ad'
 import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
-import { Ap, Bs, Bp, Hp, Lp, Hs, Ls, Peak } from './gen/biquad'
+import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
+import { Delay } from './gen/delay'
 import { Euclid } from './gen/euclid'
 import { Every } from './gen/every'
 import { Gen } from './gen/gen'
@@ -16,7 +17,6 @@ import { Sine } from './gen/sine'
 import { Slew } from './gen/slew'
 import { Slicer } from './gen/slicer'
 import { Timeline } from './gen/timeline'
-import { Delay } from './gen/delay'
 import { Op } from './shared'
 
 export class GenPool<T extends Gen> {
@@ -304,6 +304,5 @@ export class GensPool {
     this.browns.copyFrom(source.browns)
     this.smooths.copyFrom(source.smooths)
     this.fractals.copyFrom(source.fractals)
-    this.delays.copyFrom(source.delays)
   }
 }

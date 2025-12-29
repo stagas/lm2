@@ -335,9 +335,11 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       return get().sequences
     }
 
+    await primaryProgram.program.acquireLock()
     for (const u of updates) {
       await primaryProgram.program.writeLiteral(u.index, u.value)
     }
+    primaryProgram.program.releaseLock()
 
     set({
       dspSource: source,
@@ -912,14 +914,15 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const runtime = useEngineRuntimeStore.getState()
       const ui = useEngineUiStore.getState()
       const prevId = runtime.playingLoopId
-      startSample ??= ui.viewSampleCountByLoopId[loopId]
+      startSample = Math.max(0, Math.floor(startSample ?? ui.viewSampleCountByLoopId[loopId] ?? 0))
       const setSampleCount = async (sample: number) => {
+        const nextSample = Math.max(0, Math.floor(sample))
         // Seek while paused/stopped so the new loop doesn't inherit the previous playhead.
         {
           const control = useEngineRuntimeStore.getState().control
           const seekSampleCount = useEngineRuntimeStore.getState().seekSampleCount
           if (control && seekSampleCount) {
-            Atomics.store(seekSampleCount, 0, startSample)
+            Atomics.store(seekSampleCount, 0, nextSample)
             Atomics.store(control, 0, ControlOp.SeekImmediate)
           }
         }
@@ -931,7 +934,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           if (globalSampleCount) {
             for (let i = 0; i < 10; i++) {
               const curr = Atomics.load(globalSampleCount, 0)
-              if (curr === startSample) break
+              if (curr === nextSample) break
               await new Promise<void>(resolve => setTimeout(resolve, 2.5))
             }
           }
@@ -1100,6 +1103,9 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
 
       await setSampleCount(startSample)
 
+      if (runtime.globalSampleCount) {
+        Atomics.store(runtime.globalSampleCount, 0, startSample)
+      }
       useEngineRuntimeStore.getState().setPlayingLoopId(loopId)
 
       // Start after the seek has had a chance to apply in the worklet.
@@ -1145,7 +1151,7 @@ async function fetchWasmBinary() {
 }
 
 async function createWorklet() {
-  const audioContext = new AudioContext({ latencyHint: 0.5 })
+  const audioContext = new AudioContext({ latencyHint: 1 })
   window.addEventListener('pointerdown', () => {
     audioContext.resume()
   }, { once: true })

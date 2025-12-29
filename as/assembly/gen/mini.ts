@@ -16,6 +16,7 @@ import {
 } from '../constants'
 import { MiniEventBuffer, MiniEvents } from '../mini/events'
 import { EventOp } from '../mini/ops'
+import { applyCurve } from '../util'
 import { Gen } from './gen'
 
 @unmanaged
@@ -618,7 +619,7 @@ export class Mini extends Gen {
       voice.glideTarget = value
       voice.glideEndSample = voice.holdEndSample
 
-      if (glidePower > 0.0) {
+      if (glidePower !== 0.0) {
         if (!glidePrepared) {
           this.prepareGlideSuccessors(historyArray)
           glidePrepared = true
@@ -655,12 +656,14 @@ export class Mini extends Gen {
         store<f32>(vel$ + (i << 2), voice.velocity)
 
         let currentValue: f32 = voice.baseValue
-        if (voice.glidePower > 0.0 && absSample >= voice.triggerSample && absSample < voice.glideEndSample) {
+        if (voice.glidePower !== 0.0 && absSample >= voice.triggerSample && absSample < voice.glideEndSample) {
           const span: i32 = voice.glideEndSample - voice.triggerSample
           if (span > 0) {
-            const t: f32 = f32(absSample - voice.triggerSample) / f32(span)
-            const powered: f32 = Mathf.pow(t, voice.glidePower)
-            currentValue = voice.baseValue + (voice.glideTarget - voice.baseValue) * powered
+            const t: f64 = f64(absSample - voice.triggerSample) / f64(span)
+            const p: f64 = applyCurve(t, voice.glidePower as f64)
+            const a: f64 = voice.baseValue as f64
+            const b: f64 = voice.glideTarget as f64
+            currentValue = (a + (b - a) * p) as f32
           }
         }
 

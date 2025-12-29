@@ -10,11 +10,13 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-
+@inline
 function clampIndex(v: i32): i32 {
   return v < 0 ? 0 : v > 63 ? 63 : v
 }
 
+// @ts-ignore
+@inline
 function writeHistory(program: Program, lfoIndex: i32, lfoType: i32, bar$: usize, offset$: usize, phase01: f32, out$: usize,
   length: i32): void {
   const hist = program.lfoHistory
@@ -33,6 +35,8 @@ function writeHistory(program: Program, lfoIndex: i32, lfoType: i32, bar$: usize
   hist[LFO_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
 }
 
+// @ts-ignore
+@inline
 export function callLfoSine(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -110,6 +114,8 @@ export function callLfoSine(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callLfoTri(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -187,6 +193,8 @@ export function callLfoTri(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callLfoSaw(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -264,6 +272,8 @@ export function callLfoSaw(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callLfoRamp(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -341,6 +351,8 @@ export function callLfoRamp(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callLfoSqr(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -418,6 +430,8 @@ export function callLfoSqr(
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
+// @ts-ignore
+@inline
 export function callLfoSah(
   posCount: i32,
   nameSyms: StaticArray<i32>,

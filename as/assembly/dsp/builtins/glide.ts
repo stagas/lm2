@@ -1,6 +1,6 @@
 // dprint-ignore-file
 import { Program } from '../../program'
-import { globalSampleCount } from '../../globals'
+import { bpm, globalSampleCount, sampleRate } from '../../globals'
 import { Dsp } from '../dsp'
 import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
@@ -9,13 +9,15 @@ import { VmStack } from '../vm-stack'
 import { applyCurve } from '../../util'
 
 // @ts-ignore
-
+@inline
 function wrapIndex(i: i32, len: i32): i32 {
   let j: i32 = i % len
   if (j < 0) j += len
   return j
 }
 
+// @ts-ignore
+@inline
 export function callGlide(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -32,7 +34,7 @@ export function callGlide(
   length: i32,
   dsp: Dsp,
 ): void {
-  // glide(array, bar, exp=1)
+  // glide(array, bar, exp=1) where array is numeric or audio
   if (posCount < 2) {
     stack.push(VmTag.Undef)
     return
@@ -51,7 +53,8 @@ export function callGlide(
     return
   }
 
-  if ((dsp.arrays.elemType[arrId] as VmTag) !== VmTag.Num) {
+  const elemType: VmTag = dsp.arrays.elemType[arrId] as VmTag
+  if (elemType !== VmTag.Num && elemType !== VmTag.Audio) {
     stack.push(VmTag.Undef)
     return
   }
@@ -109,25 +112,67 @@ export function callGlide(
   let e$ = exp$
   let p: f64 = 0.0
 
-  for (let s: i32 = 0; s < length; s++) {
-    const barV: f64 = Math.max(minBar, load<f32>(b$) as f64)
-    const stepBeats: f64 = barV * 4.0
-    const c: i32 = stepBeats > 0.0 ? i32(Math.floor(beatAbs / stepBeats)) : 0
-    const i0: i32 = wrapIndex(c, n)
-    const i1: i32 = wrapIndex(i0 + 1, n)
-    const localBeat: f64 = beatAbs - (c as f64) * stepBeats
-    const t: f64 = stepBeats > 0.0 ? localBeat / stepBeats : 0.0
-    const curve: f64 = load<f32>(e$) as f64
-    p = applyCurve(t, curve)
+  if (elemType === VmTag.Num) {
+    for (let s: i32 = 0; s < length; s++) {
+      const barV: f64 = Math.max(minBar, load<f32>(b$) as f64)
+      const stepBeats: f64 = barV * 4.0
+      const c: i32 = stepBeats > 0.0 ? i32(Math.floor(beatAbs / stepBeats)) : 0
+      const i0: i32 = wrapIndex(c, n)
+      const i1: i32 = wrapIndex(i0 + 1, n)
+      const localBeat: f64 = beatAbs - (c as f64) * stepBeats
+      const t: f64 = stepBeats > 0.0 ? localBeat / stepBeats : 0.0
+      const curve: f64 = load<f32>(e$) as f64
+      p = applyCurve(t, curve)
 
-    const a: f64 = dsp.arrays.elemNum[start + i0]
-    const bb: f64 = dsp.arrays.elemNum[start + i1]
-    store<f32>(o$, (a + (bb - a) * p) as f32)
+      const a: f64 = dsp.arrays.elemNum[start + i0]
+      const bb: f64 = dsp.arrays.elemNum[start + i1]
+      store<f32>(o$, (a + (bb - a) * p) as f32)
 
-    o$ += 4
-    b$ += 4
-    e$ += 4
-    beatAbs += beatsPerSample
+      o$ += 4
+      b$ += 4
+      e$ += 4
+      beatAbs += beatsPerSample
+    }
+  }
+  else {
+    let prev0: i32 = -1
+    let prev1: i32 = -1
+    let src0$: usize = 0
+    let src1$: usize = 0
+    let off: usize = 0
+
+    for (let s: i32 = 0; s < length; s++) {
+      const barV: f64 = Math.max(minBar, load<f32>(b$) as f64)
+      const stepBeats: f64 = barV * 4.0
+      const c: i32 = stepBeats > 0.0 ? i32(Math.floor(beatAbs / stepBeats)) : 0
+      const i0: i32 = wrapIndex(c, n)
+      const i1: i32 = wrapIndex(i0 + 1, n)
+      const localBeat: f64 = beatAbs - (c as f64) * stepBeats
+      const t: f64 = stepBeats > 0.0 ? localBeat / stepBeats : 0.0
+      const curve: f64 = load<f32>(e$) as f64
+      p = applyCurve(t, curve)
+
+      if (i0 !== prev0) {
+        prev0 = i0
+        const srcIndex0: i32 = dsp.arrays.elemAux[start + i0]
+        src0$ = program.getOutBuffer(srcIndex0)
+      }
+      if (i1 !== prev1) {
+        prev1 = i1
+        const srcIndex1: i32 = dsp.arrays.elemAux[start + i1]
+        src1$ = program.getOutBuffer(srcIndex1)
+      }
+
+      const a: f32 = load<f32>(src0$ + off)
+      const bb: f32 = load<f32>(src1$ + off)
+      store<f32>(o$, (a + (bb - a) * (p as f32)) as f32)
+
+      o$ += 4
+      b$ += 4
+      e$ += 4
+      beatAbs += beatsPerSample
+      off += 4
+    }
   }
 
   stack.push(VmTag.Audio, 0.0, outIndex)

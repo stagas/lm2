@@ -1,34 +1,49 @@
+// dprint-ignore-file
 import { clamp01f64, seededRandom01 } from '../util'
 import { Gen } from './gen'
 
+// @ts-ignore
+@inline
 function maxBar(rawBar: f64, samplesPerWholeNote: f64): f64 {
   const minBar: f64 = 1.0 / samplesPerWholeNote
   return Math.max(minBar, rawBar)
 }
 
+// @ts-ignore
+@inline
 function samplesPerWholeNoteFromBpm(rate: f64): f64 {
   const safeBpm: f64 = Math.max(1.0, bpm as f64)
   return (60.0 / safeBpm) * rate * 4.0
 }
 
+// @ts-ignore
+@inline
 function cycleSamples(bar: f64, samplesPerWholeNote: f64): f64 {
   return maxBar(bar, samplesPerWholeNote) * samplesPerWholeNote
 }
 
+// @ts-ignore
+@inline
 function lfoPhase01(sample: f64, bar: f64, samplesPerWholeNote: f64): f64 {
   const cs: f64 = cycleSamples(bar, samplesPerWholeNote)
   return sample / cs - Math.floor(sample / cs)
 }
 
+// @ts-ignore
+@inline
 function lfoCycle(sample: f64, bar: f64, samplesPerWholeNote: f64): i32 {
   const cs: f64 = cycleSamples(bar, samplesPerWholeNote)
   return i32(Math.round(sample / cs))
 }
 
+// @ts-ignore
+@inline
 function fractf64(v: f64): f64 {
   return v - Math.floor(v)
 }
 
+// @ts-ignore
+@inline
 function triStd11(phase01: f64): f64 {
   const p: f64 = fractf64(phase01)
   return p < 0.5 ? 4.0 * p - 1.0 : 3.0 - 4.0 * p

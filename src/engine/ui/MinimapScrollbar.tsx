@@ -353,6 +353,8 @@ export function MinimapScrollbar({
       const seenSeqs = new Set<number>()
       let colorIndex = 0
 
+      ctx.globalAlpha = 0.5
+
       for (const ref of timelineRefs) {
         const seqIndex = ref.seqIndex
         if (seenSeqs.has(seqIndex)) continue
@@ -415,6 +417,8 @@ export function MinimapScrollbar({
         ctx.restore()
       }
     }
+
+    ctx.globalAlpha = 1.0
 
     if (!isDraggingRef.current) {
       currentSampleRef.current = globalSampleCount ? Math.max(0, Atomics.load(globalSampleCount, 0)) : 0
