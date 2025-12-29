@@ -6,12 +6,14 @@ export type EngineUiState = {
   viewSampleCountByLoopId: Record<string, number>
   zeroBasedTimelines: boolean
   showFunctionDefinitions: boolean
+  showWidgets: boolean
   sidebarTab: SidebarTab
 
   setViewSampleCount: (loopId: string, sampleCount: number) => void
   renameLoopId: (oldId: string, nextId: string) => void
   setZeroBasedTimelines: (zeroBased: boolean) => void
   setShowFunctionDefinitions: (showFunctionDefinitions: boolean) => void
+  setShowWidgets: (showWidgets: boolean) => void
   setSidebarTab: (sidebarTab: SidebarTab) => void
 }
 
@@ -20,6 +22,7 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
     viewSampleCountByLoopId: {},
     zeroBasedTimelines: false,
     showFunctionDefinitions: true,
+    showWidgets: true,
     sidebarTab: 'loops',
 
     setViewSampleCount: (loopId: string, sampleCount: number) => {
@@ -56,6 +59,10 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
 
     setShowFunctionDefinitions: (showFunctionDefinitions: boolean) => {
       set({ showFunctionDefinitions: showFunctionDefinitions })
+    },
+
+    setShowWidgets: (showWidgets: boolean) => {
+      set({ showWidgets: showWidgets })
     },
 
     setSidebarTab: (sidebarTab: SidebarTab) => {

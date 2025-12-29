@@ -45,6 +45,8 @@ export function SidebarSettings(
   const setUiZeroBased = useEngineUiStore(state => state.setZeroBasedTimelines)
   const uiShowFunctionDefinitions = useEngineUiStore(state => state.showFunctionDefinitions)
   const setUiShowFunctionDefinitions = useEngineUiStore(state => state.setShowFunctionDefinitions)
+  const uiShowWidgets = useEngineUiStore(state => state.showWidgets)
+  const setUiShowWidgets = useEngineUiStore(state => state.setShowWidgets)
   const [editingArtistName, setEditingArtistName] = useState(false)
   const artistNameInputRef = useRef<HTMLInputElement>(null)
   const [isUpdatingArtistName, setIsUpdatingArtistName] = useState(false)
@@ -170,6 +172,11 @@ export function SidebarSettings(
         onChange={setUiShowFunctionDefinitions}
       >
         Show Function Popup
+      </SidebarSettingsSwitch>
+      <SidebarSettingsSwitch onClick={setUiShowWidgets} checked={uiShowWidgets}
+        onChange={setUiShowWidgets}
+      >
+        Show Widgets
       </SidebarSettingsSwitch>
     </>
   )
