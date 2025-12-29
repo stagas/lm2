@@ -38,21 +38,43 @@ export function useLoopView(loopId: string | null): {
 
   const seekToSample = useCallback((targetSampleCount: number) => {
     if (!loopId) return
-    if (isPlayingLoop) {
-      setViewSampleCount(loopId, targetSampleCount)
-      seekToPlaybackSample(targetSampleCount)
-      return
-    }
     const next = Math.max(0, Math.floor(targetSampleCount))
     const arr = viewGlobalSampleCountRef.current
     if (arr) Atomics.store(arr, 0, next)
     setViewSampleCount(loopId, next)
+    if (isPlayingLoop) seekToPlaybackSample(next)
   }, [isPlayingLoop, loopId, seekToPlaybackSample, setViewSampleCount])
 
+  const lastSyncedSampleRef = useRef(0)
+
+  useEffect(() => {
+    if (!isPlaybackRunningForView) return
+    if (!loopId) return
+    if (typeof window === 'undefined') return
+
+    const src = storeGlobalSampleCount
+    const dst = viewGlobalSampleCountRef.current
+    if (!src || !dst) return
+
+    let raf = 0
+    const tick = () => {
+      const v = (Atomics.load(src, 0) >>> 0) as number
+      lastSyncedSampleRef.current = v
+      Atomics.store(dst, 0, v)
+      raf = window.requestAnimationFrame(tick)
+    }
+
+    raf = window.requestAnimationFrame(tick)
+    return () => {
+      window.cancelAnimationFrame(raf)
+      setViewSampleCount(loopId, lastSyncedSampleRef.current)
+    }
+  }, [isPlaybackRunningForView, loopId, setViewSampleCount, storeGlobalSampleCount])
+
   const globalSampleCount = useMemo(() => {
-    if (isPlayingLoop) return storeGlobalSampleCount
+    if (isPlaybackRunningForView) return storeGlobalSampleCount
     return viewGlobalSampleCountRef.current ?? undefined
-  }, [isPlayingLoop, storeGlobalSampleCount])
+  }, [isPlaybackRunningForView, storeGlobalSampleCount])
 
   return {
     isPlayingLoop,

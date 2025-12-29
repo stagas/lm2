@@ -127,12 +127,20 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
         Atomics.store(state.seekSampleCount, 0, target)
         if (state.globalSampleCount) Atomics.store(state.globalSampleCount, 0, target)
         Atomics.store(state.control, 0, ControlOp.SeekImmediate)
-        setTimeout(() => {
+        const deadline = performance.now() + 1000
+        const tryStart = () => {
           const next = get()
           if (!next.control) return
+          const op = Atomics.load(next.control, 0)
+          if (op === ControlOp.SeekImmediate || op === ControlOp.Seek) {
+            const delay = performance.now() < deadline ? 1 : 10
+            setTimeout(tryStart, delay)
+            return
+          }
           Atomics.store(next.control, 0, ControlOp.Start)
           set({ playbackState: 'running' })
-        }, 2.5)
+        }
+        setTimeout(tryStart, 1)
         return
       }
 
