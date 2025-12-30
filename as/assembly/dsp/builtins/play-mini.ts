@@ -12,13 +12,13 @@ import { VmStack } from '../vm-stack'
 
 // @ts-ignore
 // @inline
-function pow2(x: f64): f64 {
-  return Math.pow(2.0, x)
+function pow2(x: f32): f32 {
+  return Mathf.pow(2.0, x)
 }
 
 // @ts-ignore
 // @inline
-function numFromTag(tag: VmTag, num: f64): f64 {
+function numFromTag(tag: VmTag, num: f32): f32 {
   if (tag === VmTag.Bool) return num != 0.0 ? 1.0 : 0.0
   if (tag === VmTag.Num) return num
   return 0.0
@@ -71,13 +71,13 @@ export function playMini(
 
   // Apply runtime directive globals to pitch output (works for numeric and audio-rate directives).
   const tuneTag = dsp.tuneTag as VmTag
-  const tuneNum = dsp.tuneNum
+  const tuneNum = dsp.tuneNum as f32
   const tuneAux = dsp.tuneAux
   const octaveTag = dsp.octaveTag as VmTag
-  const octaveNum = dsp.octaveNum
+  const octaveNum = dsp.octaveNum as f32
   const octaveAux = dsp.octaveAux
   const transposeTag = dsp.transposeTag as VmTag
-  const transposeNum = dsp.transposeNum
+  const transposeNum = dsp.transposeNum as f32
   const transposeAux = dsp.transposeAux
 
   const tuneAudio = tuneTag === VmTag.Audio || (tuneTag === VmTag.Num && tuneAux < 0)
@@ -89,9 +89,9 @@ export function playMini(
   const octave$ = octaveAudio ? audio.toAudioPtr(octaveTag, octaveNum, octaveAux, length, program) : 0
   const transpose$ = transposeAudio ? audio.toAudioPtr(transposeTag, transposeNum, transposeAux, length, program) : 0
 
-  const tune0 = tuneAudio ? 0.0 : numFromTag(tuneTag, tuneNum)
-  const octave0 = octaveAudio ? 0.0 : numFromTag(octaveTag, octaveNum)
-  const transpose0 = transposeAudio ? 0.0 : numFromTag(transposeTag, transposeNum)
+  const tune0: f32 = tuneAudio ? 0.0 : numFromTag(tuneTag, tuneNum)
+  const octave0: f32 = octaveAudio ? 0.0 : numFromTag(octaveTag, octaveNum)
+  const transpose0: f32 = transposeAudio ? 0.0 : numFromTag(transposeTag, transposeNum)
 
   if (!audioNeeded) {
     const semis = transpose0 + octave0 * 12.0
@@ -113,10 +113,10 @@ export function playMini(
       let p$ = val$
       for (let i = 0; i < length; i++) {
         const baseHz = load<f32>(p$) as f64
-        const tune = tuneAudio ? (load<f32>(tune$ + (i << 2)) as f64) : tune0
-        const oct = octaveAudio ? (load<f32>(octave$ + (i << 2)) as f64) : octave0
-        const tr = transposeAudio ? (load<f32>(transpose$ + (i << 2)) as f64) : transpose0
-        const semis = tr + oct * 12.0
+        const tune = tuneAudio ? (load<f32>(tune$ + (i << 2))) : tune0
+        const oct = octaveAudio ? (load<f32>(octave$ + (i << 2))) : octave0
+        const tr = transposeAudio ? (load<f32>(transpose$ + (i << 2))) : transpose0
+        const semis: f32 = tr + oct * 12.0
         const mul = tune * pow2(semis / 12.0)
         store<f32>(p$, (baseHz * mul) as f32)
         p$ += 4
