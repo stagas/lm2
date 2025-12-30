@@ -4,7 +4,7 @@ import { clamp01, clamp11 } from '../util'
 import { Gen } from './gen'
 
 // @ts-ignore
-@inline
+// @inline
 function hashU32(v: u32): u32 {
   v ^= v >> 16
   v *= 0x7feb352d
@@ -15,13 +15,13 @@ function hashU32(v: u32): u32 {
 }
 
 // @ts-ignore
-@inline
+// @inline
 function seedToBits(seed: f32): u32 {
   return hashU32(reinterpret<u32>(seed))
 }
 
 // @ts-ignore
-@inline
+// @inline
 function xorshift32(state: u32): u32 {
   // Note: 0 stays 0, so always keep state non-zero.
   state ^= state << 13
@@ -31,26 +31,26 @@ function xorshift32(state: u32): u32 {
 }
 
 // @ts-ignore
-@inline
+// @inline
 function u32To01(v: u32): f32 {
   // Use top 24 bits for stable-ish float mapping.
   return (f32(v >>> 8) * (1.0 / 16777216.0)) as f32
 }
 
 // @ts-ignore
-@inline
+// @inline
 function u32To11(v: u32): f32 {
   return (u32To01(v) * 2.0 - 1.0) as f32
 }
 
 // @ts-ignore
-@inline
+// @inline
 function fade5(t: f32): f32 {
   return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 }
 
 // @ts-ignore
-@inline
+// @inline
 function fadeWithCurve(t: f32, curve: f32): f32 {
   const c = clamp01(curve)
   const f = fade5(t)

@@ -335,11 +335,9 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       return get().sequences
     }
 
-    await primaryProgram.program.acquireLock()
     for (const u of updates) {
       await primaryProgram.program.writeLiteral(u.index, u.value)
     }
-    primaryProgram.program.releaseLock()
 
     set({
       dspSource: source,

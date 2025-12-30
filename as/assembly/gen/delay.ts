@@ -14,7 +14,7 @@ export class Delay extends Gen {
   private writePos: i32 = 0
   private buf: StaticArray<f32> = new StaticArray<f32>(1)
 
-  @inline
+  // @inline
   private ensureBuffer(): void {
     const sr: i32 = i32(sampleRate)
     if (sr === this.lastSampleRate) return
@@ -36,7 +36,7 @@ export class Delay extends Gen {
     }
   }
 
-  @inline
+  // @inline
   private clampDelaySamples(sec: f32): i32 {
     let s: f32 = sec
     if (s < 0.0) s = 0.0
@@ -51,7 +51,7 @@ export class Delay extends Gen {
     return d
   }
 
-  @inline
+  // @inline
   readEcho(out$: usize, length: i32): void {
     this.ensureBuffer()
 
@@ -74,7 +74,7 @@ export class Delay extends Gen {
     }
   }
 
-  @inline
+  // @inline
   writeWithEcho(echo$: usize, length: i32): void {
     this.ensureBuffer()
 

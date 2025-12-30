@@ -49,6 +49,7 @@ import { useSliderWidget } from './useSliderWidget.ts'
 import { useTimelineSequenceWidget } from './useTimelineSequenceWidget.ts'
 import { useTimelineWidget } from './useTimelineWidget.ts'
 import { useTrigWidget } from './useTrigWidget.ts'
+import { useVisualizerBackground } from './useVisualizerBackground.ts'
 
 export function DspSourceEditor(
   {
@@ -146,8 +147,37 @@ function DspSourceEditorReady(
     playbackState,
   } = useEngineRuntimeStore()
 
-  const { showFunctionDefinitions, showWidgets: uiShowWidgets, wordWrap } = useEngineUiStore()
+  const { showFunctionDefinitions, showWidgets: uiShowWidgets, showVisualizer, wordWrap } = useEngineUiStore()
   const theme = useTheme()
+  const themeForEditor = useMemo(() => {
+    const withAlpha = (c: string, a: number): string => {
+      if (!c.startsWith('#')) return c
+      const h = c.slice(1)
+      const toByte = (x: string) => parseInt(x, 16)
+      let r = 0
+      let g = 0
+      let b = 0
+      if (h.length === 3) {
+        r = toByte(h[0]! + h[0]!)
+        g = toByte(h[1]! + h[1]!)
+        b = toByte(h[2]! + h[2]!)
+      }
+      else if (h.length === 6) {
+        r = toByte(h.slice(0, 2))
+        g = toByte(h.slice(2, 4))
+        b = toByte(h.slice(4, 6))
+      }
+      else {
+        return c
+      }
+      return `rgba(${r}, ${g}, ${b}, ${a})`
+    }
+    return {
+      ...theme,
+      background: withAlpha(theme.background, 0.55),
+      gutterBackground: withAlpha(theme.gutterBackground, 0.35),
+    }
+  }, [theme])
   // Subscribe for rerenders while editing, but use `codeFile.value` for synchronous reads
   // to avoid a one-render lag during loop switches.
   useCodeFileValue(currentLoop?.codeFile)
@@ -784,7 +814,18 @@ function DspSourceEditorReady(
     codeFile: currentLoop?.codeFile,
   })
 
+  const { canvasRef: lissajousCanvasRef, onBeforeDraw: onBeforeDrawLissajous } = useVisualizerBackground({
+    program1: runtimeProgram,
+    ringPos,
+    isLive: isLiveView && playbackState === 'running' && showVisualizer,
+    sampleRate: audioContext?.sampleRate,
+    pointStride: 1,
+    vertex: previewCompile.visualizerVertex,
+    fragment: previewCompile.visualizerFragment,
+  })
+
   const onBeforeDrawCombined = useCallback(() => {
+    if (showVisualizer) onBeforeDrawLissajous()
     onBeforeDraw()
     onBeforeDrawPianoroll()
     onBeforeDrawTimeline()
@@ -799,6 +840,8 @@ function DspSourceEditorReady(
     onBeforeDrawBranch()
     onBeforeDrawSample()
   }, [
+    showVisualizer,
+    onBeforeDrawLissajous,
     onBeforeDraw,
     onBeforeDrawPianoroll,
     onBeforeDrawTimeline,
@@ -929,6 +972,13 @@ function DspSourceEditorReady(
 
   return (
     <div className="flex flex-row gap-2 w-full h-full relative">
+      {showVisualizer && (
+        <canvas
+          ref={lissajousCanvasRef}
+          className="absolute inset-0 w-full h-full pointer-events-none z-0"
+          aria-hidden="true"
+        />
+      )}
       <div className="text-white text-sm w-full h-full">
         {headerErrorText.length > 0 && (
           <div className="absolute top-0 left-[37px] right-0 h-[40px] z-50">
@@ -952,7 +1002,7 @@ function DspSourceEditorReady(
             widgets={widgets}
             errors={editorErrors}
             header={timelineHeader}
-            theme={theme}
+            theme={themeForEditor}
             tokenizer={tokenizer}
             hideFunctionSignatures={!showFunctionDefinitions}
             functionDefinitions={functionDefinitions}

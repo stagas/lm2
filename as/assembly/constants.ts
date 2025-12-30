@@ -2,6 +2,9 @@ export const DEFAULT_Q: f64 = 0.7071067811865476
 
 export const RING_BUFFER_SIZE = 16384
 export const CHUNK_SIZE = 128
+export const ANALYSER_OUTS_COUNT = 64
+export const FINAL_OUT_ANALYSER_L_INDEX = 62
+export const FINAL_OUT_ANALYSER_R_INDEX = 63
 export const ARRAY_SIZE = 1024
 export const HISTORY_SIZE = 2048 // ring buffer for event history
 export const HISTORY_SIZE_MINUS_ONE = 2047 // for modulo operations

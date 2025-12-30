@@ -11,13 +11,13 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-@inline
+// @inline
 function pow2(x: f64): f64 {
   return Math.pow(2.0, x)
 }
 
 // @ts-ignore
-@inline
+// @inline
 function numFromTag(tag: VmTag, num: f64): f64 {
   if (tag === VmTag.Bool) return num != 0.0 ? 1.0 : 0.0
   if (tag === VmTag.Num) return num
@@ -25,7 +25,7 @@ function numFromTag(tag: VmTag, num: f64): f64 {
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function playMini(
   arrayIndex: i32,
   cbAux: i32,

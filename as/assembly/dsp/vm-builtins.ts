@@ -129,7 +129,7 @@ export class VmBuiltins {
     aux[index] = 0
   }
 
-  @inline
+  // @inline
   call(
     pos: i32,
     named: i32,

@@ -7,7 +7,9 @@ import { VmTag } from './types'
 export class VmAudio {
   outCursor: i32 = 0
   smoothedHas: StaticArray<i32> = new StaticArray<i32>(LITERALS_COUNT)
-  smoothedOut: StaticArray<usize> = new StaticArray<usize>(LITERALS_COUNT)
+  smoothedOutIndex: StaticArray<i32> = new StaticArray<i32>(LITERALS_COUNT)
+  smoothedKeys: StaticArray<i32> = new StaticArray<i32>(LITERALS_COUNT)
+  smoothedCount: i32 = 0
   tHas: i32 = 0
   tOutIndex: i32 = 0
 
@@ -55,12 +57,16 @@ export class VmAudio {
         const k = -1 - aux
         if (k >= 0 && k < this.smoothedHas.length) {
           if (this.smoothedHas[k] !== 0) {
-            return this.smoothedOut[k]
+            const outIndex = this.smoothedOutIndex[k]
+            return program.getOutBuffer(outIndex)
           }
           const outIndex = this.allocOut(program)
           const out$ = program.getOutBuffer(outIndex)
           this.smoothedHas[k] = 1
-          this.smoothedOut[k] = out$
+          this.smoothedOutIndex[k] = outIndex
+          if (this.smoothedCount < this.smoothedKeys.length) {
+            this.smoothedKeys[this.smoothedCount++] = k
+          }
 
           const s = program.literalsSmoothed[k]
           if (s.value === Infinity && s.target === Infinity) {
@@ -100,8 +106,34 @@ export class VmAudio {
   reset(): void {
     this.outCursor = 0
     this.tHas = 0
-    for (let i = 0; i < this.smoothedHas.length; i++) {
-      this.smoothedHas[i] = 0
+    const n: i32 = this.smoothedCount
+    for (let i: i32 = 0; i < n; i++) {
+      const k: i32 = this.smoothedKeys[i]
+      if (k >= 0 && k < this.smoothedHas.length) {
+        this.smoothedHas[k] = 0
+      }
     }
+    this.smoothedCount = 0
+  }
+
+  invalidateFrom(outCursor: i32): void {
+    if (this.tHas !== 0 && this.tOutIndex >= outCursor) {
+      this.tHas = 0
+    }
+
+    let w: i32 = 0
+    const n: i32 = this.smoothedCount
+    for (let i: i32 = 0; i < n; i++) {
+      const k: i32 = this.smoothedKeys[i]
+      if (k >= 0 && k < this.smoothedHas.length) {
+        if (this.smoothedHas[k] !== 0 && this.smoothedOutIndex[k] >= outCursor) {
+          this.smoothedHas[k] = 0
+          continue
+        }
+      }
+      if (w != i) this.smoothedKeys[w] = k
+      w++
+    }
+    this.smoothedCount = w
   }
 }

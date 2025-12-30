@@ -2,6 +2,7 @@ import { useEffect } from 'preact/hooks'
 import { toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
 import {
+  ANALYSER_OUTS_COUNT,
   ARRAY_HEADER_SIZE,
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
@@ -362,7 +363,7 @@ async function createProgram(
 ) {
   const program$ = await worklet.createProgram()
   const program = ProgramStruct(wasmMemory.buffer, program$)
-  const lock = new Int32Array(wasmMemory.buffer, program.lock, 1)
+  const lock = new Int32Array(wasmMemory.buffer, program.ptr, 1)
 
   let programDataPoolIndex = 0
   const programDataPool: ProgramDataView[] = [
@@ -466,7 +467,7 @@ async function createProgram(
   }
 
   const analyserOutsPool = AnalyserOutsPoolStruct(wasmMemory.buffer, program.analyserOutsPool)
-  const analyserOuts$ = new Uint32Array(wasmMemory.buffer, analyserOutsPool.outs, 64)
+  const analyserOuts$ = new Uint32Array(wasmMemory.buffer, analyserOutsPool.outs, ANALYSER_OUTS_COUNT)
   const analyserOuts = [...analyserOuts$].map(out$ =>
     toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
   )
@@ -515,7 +516,7 @@ async function createProgram(
           throw new Error(`Too many sequences for history pool: ${totalSeqCount} > ${HISTORIES_COUNT}`)
         }
 
-        await this.acquireLock()
+        // await this.acquireLock()
         try {
           for (let arrayIndex = 0; arrayIndex < sequences.length; arrayIndex++) {
             const sequence = sequences[arrayIndex]
@@ -547,7 +548,7 @@ async function createProgram(
           }
         }
         finally {
-          this.releaseLock()
+          // this.releaseLock()
         }
 
         const diff = computeProgramDiff(referenceData, newData)
@@ -605,9 +606,9 @@ async function createProgram(
       Atomics.notify(this.lock, 0)
     },
     async withLock(fn: () => void) {
-      await this.acquireLock()
+      // await this.acquireLock()
       fn()
-      this.releaseLock()
+      // this.releaseLock()
     },
     _setData(value: ProgramDataView) {
       programData = value

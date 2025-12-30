@@ -1,52 +1,51 @@
 import { SEQ_VOICES } from '../../../as/assembly/constants.ts'
 import { Op, SeqOp } from '../../../as/assembly/shared.ts'
 import type {
-  Arg,
-  BlockStmt,
-  DestructurePattern,
-  Expr,
   Loc,
-  Program,
-  Stmt,
 } from '../../lang/ast.ts'
 import { compile } from '../../lang/bytecode.ts'
 import { type LangError, lineText } from '../../lang/errors.ts'
 import { lex } from '../../lang/lexer.ts'
 import { parse } from '../../lang/parser.ts'
 import type { LexError, Token } from '../../lang/token.ts'
+import { checkUndefinedVariableErrors } from '../../lang/undefined-variable.ts'
 import { parseChordSuffix, romanToDegree } from '../../mini/chord-parser.ts'
 import { findScaleIndex } from '../../mini/scales.ts'
 import { builtinSyms } from './builtin-syms.ts'
 import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
 import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
-import { extractLfosFromProgramWithRefs } from './extract-lfo.ts'
 import { extractFiltersFromProgramWithRefs, extractLpNumberLiterals } from './extract-filter.ts'
+import { extractLfosFromProgramWithRefs } from './extract-lfo.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
-import { extractScaleFromProgram } from './extract-scale.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
+import { extractScaleFromProgram } from './extract-scale.ts'
 import { extractSlicersFromProgramWithRefs } from './extract-slicers.ts'
-import { extractAtsFromProgramWithRefs, extractEuclidsFromProgramWithRefs, extractEveriesFromProgramWithRefs } from './extract-trigs.ts'
 import { extractTimelineLabelsFromProgram } from './extract-timeline-labels.ts'
 import { extractTimelineSequencesFromProgramWithRefs } from './extract-timeline-sequences.ts'
+import {
+  extractAtsFromProgramWithRefs,
+  extractEuclidsFromProgramWithRefs,
+  extractEveriesFromProgramWithRefs,
+} from './extract-trigs.ts'
 import { binaryCode, encoderError, tryEvalConstNumber, unaryCode } from './helpers.ts'
 import { POSTLUDE, PRELUDE } from './prelude.ts'
-import { checkUndefinedVariableErrors } from '../../lang/undefined-variable.ts'
 import {
   AnalyserRef,
   ArrayLiteralRef,
   AtRef,
   BranchMarkRef,
   CompressorRef,
+  type EuclidRef,
   EveryRef,
+  type FilterRef,
   LfoRef,
-  LpRef,
-  SlicerRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
   type SampleDef,
+  SlicerRef,
   type TimelineLabel,
   type TimelineSequenceDef,
   type TimelineSequenceRef,
@@ -59,16 +58,16 @@ export * from './builtin-syms.ts'
 export * from './extract-analysers.ts'
 export * from './extract-bpm-bars.ts'
 export * from './extract-compressors.ts'
-export * from './extract-lfo.ts'
 export * from './extract-filter.ts'
+export * from './extract-lfo.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
-export * from './extract-scale.ts'
 export * from './extract-samples.ts'
+export * from './extract-scale.ts'
 export * from './extract-slicers.ts'
-export * from './extract-trigs.ts'
 export * from './extract-timeline-labels.ts'
 export * from './extract-timeline-sequences.ts'
+export * from './extract-trigs.ts'
 export * from './types.ts'
 
 const NOTE_OFFSETS: Record<string, number> = {
@@ -104,6 +103,8 @@ export function encodeLangToVmOps(
   postlude = POSTLUDE,
 ): {
   errors: LangError[]
+  visualizerVertex?: string
+  visualizerFragment?: string
   bpm?: number
   bars?: number
   scale?: number
@@ -162,7 +163,58 @@ export function encodeLangToVmOps(
   const lexErrors: LangError[] = lexed.errors.map(mapLexError)
   const parsed = parse(src, tokens)
   const errors: LangError[] = [...lexErrors, ...parsed.errors]
-  if (errors.length) return { errors }
+
+  let visualizerVertex: string | undefined
+  let visualizerFragment: string | undefined
+  const isVisualizerAssign = (stmt: any): boolean => {
+    if (stmt?.kind !== 'expr_stmt') return false
+    const e = stmt.expr
+    if (e?.kind !== 'assign' || e.op !== '=') return false
+    const t = e.target
+    const v = e.value
+    if (t?.kind !== 'ident') return false
+    if (v?.kind !== 'string') return false
+    if (t.name === 'vertex') {
+      visualizerVertex = String(v.value ?? '')
+      return true
+    }
+    if (t.name === 'fragment') {
+      visualizerFragment = String(v.value ?? '')
+      return true
+    }
+    return false
+  }
+
+  const scanVisualizer = (stmt: any): void => {
+    if (!stmt) return
+    isVisualizerAssign(stmt)
+    if (stmt.kind === 'block') {
+      for (const s of stmt.body ?? []) scanVisualizer(s)
+    }
+    else if (stmt.kind === 'for') {
+      scanVisualizer(stmt.body)
+    }
+    else if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+      scanVisualizer(stmt.body)
+    }
+    else if (stmt.kind === 'switch') {
+      for (const c of stmt.cases ?? []) {
+        for (const s of c.body ?? []) scanVisualizer(s)
+      }
+    }
+    else if (stmt.kind === 'try') {
+      scanVisualizer(stmt.body)
+      if (stmt.catchBody) scanVisualizer(stmt.catchBody)
+      if (stmt.finallyBody) scanVisualizer(stmt.finallyBody)
+    }
+    else if (stmt.kind === 'label') {
+      scanVisualizer(stmt.stmt)
+    }
+  }
+
+  for (const s of parsed.program?.body ?? []) scanVisualizer(s)
+
+  if (errors.length) return { errors, visualizerVertex, visualizerFragment }
 
   const bpm = extractBpmFromProgram(src, parsed.program, errors)
   const bars = extractBarsFromProgram(src, parsed.program, errors)
@@ -701,6 +753,7 @@ export function encodeLangToVmOps(
   const transformStmt = (stmt: any): any => {
     if (!stmt) return stmt
     if (stmt.kind === 'expr_stmt') {
+      if (isVisualizerAssign(stmt)) return null
       const isBpmStmt = !!(
         stmt.expr?.kind === 'assign'
         && stmt.expr.target?.kind === 'ident'
@@ -1152,6 +1205,8 @@ export function encodeLangToVmOps(
   return errors.length
     ? {
       errors,
+      visualizerVertex,
+      visualizerFragment,
       bpm,
       bars,
       scale,
@@ -1176,6 +1231,8 @@ export function encodeLangToVmOps(
     }
     : {
       errors: [],
+      visualizerVertex,
+      visualizerFragment,
       bpm,
       bars,
       scale,
