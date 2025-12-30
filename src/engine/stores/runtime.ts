@@ -160,9 +160,11 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
       if (!state.control) return
       Atomics.store(state.control, 0, ControlOp.Stop)
       set({ playbackState: 'stopped' })
-      const ui = useEngineUiStore.getState()
+      if (state.seekSampleCount) Atomics.store(state.seekSampleCount, 0, 0)
+      if (state.globalSampleCount) Atomics.store(state.globalSampleCount, 0, 0)
       const app = useAppStore.getState()
       if (app.selectedLoopId) {
+        const ui = useEngineUiStore.getState()
         ui.setViewSampleCount(app.selectedLoopId, 0)
       }
     },
