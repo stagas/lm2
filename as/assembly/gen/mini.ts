@@ -62,6 +62,7 @@ class MiniVoice {
 
 class MiniRng {
   private state: u32 = 1234567890
+  @inline
   next(): f32 {
     this.state = (this.state * 1664525 + 1013904223) as u32
     return (this.state as f32) / (u32.MAX_VALUE as f32)
@@ -159,6 +160,7 @@ export class Mini extends Gen {
     this.rng.copyFrom(src.rng)
   }
 
+  @inline
   private resetVoiceMaps(): void {
     const size = ARRAY_SIZE * MAX_EVENT_VALUES
     for (let i = 0; i < size; i++) {
@@ -169,6 +171,7 @@ export class Mini extends Gen {
     }
   }
 
+  @inline
   private allocateVoice(windowStart: i32): i32 {
     const start = this.voiceCursor
     let endedCandidate: i32 = -1
@@ -196,6 +199,7 @@ export class Mini extends Gen {
     return v
   }
 
+  @inline
   private claimVoice(eventIndex: i32, windowStart: i32): i32 {
     const size = ARRAY_SIZE * MAX_EVENT_VALUES
     if (eventIndex >= 0 && eventIndex < size) {
@@ -217,6 +221,7 @@ export class Mini extends Gen {
     return voiceIndex
   }
 
+  @inline
   private bindVoiceToEvent(voiceIndex: i32, eventIndex: i32): void {
     const size = ARRAY_SIZE * MAX_EVENT_VALUES
     const prevEvent = this.voiceEventIndex[voiceIndex]
@@ -229,12 +234,14 @@ export class Mini extends Gen {
     }
   }
 
+  @inline
   private pairLess(aKey: i64, aSlot: i32, bKey: i64, bSlot: i32): bool {
     if (aKey < bKey) return true
     if (aKey > bKey) return false
     return aSlot < bSlot
   }
 
+  @inline
   private sortGlidePairs(lo: i32, hi: i32): void {
     let i: i32 = lo
     let j: i32 = hi
@@ -261,6 +268,7 @@ export class Mini extends Gen {
     if (i < hi) this.sortGlidePairs(i, hi)
   }
 
+  @inline
   private prepareGlideSuccessors(historyArray: StaticArray<f32>): void {
     // Reset successor tables.
     for (let n: i32 = 0; n < HISTORY_SIZE; n++) {
@@ -320,6 +328,7 @@ export class Mini extends Gen {
     }
   }
 
+  @inline
   private defragmentHistory(
     historyArray: StaticArray<f32>,
     windowStart: i32,
@@ -368,6 +377,7 @@ export class Mini extends Gen {
     )
   }
 
+  @inline
   generateHistory(): void {
     if (this.bytecode$ === 0 || this.history$ === 0) return
 
@@ -488,6 +498,7 @@ export class Mini extends Gen {
     historyArray[HISTORY_WRITE_POS_OFFSET] = historyWritePos as f32
   }
 
+  @inline
   private processAudio(length: i32): void {
     if (this.bytecode$ === 0 || this.history$ === 0) return
 
