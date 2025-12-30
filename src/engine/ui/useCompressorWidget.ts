@@ -198,7 +198,7 @@ export function useCompressorWidget({
 
     c.strokeStyle = 'rgba(150,150,150,0.25)'
     c.lineWidth = 1
-    c.strokeRect(0.5, chartY + 0.5, chartW - 1, chartH - 1)
+    c.strokeRect(0.5, chartY + 0.5, chartW - 1, chartH)
 
     const minDb = -80
     const maxDb = 0
@@ -289,7 +289,7 @@ export function useCompressorWidget({
         c.fillStyle = 'rgba(120,120,120,0.25)'
         // Convert horizontal band (x-range) to vertical band (y-range, down to up)
         const y1 = toY(hi)
-        c.fillRect(0, y1, chartW, Math.max(1, (chartY + chartH) - y1))
+        c.fillRect(1, Math.ceil(y1), chartW - 2, Math.ceil(Math.max(1, (chartY + chartH) - y1)))
       }
     }
 
