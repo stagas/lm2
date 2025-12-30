@@ -1,4 +1,9 @@
-import { BRANCH_HISTORY_ENTRY_SIZE, BRANCH_HISTORY_SIZE } from '../constants'
+import {
+  BRANCH_HISTORY_ENTRY_SIZE,
+  BRANCH_HISTORY_SIZE,
+  FINAL_OUT_ANALYSER_L_INDEX,
+  FINAL_OUT_ANALYSER_R_INDEX,
+} from '../constants'
 import { clearVmError, controlBlockSize, setVmError, vmErrorCode } from '../globals'
 import { Program } from '../program'
 import { ProgramData } from '../program-data'
@@ -66,12 +71,25 @@ export class Dsp {
   private ifThenAux: StaticArray<i32> = new StaticArray<i32>(64)
   private ifThenHas: StaticArray<i32> = new StaticArray<i32>(64)
 
-  @inline
+  // @inline
+  private writeFinalOutAnalysers(left$: usize, right$: usize, block: i32, ringBase: i32): void {
+    const outL$ = this.program.analyserOutsPool.get(FINAL_OUT_ANALYSER_L_INDEX)
+    const outR$ = this.program.analyserOutsPool.get(FINAL_OUT_ANALYSER_R_INDEX)
+
+    for (let i = 0; i < block; i++) {
+      const l = load<f32>(left$ + (i << 2) as usize)
+      const r = load<f32>(right$ + (i << 2) as usize)
+      store<f32>(outL$ + ((ringBase + i) << 2) as usize, l)
+      store<f32>(outR$ + ((ringBase + i) << 2) as usize, r)
+    }
+  }
+
+  // @inline
   reset(): void {
     this.program.reset()
   }
 
-  @inline
+  // @inline
   private recordBranch(ifPc: i32, branchPc: i32): void {
     if (ifPc <= 0 || branchPc <= 0) return
     // Best-effort ring buffer for UI widgets (no atomics needed).
@@ -398,7 +416,7 @@ export class Dsp {
     return ret
   }
 
-  @inline
+  // @inline
   private vmCall(pos: i32, named: i32, length: i32, left$: usize, right$: usize): void {
     this.builtins.call(
       pos,
@@ -413,14 +431,14 @@ export class Dsp {
     )
   }
 
-  @inline
+  // @inline
   vmInvokeFunc(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
   {
     this.vmInvokeFuncInternal(funcPc, argCount, argTags, argNums, argAux, length, left$, right$, true)
   }
 
-  @inline
+  // @inline
   vmInvokeFuncKeepOuts(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
   {
@@ -502,7 +520,10 @@ export class Dsp {
 
     this.env.count = savedEnv
     this.env.scopeDepth = savedDepth
-    if (restoreOuts) this.audio.outCursor = restoreTo
+    if (restoreOuts) {
+      this.audio.outCursor = restoreTo
+      this.audio.invalidateFrom(savedOut)
+    }
     this.tuneTag = savedTuneTag
     this.tuneNum = savedTuneNum
     this.tuneAux = savedTuneAux
@@ -590,6 +611,7 @@ export class Dsp {
 
       const postCount: i32 = this.postCount
       if (postCount <= 0) {
+        this.writeFinalOutAnalysers(curL$, curR$, block, begin + offset)
         copyAudio(leftBlock$, curL$, block)
         copyAudio(rightBlock$, curR$, block)
         continue
@@ -683,12 +705,13 @@ export class Dsp {
       }
       this.postRunning = 0
 
+      this.writeFinalOutAnalysers(curL$, curR$, block, begin + offset)
       copyAudio(leftBlock$, curL$, block)
       copyAudio(rightBlock$, curR$, block)
     }
   }
 
-  @inline
+  // @inline
   private processVm(left$: usize, right$: usize, begin: i32, length: i32): void {
     const startSampleCount = globalSampleCount
     const incoming = this.program.data
@@ -720,12 +743,12 @@ export class Dsp {
   }
 
   process(left$: usize, right$: usize, begin: i32, length: i32): void {
-    const lockPtr = changetype<usize>(this.program) + offsetof<Program>('lock')
-    while (true) {
-      const observed = atomic.cmpxchg<i32>(lockPtr, 0, 1)
-      if (observed === 0) break
-      atomic.wait<i32>(lockPtr, observed, -1)
-    }
+    // const lockPtr = changetype<usize>(this.program) + offsetof<Program>('lock')
+    // while (true) {
+    //   const observed = atomic.cmpxchg<i32>(lockPtr, 0, 1)
+    //   if (observed === 0) break
+    //   // atomic.wait<i32>(lockPtr, observed, -1)
+    // }
 
     const ops = this.program.data.ops
     if (ops[0] !== VM_MAGIC) {
@@ -737,7 +760,7 @@ export class Dsp {
       this.processVm(left$, right$, begin, length)
     }
 
-    atomic.store<i32>(lockPtr, 0)
-    atomic.notify(lockPtr, 1)
+    // atomic.store<i32>(lockPtr, 0)
+    // atomic.notify(lockPtr, 1)
   }
 }

@@ -28,7 +28,7 @@ export class Ad extends Gen {
     this.lastTrig = src.lastTrig
   }
 
-  @inline
+  // @inline
   generate(attack: f32, decay: f32, trig: f32): f32 {
     const isTrigger = trig > 0 && this.lastTrig <= 0
     this.lastTrig = trig

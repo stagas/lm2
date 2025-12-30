@@ -47,6 +47,8 @@ export function SidebarSettings(
   const setUiShowFunctionDefinitions = useEngineUiStore(state => state.setShowFunctionDefinitions)
   const uiShowWidgets = useEngineUiStore(state => state.showWidgets)
   const setUiShowWidgets = useEngineUiStore(state => state.setShowWidgets)
+  const uiShowVisualizer = useEngineUiStore(state => state.showVisualizer)
+  const setUiShowVisualizer = useEngineUiStore(state => state.setShowVisualizer)
   const uiWordWrap = useEngineUiStore(state => state.wordWrap)
   const setUiWordWrap = useEngineUiStore(state => state.setWordWrap)
   const [editingArtistName, setEditingArtistName] = useState(false)
@@ -179,6 +181,11 @@ export function SidebarSettings(
         onChange={setUiShowWidgets}
       >
         Show Widgets
+      </SidebarSettingsSwitch>
+      <SidebarSettingsSwitch onClick={setUiShowVisualizer} checked={uiShowVisualizer}
+        onChange={setUiShowVisualizer}
+      >
+        Show Visualizer
       </SidebarSettingsSwitch>
       <SidebarSettingsSwitch onClick={setUiWordWrap} checked={uiWordWrap}
         onChange={setUiWordWrap}

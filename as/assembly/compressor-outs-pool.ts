@@ -11,12 +11,12 @@ export class CompressorOutsPool {
     }
   }
 
-  @inline
+  // @inline
   getLevelDb(index: i32): usize {
     return changetype<usize>(this.levelDbOuts[index])
   }
 
-  @inline
+  // @inline
   getGrDb(index: i32): usize {
     return changetype<usize>(this.grDbOuts[index])
   }

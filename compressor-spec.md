@@ -29,7 +29,7 @@ export class CompressorBlock {
   constructor() {
   }
 
-  @inline
+  // @inline
   process(
     output: Float32Array,
     input: Float32Array,

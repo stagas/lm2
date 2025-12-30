@@ -80,18 +80,9 @@ export class Program {
     }
   }
 
-  @inline
+  // @inline
   reset(): void {
     this.gensPool.reset()
-  }
-
-  waitProgramUnlock(): void {
-    const lockPtr = changetype<usize>(this) + offsetof<Program>('lock')
-    let lock = atomic.load<i32>(lockPtr)
-    while (lock !== 0) {
-      atomic.wait<i32>(lockPtr, lock, -1)
-      lock = atomic.load<i32>(lockPtr)
-    }
   }
 
   pushCallbackScope(bodyBufferBase: i32, remapBase: i32): void {

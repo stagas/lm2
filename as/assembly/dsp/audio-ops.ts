@@ -1,7 +1,7 @@
 // dprint-ignore-file
 
 // @ts-ignore
-@inline
+// @inline
 export function clearAudio(out$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     store<f32>(out$, 0)
@@ -10,7 +10,7 @@ export function clearAudio(out$: usize, length: i32): void {
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function addAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -24,7 +24,7 @@ export function addAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function subAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -38,7 +38,7 @@ export function subAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function mulAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -52,7 +52,7 @@ export function mulAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function divAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -66,7 +66,7 @@ export function divAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function modAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -80,7 +80,7 @@ export function modAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function powAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -94,7 +94,7 @@ export function powAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function eqAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -107,7 +107,7 @@ export function eqAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void 
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function ltAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -120,7 +120,7 @@ export function ltAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void 
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function lteAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -133,7 +133,7 @@ export function lteAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function gtAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -146,7 +146,7 @@ export function gtAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void 
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function gteAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -159,7 +159,7 @@ export function gteAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function logicOrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -172,7 +172,7 @@ export function logicOrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): 
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function logicAndAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s1 = load<f32>(a1$)
@@ -185,7 +185,7 @@ export function logicAndAudio(out$: usize, a1$: usize, a2$: usize, length: i32):
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function bitOrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const a = i32(load<f32>(a1$))
@@ -198,7 +198,7 @@ export function bitOrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): vo
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function bitXorAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const a = i32(load<f32>(a1$))
@@ -211,7 +211,7 @@ export function bitXorAudio(out$: usize, a1$: usize, a2$: usize, length: i32): v
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function bitAndAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const a = i32(load<f32>(a1$))
@@ -224,7 +224,7 @@ export function bitAndAudio(out$: usize, a1$: usize, a2$: usize, length: i32): v
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function shlAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const a = i32(load<f32>(a1$))
@@ -237,7 +237,7 @@ export function shlAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function shrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const a = i32(load<f32>(a1$))
@@ -250,7 +250,7 @@ export function shrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function ushrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const a = <u32> i32(load<f32>(a1$))
@@ -263,7 +263,7 @@ export function ushrAudio(out$: usize, a1$: usize, a2$: usize, length: i32): voi
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function notAudio(out$: usize, in$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const s = load<f32>(in$)
@@ -274,7 +274,7 @@ export function notAudio(out$: usize, in$: usize, length: i32): void {
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function bitNotAudio(out$: usize, in$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const a = i32(load<f32>(in$))
@@ -285,7 +285,7 @@ export function bitNotAudio(out$: usize, in$: usize, length: i32): void {
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function selectAudio(out$: usize, cond$: usize, then$: usize, else$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     const c = load<f32>(cond$)
@@ -300,7 +300,7 @@ export function selectAudio(out$: usize, cond$: usize, then$: usize, else$: usiz
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function copyAudio(out$: usize, in$: usize, length: i32): void {
   for (let i = 0; i < length; i++) {
     store<f32>(out$, load<f32>(in$))
@@ -310,7 +310,7 @@ export function copyAudio(out$: usize, in$: usize, length: i32): void {
 }
 
 // @ts-ignore
-@inline
+// @inline
 export function fillAudio(out$: usize, value: f32, length: i32): void {
   for (let i = 0; i < length; i++) {
     store<f32>(out$, value)

@@ -7,6 +7,7 @@ export type EngineUiState = {
   zeroBasedTimelines: boolean
   showFunctionDefinitions: boolean
   showWidgets: boolean
+  showVisualizer: boolean
   wordWrap: boolean
   sidebarTab: SidebarTab
 
@@ -15,6 +16,7 @@ export type EngineUiState = {
   setZeroBasedTimelines: (zeroBased: boolean) => void
   setShowFunctionDefinitions: (showFunctionDefinitions: boolean) => void
   setShowWidgets: (showWidgets: boolean) => void
+  setShowVisualizer: (showVisualizer: boolean) => void
   setWordWrap: (wordWrap: boolean) => void
   setSidebarTab: (sidebarTab: SidebarTab) => void
 }
@@ -25,6 +27,7 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
     zeroBasedTimelines: false,
     showFunctionDefinitions: true,
     showWidgets: true,
+    showVisualizer: true,
     wordWrap: true,
     sidebarTab: 'loops',
 
@@ -68,6 +71,10 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
       set({ showWidgets: showWidgets })
     },
 
+    setShowVisualizer: (showVisualizer: boolean) => {
+      set({ showVisualizer: showVisualizer })
+    },
+
     setWordWrap: (wordWrap: boolean) => {
       set({ wordWrap: wordWrap })
     },
@@ -78,7 +85,7 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
   }
 }, {
   name: 'lm2-ui-store',
-  version: 2,
+  version: 3,
   migrate: persisted => {
     if (!persisted || typeof persisted !== 'object') return persisted as EngineUiState
     const p = persisted as EngineUiState

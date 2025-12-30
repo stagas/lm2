@@ -7,7 +7,7 @@ export class OutsPool {
       this.outs[i] = new StaticArray<f32>(CHUNK_SIZE)
     }
   }
-  @inline
+  // @inline
   get(index: i32): usize {
     return changetype<usize>(this.outs[index])
   }

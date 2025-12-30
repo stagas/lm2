@@ -5,7 +5,7 @@ import { VmSym } from '../vm-sym'
 import { VmStack } from '../vm-stack'
 
 // @ts-ignore
-@inline
+// @inline
 export function callPost(
   posCount: i32,
   nameSyms: StaticArray<i32>,

@@ -6,7 +6,8 @@
       "optimizeLevel": 0,
       "converge": false,
       "sourceMap": true,
-      "debug": true
+      "debug": true,
+      "noAssert": true
     },
     "release": {
       "outFile": "as/build/index.wasm",
