@@ -20,6 +20,7 @@ import {
   extractBarsFromSource,
   extractBpmFromSource,
   extractTimelineLabelsFromSource,
+  type FilterRef,
   type LfoRef,
   type LpRef,
   type MiniSequenceRef,
@@ -64,7 +65,7 @@ export type EngineDspState = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
-  lpRefs: LpRef[]
+  filterRefs: FilterRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
@@ -121,7 +122,7 @@ export type EngineDspState = {
     miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
     analyserRefs: AnalyserRef[]
     compressorRefs: CompressorRef[]
-    lpRefs: LpRef[]
+    filterRefs: FilterRef[]
     slicerRefs: SlicerRef[]
     lfoRefs: LfoRef[]
     everyRefs: EveryRef[]
@@ -396,7 +397,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const miniSourceMaps = primaryResult.miniSourceMaps
       const analyserRefs = primaryResult.analyserRefs
       const compressorRefs = primaryResult.compressorRefs
-      const lpRefs = primaryResult.lpRefs
+      const filterRefs = primaryResult.filterRefs
       const slicerRefs = primaryResult.slicerRefs
       const lfoRefs = primaryResult.lfoRefs
       const everyRefs = primaryResult.everyRefs
@@ -425,7 +426,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           miniSourceMaps,
           analyserRefs,
           compressorRefs,
-          lpRefs,
+          filterRefs,
           slicerRefs,
           lfoRefs,
           everyRefs,
@@ -446,7 +447,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiMiniSourceMaps: miniSourceMaps,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
-          uiLpRefs: lpRefs,
+          uiLpRefs: filterRefs,
           uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
@@ -493,7 +494,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
-        uiLpRefs: stagingResult.lpRefs,
+        uiLpRefs: stagingResult.filterRefs,
         uiSlicerRefs: stagingResult.slicerRefs,
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
@@ -549,7 +550,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiMiniSourceMaps: current.miniSourceMaps,
           uiAnalyserRefs: current.analyserRefs,
           uiCompressorRefs: current.compressorRefs,
-          uiLpRefs: current.lpRefs,
+          uiLpRefs: current.filterRefs,
           uiSlicerRefs: current.slicerRefs,
           uiLfoRefs: current.lfoRefs,
           uiEveryRefs: current.everyRefs,
@@ -579,7 +580,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         miniSourceMaps: stagingResult.miniSourceMaps,
         analyserRefs: stagingResult.analyserRefs,
         compressorRefs: stagingResult.compressorRefs,
-        lpRefs: stagingResult.lpRefs,
+        filterRefs: stagingResult.filterRefs,
         slicerRefs: stagingResult.slicerRefs,
         lfoRefs: stagingResult.lfoRefs,
         everyRefs: stagingResult.everyRefs,
@@ -599,7 +600,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
-        uiLpRefs: stagingResult.lpRefs,
+        uiLpRefs: stagingResult.filterRefs,
         uiSlicerRefs: stagingResult.slicerRefs,
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
@@ -743,7 +744,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     miniSourceMaps: [],
     analyserRefs: [],
     compressorRefs: [],
-    lpRefs: [],
+    filterRefs: [],
     slicerRefs: [],
     lfoRefs: [],
     everyRefs: [],
@@ -843,7 +844,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         miniSourceMaps: [],
         analyserRefs: [],
         compressorRefs: [],
-        lpRefs: [],
+        filterRefs: [],
         slicerRefs: [],
         lfoRefs: [],
         everyRefs: [],
@@ -1013,7 +1014,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const miniSourceMaps = stagingResult.miniSourceMaps
         const analyserRefs = stagingResult.analyserRefs
         const compressorRefs = stagingResult.compressorRefs
-        const lpRefs = stagingResult.lpRefs
+        const filterRefs = stagingResult.filterRefs
         const slicerRefs = stagingResult.slicerRefs
         const lfoRefs = stagingResult.lfoRefs
         const everyRefs = stagingResult.everyRefs
@@ -1049,7 +1050,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           miniSourceMaps,
           analyserRefs,
           compressorRefs,
-          lpRefs,
+          filterRefs,
           slicerRefs,
           lfoRefs,
           everyRefs,
@@ -1070,7 +1071,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiMiniSourceMaps: miniSourceMaps,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
-          uiLpRefs: lpRefs,
+          uiLpRefs: filterRefs,
           uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
@@ -1123,7 +1124,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiMiniSourceMaps: next.miniSourceMaps,
         uiAnalyserRefs: next.analyserRefs,
         uiCompressorRefs: next.compressorRefs,
-        uiLpRefs: next.lpRefs,
+        uiLpRefs: next.filterRefs,
         uiSlicerRefs: next.slicerRefs,
         uiLfoRefs: next.lfoRefs,
         uiEveryRefs: next.everyRefs,

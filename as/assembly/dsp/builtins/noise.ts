@@ -340,16 +340,16 @@ export function callSmooth(
   program: Program,
   length: i32,
 ): void {
-  // smooth(seed=1234, rate=1.0, curve=0.5, trig=0)
+  // smooth(rate=1.0, seed=1234, curve=0.5, trig=0)
   let lfoIndex: i32 = 0
-
-  let seedTag: VmTag = VmTag.Num
-  let seedNum: f64 = 1234.0
-  let seedAux: i32 = 0
 
   let rateTag: VmTag = VmTag.Num
   let rateNum: f64 = 1.0
   let rateAux: i32 = 0
+
+  let seedTag: VmTag = VmTag.Num
+  let seedNum: f64 = 1234.0
+  let seedAux: i32 = 0
 
   let curveTag: VmTag = VmTag.Num
   let curveNum: f64 = 0.5
@@ -362,18 +362,18 @@ export function callSmooth(
   if (posCount >= 1) {
     const t = posTags[0] as VmTag
     if (t !== VmTag.Undef && t !== VmTag.Null) {
-      seedTag = t
-      seedNum = posNums[0]
-      seedAux = posAux[0]
+      rateTag = t
+      rateNum = posNums[0]
+      rateAux = posAux[0]
     }
   }
 
   if (posCount >= 2) {
     const t = posTags[1] as VmTag
     if (t !== VmTag.Undef && t !== VmTag.Null) {
-      rateTag = t
-      rateNum = posNums[1]
-      rateAux = posAux[1]
+      seedTag = t
+      seedNum = posNums[1]
+      seedAux = posAux[1]
     }
   }
 
@@ -458,16 +458,16 @@ export function callFractal(
   program: Program,
   length: i32,
 ): void {
-  // fractal(seed=1234, rate=1.0, octaves=4, gain=0.5, trig=0)
+  // fractal(rate=1.0, seed=1234, octaves=4, gain=0.5, trig=0)
   let lfoIndex: i32 = 0
-
-  let seedTag: VmTag = VmTag.Num
-  let seedNum: f64 = 1234.0
-  let seedAux: i32 = 0
 
   let rateTag: VmTag = VmTag.Num
   let rateNum: f64 = 1.0
   let rateAux: i32 = 0
+
+  let seedTag: VmTag = VmTag.Num
+  let seedNum: f64 = 1234.0
+  let seedAux: i32 = 0
 
   let octavesTag: VmTag = VmTag.Num
   let octavesNum: f64 = 4.0
@@ -484,18 +484,18 @@ export function callFractal(
   if (posCount >= 1) {
     const t = posTags[0] as VmTag
     if (t !== VmTag.Undef && t !== VmTag.Null) {
-      seedTag = t
-      seedNum = posNums[0]
-      seedAux = posAux[0]
+      rateTag = t
+      rateNum = posNums[0]
+      rateAux = posAux[0]
     }
   }
 
   if (posCount >= 2) {
     const t = posTags[1] as VmTag
     if (t !== VmTag.Undef && t !== VmTag.Null) {
-      rateTag = t
-      rateNum = posNums[1]
-      rateAux = posAux[1]
+      seedTag = t
+      seedNum = posNums[1]
+      seedAux = posAux[1]
     }
   }
 

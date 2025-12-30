@@ -127,12 +127,6 @@ export type FilterRef = {
   qArgLoc: Loc | null
   /** Location of the gain arg (for shelf/peak filters). */
   gainArgLoc: Loc | null
-  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
-  knobParams: Array<{
-    name: 'cutoff' | 'q' | 'gain'
-    value: number
-    valueLoc: Loc
-  }>
   /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
     cut: number
