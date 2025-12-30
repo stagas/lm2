@@ -67,6 +67,11 @@ export function useLoopView(loopId: string | null): {
     raf = window.requestAnimationFrame(tick)
     return () => {
       window.cancelAnimationFrame(raf)
+      const nextPlaybackState = useEngineRuntimeStore.getState().playbackState
+      if (nextPlaybackState === 'stopped') {
+        setViewSampleCount(loopId, 0)
+        return
+      }
       setViewSampleCount(loopId, lastSyncedSampleRef.current)
     }
   }, [isPlaybackRunningForView, loopId, setViewSampleCount, storeGlobalSampleCount])

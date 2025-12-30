@@ -42,18 +42,17 @@ export function PlaybackControls({
       <PlaybackButton icon={<PlayGradientIcon />}
         onClick={async (e: preact.TargetedPointerEvent<HTMLButtonElement>) => {
           if (!currentLoop) return
+          const isSameLoop = playingLoopId === currentLoop.data.id
           onDspError(undefined)
           let startSample: number | undefined
-          let isRestart = false
           if ((e.buttons & MouseButtons.Middle) || (e.ctrlKey || e.metaKey)) {
-            if (playbackState === 'running') {
+            if (playbackState === 'running' && isSameLoop) {
               await restartLoop()
               return
             }
             startSample = 0
-            isRestart = true
           }
-          if (!isRestart && playingLoopId === currentLoop.data.id && playbackState !== 'running') {
+          if (isSameLoop && playbackState !== 'running') {
             start()
           }
           else {
