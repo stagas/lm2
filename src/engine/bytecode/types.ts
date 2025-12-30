@@ -159,7 +159,7 @@ export type SlicerRef = {
 
 export type LfoRef = {
   lfoIndex: number
-  lfoType: 'sine' | 'tri' | 'saw' | 'ramp' | 'sqr' | 'sah'
+  lfoType: 'sine' | 'tri' | 'saw' | 'ramp' | 'sqr' | 'sah' | 'smooth' | 'fractal'
   /** Location of the `lfo*` identifier (for widget anchoring). */
   loc: Loc
   /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */

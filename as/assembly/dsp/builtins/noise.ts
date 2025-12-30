@@ -1,11 +1,39 @@
 // dprint-ignore-file
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from '../../gen/noise'
+import { LFO_DATA_OFFSET, LFO_ENTRY_SIZE, LFO_HISTORY_SIZE, LFO_WRITE_POS_OFFSET } from '../../constants'
+import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
 import { Op } from '../../shared'
+import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
-import { VmSym } from '../vm-sym'
+
+// @ts-ignore
+@inline
+function clampIndex(v: i32): i32 {
+  return v < 0 ? 0 : v > 63 ? 63 : v
+}
+
+// @ts-ignore
+@inline
+function writeHistory(program: Program, lfoIndex: i32, lfoType: i32, bar$: usize, offset$: usize, phase01: f32, out$: usize,
+  length: i32): void {
+  const hist = program.lfoHistory
+  const writePos = i32(hist[LFO_WRITE_POS_OFFSET])
+  const slot = writePos % LFO_HISTORY_SIZE
+  const base = LFO_DATA_OFFSET + slot * LFO_ENTRY_SIZE
+
+  const lastSample$: usize = out$ + ((length - 1) << 2)
+  hist[base] = f32(lfoIndex)
+  hist[base + 1] = f32(lfoType)
+  hist[base + 2] = load<f32>(bar$)
+  hist[base + 3] = load<f32>(offset$)
+  hist[base + 4] = phase01
+  hist[base + 5] = load<f32>(lastSample$)
+  hist[base + 6] = f32((globalSampleCount + length) & 0xfffff)
+  hist[LFO_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
+}
 
 // @ts-ignore
 @inline
@@ -313,6 +341,8 @@ export function callSmooth(
   length: i32,
 ): void {
   // smooth(seed=1234, rate=1.0, curve=0.5, trig=0)
+  let lfoIndex: i32 = 0
+
   let seedTag: VmTag = VmTag.Num
   let seedNum: f64 = 1234.0
   let seedAux: i32 = 0
@@ -367,7 +397,10 @@ export function callSmooth(
 
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.Seed) {
+    if (k === VmSym.Index) {
+      lfoIndex = clampIndex(i32(Math.floor(nameNums[i])))
+    }
+    else if (k === VmSym.Seed) {
       seedTag = nameTags[i] as VmTag
       seedNum = nameNums[i]
       seedAux = nameAux[i]
@@ -404,6 +437,7 @@ export function callSmooth(
   gen.trig$ = trig$
   gen.process(out$, length)
 
+  writeHistory(program, lfoIndex, 6, seed$, rate$, gen.phase, out$, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
@@ -425,6 +459,8 @@ export function callFractal(
   length: i32,
 ): void {
   // fractal(seed=1234, rate=1.0, octaves=4, gain=0.5, trig=0)
+  let lfoIndex: i32 = 0
+
   let seedTag: VmTag = VmTag.Num
   let seedNum: f64 = 1234.0
   let seedAux: i32 = 0
@@ -492,7 +528,10 @@ export function callFractal(
 
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.Seed) {
+    if (k === VmSym.Index) {
+      lfoIndex = clampIndex(i32(Math.floor(nameNums[i])))
+    }
+    else if (k === VmSym.Seed) {
       seedTag = nameTags[i] as VmTag
       seedNum = nameNums[i]
       seedAux = nameAux[i]
@@ -536,5 +575,6 @@ export function callFractal(
   gen.trig$ = trig$
   gen.process(out$, length)
 
+  writeHistory(program, lfoIndex, 7, seed$, rate$, gen.phases[0], out$, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }

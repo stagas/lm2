@@ -206,11 +206,14 @@ export function useLfoWidget({
     const steps = 96 * 4
     const isSaw = ref.lfoType === 'saw'
     const isRamp = ref.lfoType === 'ramp'
+    const isSah = ref.lfoType === 'sah'
+    const isSmooth = ref.lfoType === 'smooth'
+    const isFractal = ref.lfoType === 'fractal'
     const xWrap = chartW
     for (let i = 0; i <= steps; i++) {
       const t = i / steps
       let yy = 0
-      if (ref.lfoType === 'sah') {
+      if (isSah || isSmooth || isFractal) {
         yy = t
       }
       else if (isSaw) {
@@ -229,7 +232,7 @@ export function useLfoWidget({
     }
     c.stroke()
 
-    if (ref.lfoType === 'sah') {
+    if (isSah || isSmooth || isFractal) {
       const t = clamp(value, 0, 1)
       const px = t * chartW
       const py = chartY + (1 - t) * chartH
