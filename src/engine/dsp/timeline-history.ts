@@ -172,14 +172,26 @@ export function readTimelineSegsFromCompiledTimeline(
       const startSample = startTimeSeconds * sampleRate
       const endSample = endTimeSeconds * sampleRate
       if (Number.isFinite(startSample) && Number.isFinite(endSample)) {
-        segs.push({
-          startSample,
-          endSample,
-          a: holdValue,
-          b: holdValue,
-          kind: TIMELINE_KIND_HOLD,
-          exp: 1,
-        })
+        const prev = segs[segs.length - 1]
+        if (
+          prev
+          && prev.kind === TIMELINE_KIND_HOLD
+          && prev.a === holdValue
+          && prev.b === holdValue
+          && Math.abs(prev.endSample - startSample) < 0.0001
+        ) {
+          prev.endSample = endSample
+        }
+        else {
+          segs.push({
+            startSample,
+            endSample,
+            a: holdValue,
+            b: holdValue,
+            kind: TIMELINE_KIND_HOLD,
+            exp: 1,
+          })
+        }
       }
     }
   }

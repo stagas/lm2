@@ -13,7 +13,7 @@ const lfoRampTable: StaticArray<f32> = new StaticArray<f32>(LFO_WT_SIZE)
 const lfoSqrTable: StaticArray<f32> = new StaticArray<f32>(LFO_WT_SIZE)
 
 // @ts-ignore
-// @inline
+@inline
 function initLfoTables(): void {
   if (lfoTablesReady) return
   lfoTablesReady = true
@@ -45,7 +45,7 @@ function initLfoTables(): void {
 }
 
 // @ts-ignore
-// @inline
+@inline
 function wtLookup(table: StaticArray<f32>, phase01: f32): f32 {
   const x: f32 = phase01 * (LFO_WT_SIZE as f32)
   const x0: i32 = i32(x)
@@ -57,47 +57,47 @@ function wtLookup(table: StaticArray<f32>, phase01: f32): f32 {
 }
 
 // @ts-ignore
-// @inline
+@inline
 function maxBar(rawBar: f64, samplesPerWholeNote: f64): f64 {
   const minBar: f64 = 1.0 / samplesPerWholeNote
   return Math.max(minBar, rawBar)
 }
 
 // @ts-ignore
-// @inline
+@inline
 function samplesPerWholeNoteFromBpm(rate: f64): f64 {
   const safeBpm: f64 = Math.max(1.0, bpm as f64)
   return (60.0 / safeBpm) * rate * 4.0
 }
 
 // @ts-ignore
-// @inline
+@inline
 function cycleSamples(bar: f64, samplesPerWholeNote: f64): f64 {
   return maxBar(bar, samplesPerWholeNote) * samplesPerWholeNote
 }
 
 // @ts-ignore
-// @inline
+@inline
 function lfoPhase01(sample: f64, bar: f64, samplesPerWholeNote: f64): f64 {
   const cs: f64 = cycleSamples(bar, samplesPerWholeNote)
   return sample / cs - Math.floor(sample / cs)
 }
 
 // @ts-ignore
-// @inline
+@inline
 function lfoCycle(sample: f64, bar: f64, samplesPerWholeNote: f64): i32 {
   const cs: f64 = cycleSamples(bar, samplesPerWholeNote)
   return i32(Math.round(sample / cs))
 }
 
 // @ts-ignore
-// @inline
+@inline
 function fractf64(v: f64): f64 {
   return v - Math.floor(v)
 }
 
 // @ts-ignore
-// @inline
+@inline
 function triStd11(phase01: f64): f64 {
   const p: f64 = fractf64(phase01)
   return p < 0.5 ? 4.0 * p - 1.0 : 3.0 - 4.0 * p
@@ -501,7 +501,7 @@ const LFO_SAH_TABLE_SIZE: i32 = 1 << LFO_SAH_TABLE_BITS
 const LFO_SAH_TABLE_MASK: i32 = LFO_SAH_TABLE_SIZE - 1
 
 // @ts-ignore
-// @inline
+@inline
 function hashU32(v: u32): u32 {
   v ^= v >> 16
   v *= 0x7feb352d
@@ -512,13 +512,13 @@ function hashU32(v: u32): u32 {
 }
 
 // @ts-ignore
-// @inline
+@inline
 function seedToBits(seed: f32): u32 {
   return hashU32(reinterpret<u32>(seed))
 }
 
 // @ts-ignore
-// @inline
+@inline
 function xorshift32(state: u32): u32 {
   state ^= state << 13
   state ^= state >> 17
@@ -527,13 +527,13 @@ function xorshift32(state: u32): u32 {
 }
 
 // @ts-ignore
-// @inline
+@inline
 function u32To01(v: u32): f32 {
   return (f32(v >>> 8) * (1.0 / 16777216.0)) as f32
 }
 
 // @ts-ignore
-// @inline
+@inline
 function copyF32Static(dst: StaticArray<f32>, src: StaticArray<f32>): void {
   for (let i: i32 = 0; i < dst.length; i++) {
     unchecked(dst[i] = unchecked(src[i]))

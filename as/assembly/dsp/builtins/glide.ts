@@ -9,7 +9,7 @@ import { VmStack } from '../vm-stack'
 import { applyCurve } from '../../util'
 
 // @ts-ignore
-// @inline
+@inline
 function wrapIndex(i: i32, len: i32): i32 {
   let j: i32 = i % len
   if (j < 0) j += len
@@ -17,7 +17,7 @@ function wrapIndex(i: i32, len: i32): i32 {
 }
 
 // @ts-ignore
-// @inline
+@inline
 export function callGlide(
   posCount: i32,
   nameSyms: StaticArray<i32>,

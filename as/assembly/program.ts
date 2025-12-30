@@ -80,7 +80,7 @@ export class Program {
     }
   }
 
-  // @inline
+  @inline
   reset(): void {
     this.gensPool.reset()
   }

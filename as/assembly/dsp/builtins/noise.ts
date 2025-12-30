@@ -8,7 +8,7 @@ import { VmStack } from '../vm-stack'
 import { VmSym } from '../vm-sym'
 
 // @ts-ignore
-// @inline
+@inline
 export function callWhite(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -80,7 +80,7 @@ export function callWhite(
 }
 
 // @ts-ignore
-// @inline
+@inline
 export function callGauss(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -152,7 +152,7 @@ export function callGauss(
 }
 
 // @ts-ignore
-// @inline
+@inline
 export function callPink(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -224,7 +224,7 @@ export function callPink(
 }
 
 // @ts-ignore
-// @inline
+@inline
 export function callBrown(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -296,7 +296,7 @@ export function callBrown(
 }
 
 // @ts-ignore
-// @inline
+@inline
 export function callSmooth(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -408,7 +408,7 @@ export function callSmooth(
 }
 
 // @ts-ignore
-// @inline
+@inline
 export function callFractal(
   posCount: i32,
   nameSyms: StaticArray<i32>,

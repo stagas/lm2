@@ -7,13 +7,13 @@ import { VmStack } from '../vm-stack'
 import { Dsp } from '../dsp'
 
 // @ts-ignore
-// @inline
+@inline
 function pow2(x: f64): f64 {
   return Math.pow(2.0, x)
 }
 
 // @ts-ignore
-// @inline
+@inline
 function numFromTag(tag: VmTag, num: f64): f64 {
   if (tag === VmTag.Bool) return num != 0.0 ? 1.0 : 0.0
   if (tag === VmTag.Num) return num
@@ -25,7 +25,7 @@ function numFromTag(tag: VmTag, num: f64): f64 {
 // Optional second parameter adds semitone adjustment (for altered extensions like b9, #11, etc.)
 //
 // @ts-ignore
-// @inline
+@inline
 export function callDegree(
   posCount: i32,
   nameSyms: StaticArray<i32>,
