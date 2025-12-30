@@ -452,6 +452,8 @@ export function encodeLangToVmOps(
         || calleeName === 'lforamp'
         || calleeName === 'lfosqr'
         || calleeName === 'lfosah'
+        || calleeName === 'smooth'
+        || calleeName === 'fractal'
       const isOut = calleeName === 'out' || calleeName === 'solo'
       const isLabel = calleeName === 'label'
       const isFreesound = calleeName === 'freesound'

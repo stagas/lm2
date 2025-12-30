@@ -207,7 +207,7 @@ function drawSpectrum(
     const fadeFactor = getFadeFactor(barRight)
     const drawHeight = newHeight * fadeFactor
     const bx = x + i * barWidth
-    const by = y + h / 2 - drawHeight / 2
+    const by = y + h / 2 - drawHeight / 2 - 5
     c.fillRect(bx, by, Math.max(1, barWidth + 1), drawHeight)
   }
 
@@ -233,7 +233,7 @@ function drawSpectrum(
     avgHeights[i] = count ? sum / count : 0
   }
 
-  const centerY = y + h / 2
+  const centerY = Math.floor(y + h / 2) - 0.35
   c.beginPath()
   for (let i = 0; i < barCount; i++) {
     const cx = x + i * barWidth + barWidth / 2

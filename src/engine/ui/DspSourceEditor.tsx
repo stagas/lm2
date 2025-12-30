@@ -941,17 +941,19 @@ function DspSourceEditorReady(
     }
     if (e.key === ' ' && metaKey) {
       const runtime = useEngineRuntimeStore.getState()
-      if (runtime.playbackState === 'running') {
+      const isSameLoop = runtime.playingLoopId === currentLoop?.data.id
+      if (runtime.playbackState === 'running' && isSameLoop) {
         if (!e.altKey) runtime.pause()
         else void restartLoop()
       }
       else {
         ;(async () => {
-          if (e.altKey) {
+          if (e.altKey && isSameLoop) {
             await restartLoop()
           }
-          if (!runtime.playingLoopId) {
-            void useEngineDspStore.getState().playLoop(currentLoop.data.id, currentLoop.codeFile.value, 0)
+          if (!runtime.playingLoopId || !isSameLoop) {
+            void useEngineDspStore.getState().playLoop(currentLoop.data.id, currentLoop.codeFile.value,
+              e.altKey || !runtime.playingLoopId ? 0 : undefined)
           }
           else {
             runtime.start()
@@ -961,7 +963,7 @@ function DspSourceEditorReady(
       return false
     }
     return true
-  }, [])
+  }, [currentLoop])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
