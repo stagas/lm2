@@ -500,28 +500,30 @@ export class Mini extends Gen {
     const windowStart = globalSampleCount
     const windowEnd = windowStart + length
 
-    // Zero outputs
-    for (let v = 0; v < SEQ_VOICES; v++) {
-      const trig$ = this.outTrig$[v]
-      const vel$ = this.outVelocity$[v]
-      const val$ = this.outValue$[v]
-      const bytes: usize = (length << 2) as usize
-      memory.fill(trig$, 0, bytes)
-      memory.fill(vel$, 0, bytes)
-      memory.fill(val$, 0, bytes)
+    // Zero trig outputs (vel/val are written for active voices below; inactive voices get zeroed there).
+    const bytes: usize = (length << 2) as usize
+    for (let v: i32 = 0; v < SEQ_VOICES; v++) {
+      memory.fill(this.outTrig$[v], 0, bytes)
     }
     const opStart = bytecodeBase + MINI_HEADER_SIZE
 
     // Read events from history buffer that intersect with current window and schedule voices
     // After defragmentation, events are sequential from 0 to writePos-1, so read all slots
     let glidePrepared: bool = false
-    for (let n = 0; n < HISTORY_SIZE; n++) {
-      const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
-      const historyEntry = HistoryEntry.at(changetype<usize>(historyArray), historyIdx)
-      const opIndex = i32(historyEntry.opIndex)
-      const voiceIndexHist = i32(historyEntry.voiceIndex)
-      const startSample = i32(historyEntry.startSample)
-      let endSample = i32(historyEntry.endSample)
+    let historyCount: i32 = i32(historyArray[HISTORY_WRITE_POS_OFFSET]) & HISTORY_SIZE_MINUS_ONE
+    if (historyCount === 0) {
+      // Disambiguate empty vs full buffer: a full buffer can legitimately have writePos === 0.
+      const end0: i32 = i32(historyArray[HISTORY_DATA_OFFSET + 5])
+      if (end0 !== 0) historyCount = HISTORY_SIZE
+    }
+    for (let n: i32 = 0; n < historyCount; n++) {
+      const historyIdx: i32 = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
+      const opIndex: i32 = i32(historyArray[historyIdx + 0])
+      const voiceIndexHist: i32 = i32(historyArray[historyIdx + 1])
+      const value: f32 = historyArray[historyIdx + 2]
+      const velocity: f32 = historyArray[historyIdx + 3]
+      const startSample: i32 = i32(historyArray[historyIdx + 4])
+      let endSample: i32 = i32(historyArray[historyIdx + 5])
 
       // Skip invalid entries
       if (startSample === 0 && endSample === 0) continue
@@ -541,52 +543,35 @@ export class Mini extends Gen {
       const opcode = i32(bytecodeArray[eventOffset])
       if (opcode !== OP_EVENT) continue
 
-      // Use value captured in history, which already reflects chord splitting
-      const value = historyArray[historyIdx + 2]
       if (value <= 0) continue
-
-      // Use velocity captured in history, which already includes group scaling
-      const velocity = historyArray[historyIdx + 3]
 
       // Schedule voice. Use (opIndex, voiceIndexHist) as the stable identifier so that
       // chord voices can be tracked consistently across events.
       if (voiceIndexHist < 0 || voiceIndexHist >= MAX_EVENT_VALUES) continue
       const eventIndex = opIndex * MAX_EVENT_VALUES + voiceIndexHist
       let voiceIndex: i32 = -1
-      let reuseMode: i32 = 0 // 0 = allocate, 1 = same note already holding, 2 = replace slot voice
+      let reuseMode: i32 = 0 // 0 = allocate, 1 = same note already holding
 
       // If the regenerated event started before "now" but is still holding, try to reuse an already
       // holding voice in the same chord slot to avoid double-triggering.
       const overlapsNow = startSample < windowStart && endSample > windowStart
       if (overlapsNow) {
-        // Prefer exact match: same slot + same pitch already holding.
-        for (let v = 0; v < SEQ_VOICES; v++) {
-          const vv = this.voices[v]
-          if (!vv.active) continue
-          if (vv.slot !== voiceIndexHist) continue
-          if (windowStart < vv.triggerSample || windowStart >= vv.holdEndSample) continue
-          if (vv.baseValue === value) {
-            voiceIndex = v
-            reuseMode = 1
-            break
+        const size: i32 = ARRAY_SIZE * MAX_EVENT_VALUES
+        if (eventIndex >= 0 && eventIndex < size) {
+          const existing: i32 = this.eventVoices[eventIndex]
+          if (existing >= 0) {
+            const vv = this.voices[existing]
+            if (
+              vv.active
+              && vv.slot === voiceIndexHist
+              && windowStart >= vv.triggerSample
+              && windowStart < vv.holdEndSample
+              && vv.baseValue === value
+            ) {
+              voiceIndex = existing
+              reuseMode = 1
+            }
           }
-        }
-
-        // Otherwise reuse the slot voice (different pitch): swap it to the new note.
-        if (voiceIndex < 0) {
-          for (let v = 0; v < SEQ_VOICES; v++) {
-            const vv = this.voices[v]
-            if (!vv.active) continue
-            if (vv.slot !== voiceIndexHist) continue
-            if (windowStart < vv.triggerSample || windowStart >= vv.holdEndSample) continue
-            voiceIndex = v
-            reuseMode = 2
-            break
-          }
-        }
-
-        if (voiceIndex >= 0) {
-          this.bindVoiceToEvent(voiceIndex, eventIndex)
         }
       }
 
@@ -604,7 +589,7 @@ export class Mini extends Gen {
         }
       }
       else {
-        voice.triggerSample = reuseMode === 2 ? windowStart : startSample
+        voice.triggerSample = startSample
         voice.holdEndSample = endSample <= voice.triggerSample ? voice.triggerSample + 1 : endSample
         voice.velocity = velocity
         voice.value = value
@@ -643,32 +628,68 @@ export class Mini extends Gen {
 
     for (let v: i32 = 0; v < SEQ_VOICES; v++) {
       const voice = this.voices[v]
-      if (!voice.active) continue
-
       const trig$ = this.outTrig$[v]
       const vel$ = this.outVelocity$[v]
       const val$ = this.outValue$[v]
+      if (!voice.active) {
+        memory.fill(vel$, 0, bytes)
+        memory.fill(val$, 0, bytes)
+        continue
+      }
 
-      let absSample: i32 = windowStart
+      // Fill vel/val for the whole block (release tails can continue after hold ends).
+      const vel: f32 = voice.velocity
+      const baseValue: f32 = voice.baseValue
+      let pVel$: usize = vel$
+      let pVal$: usize = val$
       for (let i: i32 = 0; i < length; i++) {
-        const inHold: bool = absSample >= voice.triggerSample && absSample < voice.holdEndSample
-        store<f32>(trig$ + (i << 2), inHold ? 1.0 : 0.0)
-        store<f32>(vel$ + (i << 2), voice.velocity)
+        store<f32>(pVel$, vel)
+        store<f32>(pVal$, baseValue)
+        pVel$ += 4
+        pVal$ += 4
+      }
 
-        let currentValue: f32 = voice.baseValue
-        if (voice.glidePower !== 0.0 && absSample >= voice.triggerSample && absSample < voice.glideEndSample) {
-          const span: i32 = voice.glideEndSample - voice.triggerSample
-          if (span > 0) {
-            const t: f64 = f64(absSample - voice.triggerSample) / f64(span)
-            const p: f64 = applyCurve(t, voice.glidePower as f64)
-            const a: f64 = voice.baseValue as f64
+      // Trig is 1 only during the hold segment; outside is already 0.
+      let holdStart: i32 = voice.triggerSample
+      if (holdStart < windowStart) holdStart = windowStart
+      let holdEnd: i32 = voice.holdEndSample
+      if (holdEnd > windowEnd) holdEnd = windowEnd
+      if (holdEnd > holdStart) {
+        let pTrig$: usize = trig$ + ((holdStart - windowStart) << 2) as usize
+        const n: i32 = holdEnd - holdStart
+        for (let i: i32 = 0; i < n; i++) {
+          store<f32>(pTrig$, 1.0)
+          pTrig$ += 4
+        }
+      }
+
+      // Override val during glide segment.
+      const glidePower: f32 = voice.glidePower
+      if (glidePower !== 0.0) {
+        const triggerSample: i32 = voice.triggerSample
+        const glideEndSample: i32 = voice.glideEndSample
+        const span: i32 = glideEndSample - triggerSample
+        if (span > 0) {
+          let glideStart: i32 = triggerSample
+          if (glideStart < windowStart) glideStart = windowStart
+          let glideEnd: i32 = glideEndSample
+          if (glideEnd > windowEnd) glideEnd = windowEnd
+          if (glideEnd > glideStart) {
+            const invSpan: f64 = 1.0 / f64(span)
+            const a: f64 = baseValue as f64
             const b: f64 = voice.glideTarget as f64
-            currentValue = (a + (b - a) * p) as f32
+            let absSample: i32 = glideStart
+            let p$: usize = val$ + ((glideStart - windowStart) << 2) as usize
+            const n: i32 = glideEnd - glideStart
+            for (let i: i32 = 0; i < n; i++) {
+              const t: f64 = f64(absSample - triggerSample) * invSpan
+              const pCurve: f64 = applyCurve(t, glidePower as f64)
+              store<f32>(p$, (a + (b - a) * pCurve) as f32)
+              p$ += 4
+              absSample++
+            }
           }
         }
-
-        store<f32>(val$ + (i << 2), currentValue)
-        absSample++
       }
     }
 
