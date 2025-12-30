@@ -3,6 +3,10 @@
 import { clamp01, clamp11 } from '../util'
 import { Gen } from './gen'
 
+const NOISE_TABLE_BITS: i32 = 13
+const NOISE_TABLE_SIZE: i32 = 1 << NOISE_TABLE_BITS
+const NOISE_TABLE_MASK: i32 = NOISE_TABLE_SIZE - 1
+
 // @ts-ignore
 // @inline
 function hashU32(v: u32): u32 {
@@ -57,25 +61,52 @@ function fadeWithCurve(t: f32, curve: f32): f32 {
   return (t + (f - t) * c) as f32
 }
 
+// @ts-ignore
+// @inline
+function storeLerp(out$: usize, length: i32, a: f32, b: f32): void {
+  if (length <= 1) {
+    store<f32>(out$, a)
+    return
+  }
+  const inv: f32 = 1.0 / (f32(length - 1))
+  const step: f32 = (b - a) * inv
+  let y: f32 = a
+  for (let i: i32 = 0; i < length; i++) {
+    store<f32>(out$, y)
+    y += step
+    out$ += 4
+  }
+}
+
+// @ts-ignore
+// @inline
+function copyF32Static(dst: StaticArray<f32>, src: StaticArray<f32>): void {
+  for (let i: i32 = 0; i < dst.length; i++) {
+    unchecked(dst[i] = unchecked(src[i]))
+  }
+}
+
 export class WhiteNoise extends Gen {
   seed$: usize = 0
   trig$: usize = 0
 
   private lastSeedBits: u32 = 0xffffffff
-  private state: u32 = 1
   private lastTrig: f32 = 0
+  private idx: i32 = 0
+  private table: StaticArray<f32> = new StaticArray<f32>(NOISE_TABLE_SIZE)
 
   reset(): void {
     this.lastSeedBits = 0xffffffff
-    this.state = 1
     this.lastTrig = 0
+    this.idx = 0
   }
 
   copyFrom(other: Gen): void {
     const src = other as WhiteNoise
     this.lastSeedBits = src.lastSeedBits
-    this.state = src.state
     this.lastTrig = src.lastTrig
+    this.idx = src.idx
+    copyF32Static(this.table, src.table)
   }
 
   process(out$: usize, length: i32): void {
@@ -83,32 +114,34 @@ export class WhiteNoise extends Gen {
     const seedBits = seedToBits(load<f32>(this.seed$))
     if (seedBits !== this.lastSeedBits) {
       this.lastSeedBits = seedBits
-      this.state = (seedBits | 1) as u32
+      this.idx = 0
+      let s: u32 = (seedBits | 1) as u32
+      for (let i: i32 = 0; i < NOISE_TABLE_SIZE; i++) {
+        s = xorshift32(s)
+        unchecked(this.table[i] = u32To11(s))
+      }
     }
 
     let trig$ = this.trig$
     let lastTrig: f32 = this.lastTrig
+    let idx: i32 = this.idx
 
     for (let i: i32 = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        // Reset seed when triggered
-        const newSeedBits = seedToBits(load<f32>(this.seed$))
-        this.lastSeedBits = newSeedBits
-        this.state = (newSeedBits | 1) as u32
+        idx = 0
       }
       lastTrig = trig
 
-      let s = this.state
-      s = xorshift32(s)
-      store<f32>(out$, u32To11(s))
-      this.state = s
+      store<f32>(out$, unchecked(this.table[idx]))
+      idx = (idx + 1) & NOISE_TABLE_MASK
 
       out$ += 4
       trig$ += 4
     }
 
     this.lastTrig = lastTrig
+    this.idx = idx
   }
 }
 
@@ -117,20 +150,22 @@ export class GaussNoise extends Gen {
   trig$: usize = 0
 
   private lastSeedBits: u32 = 0xffffffff
-  private state: u32 = 1
   private lastTrig: f32 = 0
+  private idx: i32 = 0
+  private table: StaticArray<f32> = new StaticArray<f32>(NOISE_TABLE_SIZE)
 
   reset(): void {
     this.lastSeedBits = 0xffffffff
-    this.state = 1
     this.lastTrig = 0
+    this.idx = 0
   }
 
   copyFrom(other: Gen): void {
     const src = other as GaussNoise
     this.lastSeedBits = src.lastSeedBits
-    this.state = src.state
     this.lastTrig = src.lastTrig
+    this.idx = src.idx
+    copyF32Static(this.table, src.table)
   }
 
   process(out$: usize, length: i32): void {
@@ -138,45 +173,47 @@ export class GaussNoise extends Gen {
     const seedBits = seedToBits(load<f32>(this.seed$))
     if (seedBits !== this.lastSeedBits) {
       this.lastSeedBits = seedBits
-      this.state = (seedBits | 1) as u32
+      this.idx = 0
+      let s: u32 = (seedBits | 1) as u32
+      for (let i: i32 = 0; i < NOISE_TABLE_SIZE; i++) {
+        // CLT-ish: average of 6 uniforms => normal-ish; map to [-1,1] by (sum-3)/3.
+        let sum: f32 = 0.0
+        s = xorshift32(s)
+        sum += u32To01(s)
+        s = xorshift32(s)
+        sum += u32To01(s)
+        s = xorshift32(s)
+        sum += u32To01(s)
+        s = xorshift32(s)
+        sum += u32To01(s)
+        s = xorshift32(s)
+        sum += u32To01(s)
+        s = xorshift32(s)
+        sum += u32To01(s)
+        unchecked(this.table[i] = ((sum - 3.0) * (1.0 / 3.0)) as f32)
+      }
     }
 
     let trig$ = this.trig$
     let lastTrig: f32 = this.lastTrig
+    let idx: i32 = this.idx
 
     for (let i: i32 = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        // Reset seed when triggered
-        const newSeedBits = seedToBits(load<f32>(this.seed$))
-        this.lastSeedBits = newSeedBits
-        this.state = (newSeedBits | 1) as u32
+        idx = 0
       }
       lastTrig = trig
 
-      let s = this.state
-      // CLT-ish: average of 6 uniforms => normal-ish; map to [-1,1] by (sum-3)/3.
-      let sum: f32 = 0.0
-      s = xorshift32(s)
-      sum += u32To01(s)
-      s = xorshift32(s)
-      sum += u32To01(s)
-      s = xorshift32(s)
-      sum += u32To01(s)
-      s = xorshift32(s)
-      sum += u32To01(s)
-      s = xorshift32(s)
-      sum += u32To01(s)
-      s = xorshift32(s)
-      sum += u32To01(s)
-      store<f32>(out$, ((sum - 3.0) * (1.0 / 3.0)) as f32)
-      this.state = s
+      store<f32>(out$, unchecked(this.table[idx]))
+      idx = (idx + 1) & NOISE_TABLE_MASK
 
       out$ += 4
       trig$ += 4
     }
 
     this.lastTrig = lastTrig
+    this.idx = idx
   }
 }
 
@@ -196,29 +233,24 @@ export class PinkNoise extends Gen {
   trig$: usize = 0
 
   private lastSeedBits: u32 = 0xffffffff
-  private state: u32 = 1
-  private counter: u32 = 0
-  private rows: StaticArray<f32> = new StaticArray<f32>(8)
-  private rowsSum: f32 = 0.0
   private lastTrig: f32 = 0
+  private idx: i32 = 0
+  private table: StaticArray<f32> = new StaticArray<f32>(NOISE_TABLE_SIZE)
+  private rows: StaticArray<f32> = new StaticArray<f32>(8)
 
   reset(): void {
     this.lastSeedBits = 0xffffffff
-    this.state = 1
-    this.counter = 0
-    this.rowsSum = 0.0
     this.lastTrig = 0
-    for (let i = 0; i < this.rows.length; i++) this.rows[i] = 0.0
+    this.idx = 0
   }
 
   copyFrom(other: Gen): void {
     const src = other as PinkNoise
     this.lastSeedBits = src.lastSeedBits
-    this.state = src.state
-    this.counter = src.counter
-    this.rowsSum = src.rowsSum
     this.lastTrig = src.lastTrig
-    for (let i = 0; i < this.rows.length; i++) this.rows[i] = src.rows[i]
+    this.idx = src.idx
+    copyF32Static(this.table, src.table)
+    copyF32Static(this.rows, src.rows)
   }
 
   process(out$: usize, length: i32): void {
@@ -226,67 +258,59 @@ export class PinkNoise extends Gen {
     const seedBits = seedToBits(load<f32>(this.seed$))
     if (seedBits !== this.lastSeedBits) {
       this.lastSeedBits = seedBits
-      this.state = (hashU32(seedBits ^ 0x70696e6b) | 1) as u32
-      this.counter = 0
-      this.rowsSum = 0.0
-      for (let i = 0; i < this.rows.length; i++) {
-        this.state = xorshift32(this.state)
-        const v = u32To11(this.state)
-        this.rows[i] = v
-        this.rowsSum += v
+      this.idx = 0
+
+      let s: u32 = (hashU32(seedBits ^ 0x70696e6b) | 1) as u32
+      let c: u32 = 0
+      let sum: f32 = 0.0
+
+      const n: i32 = this.rows.length
+      for (let j: i32 = 0; j < n; j++) {
+        s = xorshift32(s)
+        const v = u32To11(s)
+        unchecked(this.rows[j] = v)
+        sum += v
+      }
+
+      const norm: f32 = 1.0 / (f32(n) + 1.0)
+
+      for (let i: i32 = 0; i < NOISE_TABLE_SIZE; i++) {
+        c++
+        const tz = trailingZeros(c)
+        const rowIndex: i32 = tz < n ? tz : (n - 1)
+
+        const old = unchecked(this.rows[rowIndex])
+        s = xorshift32(s)
+        const v = u32To11(s)
+        unchecked(this.rows[rowIndex] = v)
+        sum += v - old
+
+        s = xorshift32(s)
+        const white = u32To11(s)
+        unchecked(this.table[i] = clamp11((sum + white) * norm))
       }
     }
 
     let trig$ = this.trig$
     let lastTrig: f32 = this.lastTrig
-
-    let s = this.state
-    let c = this.counter
-    let sum = this.rowsSum
-
-    const n = this.rows.length
-    const norm: f32 = 1.0 / (f32(n) + 1.0)
+    let idx: i32 = this.idx
 
     for (let i: i32 = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        // Reset seed when triggered
-        const newSeedBits = seedToBits(load<f32>(this.seed$))
-        this.lastSeedBits = newSeedBits
-        s = (hashU32(newSeedBits ^ 0x70696e6b) | 1) as u32
-        c = 0
-        sum = 0.0
-        for (let j = 0; j < this.rows.length; j++) {
-          s = xorshift32(s)
-          const v = u32To11(s)
-          this.rows[j] = v
-          sum += v
-        }
+        idx = 0
       }
       lastTrig = trig
 
-      c++
-      const tz = trailingZeros(c)
-      const idx: i32 = tz < n ? tz : (n - 1)
-
-      const old = this.rows[idx]
-      s = xorshift32(s)
-      const v = u32To11(s)
-      this.rows[idx] = v
-      sum += v - old
-
-      s = xorshift32(s)
-      const white = u32To11(s)
-      store<f32>(out$, clamp11((sum + white) * norm))
+      store<f32>(out$, unchecked(this.table[idx]))
+      idx = (idx + 1) & NOISE_TABLE_MASK
 
       out$ += 4
       trig$ += 4
     }
 
-    this.state = s
-    this.counter = c
-    this.rowsSum = sum
     this.lastTrig = lastTrig
+    this.idx = idx
   }
 }
 
@@ -295,23 +319,22 @@ export class BrownNoise extends Gen {
   trig$: usize = 0
 
   private lastSeedBits: u32 = 0xffffffff
-  private state: u32 = 1
-  private y: f32 = 0.0
   private lastTrig: f32 = 0
+  private idx: i32 = 0
+  private table: StaticArray<f32> = new StaticArray<f32>(NOISE_TABLE_SIZE)
 
   reset(): void {
     this.lastSeedBits = 0xffffffff
-    this.state = 1
-    this.y = 0.0
     this.lastTrig = 0
+    this.idx = 0
   }
 
   copyFrom(other: Gen): void {
     const src = other as BrownNoise
     this.lastSeedBits = src.lastSeedBits
-    this.state = src.state
-    this.y = src.y
     this.lastTrig = src.lastTrig
+    this.idx = src.idx
+    copyF32Static(this.table, src.table)
   }
 
   process(out$: usize, length: i32): void {
@@ -319,42 +342,42 @@ export class BrownNoise extends Gen {
     const seedBits = seedToBits(load<f32>(this.seed$))
     if (seedBits !== this.lastSeedBits) {
       this.lastSeedBits = seedBits
-      this.state = (hashU32(seedBits ^ 0x62726f77) | 1) as u32
-      this.y = 0.0
+      this.idx = 0
+
+      let s: u32 = (hashU32(seedBits ^ 0x62726f77) | 1) as u32
+      let y: f32 = 0.0
+
+      const step: f32 = 0.02
+      const leak: f32 = 0.999
+
+      for (let i: i32 = 0; i < NOISE_TABLE_SIZE; i++) {
+        s = xorshift32(s)
+        const w = u32To11(s)
+        y = clamp11(y * leak + w * step)
+        unchecked(this.table[i] = y)
+      }
     }
 
     let trig$ = this.trig$
     let lastTrig: f32 = this.lastTrig
-
-    let s = this.state
-    let y = this.y
-
-    const step: f32 = 0.02
-    const leak: f32 = 0.999
+    let idx: i32 = this.idx
 
     for (let i: i32 = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        // Reset seed when triggered
-        const newSeedBits = seedToBits(load<f32>(this.seed$))
-        this.lastSeedBits = newSeedBits
-        s = (hashU32(newSeedBits ^ 0x62726f77) | 1) as u32
-        y = 0.0
+        idx = 0
       }
       lastTrig = trig
 
-      s = xorshift32(s)
-      const w = u32To11(s)
-      y = clamp11(y * leak + w * step)
-      store<f32>(out$, y)
+      store<f32>(out$, unchecked(this.table[idx]))
+      idx = (idx + 1) & NOISE_TABLE_MASK
 
       out$ += 4
       trig$ += 4
     }
 
-    this.state = s
-    this.y = y
     this.lastTrig = lastTrig
+    this.idx = idx
   }
 }
 
@@ -398,55 +421,93 @@ export class SmoothNoise extends Gen {
       this.state = (hashU32(seedBits ^ 0x736d6f6f) | 1) as u32
       this.phase = 0.0
       this.state = xorshift32(this.state)
-      this.a = u32To11(this.state)
+      this.a = u32To01(this.state)
       this.state = xorshift32(this.state)
-      this.b = u32To11(this.state)
+      this.b = u32To01(this.state)
     }
 
-    let rate$ = this.rate$
-    let curve$ = this.curve$
-    let trig$ = this.trig$
+    const trigBase$ = this.trig$
+    const seedBase$ = this.seed$
+    const rateBase$ = this.rate$
+    const curveBase$ = this.curve$
+
     let lastTrig: f32 = this.lastTrig
+    let edge: i32 = -1
+    let t$ = trigBase$
+    for (let i: i32 = 0; i < length; i++) {
+      const t = load<f32>(t$)
+      if (edge < 0 && t > 0.0 && lastTrig <= 0.0) edge = i
+      lastTrig = t
+      t$ += 4
+    }
 
     let s = this.state
     let phase = this.phase
     let a = this.a
     let b = this.b
 
-    for (let i: i32 = 0; i < length; i++) {
-      const trig = load<f32>(trig$)
-      if (trig > 0 && lastTrig <= 0) {
-        // Reset seed when triggered
-        const newSeedBits = seedToBits(load<f32>(this.seed$))
-        this.lastSeedBits = newSeedBits
-        s = (hashU32(newSeedBits ^ 0x736d6f6f) | 1) as u32
-        phase = 0.0
-        s = xorshift32(s)
-        a = u32To11(s)
-        s = xorshift32(s)
-        b = u32To11(s)
-      }
-      lastTrig = trig
+    const len0: i32 = edge >= 0 ? edge : length
+    const len1: i32 = edge >= 0 ? (length - edge) : 0
 
-      const rate = load<f32>(rate$)
-      const curve = load<f32>(curve$)
-      const inc: f32 = rate > 0.0 ? (rate / sampleRate) : 0.0
+    if (len0 > 0) {
+      const rate0: f32 = load<f32>(rateBase$)
+      const curve0: f32 = load<f32>(curveBase$)
+      const w0: f32 = fadeWithCurve(phase, curve0)
+      const y0: f32 = (a + (b - a) * w0) as f32
 
-      phase += inc
-      if (phase >= 1.0) {
-        phase -= 1.0
+      const lenOverSr: f32 = (f32(len0) / sampleRate) as f32
+      const incBlock: f32 = rate0 > 0.0 ? (rate0 * lenOverSr) : 0.0
+      let p1: f32 = phase + incBlock
+      while (p1 >= 1.0) {
+        p1 -= 1.0
         a = b
         s = xorshift32(s)
         b = u32To01(s)
       }
 
-      const w = fadeWithCurve(phase, curve)
-      store<f32>(out$, a + (b - a) * w)
+      const w1: f32 = fadeWithCurve(p1, curve0)
+      const y1: f32 = (a + (b - a) * w1) as f32
+      storeLerp(out$, len0, y0, y1)
 
-      out$ += 4
-      trig$ += 4
-      rate$ += 4
-      curve$ += 4
+      out$ += usize(len0 << 2)
+      phase = p1
+    }
+
+    if (len1 > 0) {
+      const off: usize = usize(edge << 2)
+      const seed1$: usize = seedBase$ + off
+      const rate1$: usize = rateBase$ + off
+      const curve1$: usize = curveBase$ + off
+
+      const newSeedBits = seedToBits(load<f32>(seed1$))
+      this.lastSeedBits = newSeedBits
+      s = (hashU32(newSeedBits ^ 0x736d6f6f) | 1) as u32
+      phase = 0.0
+      s = xorshift32(s)
+      a = u32To01(s)
+      s = xorshift32(s)
+      b = u32To01(s)
+
+      const rate1: f32 = load<f32>(rate1$)
+      const curve1: f32 = load<f32>(curve1$)
+      const w0: f32 = fadeWithCurve(phase, curve1)
+      const y0: f32 = (a + (b - a) * w0) as f32
+
+      const lenOverSr: f32 = (f32(len1) / sampleRate) as f32
+      const incBlock: f32 = rate1 > 0.0 ? (rate1 * lenOverSr) : 0.0
+      let p1: f32 = phase + incBlock
+      while (p1 >= 1.0) {
+        p1 -= 1.0
+        a = b
+        s = xorshift32(s)
+        b = u32To01(s)
+      }
+
+      const w1: f32 = fadeWithCurve(p1, curve1)
+      const y1: f32 = (a + (b - a) * w1) as f32
+      storeLerp(out$, len1, y0, y1)
+
+      phase = p1
     }
 
     this.state = s
@@ -510,89 +571,160 @@ export class FractalNoise extends Gen {
         this.states[i] = s0
         let s = s0
         s = xorshift32(s)
-        this.a[i] = u32To11(s)
+        this.a[i] = u32To01(s)
         s = xorshift32(s)
-        this.b[i] = u32To11(s)
+        this.b[i] = u32To01(s)
         this.states[i] = s
       }
     }
 
-    let rate$ = this.rate$
-    let octaves$ = this.octaves$
-    let gain$ = this.gain$
-    let trig$ = this.trig$
+    const trigBase$ = this.trig$
+    const seedBase$ = this.seed$
+    const rateBase$ = this.rate$
+    const octBase$ = this.octaves$
+    const gainBase$ = this.gain$
+
     let lastTrig: f32 = this.lastTrig
-
+    let edge: i32 = -1
+    let t$ = trigBase$
     for (let i: i32 = 0; i < length; i++) {
-      const trig = load<f32>(trig$)
-      if (trig > 0 && lastTrig <= 0) {
-        // Reset seed when triggered
-        const newSeedBits = seedToBits(load<f32>(this.seed$))
-        this.lastSeedBits = newSeedBits
-        this.baseSeed = hashU32(newSeedBits ^ 0x66726163) | 1
-        for (let j = 0; j < this.phases.length; j++) {
-          this.phases[j] = 0.0
-          const s0 = hashU32(this.baseSeed ^ (u32(j) * 0x9e3779b9)) | 1
-          this.states[j] = s0
-          let s = s0
-          s = xorshift32(s)
-          this.a[j] = u32To11(s)
-          s = xorshift32(s)
-          this.b[j] = u32To11(s)
-          this.states[j] = s
-        }
-      }
-      lastTrig = trig
+      const t = load<f32>(t$)
+      if (edge < 0 && t > 0.0 && lastTrig <= 0.0) edge = i
+      lastTrig = t
+      t$ += 4
+    }
 
-      const baseRate = load<f32>(rate$)
-      const oRaw = load<f32>(octaves$)
-      const gRaw = load<f32>(gain$)
+    const len0: i32 = edge >= 0 ? edge : length
+    const len1: i32 = edge >= 0 ? (length - edge) : 0
+
+    if (len0 > 0) {
+      const baseRate: f32 = load<f32>(rateBase$)
+      const oRaw: f32 = load<f32>(octBase$)
+      const gRaw: f32 = load<f32>(gainBase$)
       let oct: i32 = i32(Math.floor(oRaw as f64))
       if (oct < 1) oct = 1
       if (oct > 16) oct = 16
-      const gain = clamp01(gRaw)
+      const gain: f32 = clamp01(gRaw)
 
-      let sum: f32 = 0.0
+      const lenOverSr: f32 = (f32(len0) / sampleRate) as f32
+
+      let sum0: f32 = 0.0
+      let sum1: f32 = 0.0
       let norm: f32 = 0.0
       let amp: f32 = 1.0
       let freq: f32 = baseRate
 
       for (let o: i32 = 0; o < oct; o++) {
-        const inc: f32 = freq > 0.0 ? (freq / sampleRate) : 0.0
-        let phase = this.phases[o] + inc
-        let a = this.a[o]
-        let b = this.b[o]
-        let s = this.states[o]
+        let p0: f32 = this.phases[o]
+        let a: f32 = this.a[o]
+        let b: f32 = this.b[o]
+        let s: u32 = this.states[o]
 
-        if (phase >= 1.0) {
-          phase -= 1.0
+        const w0: f32 = fade5(p0)
+        const v0: f32 = (a + (b - a) * w0) as f32
+        sum0 += v0 * amp
+
+        let p1: f32 = p0 + (freq > 0.0 ? (freq * lenOverSr) : 0.0)
+        while (p1 >= 1.0) {
+          p1 -= 1.0
           a = b
           s = xorshift32(s)
           b = u32To01(s)
         }
 
-        const w = fade5(phase)
-        const v = (a + (b - a) * w) as f32
+        const w1: f32 = fade5(p1)
+        const v1: f32 = (a + (b - a) * w1) as f32
+        sum1 += v1 * amp
 
-        this.phases[o] = phase
+        this.phases[o] = p1
         this.a[o] = a
         this.b[o] = b
         this.states[o] = s
 
-        sum += v * amp
         norm += amp
         amp *= gain
         freq *= 2.0
       }
 
-      const y = norm > 0.0 ? (sum / norm) : 0.0
-      store<f32>(out$, clamp01(y))
+      const y0: f32 = norm > 0.0 ? (sum0 / norm) : 0.0
+      const y1: f32 = norm > 0.0 ? (sum1 / norm) : 0.0
+      storeLerp(out$, len0, clamp01(y0), clamp01(y1))
+      out$ += usize(len0 << 2)
+    }
 
-      out$ += 4
-      trig$ += 4
-      rate$ += 4
-      octaves$ += 4
-      gain$ += 4
+    if (len1 > 0) {
+      const off: usize = usize(edge << 2)
+      const seed1$: usize = seedBase$ + off
+      const rate1$: usize = rateBase$ + off
+      const oct1$: usize = octBase$ + off
+      const gain1$: usize = gainBase$ + off
+
+      const newSeedBits = seedToBits(load<f32>(seed1$))
+      this.lastSeedBits = newSeedBits
+      this.baseSeed = hashU32(newSeedBits ^ 0x66726163) | 1
+      for (let j: i32 = 0; j < this.phases.length; j++) {
+        this.phases[j] = 0.0
+        const s0 = hashU32(this.baseSeed ^ (u32(j) * 0x9e3779b9)) | 1
+        this.states[j] = s0
+        let s = s0
+        s = xorshift32(s)
+        this.a[j] = u32To01(s)
+        s = xorshift32(s)
+        this.b[j] = u32To01(s)
+        this.states[j] = s
+      }
+
+      const baseRate: f32 = load<f32>(rate1$)
+      const oRaw: f32 = load<f32>(oct1$)
+      const gRaw: f32 = load<f32>(gain1$)
+      let oct: i32 = i32(Math.floor(oRaw as f64))
+      if (oct < 1) oct = 1
+      if (oct > 16) oct = 16
+      const gain: f32 = clamp01(gRaw)
+
+      const lenOverSr: f32 = (f32(len1) / sampleRate) as f32
+
+      let sum0: f32 = 0.0
+      let sum1: f32 = 0.0
+      let norm: f32 = 0.0
+      let amp: f32 = 1.0
+      let freq: f32 = baseRate
+
+      for (let o: i32 = 0; o < oct; o++) {
+        let p0: f32 = this.phases[o]
+        let a: f32 = this.a[o]
+        let b: f32 = this.b[o]
+        let s: u32 = this.states[o]
+
+        const w0: f32 = fade5(p0)
+        const v0: f32 = (a + (b - a) * w0) as f32
+        sum0 += v0 * amp
+
+        let p1: f32 = p0 + (freq > 0.0 ? (freq * lenOverSr) : 0.0)
+        while (p1 >= 1.0) {
+          p1 -= 1.0
+          a = b
+          s = xorshift32(s)
+          b = u32To01(s)
+        }
+
+        const w1: f32 = fade5(p1)
+        const v1: f32 = (a + (b - a) * w1) as f32
+        sum1 += v1 * amp
+
+        this.phases[o] = p1
+        this.a[o] = a
+        this.b[o] = b
+        this.states[o] = s
+
+        norm += amp
+        amp *= gain
+        freq *= 2.0
+      }
+
+      const y0: f32 = norm > 0.0 ? (sum0 / norm) : 0.0
+      const y1: f32 = norm > 0.0 ? (sum1 / norm) : 0.0
+      storeLerp(out$, len1, clamp01(y0), clamp01(y1))
     }
 
     this.lastTrig = lastTrig
