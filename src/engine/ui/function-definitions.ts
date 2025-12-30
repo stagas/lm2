@@ -1015,10 +1015,10 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   smooth: {
     name: 'smooth',
     parameters: [
-      { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
       { name: 'rate', type: 'number', optional: true, defaultValue: 1,
         description: 'Change rate in Hz (higher values produce faster variation)' },
+      { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
+        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
       { name: 'curve', type: 'number', optional: true, defaultValue: 0.5,
         description: 'Interpolation curve (0..1): 0=linear, 1=quintic smoothstep' },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
@@ -1034,10 +1034,10 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   fractal: {
     name: 'fractal',
     parameters: [
-      { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
       { name: 'rate', type: 'number', optional: true, defaultValue: 1,
         description: 'Base change rate in Hz for the first octave' },
+      { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
+        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
       { name: 'octaves', type: 'number', optional: true, defaultValue: 4,
         description: 'Number of octaves to sum (higher = more detail)' },
       { name: 'gain', type: 'number', optional: true, defaultValue: 0.5,

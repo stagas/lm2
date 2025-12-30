@@ -69,20 +69,20 @@ function visit(src: string, program: Program): LfoRef[] {
           trigExpr = namedTrig?.value ?? getPosArg(expr, trigPos)?.value
           seedExpr = namedSeed?.value ?? getPosArg(expr, seedPos)?.value
         } else if (isSmooth) {
-          // smooth(seed, rate, curve, trig)
-          offsetPos = 1
+          // smooth(rate, seed, curve, trig)
+          offsetPos = 0
           trigPos = 3
-          seedPos = 0
-          barExpr = namedSeed?.value ?? getPosArg(expr, 0)?.value ?? namedBar?.value ?? getPosArg(expr, 0)?.value
-          offsetExpr = namedOffset?.value ?? findNamedArg(expr, 'rate')?.value ?? getPosArg(expr, 1)?.value
+          seedPos = 1
+          barExpr = namedSeed?.value ?? getPosArg(expr, 1)?.value ?? namedBar?.value ?? getPosArg(expr, 0)?.value
+          offsetExpr = namedOffset?.value ?? findNamedArg(expr, 'rate')?.value ?? getPosArg(expr, 0)?.value
           trigExpr = namedTrig?.value ?? getPosArg(expr, 3)?.value
         } else if (isFractal) {
-          // fractal(seed, rate, octaves, gain, trig)
-          offsetPos = 1
+          // fractal(rate, seed, octaves, gain, trig)
+          offsetPos = 0
           trigPos = 4
-          seedPos = 0
-          barExpr = namedSeed?.value ?? getPosArg(expr, 0)?.value ?? namedBar?.value ?? getPosArg(expr, 0)?.value
-          offsetExpr = namedOffset?.value ?? findNamedArg(expr, 'rate')?.value ?? getPosArg(expr, 1)?.value
+          seedPos = 1
+          barExpr = namedSeed?.value ?? getPosArg(expr, 1)?.value ?? namedBar?.value ?? getPosArg(expr, 0)?.value
+          offsetExpr = namedOffset?.value ?? findNamedArg(expr, 'rate')?.value ?? getPosArg(expr, 0)?.value
           trigExpr = namedTrig?.value ?? getPosArg(expr, 4)?.value
         } else {
           // regular LFOs: lfo*(bar, offset, trig)

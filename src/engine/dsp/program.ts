@@ -45,8 +45,8 @@ import {
   encodeLangToVmOps,
   type EuclidRef,
   type EveryRef,
+  type FilterRef,
   type LfoRef,
-  type LpRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
@@ -174,7 +174,7 @@ function buildProgram(
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
-  lpRefs: LpRef[]
+  filterRefs: FilterRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
@@ -194,7 +194,7 @@ function buildProgram(
     : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
 
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs,
-    compressorRefs, lpRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
+    compressorRefs, filterRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
     numberParams, numberLiterals, bpm, bars, scale, sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
@@ -208,7 +208,7 @@ function buildProgram(
     timelineLabels: timelineLabels ?? [],
     analyserRefs: analyserRefs ?? [],
     compressorRefs: compressorRefs ?? [],
-    lpRefs: lpRefs ?? [],
+    filterRefs: filterRefs ?? [],
     slicerRefs: slicerRefs ?? [],
     lfoRefs: lfoRefs ?? [],
     everyRefs: everyRefs ?? [],
@@ -247,7 +247,7 @@ export type ProgramBuildResult = {
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
-  lpRefs: LpRef[]
+  filterRefs: FilterRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
@@ -508,7 +508,7 @@ async function createProgram(
 
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
-          lpRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
+          filterRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
           numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
@@ -559,7 +559,7 @@ async function createProgram(
           timelineLabels,
           analyserRefs,
           compressorRefs,
-          lpRefs,
+          filterRefs,
           slicerRefs,
           lfoRefs,
           everyRefs,

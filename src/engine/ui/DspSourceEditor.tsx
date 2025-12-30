@@ -120,7 +120,7 @@ function DspSourceEditorReady(
   const miniSourceMaps = useEngineDspStore(state => state.miniSourceMaps)
   const analyserRefs = useEngineDspStore(state => state.analyserRefs)
   const compressorRefs = useEngineDspStore(state => state.compressorRefs)
-  const lpRefs = useEngineDspStore(state => state.lpRefs)
+  const filterRefs = useEngineDspStore(state => state.filterRefs)
   const slicerRefs = useEngineDspStore(state => state.slicerRefs)
   const lfoRefs = useEngineDspStore(state => state.lfoRefs)
   const everyRefs = useEngineDspStore(state => state.everyRefs)
@@ -342,7 +342,7 @@ function DspSourceEditorReady(
         miniSourceMaps,
         analyserRefs,
         compressorRefs,
-        lpRefs,
+        filterRefs,
         slicerRefs,
         lfoRefs,
         everyRefs,
@@ -365,7 +365,7 @@ function DspSourceEditorReady(
         miniSourceMaps,
         analyserRefs,
         compressorRefs,
-        lpRefs,
+        filterRefs,
         slicerRefs,
         lfoRefs,
         everyRefs,
@@ -394,7 +394,7 @@ function DspSourceEditorReady(
       miniSourceMaps: previewMiniSourceMaps,
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
-      lpRefs: previewCompile.lpRefs ?? [],
+      filterRefs: previewCompile.filterRefs ?? [],
       slicerRefs: previewCompile.slicerRefs ?? [],
       lfoRefs: previewCompile.lfoRefs ?? [],
       everyRefs: previewCompile.everyRefs ?? [],
@@ -415,7 +415,7 @@ function DspSourceEditorReady(
     miniSourceMaps,
     analyserRefs,
     compressorRefs,
-    lpRefs,
+    filterRefs,
     slicerRefs,
     lfoRefs,
     everyRefs,
@@ -462,7 +462,7 @@ function DspSourceEditorReady(
       miniSourceMaps: widgetCompileState.miniSourceMaps,
       analyserRefs: widgetCompileState.analyserRefs ?? [],
       compressorRefs: widgetCompileState.compressorRefs ?? [],
-      lpRefs: widgetCompileState.lpRefs ?? [],
+      filterRefs: widgetCompileState.filterRefs ?? [],
       slicerRefs: widgetCompileState.slicerRefs ?? [],
       lfoRefs: widgetCompileState.lfoRefs ?? [],
       everyRefs: widgetCompileState.everyRefs ?? [],
@@ -675,7 +675,7 @@ function DspSourceEditorReady(
     program1: runtimeProgram,
     audioContext,
     globalSampleCount,
-    filterRefs: widgetCompileState.lpRefs,
+    filterRefs: widgetCompileState.filterRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isLive,
@@ -772,23 +772,7 @@ function DspSourceEditorReady(
       }
     }
 
-    for (const ref of widgetCompileState.lpRefs ?? []) {
-      for (const p of ref.knobParams ?? []) {
-        if (p.name !== 'cutoff') continue
-        out.push({
-          line: p.valueLoc.line,
-          column: p.valueLoc.column,
-          length: p.valueLoc.length,
-          value: p.value,
-          min: 20,
-          max: 20000,
-          precision: 0,
-          mode: 'exp2',
-        })
-      }
-    }
-
-    // Add knobs for lp number literals (min=20, max=20000)
+    // Add knobs for filter number literals (min=20, max=20000)
     for (const param of widgetCompileState.numberParams ?? []) {
       if (param.min === 20 && param.max === 20000) {
         out.push({
@@ -805,7 +789,7 @@ function DspSourceEditorReady(
     }
 
     return out
-  }, [widgetCompileState.compressorRefs, widgetCompileState.lpRefs, widgetCompileState.numberParams])
+  }, [widgetCompileState.compressorRefs, widgetCompileState.filterRefs, widgetCompileState.numberParams])
 
   const { widgets: knobWidgets } = useKnobWidget({
     showWidgets,
@@ -909,7 +893,7 @@ function DspSourceEditorReady(
     (widgetCompileState.sampleDefs?.length ?? 0) > 0
     || (widgetCompileState.analyserRefs?.length ?? 0) > 0
     || (widgetCompileState.compressorRefs?.length ?? 0) > 0
-    || (widgetCompileState.lpRefs?.length ?? 0) > 0
+    || (widgetCompileState.filterRefs?.length ?? 0) > 0
     || (widgetCompileState.slicerRefs?.length ?? 0) > 0
     || (widgetCompileState.lfoRefs?.length ?? 0) > 0
     || (widgetCompileState.everyRefs?.length ?? 0) > 0

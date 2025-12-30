@@ -15,7 +15,7 @@ import { builtinSyms } from './builtin-syms.ts'
 import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
 import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
 import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
-import { extractFiltersFromProgramWithRefs, extractLpNumberLiterals } from './extract-filter.ts'
+import { extractFilterNumberLiteralsFromProgram, extractFiltersFromProgramWithRefs } from './extract-filter.ts'
 import { extractLfosFromProgramWithRefs } from './extract-lfo.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
@@ -115,7 +115,7 @@ export function encodeLangToVmOps(
   timelineLabels?: TimelineLabel[]
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
-  lpRefs?: FilterRef[]
+  filterRefs?: FilterRef[]
   slicerRefs?: SlicerRef[]
   lfoRefs?: LfoRef[]
   everyRefs?: EveryRef[]
@@ -228,14 +228,14 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
   let analyserRefs: AnalyserRef[] = []
   let compressorRefs: CompressorRef[] = []
-  let lpRefs: FilterRef[] = []
+  let filterRefs: FilterRef[] = []
   let slicerRefs: SlicerRef[] = []
   let lfoRefs: LfoRef[] = []
   let everyRefs: EveryRef[] = []
   let atRefs: AtRef[] = []
   let euclidRefs: EuclidRef[] = []
   const explicitNumberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
-  const lpNumberLiterals = extractLpNumberLiterals(src, parsed.program).filter(p => p.line > 0)
+  const lpNumberLiterals = extractFilterNumberLiteralsFromProgram(src, parsed.program).filter(p => p.line > 0)
 
   // Create a set of locations that already have explicit sliders
   const explicitSliderKeys = new Set(explicitNumberParams.map(p => `${p.line}:${p.column}:${p.length}`))
@@ -827,7 +827,7 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
   analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
   compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
-  lpRefs = extractFiltersFromProgramWithRefs(src, transformedProgram)
+  filterRefs = extractFiltersFromProgramWithRefs(src, transformedProgram)
   slicerRefs = extractSlicersFromProgramWithRefs(src, transformedProgram)
   lfoRefs = extractLfosFromProgramWithRefs(src, transformedProgram)
   everyRefs = extractEveriesFromProgramWithRefs(src, transformedProgram)
@@ -1219,7 +1219,7 @@ export function encodeLangToVmOps(
       timelineLabels,
       analyserRefs,
       compressorRefs,
-      lpRefs,
+      filterRefs,
       slicerRefs,
       lfoRefs,
       everyRefs,
@@ -1245,7 +1245,7 @@ export function encodeLangToVmOps(
       timelineLabels,
       analyserRefs,
       compressorRefs,
-      lpRefs,
+      filterRefs,
       slicerRefs,
       lfoRefs,
       everyRefs,

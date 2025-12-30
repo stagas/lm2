@@ -8,6 +8,7 @@ import {
   type CompressorRef,
   type EuclidRef,
   type EveryRef,
+  type FilterRef,
   type LfoRef,
   type LpRef,
   type MiniSequenceRef,
@@ -31,7 +32,7 @@ export type WidgetCompileResult = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
-  lpRefs: LpRef[]
+  filterRefs: FilterRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]

@@ -232,7 +232,7 @@ export function useFilterWidget({
     // const lastSampleCount = lastSampleCountRef.current ?? pred.sampleCount
     lastSampleCountRef.current = pred.sampleCount
     // const dt = Math.max(0, (pred.sampleCount - lastSampleCount) / pred.sampleRate)
-    // const tau = 1
+    // const tau = 0.015
     const a = 1 // - Math.exp(-dt / tau)
 
     const prevWritePos = lastWritePosRef.current >>> 0

@@ -66,6 +66,7 @@ export function useLfoWidget({
   const predictedSampleCountRef = useRef<number | null>(null)
   const lastWallTimeRef = useRef<number | null>(null)
   const isFirstFrameRef = useRef(true)
+  const smoothedPlayheadRef = useRef<Array<{ phase01: number; value: number } | undefined>>([])
 
   useEffect(() => {
     lastWritePosRef.current = 0
@@ -73,6 +74,7 @@ export function useLfoWidget({
     predictedSampleCountRef.current = null
     lastWallTimeRef.current = null
     isFirstFrameRef.current = true
+    smoothedPlayheadRef.current.length = 0
   }, [dspSource])
 
   const onBeforeDraw = useCallback(() => {
@@ -188,8 +190,23 @@ export function useLfoWidget({
     const st = stRef.current[ref.lfoIndex | 0]
     const bar = Math.max(1e-6, st?.bar ?? ref.params.bar)
     const offset = st?.offset ?? ref.params.offset
-    const phase01 = st?.phase01 ?? 0
-    const value = st?.value ?? 0
+    const rawPhase01 = st?.phase01 ?? 0
+    const rawValue = st?.value ?? 0
+
+    // Apply smoothing to playhead position
+    let smoothed = smoothedPlayheadRef.current[ref.lfoIndex | 0]
+    if (!smoothed) {
+      smoothed = { phase01: rawPhase01, value: rawValue }
+      smoothedPlayheadRef.current[ref.lfoIndex | 0] = smoothed
+    }
+
+    // Smooth towards target with exponential smoothing
+    const smoothing = playbackState === 'running' ? 0.5 : 1.0
+    smoothed.phase01 += (rawPhase01 - smoothed.phase01) * smoothing
+    smoothed.value += (rawValue - smoothed.value) * smoothing
+
+    const phase01 = smoothed.phase01
+    const value = smoothed.value
 
     const yToPx = (y: number) => chartY + (1 - clamp(y, 0, 1)) * chartH
 
