@@ -157,8 +157,8 @@ export function useSlicerWidget({
         column: 1,
         length: 1,
         height: 40,
-        render: (ctx, _x, y, _w, h, vx, vw) => {
-          draw(ctx, ref, y, h, vx, vw)
+        render: (ctx, _x, y, _w, h, vx, vw, vy) => {
+          draw(ctx, ref, vy, h, vx, vw)
         },
       })
     }
