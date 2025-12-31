@@ -29,43 +29,34 @@ function getArg(call: any, posIndex: number, name: string): any | null {
   return getNamedArg(call, name) ?? getPosArg(call, posIndex)
 }
 
-export function extractTimelineLabelsFromProgram(program: Program): TimelineLabel[] {
-  const out: TimelineLabel[] = []
+export function createTimelineLabelsVisitor(out: TimelineLabel[]) {
+  return {
+    visitStmt(stmt: any): void {
+      if (stmt?.kind !== 'expr_stmt') return
 
-  // Only check top-level expression statements for label() calls
-  for (const stmt of program.body) {
-    if (stmt?.kind !== 'expr_stmt') continue
+      const expr = stmt.expr
+      if (!expr || expr.kind !== 'call') return
 
-    const expr = stmt.expr
-    if (!expr || expr.kind !== 'call') continue
+      if (expr.callee?.kind === 'ident' && expr.callee?.name === 'label') {
+        const barExpr = getArg(expr, 0, 'bar')
+        const textExpr = getArg(expr, 1, 'text')
+        const colorExpr = getArg(expr, 2, 'color')
 
-    if (expr.callee?.kind === 'ident' && expr.callee?.name === 'label') {
-      const barExpr = getArg(expr, 0, 'bar')
-      const textExpr = getArg(expr, 1, 'text')
-      const colorExpr = getArg(expr, 2, 'color')
+        const bar = tryEvalConstNumber(barExpr)
+        const text = textExpr?.kind === 'string' ? String(textExpr.value ?? '') : null
+        const color = colorExpr?.kind === 'string' ? String(colorExpr.value ?? '') : undefined
 
-      const bar = tryEvalConstNumber(barExpr)
-      const text = textExpr?.kind === 'string' ? String(textExpr.value ?? '') : null
-      const color = colorExpr?.kind === 'string' ? String(colorExpr.value ?? '') : undefined
-
-      if (bar != null && Number.isFinite(bar) && text != null) {
-        out.push({
-          bar,
-          text,
-          color: color || undefined,
-          loc: expr.callee.loc ?? expr.loc,
-        })
+        if (bar != null && Number.isFinite(bar) && text != null) {
+          out.push({
+            bar,
+            text,
+            color: color || undefined,
+            loc: expr.callee.loc ?? expr.loc,
+          })
+        }
       }
     }
   }
-
-  return out
 }
 
-export function extractTimelineLabelsFromSource(src: string): { labels: TimelineLabel[]; errors: LangError[] } {
-  const lexed = lex(src)
-  const parsed = parse(src, lexed.tokens)
-  const errors: LangError[] = [...lexed.errors, ...parsed.errors]
-  if (errors.length) return { labels: [], errors }
-  return { labels: extractTimelineLabelsFromProgram(parsed.program), errors: [] }
-}
+
