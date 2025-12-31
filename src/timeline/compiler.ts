@@ -98,7 +98,9 @@ function compilePoints(points: TimelinePoint[]): {
     .map(p => ({ ...p, bar: p.bar }))
     .filter(p => p.bar >= 0)
 
-  if (pts.length === 0) return { segments: [], totalBars: 0, endValue: 0, endTokenIndex: -1, endTokenStart: -1, endTokenLength: -1 }
+  if (pts.length === 0) {
+    return { segments: [], totalBars: 0, endValue: 0, endTokenIndex: -1, endTokenStart: -1, endTokenLength: -1 }
+  }
 
   // Ensure there's always an implicit 0,0 point unless one is explicitly provided
   const hasZeroPoint = pts.some(p => p.bar === 0)
@@ -202,7 +204,24 @@ function compilePoints(points: TimelinePoint[]): {
   return { segments, totalBars, endValue: v, endTokenIndex, endTokenStart, endTokenLength }
 }
 
-export function compileTimelineNotation(input: string, initialBeatDiv: number = 4) {
+const cacheBySequence = new Map<string,
+  { bytecode: Float32Array;
+    tokens: { fromTokenIndex: number; fromTokenStart: number; fromTokenLength: number; toTokenIndex: number;
+      toTokenStart: number; toTokenLength: number }[]; segments: TimelineSegment[] }>()
+
+export function compileTimelineNotation(input: string,
+  initialBeatDiv: number = 4
+): { bytecode: Float32Array;
+  tokens: { fromTokenIndex: number; fromTokenStart: number; fromTokenLength: number; toTokenIndex: number;
+    toTokenStart: number; toTokenLength: number }[]; segments: TimelineSegment[] }
+{
+  const cached = cacheBySequence.get(input)
+  if (cached) return cached
+
+  if (cacheBySequence.size > 1000) {
+    cacheBySequence.clear()
+  }
+
   const tokens = tokenizeTimelineNotation(input)
   const noWrap = tokens.some(t => t.text === '-')
   const points = parseTimelineNotation(tokens)
@@ -261,5 +280,7 @@ export function compileTimelineNotation(input: string, initialBeatDiv: number = 
     toTokenLength: s.toTokenLength,
   }))
 
-  return { bytecode, tokens: segmentTokens, segments }
+  const result = { bytecode, tokens: segmentTokens, segments }
+  cacheBySequence.set(input, result)
+  return result
 }

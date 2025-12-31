@@ -150,7 +150,7 @@ function updateSequence(
   const currentVersion = target.raw[3] || 0
   target.raw[3] = currentVersion + 1
 
-  return buildMiniSourceMap(compiled.nodes, target.raw)
+  return buildMiniSourceMap(sequence, compiled.nodes, compiled.bytecode)
 }
 
 function updateTimelineSequence(

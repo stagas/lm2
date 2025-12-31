@@ -371,8 +371,7 @@ export function useTimelineWidget({
         column: 1,
         length: 1,
         height: 40,
-        pointerDown: (x, y, offsetX, offsetY) => {
-        },
+        culling: false,
         render: (ctx, _x, y, _w, h, vx, vw) => {
           drawTimeline(ctx, ref.seqIndex, y, h, vx, vw, ref.color, drawGrid)
         },

@@ -56,10 +56,20 @@ function compileNode(
   return 0
 }
 
+const cacheByMiniNotation = new Map<string,
+  { bytecode: Float32Array; sourceMap: MiniSourceMapEntry[]; nodes: Node[] }>()
+
 export function compileMiniNotation(
   input: string,
   options: { seed?: number; defaultScale?: DefaultScale } = {},
 ) {
+  const cached = cacheByMiniNotation.get(input)
+  if (cached) return cached
+
+  if (cacheByMiniNotation.size > 1000) {
+    cacheByMiniNotation.clear()
+  }
+
   const tokens = tokenize(input)
   const nodes = tokensToNodes(tokens, input, { defaultScale: options.defaultScale })
 
@@ -86,5 +96,7 @@ export function compileMiniNotation(
 
   const sourceMap: MiniSourceMapEntry[] = []
 
-  return { bytecode: trimmedBytecode, sourceMap, nodes }
+  const result = { bytecode: trimmedBytecode, sourceMap, nodes }
+  cacheByMiniNotation.set(input, result)
+  return result
 }

@@ -97,8 +97,20 @@ function buildSourceMapFromNodes(
   return currentOffset
 }
 
-export function buildMiniSourceMap(nodes: Node[], bytecode: Float32Array): Map<number, SourceLocation> {
+const cacheByMiniSourceMap = new Map<string, Map<number, SourceLocation>>()
+
+export function buildMiniSourceMap(src: string, nodes: Node[], bytecode: Float32Array): Map<number, SourceLocation> {
+  const cached = cacheByMiniSourceMap.get(src)
+  if (cached) return cached
+
+  if (cacheByMiniSourceMap.size > 1000) {
+    cacheByMiniSourceMap.clear()
+  }
+
   const map = new Map<number, SourceLocation>()
   buildSourceMapFromNodes(nodes, bytecode, OP_GROUP_START_SIZE, map)
-  return map
+
+  const result = map
+  cacheByMiniSourceMap.set(src, result)
+  return result
 }

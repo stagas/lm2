@@ -235,7 +235,16 @@ function tokenizeTimelineEntry(entry: string): Token[] {
   return tokens
 }
 
+const cacheByMiniText = new Map<string, Token[]>()
+
 function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
+  const cached = cacheByMiniText.get(text)
+  if (cached) return cached
+
+  if (cacheByMiniText.size > 1000) {
+    cacheByMiniText.clear()
+  }
+
   const tokens: Token[] = []
   const miniTokens = miniTokenize(text)
   let cursor = 0
@@ -398,7 +407,9 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
     }
   }
 
-  return tokens
+  const result = tokens
+  cacheByMiniText.set(text, result)
+  return result
 }
 
 // Tokenize mini notation content
