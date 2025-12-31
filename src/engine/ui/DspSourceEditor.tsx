@@ -393,7 +393,7 @@ function DspSourceEditorReady(
     const previewMiniSourceMaps: Array<Map<number, SourceLocation> | undefined> = previewSequences.map(s => {
       const scaleIndex = previewCompile.scale
       const compiled = compileMiniNotation(s, scaleIndex === undefined ? {} : { defaultScale: { scaleIndex } })
-      return buildMiniSourceMap(compiled.nodes, compiled.bytecode)
+      return buildMiniSourceMap(s, compiled.nodes, compiled.bytecode)
     })
 
     return {

@@ -542,6 +542,7 @@ export function usePianorollWidget({
         column: 1,
         length: 1,
         height: 40,
+        culling: false,
         render: (ctx, _x, y, _w, h, vx, vw, vy) => {
           drawPianoroll(ctx, ref.seqIndex, vy, h, vx, vw, ref.color, drawGrid)
         },
