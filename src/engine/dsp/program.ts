@@ -47,6 +47,7 @@ import {
   type EveryRef,
   type FilterRef,
   type LfoRef,
+  type LimiterRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
@@ -57,8 +58,13 @@ import {
   type TimelineSequenceRef,
 } from '../bytecode/bytecode.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
-import { AnalyserOutsPoolStruct, CompressorOutsPoolStruct, LimiterOutsPoolStruct, ProgramDataStruct,
-  ProgramStruct } from './assembly.ts'
+import {
+  AnalyserOutsPoolStruct,
+  CompressorOutsPoolStruct,
+  LimiterOutsPoolStruct,
+  ProgramDataStruct,
+  ProgramStruct,
+} from './assembly.ts'
 import type { DspProcessor } from './worklet.ts'
 
 export type VmArray = {
@@ -175,6 +181,7 @@ function buildProgram(
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
@@ -195,8 +202,8 @@ function buildProgram(
     : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
 
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs,
-    compressorRefs, filterRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
-    numberParams, numberLiterals, bpm, bars, scale, sampleDefs } = compiled
+    compressorRefs, limiterRefs, filterRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals,
+    branchMarks, numberParams, numberLiterals, bpm, bars, scale, sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
@@ -209,6 +216,7 @@ function buildProgram(
     timelineLabels: timelineLabels ?? [],
     analyserRefs: analyserRefs ?? [],
     compressorRefs: compressorRefs ?? [],
+    limiterRefs: limiterRefs ?? [],
     filterRefs: filterRefs ?? [],
     slicerRefs: slicerRefs ?? [],
     lfoRefs: lfoRefs ?? [],
@@ -248,6 +256,7 @@ export type ProgramBuildResult = {
   timelineLabels: TimelineLabel[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
@@ -522,8 +531,8 @@ async function createProgram(
 
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
-          filterRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
-          numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
+          limiterRefs, filterRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
+          numberParams, numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -573,6 +582,7 @@ async function createProgram(
           timelineLabels,
           analyserRefs,
           compressorRefs,
+          limiterRefs,
           filterRefs,
           slicerRefs,
           lfoRefs,

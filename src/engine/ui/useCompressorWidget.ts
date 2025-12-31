@@ -116,6 +116,43 @@ export function useCompressorWidget({
     }
   }, [showWidgets, refs, isLive, playbackState, program1, ringPos])
 
+  const minDb = -60
+  const maxDb = 0
+  // Define the ranges that should have equal visual height
+  const ranges = [
+    { start: 0, end: -6 }, // 6dB
+    { start: -6, end: -12 }, // 6dB
+    { start: -12, end: -18 }, // 6dB
+    { start: -18, end: -24 }, // 6dB
+    { start: -24, end: -30 }, // 6dB
+    { start: -30, end: -36 }, // 6dB
+    { start: -36, end: -48 }, // 12dB
+    { start: -48, end: -60 }, // 12dB
+  ]
+
+  const dbToNorm = (db: number) => {
+    const d = clamp(db, minDb, maxDb)
+
+    // Each range should occupy the same visual height
+    const totalRanges = ranges.length
+    const rangeHeight = 1 / totalRanges
+
+    for (let i = 0; i < ranges.length; i++) {
+      const range = ranges[i]
+      if (d >= range.start) {
+        // Linear mapping within this range
+        const span = range.start - range.end
+        const t = span > 0 ? (range.start - d) / span : 0
+        return clamp(1 - i * rangeHeight - t * rangeHeight, 0, 1)
+      }
+    }
+
+    return 0
+  }
+
+  const toX = (db: number, chartW: number) => dbToNorm(db) * chartW
+  const toY = (db: number, chartY: number, chartH: number) => chartY + (1 - dbToNorm(db)) * chartH
+
   const drawCompressor = useCallback((
     c: CanvasRenderingContext2D,
     type: 'compressor' | 'limiter',
@@ -125,7 +162,8 @@ export function useCompressorWidget({
     viewX: number,
     viewWidth: number,
   ) => {
-    const baseIdx = (type === 'compressor' ? (ref as CompressorRef).compressorIndex : (ref as LimiterRef).limiterIndex) | 0
+    const baseIdx = (type === 'compressor' ? (ref as CompressorRef).compressorIndex : (ref as LimiterRef).limiterIndex)
+      | 0
     const idx = type === 'compressor' ? baseIdx : baseIdx + 64
     const st = stRef.current[idx]
     const level = isLive ? st?.levelFloats : null
@@ -155,8 +193,8 @@ export function useCompressorWidget({
     const chartH = Math.max(1, h - pad * 2)
 
     const th = ref.params.threshold
-    const ratio = type === 'limiter' ? Infinity : ref.params.ratio
-    const knee = type === 'limiter' ? 0 : ref.params.knee
+    const ratio = type === 'limiter' ? Infinity : (ref.params as { ratio: number }).ratio
+    const knee = type === 'limiter' ? 0 : (ref.params as { knee: number }).knee
 
     const curLevel = level && level.length > 0 ? Math.max(...level) : -80
     const curGr = gr && gr.length > 0 ? Math.max(...gr) : 0
@@ -216,75 +254,24 @@ export function useCompressorWidget({
     c.lineWidth = 1
     c.strokeRect(0.5, chartY + 0.5, chartW - 1, chartH)
 
-    const minDb = -80
-    const maxDb = 0
     // Piecewise-linear dB mapping: keep equal dB spacing (like the GR meter),
     // but allocate more pixels to the -24..0 region by compressing -80..-24.
-    const splitDb = -24
-    const topFrac = 0.62
-    const dbToNorm = (db: number) => {
-      const d = clamp(db, minDb, maxDb)
-      const cut = 1 - topFrac
-      const lowSpan = splitDb - minDb
-      const highSpan = maxDb - splitDb
 
-      // Top region (-24..0): strictly linear so 6dB ticks are evenly spaced.
-      if (d >= splitDb) {
-        const t = highSpan > 0 ? (d - splitDb) / highSpan : 0
-        return clamp(cut + t * topFrac, 0, 1)
-      }
-
-      // Bottom region (-80..-24): compress, but force -48dB to land at the midpoint between -24 and -80.
-      // This keeps the -24..0 area expanded while making -48 visually centered in the compressed area.
-      const u = lowSpan > 0 ? clamp((d - minDb) / lowSpan, 0, 1) : 0
-      const u48 = lowSpan > 0 ? clamp((-48 - minDb) / lowSpan, 1e-6, 1 - 1e-6) : 0.5
-      const pMid = Math.log(0.5) / Math.log(u48)
-      const p = Number.isFinite(pMid) ? Math.max(1e-3, pMid) : 1
-      const low = (uu: number) => cut * Math.pow(clamp(uu, 0, 1), p)
-
-      // Blend only in the last few dB below -24 to avoid a sharp slope change at the split.
-      const blendDb = 6
-      const db1 = splitDb - blendDb
-      if (d <= db1) return clamp(low(u), 0, 1)
-
-      const uu1 = lowSpan > 0 ? clamp((db1 - minDb) / lowSpan, 0, 1) : 0
-      const y1 = low(uu1)
-      const y2 = cut
-
-      const span = splitDb - db1
-      const t = span > 0 ? clamp((d - db1) / span, 0, 1) : 1
-      const tt = t * t
-      const ttt = tt * t
-      const h00 = 2 * ttt - 3 * tt + 1
-      const h10 = ttt - 2 * tt + t
-      const h01 = -2 * ttt + 3 * tt
-      const h11 = ttt - tt
-
-      const slopeLowDb = lowSpan > 0 ? (cut * p * Math.pow(uu1, Math.max(0, p - 1))) / lowSpan : 0
-      const slopeHighDb = highSpan > 0 ? topFrac / highSpan : 0
-      const m1 = slopeLowDb * span
-      const m2 = slopeHighDb * span
-      const y = h00 * y1 + h10 * m1 + h01 * y2 + h11 * m2
-      return clamp(y, 0, 1)
-    }
-    const toX = (db: number) => dbToNorm(db) * chartW
-    const toY = (db: number) => chartY + (1 - dbToNorm(db)) * chartH
-
-    const dbMarks = [0, -6, -12, -18, -24, -48, -80]
+    const dbMarks = chartH < 80 ? [-0, -12, -24, -36, -60] : [-0, -6, -12, -18, -24, -30, -36, -48, -60]
     for (const v of dbMarks) {
-      const yy = toY(v)
+      const yy = toY(v, chartY, chartH)
       c.beginPath()
       c.moveTo(chartW + 0.5, yy + 0.5)
       c.lineTo(chartW + 6.5, yy + 0.5)
       c.stroke()
-      c.fillText(String(v), chartW + rightLabelW - 2, yy)
+      c.fillText(v == 0 ? '-0' : String(v), chartW + rightLabelW - 2, yy)
     }
     c.restore()
 
     // Threshold marker (horizontal)
     c.strokeStyle = 'rgba(150,150,150,0.25)'
     c.lineWidth = 1
-    const thY = toY(th)
+    const thY = toY(th, chartY, chartH)
     c.beginPath()
     c.moveTo(0, thY)
     c.lineTo(chartW, thY)
@@ -304,15 +291,15 @@ export function useCompressorWidget({
       if (Number.isFinite(lo) && Number.isFinite(hi)) {
         c.fillStyle = 'rgba(120,120,120,0.25)'
         // Convert horizontal band (x-range) to vertical band (y-range, down to up)
-        const y1 = toY(hi)
+        const y1 = toY(hi, chartY, chartH)
         c.fillRect(1, Math.ceil(y1), chartW - 2, Math.ceil(Math.max(1, (chartY + chartH) - y1)))
       }
     }
 
     c.strokeStyle = 'rgba(180,180,180,0.25)'
     c.beginPath()
-    c.moveTo(0, toY(minDb))
-    c.lineTo(chartW, toY(maxDb))
+    c.moveTo(0, toY(minDb, chartY, chartH))
+    c.lineTo(chartW, toY(maxDb, chartY, chartH))
     c.stroke()
 
     c.strokeStyle = '#ea580c'
@@ -324,8 +311,8 @@ export function useCompressorWidget({
       const inDb = minDb + (maxDb - minDb) * t
       const red = compReductionDb(inDb, th, ratio, knee)
       const outDb = inDb - red
-      const px = toX(inDb)
-      const py = toY(outDb)
+      const px = toX(inDb, chartW)
+      const py = toY(outDb, chartY, chartH)
       if (i === 0) c.moveTo(px, py)
       else c.lineTo(px, py)
     }
@@ -340,18 +327,18 @@ export function useCompressorWidget({
       const kneeEnd = th + knee / 2
 
       c.beginPath()
-      c.arc(toX(kneeStart), toY(kneeStart), 2.75, 0, Math.PI * 2)
+      c.arc(toX(kneeStart, chartW), toY(kneeStart, chartY, chartH), 2.75, 0, Math.PI * 2)
       c.fill()
 
       const endRed = compReductionDb(kneeEnd, th, ratio, knee)
       const endOut = kneeEnd - endRed
       c.beginPath()
-      c.arc(toX(kneeEnd), toY(endOut), 2.75, 0, Math.PI * 2)
+      c.arc(toX(kneeEnd, chartW), toY(endOut, chartY, chartH), 2.75, 0, Math.PI * 2)
       c.fill()
     }
     else {
       c.beginPath()
-      c.arc(toX(th), toY(th), 2.75, 0, Math.PI * 2)
+      c.arc(toX(th, chartW), toY(th, chartY, chartH), 2.75, 0, Math.PI * 2)
       c.fill()
     }
 
@@ -360,7 +347,7 @@ export function useCompressorWidget({
       const outDb = curLevel - curGr
       c.fillStyle = 'rgba(255,255,0,0.85)'
       c.beginPath()
-      c.arc(toX(curLevel), toY(outDb), 2.75, 0, Math.PI * 2)
+      c.arc(toX(curLevel, chartW), toY(outDb, chartY, chartH), 2.75, 0, Math.PI * 2)
       c.fill()
     }
 
