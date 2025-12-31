@@ -29,7 +29,7 @@ export function useFreeverbWidget({
 }: UseFreeverbWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const refs = freeverbRefs ?? []
 
-  type St = { roomsize: number; damp: number; wet: number; dry: number; width: number }
+  type St = { size: number; damp: number; width: number }
   const stRef = useRef<Array<St | undefined>>([])
   const lastWritePosRef = useRef<number>(0)
 
@@ -72,24 +72,20 @@ export function useFreeverbWidget({
         const base = FREEVERB_DATA_OFFSET + slot * FREEVERB_ENTRY_SIZE
 
         const idx = Math.floor(raw[base] ?? 0)
-        const roomsize = raw[base + 1] ?? 0
+        const size = raw[base + 1] ?? 0
         const damp = raw[base + 2] ?? 0
-        const wet = raw[base + 3] ?? 0
-        const dry = raw[base + 4] ?? 0
-        const width = raw[base + 5] ?? 0
+        const width = raw[base + 3] ?? 0
 
         if (idx < 0 || idx > 63) continue
 
         let st = stRef.current[idx]
         if (!st) {
-          st = { roomsize, damp, wet, dry, width }
+          st = { size, damp, width }
           stRef.current[idx] = st
         }
 
-        st.roomsize = roomsize
+        st.size = size
         st.damp = damp
-        st.wet = wet
-        st.dry = dry
         st.width = width
       }
     }
@@ -100,7 +96,7 @@ export function useFreeverbWidget({
 
     for (const ref of refs) {
       const st = stRef.current[ref.freeverbIndex | 0]
-      const roomsize = st?.roomsize ?? ref.params.roomsize
+      const size = st?.size ?? ref.params.size
       const width = st?.width ?? ref.params.width
 
       out.push({
@@ -134,7 +130,7 @@ export function useFreeverbWidget({
 
           const maxSx = (w - pad * 2) / Math.max(1e-6, c30 * sumCoef)
           const maxSy = (h - pad * 2) / Math.max(1e-6, dyCoef + s30 * sumCoef)
-          const s = Math.max(6, Math.min(roomsize * 40, maxSx, maxSy))
+          const s = Math.max(6, Math.min(size * 40, maxSx, maxSy))
 
           const ox = w / 2
           const dx = s * dxCoef

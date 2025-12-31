@@ -714,7 +714,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to reverberate' },
       {
-        name: 'roomsize',
+        name: 'size',
         type: 'number',
         optional: true,
         defaultValue: 0.5,
@@ -726,20 +726,6 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         optional: true,
         defaultValue: 0.5,
         description: 'High-frequency damping (0..1); higher values damp more',
-      },
-      {
-        name: 'wet',
-        type: 'number',
-        optional: true,
-        defaultValue: 0.33,
-        description: 'Wet mix amount (0..1)',
-      },
-      {
-        name: 'dry',
-        type: 'number',
-        optional: true,
-        defaultValue: 0.7,
-        description: 'Dry mix amount (0..1)',
       },
       {
         name: 'width',
@@ -755,19 +741,12 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         defaultValue: 0,
         description: 'Freeze mode (0/1); locks into infinite reverb-like sustain',
       },
-      {
-        name: 'index',
-        type: 'number',
-        optional: true,
-        defaultValue: 0,
-        description: 'Widget/history index (0..63)',
-      },
     ],
     returnType: 'number',
-    description: 'Freeverb-style reverb effect; returns wet+dry mixed signal.',
+    description: 'Freeverb-style reverb effect; returns wet signal.',
     examples: [
-      'saw(hz) |> freeverb($, roomsize:.6, damp:.3, wet:.25, dry:.75) |> out($)',
-      'sine(220) |> freeverb($, roomsize:.85, damp:.1, wet:.35, dry:.65, freeze:0) |> out($)',
+      'saw(hz) |> freeverb($, size:.6, damp:.3) |> out($)',
+      'sine(220) |> freeverb($, size:.85, damp:.1, freeze:0) |> out($)',
     ],
   },
   note: {

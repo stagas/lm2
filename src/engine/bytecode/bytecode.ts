@@ -510,6 +510,14 @@ export function encodeLangToVmOps(
     return idx
   }
 
+  const MAX_FREEVERB_INDEX = 63
+  let nextFreeverbIndex = 0
+  const allocFreeverbIndex = (): number => {
+    const idx = Math.min(MAX_FREEVERB_INDEX, nextFreeverbIndex)
+    nextFreeverbIndex++
+    return idx
+  }
+
   const MAX_TRIG_INDEX = 255
   const clampTrigIndex = (n: number) => Math.max(0, Math.min(MAX_TRIG_INDEX, Math.floor(Number(n || 0))))
 
@@ -619,11 +627,19 @@ export function encodeLangToVmOps(
     }
 
     if (expr.kind === 'call') {
+      const preCalleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
+      const freeverbIndex = preCalleeName === 'freeverb' ? allocFreeverbIndex() : null
+
       const callee = transformExpr(expr.callee)
-      const args = (expr.args ?? []).map((a: any) => {
+      let args = (expr.args ?? []).map((a: any) => {
         if (a.kind === 'pos' || a.kind === 'named') return { ...a, value: transformExpr(a.value) }
         return a
       })
+
+      if (freeverbIndex !== null) {
+        args = args.filter((a: any) => !(a.kind === 'named' && a.name === 'index'))
+        args = [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, freeverbIndex), loc: expr.loc }]
+      }
 
       const calleeName = callee?.kind === 'ident' ? callee.name : null
 

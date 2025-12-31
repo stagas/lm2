@@ -157,6 +157,7 @@ export enum VmSym {
   Limiter,
   Freeverb,
   Roomsize,
+  Size,
   Damp,
   Wet,
   Dry,
