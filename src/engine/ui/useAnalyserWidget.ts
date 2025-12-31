@@ -336,7 +336,7 @@ function drawAmplitudeScroller(
   const drawX = st.col
   const cy = (st.pxH / 2) | 0
 
-  offCtx.fillStyle = st.bg
+  offCtx.fillStyle = '#000' // st.bg
   offCtx.fillRect(drawX, 0, 1, st.pxH)
 
   offCtx.strokeStyle = 'rgba(180, 180, 180, 0.9)'
@@ -346,7 +346,7 @@ function drawAmplitudeScroller(
   offCtx.lineTo(drawX + 1, cy)
   offCtx.stroke()
 
-  const ampBarHeight = Math.max(1, Math.min(st.pxH, peak * st.pxH))
+  const ampBarHeight = Math.max(1, Math.min(st.pxH, (peak ** .5) * st.pxH))
   const ampY = (st.pxH - ampBarHeight) / 2
   if (Number.isFinite(peak) && Number.isFinite(ampBarHeight) && Number.isFinite(ampY)) {
     const grad = peak > 1 ? '#f00' : createGreyVerticalGradient(offCtx, drawX, ampY, ampY + ampBarHeight)
@@ -407,6 +407,7 @@ export function useAnalyserWidget({
   const animatedSpectrumHeightsRef = useRef<Array<Float32Array | undefined>>([])
   const spectrumCacheRef = useRef<Map<number, SpectrumCache>>(new Map())
   const seenRef = useRef<Set<number>>(new Set())
+  const renderedThisFrameRef = useRef<Set<number>>(new Set())
 
   useEffect(() => {
     if (fftRef.current) return
@@ -447,6 +448,9 @@ export function useAnalyserWidget({
     // without destroying the last live analyser buffers.
     if (!isLive) return
 
+    // Reset the rendered set for this frame
+    renderedThisFrameRef.current.clear()
+
     const stArr = analyserStateRef.current
     const seen = seenRef.current
     seen.clear()
@@ -484,9 +488,6 @@ export function useAnalyserWidget({
     viewX: number,
     viewWidth: number,
   ) => {
-    const st = analyserStateRef.current[analyserIndex]
-    const floats = isLive ? st?.floats : null
-
     const x = viewX
     const w = viewWidth
     const h = Math.max(40, widgetHeight)
@@ -506,38 +507,55 @@ export function useAnalyserWidget({
     const midW = third
     const rightW = w - leftW - midW
 
+    const st = analyserStateRef.current[analyserIndex]
+    const floats = isLive ? st?.floats : null
+
     if (!floats) {
       drawInitLines(c, w, h, leftW, midW, rightW)
       c.restore()
       return
     }
 
-    drawSpectrum(
-      c,
-      0,
-      0,
-      leftW,
-      h,
-      floats,
-      fftRef.current,
-      animatedSpectrumHeightsRef.current,
-      analyserIndex,
-      sampleRate,
-      spectrumCacheRef.current,
-    )
-    drawAmplitudeScroller(
-      c,
-      floats,
-      leftW,
-      0,
-      midW,
-      h,
-      ampCanvasRef.current,
-      analyserIndex,
-      playbackState,
-      '#000',
-    )
-    drawWaveform(c, leftW + midW, 0, rightW, h, floats)
+    // Only do the expensive rendering work once per analyser per frame
+    if (!renderedThisFrameRef.current.has(analyserIndex)) {
+      renderedThisFrameRef.current.add(analyserIndex)
+
+      drawSpectrum(
+        c,
+        0,
+        0,
+        leftW,
+        h,
+        floats,
+        fftRef.current,
+        animatedSpectrumHeightsRef.current,
+        analyserIndex,
+        sampleRate,
+        spectrumCacheRef.current,
+      )
+      drawAmplitudeScroller(
+        c,
+        floats,
+        leftW,
+        0,
+        midW,
+        h,
+        ampCanvasRef.current,
+        analyserIndex,
+        playbackState,
+        theme.background,
+      )
+      drawWaveform(c, leftW + midW, 0, rightW, h, floats)
+    }
+    else {
+      // This analyser was already rendered this frame, just draw a simple indicator
+      c.fillStyle = 'rgba(255, 255, 255, 0.1)'
+      c.fillRect(0, 0, w, h)
+      c.fillStyle = 'rgba(255, 255, 255, 0.5)'
+      c.font = '12px monospace'
+      c.textAlign = 'center'
+      c.fillText(`Analyser ${analyserIndex}`, w / 2, h / 2 + 4)
+    }
 
     c.restore()
   }, [isLive, playbackState, sampleRate])
