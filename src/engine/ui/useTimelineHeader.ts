@@ -201,7 +201,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
 
         const timeWindowSeconds = TIME_WINDOW_BARS * barLengthSeconds
         const pixelsPerSecond = timelineW / timeWindowSeconds
-        const playheadX = PAST_BARS * barLengthSeconds * pixelsPerSecond
+        const playheadX = PAST_BARS * barLengthSeconds * pixelsPerSecond - 1
 
         c.save()
         c.translate(viewX, 0)
