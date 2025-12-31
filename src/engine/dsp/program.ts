@@ -14,6 +14,9 @@ import {
   FILTER_DATA_OFFSET,
   FILTER_ENTRY_SIZE,
   FILTER_HISTORY_SIZE,
+  FREEVERB_DATA_OFFSET,
+  FREEVERB_ENTRY_SIZE,
+  FREEVERB_HISTORY_SIZE,
   HISTORIES_COUNT,
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
@@ -99,6 +102,11 @@ export type VmFilterHistory = {
 }
 
 export type VmLfoHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
+export type VmFreeverbHistory = {
   writePos: number
   raw: Float32Array
 }
@@ -457,6 +465,19 @@ async function createProgram(
     ),
   }
 
+  const freeverbHistory$ = program.freeverbHistory
+  const freeverbWritePos = new Float32Array(wasmMemory.buffer, freeverbHistory$, FREEVERB_DATA_OFFSET)
+  const freeverbHistory: VmFreeverbHistory = {
+    get writePos() {
+      return freeverbWritePos[0] || 0
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      freeverbHistory$,
+      FREEVERB_DATA_OFFSET + FREEVERB_HISTORY_SIZE * FREEVERB_ENTRY_SIZE,
+    ),
+  }
+
   const trigHistory$ = program.trigHistory
   const trigWritePos = new Float32Array(wasmMemory.buffer, trigHistory$, TRIG_DATA_OFFSET)
   const trigHistory: VmTrigHistory = {
@@ -518,6 +539,7 @@ async function createProgram(
     sampleNeedleHistory,
     filterHistory,
     lfoHistory,
+    freeverbHistory,
     trigHistory,
     get data() {
       return programData

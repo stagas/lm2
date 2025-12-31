@@ -218,6 +218,36 @@ export type EuclidRef = {
   callLoc: Loc
 }
 
+export type FreeverbRef = {
+  freeverbIndex: number
+  /** Location of the `freeverb` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the input arg (positional or `in:`). */
+  inArgLoc: Loc | null
+  /** Location of the roomsize arg (positional or `roomsize:`). */
+  roomsizeArgLoc: Loc | null
+  /** Location of the damp arg (positional or `damp:`). */
+  dampArgLoc: Loc | null
+  /** Location of the wet arg (positional or `wet:`). */
+  wetArgLoc: Loc | null
+  /** Location of the dry arg (positional or `dry:`). */
+  dryArgLoc: Loc | null
+  /** Location of the width arg (positional or `width:`). */
+  widthArgLoc: Loc | null
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: {
+    roomsize: number
+    damp: number
+    wet: number
+    dry: number
+    width: number
+  }
+}
+
 export type MiniSequenceRef = {
   seqIndex: number
   sequence: string

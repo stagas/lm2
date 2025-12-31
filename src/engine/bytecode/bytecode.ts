@@ -29,6 +29,9 @@ import {
   createFiltersVisitor,
 } from './extract-filter.ts'
 import {
+  createFreeverbVisitor,
+} from './extract-freeverb.ts'
+import {
   createLfoVisitor,
 } from './extract-lfo.ts'
 import {
@@ -72,6 +75,7 @@ import {
   type EuclidRef,
   EveryRef,
   type FilterRef,
+  type FreeverbRef,
   LfoRef,
   type LimiterRef,
   type MiniSequenceRef,
@@ -184,6 +188,7 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   const compressorRefs: CompressorRef[] = []
   const limiterRefs: LimiterRef[] = []
   const filterRefs: FilterRef[] = []
+  const freeverbRefs: FreeverbRef[] = []
   const slicerRefs: SlicerRef[] = []
   const lfoRefs: LfoRef[] = []
   const everyRefs: EveryRef[] = []
@@ -196,6 +201,7 @@ function extractAllRefsFromProgram(src: string, program: Program) {
     createCompressorVisitor(src, compressorRefs),
     createLimiterVisitor(src, limiterRefs),
     createFiltersVisitor(src, filterRefs),
+    createFreeverbVisitor(src, freeverbRefs),
     createSlicersVisitor(src, slicerRefs),
     createLfoVisitor(src, lfoRefs),
     createEveryVisitor(everyRefs),
@@ -211,6 +217,7 @@ function extractAllRefsFromProgram(src: string, program: Program) {
     compressorRefs,
     limiterRefs,
     filterRefs,
+    freeverbRefs,
     slicerRefs,
     lfoRefs,
     everyRefs,
@@ -280,6 +287,7 @@ export function encodeLangToVmOps(
   compressorRefs?: CompressorRef[]
   limiterRefs?: LimiterRef[]
   filterRefs?: FilterRef[]
+  freeverbRefs?: FreeverbRef[]
   slicerRefs?: SlicerRef[]
   lfoRefs?: LfoRef[]
   everyRefs?: EveryRef[]
@@ -414,6 +422,7 @@ export function encodeLangToVmOps(
   let compressorRefs: CompressorRef[] = []
   let limiterRefs: LimiterRef[] = []
   let filterRefs: FilterRef[] = []
+  let freeverbRefs: FreeverbRef[] = []
   let slicerRefs: SlicerRef[] = []
   let lfoRefs: LfoRef[] = []
   let everyRefs: EveryRef[] = []
@@ -1038,6 +1047,7 @@ export function encodeLangToVmOps(
   compressorRefs = extractionResults.compressorRefs
   limiterRefs = extractionResults.limiterRefs
   filterRefs = extractionResults.filterRefs
+  freeverbRefs = extractionResults.freeverbRefs
   slicerRefs = extractionResults.slicerRefs
   lfoRefs = extractionResults.lfoRefs
   everyRefs = extractionResults.everyRefs
@@ -1431,6 +1441,7 @@ export function encodeLangToVmOps(
       compressorRefs,
       limiterRefs,
       filterRefs,
+      freeverbRefs,
       slicerRefs,
       lfoRefs,
       everyRefs,
@@ -1458,6 +1469,7 @@ export function encodeLangToVmOps(
       compressorRefs,
       limiterRefs,
       filterRefs,
+      freeverbRefs,
       slicerRefs,
       lfoRefs,
       everyRefs,

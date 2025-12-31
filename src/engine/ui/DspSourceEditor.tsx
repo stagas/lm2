@@ -36,6 +36,7 @@ import { useBranchWidget } from './useBranchWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useCompressorWidget } from './useCompressorWidget.ts'
 import { useFilterWidget } from './useFilterWidget.ts'
+import { useFreeverbWidget } from './useFreeverbWidget.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
 import { useLfoWidget } from './useLfoWidget.ts'
@@ -128,6 +129,7 @@ function DspSourceEditorReady(
   const compressorRefs = useEngineDspStore(state => state.compressorRefs)
   const limiterRefs = useEngineDspStore(state => state.limiterRefs)
   const filterRefs = useEngineDspStore(state => state.filterRefs)
+  const freeverbRefs = useEngineDspStore(state => state.freeverbRefs)
   const slicerRefs = useEngineDspStore(state => state.slicerRefs)
   const lfoRefs = useEngineDspStore(state => state.lfoRefs)
   const everyRefs = useEngineDspStore(state => state.everyRefs)
@@ -352,6 +354,7 @@ function DspSourceEditorReady(
         compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
         limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
         filterRefs: previewCompile.filterRefs ?? filterRefs,
+        freeverbRefs: previewCompile.freeverbRefs ?? freeverbRefs,
         slicerRefs,
         lfoRefs,
         everyRefs,
@@ -376,6 +379,7 @@ function DspSourceEditorReady(
         compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
         limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
         filterRefs: previewCompile.filterRefs ?? filterRefs,
+        freeverbRefs: previewCompile.freeverbRefs ?? freeverbRefs,
         slicerRefs: previewCompile.slicerRefs ?? slicerRefs,
         lfoRefs: previewCompile.lfoRefs ?? lfoRefs,
         everyRefs: previewCompile.everyRefs ?? everyRefs,
@@ -406,6 +410,7 @@ function DspSourceEditorReady(
       compressorRefs: previewCompile.compressorRefs ?? [],
       limiterRefs: previewCompile.limiterRefs ?? [],
       filterRefs: previewCompile.filterRefs ?? [],
+      freeverbRefs: previewCompile.freeverbRefs ?? freeverbRefs,
       slicerRefs: previewCompile.slicerRefs ?? [],
       lfoRefs: previewCompile.lfoRefs ?? [],
       everyRefs: previewCompile.everyRefs ?? [],
@@ -471,6 +476,7 @@ function DspSourceEditorReady(
       analyserRefs: widgetCompileState.analyserRefs ?? [],
       compressorRefs: widgetCompileState.compressorRefs ?? [],
       filterRefs: widgetCompileState.filterRefs ?? [],
+      freeverbRefs: widgetCompileState.freeverbRefs ?? [],
       slicerRefs: widgetCompileState.slicerRefs ?? [],
       lfoRefs: widgetCompileState.lfoRefs ?? [],
       everyRefs: widgetCompileState.everyRefs ?? [],
@@ -691,6 +697,17 @@ function DspSourceEditorReady(
     playbackState,
   })
 
+  const { widgets: freeverbWidgets, onBeforeDraw: onBeforeDrawFreeverb } = useFreeverbWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    freeverbRefs: widgetCompileState.freeverbRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive,
+    playbackState,
+  })
+
   const { widgets: slicerWidgets, onBeforeDraw: onBeforeDrawSlicer } = useSlicerWidget({
     slicerRefs: widgetCompileState.slicerRefs,
     dspSource: widgetCompileState.dspSource,
@@ -853,6 +870,7 @@ function DspSourceEditorReady(
     onBeforeDrawAnalyser()
     onBeforeDrawCompressor()
     onBeforeDrawFilter()
+    onBeforeDrawFreeverb()
     onBeforeDrawSlicer()
     onBeforeDrawLfo()
     onBeforeDrawTrig()
@@ -869,6 +887,7 @@ function DspSourceEditorReady(
     onBeforeDrawAnalyser,
     onBeforeDrawCompressor,
     onBeforeDrawFilter,
+    onBeforeDrawFreeverb,
     onBeforeDrawSlicer,
     onBeforeDrawLfo,
     onBeforeDrawTrig,
@@ -887,6 +906,7 @@ function DspSourceEditorReady(
       ...analyserWidgets,
       ...compressorWidgets,
       ...filterWidgets,
+      ...freeverbWidgets,
       ...slicerWidgets,
       ...lfoWidgets,
       ...trigWidgets,

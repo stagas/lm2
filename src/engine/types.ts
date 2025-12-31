@@ -35,6 +35,7 @@ export type WidgetCompileResult = {
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
+  freeverbRefs: FreeverbRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]

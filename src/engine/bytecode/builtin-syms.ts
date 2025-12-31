@@ -54,6 +54,7 @@ export const builtinSyms: Record<string, number> = {
   smooth: VmSym.Smooth,
   fractal: VmSym.Fractal,
   delay: VmSym.Delay,
+  freeverb: VmSym.Freeverb,
   // Runtime directive globals (stable ids so VM can provide defaults)
   tune: VmSym.Tune,
   octave: VmSym.Octave,
@@ -119,6 +120,11 @@ export const builtinSyms: Record<string, number> = {
   octaves: VmSym.Octaves,
   seconds: VmSym.Seconds,
   feedback: VmSym.Feedback,
+  roomsize: VmSym.Roomsize,
+  damp: VmSym.Damp,
+  wet: VmSym.Wet,
+  dry: VmSym.Dry,
+  freeze: VmSym.Freeze,
   // Math functions
   sin: VmSym.Sin,
   cos: VmSym.Cos,
