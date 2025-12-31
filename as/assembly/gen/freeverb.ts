@@ -1,3 +1,4 @@
+// dprint-ignore-file
 import { sampleRate } from '../globals'
 import { Gen } from './gen'
 
@@ -7,8 +8,6 @@ const NUM_ALLPASSES: i32 = 4
 const BASE_SR: f64 = 44100.0
 
 const FIXED_GAIN: f32 = 0.015 as f32
-const SCALE_WET: f32 = 3.0 as f32
-const SCALE_DRY: f32 = 2.0 as f32
 const SCALE_DAMP: f32 = 0.4 as f32
 const SCALE_ROOM: f32 = 0.28 as f32
 const OFFSET_ROOM: f32 = 0.7 as f32
@@ -32,10 +31,8 @@ function scaledDelaySamples(base: i32, sr: i32): i32 {
 
 export class Freeverb extends Gen {
   in$: usize = 0
-  roomsize$: usize = 0
+  size$: usize = 0
   damp$: usize = 0
-  wet$: usize = 0
-  dry$: usize = 0
   width$: usize = 0
   freeze$: usize = 0
 
@@ -98,7 +95,7 @@ export class Freeverb extends Gen {
       this.combIdx[i] = 0
       this.combFilter[i] = 0.0 as f32
       for (let j: i32 = 0; j < n; j++) {
-        unchecked((this.combBufs[i])[j] = 0.0 as f32)
+        unchecked(this.combBufs[i][j] = 0.0 as f32)
       }
     }
 
@@ -108,7 +105,7 @@ export class Freeverb extends Gen {
       this.allpassLen[i] = n
       this.allpassIdx[i] = 0
       for (let j: i32 = 0; j < n; j++) {
-        unchecked((this.allpassBufs[i])[j] = 0.0 as f32)
+        unchecked(this.allpassBufs[i][j] = 0.0 as f32)
       }
     }
   }
@@ -170,10 +167,8 @@ export class Freeverb extends Gen {
     this.ensureBuffers()
 
     let i$: usize = this.in$
-    let room$: usize = this.roomsize$
+    let size$: usize = this.size$
     let damp$: usize = this.damp$
-    let wet$: usize = this.wet$
-    let dry$: usize = this.dry$
     let width$: usize = this.width$
     let freeze$: usize = this.freeze$
 
@@ -190,26 +185,17 @@ export class Freeverb extends Gen {
     for (let s: i32 = 0; s < length; s++) {
       const input: f32 = load<f32>(i$)
 
-      const roomsize: f32 = clamp01(load<f32>(room$))
+      const size: f32 = clamp01(load<f32>(size$))
       const damp: f32 = clamp01(load<f32>(damp$))
-      const wetIn: f32 = clamp01(load<f32>(wet$))
-      const dryIn: f32 = clamp01(load<f32>(dry$))
       const width: f32 = clamp01(load<f32>(width$))
       const freezeMode: bool = load<f32>(freeze$) > 0.0
 
-      const room1: f32 = freezeMode ? 1.0 : (roomsize * SCALE_ROOM + OFFSET_ROOM)
+      const room1: f32 = freezeMode ? 1.0 : (size * SCALE_ROOM + OFFSET_ROOM)
       const damp1: f32 = freezeMode ? 0.0 : (damp * SCALE_DAMP)
       const damp2: f32 = 1.0 - damp1
 
-      let wet: f32 = wetIn * SCALE_WET
-      let dry: f32 = dryIn * SCALE_DRY
-      if (freezeMode) {
-        wet = 1.0
-        dry = 0.0
-      }
-
-      // Mono "width" still affects the blend a bit so the parameter is meaningful.
-      wet *= 0.5 + 0.5 * width
+      // Width affects the wet signal amplitude
+      const widthScale: f32 = freezeMode ? 1.0 : (0.5 + 0.5 * width)
 
       const x: f32 = input * FIXED_GAIN
 
@@ -251,18 +237,14 @@ export class Freeverb extends Gen {
         allpassIdx[ai] = p
       }
 
-      store<f32>(o$, (y * wet + input * dry) as f32)
+      store<f32>(o$, (y * widthScale) as f32)
 
       o$ += 4
       i$ += 4
-      room$ += 4
+      size$ += 4
       damp$ += 4
-      wet$ += 4
-      dry$ += 4
       width$ += 4
       freeze$ += 4
     }
   }
 }
-
-
