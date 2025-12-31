@@ -81,7 +81,7 @@ function renderWaveformToCanvas(
     const y1 = mid - mx * amp
     const y2 = mid - mn * amp
     const isHot = Math.max(Math.abs(mn), Math.abs(mx)) > 1
-    ctx.strokeStyle = createGreyVerticalGradient(ctx, i + 0.5, y1, y2, isHot)
+    ctx.strokeStyle = isHot ? '#f00' : createGreyVerticalGradient(ctx, i + 0.5, y1, y2)
     ctx.beginPath()
     ctx.moveTo(i + 0.5, y1)
     ctx.lineTo(i + 0.5, y2)
@@ -155,10 +155,10 @@ function drawSample(
 
   const key = `${pxW}:${pxH}:${dpr}:${bg}`
   const buf = ch0.buffer
-  let byBuf = waveRef.current.get(buf)
+  let byBuf = waveRef.current?.get(buf)
   if (!byBuf) {
     byBuf = new Map()
-    waveRef.current.set(buf, byBuf)
+    waveRef.current?.set(buf, byBuf)
   }
 
   const cached = byBuf.get(key)
