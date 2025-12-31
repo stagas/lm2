@@ -154,4 +154,5 @@ export enum VmSym {
   Edge0,
   Edge1,
   Cond,
+  Limiter,
 }

@@ -108,6 +108,29 @@ export type CompressorRef = {
   }
 }
 
+export type LimiterRef = {
+  limiterIndex: number
+  /** Location of the `limiter` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the input arg (positional or `in:`). */
+  inArgLoc: Loc | null
+  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
+  knobParams: Array<{
+    name: 'release' | 'threshold'
+    value: number
+    valueLoc: Loc
+  }>
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: {
+    release: number
+    threshold: number
+  }
+}
+
 export type FilterType = 'lp' | 'hp' | 'bp' | 'bs' | 'ls' | 'hs' | 'peak' | 'ap'
 
 export type FilterRef = {

@@ -2,7 +2,7 @@ import type { EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import type { Ring } from 'utils/ring'
 import { WaveformBuffer } from '../../lib/waveform-buffer.ts'
-import type { CompressorRef } from '../bytecode/bytecode.ts'
+import type { CompressorRef, LimiterRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { getCurrentTheme } from './theme.ts'
 
@@ -10,6 +10,7 @@ type UseCompressorWidgetParams = {
   program1: ProgramInstance | undefined
   ringPos: Uint8Array<SharedArrayBuffer> | undefined
   compressorRefs: CompressorRef[] | undefined
+  limiterRefs: LimiterRef[] | undefined
   dspSource: string
   showWidgets: boolean
   isLive: boolean
@@ -29,9 +30,13 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 function compReductionDb(inputDb: number, th: number, ratio: number, knee: number): number {
-  const r = clamp(ratio, 1, 20)
+  const r = ratio === Infinity ? Infinity : clamp(ratio, 1, 20)
   const k = clamp(knee, 0, 40)
   const t = clamp(th, -80, 0)
+  if (r === Infinity) {
+    // Hard limiting: anything above threshold gets reduced to exactly the threshold
+    return inputDb > t ? inputDb - t : 0
+  }
   const ratioFactor = 1 - 1 / r
   if (k > 0) {
     const kneeStart = t - k / 2
@@ -48,13 +53,20 @@ export function useCompressorWidget({
   program1,
   ringPos,
   compressorRefs,
+  limiterRefs,
   dspSource,
   showWidgets,
   isLive,
   playbackState,
   sampleRate,
 }: UseCompressorWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
-  const refs = compressorRefs ?? []
+  const compressorRefs_ = compressorRefs ?? []
+  const limiterRefs_ = limiterRefs ?? []
+  // Create unified refs with type information
+  const refs = [
+    ...compressorRefs_.map(ref => ({ type: 'compressor' as const, ref })),
+    ...limiterRefs_.map(ref => ({ type: 'limiter' as const, ref })),
+  ]
   const stRef = useRef<Array<CompressorState | undefined>>([])
   const seenRef = useRef<Set<number>>(new Set())
 
@@ -68,7 +80,7 @@ export function useCompressorWidget({
     if (!isLive) return
     if (playbackState === 'stopped') return
 
-    const canRead = !!program1?.program?.compressorOuts && !!ringPos
+    const canRead = !!program1?.program && !!ringPos
     if (!canRead) return
 
     const currentChunkPos = Atomics.load(ringPos!, 0)
@@ -76,19 +88,21 @@ export function useCompressorWidget({
     const seen = seenRef.current
     seen.clear()
 
-    for (const ref of refs) {
-      const idx = ref.compressorIndex | 0
+    for (const { type, ref } of refs) {
+      const baseIdx = (type === 'compressor' ? ref.compressorIndex : ref.limiterIndex) | 0
+      const idx = type === 'compressor' ? baseIdx : baseIdx + 64 // Use different ranges
       if (seen.has(idx)) continue
       seen.add(idx)
 
-      let st = stArr[idx]
+      let st = stRef.current[idx]
       if (!st) {
         st = { levelWave: new WaveformBuffer(), grWave: new WaveformBuffer(), levelFloats: null, grFloats: null }
-        stArr[idx] = st
+        stRef.current[idx] = st
       }
 
-      const levelRing = program1!.program!.compressorOuts.levelDb[idx] as Ring | undefined
-      const grRing = program1!.program!.compressorOuts.grDb[idx] as Ring | undefined
+      const outs = type === 'compressor' ? program1!.program!.compressorOuts : program1!.program!.limiterOuts
+      const levelRing = outs.levelDb[baseIdx] as Ring | undefined
+      const grRing = outs.grDb[baseIdx] as Ring | undefined
       if (!levelRing || !grRing) {
         st.levelFloats = null
         st.grFloats = null
@@ -104,13 +118,15 @@ export function useCompressorWidget({
 
   const drawCompressor = useCallback((
     c: CanvasRenderingContext2D,
-    ref: CompressorRef,
+    type: 'compressor' | 'limiter',
+    ref: CompressorRef | LimiterRef,
     widgetY: number,
     widgetHeight: number,
     viewX: number,
     viewWidth: number,
   ) => {
-    const idx = ref.compressorIndex | 0
+    const baseIdx = (type === 'compressor' ? (ref as CompressorRef).compressorIndex : (ref as LimiterRef).limiterIndex) | 0
+    const idx = type === 'compressor' ? baseIdx : baseIdx + 64
     const st = stRef.current[idx]
     const level = isLive ? st?.levelFloats : null
     const gr = isLive ? st?.grFloats : null
@@ -139,8 +155,8 @@ export function useCompressorWidget({
     const chartH = Math.max(1, h - pad * 2)
 
     const th = ref.params.threshold
-    const ratio = ref.params.ratio
-    const knee = ref.params.knee
+    const ratio = type === 'limiter' ? Infinity : ref.params.ratio
+    const knee = type === 'limiter' ? 0 : ref.params.knee
 
     const curLevel = level && level.length > 0 ? Math.max(...level) : -80
     const curGr = gr && gr.length > 0 ? Math.max(...gr) : 0
@@ -366,7 +382,7 @@ export function useCompressorWidget({
 
     const out: EditorWidget[] = []
 
-    for (const ref of refs) {
+    for (const { type, ref } of refs) {
       out.push({
         type: 'above',
         line: ref.aboveLoc.line,
@@ -374,7 +390,7 @@ export function useCompressorWidget({
         length: Math.max(1, ref.aboveLoc.length),
         height: 40,
         render: (ctx, x, y, w, h, vx, vw) => {
-          drawCompressor(ctx, ref, y, h, x, w)
+          drawCompressor(ctx, type, ref, y, h, x, w)
         },
       })
     }

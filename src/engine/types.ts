@@ -10,6 +10,7 @@ import {
   type EveryRef,
   type FilterRef,
   type LfoRef,
+  type LimiterRef,
   type LpRef,
   type MiniSequenceRef,
   type NumberWithParamsInfo,
@@ -32,6 +33,7 @@ export type WidgetCompileResult = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]

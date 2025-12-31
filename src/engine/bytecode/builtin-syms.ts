@@ -16,6 +16,7 @@ export const builtinSyms: Record<string, number> = {
   mini: VmSym.Mini,
   analyser: VmSym.Analyser,
   compressor: VmSym.Compressor,
+  limiter: VmSym.Limiter,
   t: VmSym.T,
   co: VmSym.Co,
   play: VmSym.Play,

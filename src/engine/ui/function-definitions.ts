@@ -329,6 +329,22 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'compressor(in:$, attack:.005, release:.2, threshold:-18, ratio:6, knee:8) |> out($)',
     ],
   },
+
+  limiter: {
+    name: 'limiter',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
+    ],
+    returnType: 'number',
+    description:
+      'Limits the input signal to never exceed the threshold. Uses infinite ratio (hard limiting) with per-sample attack.',
+    examples: [
+      'limiter(saw(hz), .1, -12) |> out($)',
+      'limiter(in:$, release:.05, threshold:-6) |> out($)',
+    ],
+  },
   mini: {
     name: 'mini',
     parameters: [
@@ -1234,7 +1250,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'hi', type: 'number', description: 'Upper bound' },
     ],
     returnType: 'number',
-    description: 'Wraps value back and forth between lo and hi, producing a triangle-wave pattern (works with audio-rate and scalar values).',
+    description:
+      'Wraps value back and forth between lo and hi, producing a triangle-wave pattern (works with audio-rate and scalar values).',
     examples: ['t * 10 |> pingpong($, 0, 1) |> out($)'],
   },
   fold: {
@@ -1283,7 +1300,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'step', type: 'number', description: 'Step size' },
     ],
     returnType: 'number',
-    description: 'Snaps value to nearest multiple of step: round(x / step) * step (works with audio-rate and scalar values).',
+    description:
+      'Snaps value to nearest multiple of step: round(x / step) * step (works with audio-rate and scalar values).',
     examples: ['sine(220) |> snap($, 0.25) |> out($)'],
   },
   fract: {
@@ -1297,7 +1315,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     name: 'sign',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Sign function: -1 for negative, 0 for zero, 1 for positive (works with audio-rate and scalar values).',
+    description:
+      'Sign function: -1 for negative, 0 for zero, 1 for positive (works with audio-rate and scalar values).',
     examples: ['sign(sine(220)) |> out($)'],
   },
   lerp: {
@@ -1319,7 +1338,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'edge1', type: 'number', description: 'Upper edge' },
     ],
     returnType: 'number',
-    description: 'Smooth Hermite interpolation between 0 and 1 when x is between edge0 and edge1 (works with audio-rate and scalar values).',
+    description:
+      'Smooth Hermite interpolation between 0 and 1 when x is between edge0 and edge1 (works with audio-rate and scalar values).',
     examples: ['smoothstep(sine(1), -0.5, 0.5) |> out($)'],
   },
   smootherstep: {
@@ -1330,7 +1350,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'edge1', type: 'number', description: 'Upper edge' },
     ],
     returnType: 'number',
-    description: 'Even smoother interpolation (6t⁵ - 15t⁴ + 10t³) between 0 and 1 (works with audio-rate and scalar values).',
+    description:
+      'Even smoother interpolation (6t⁵ - 15t⁴ + 10t³) between 0 and 1 (works with audio-rate and scalar values).',
     examples: ['smootherstep(sine(1), -0.5, 0.5) |> out($)'],
   },
   step: {
@@ -1347,7 +1368,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     name: 'heaviside',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Heaviside step function: 0 for x < 0, 0.5 for x = 0, 1 for x > 0 (works with audio-rate and scalar values).',
+    description:
+      'Heaviside step function: 0 for x < 0, 0.5 for x = 0, 1 for x > 0 (works with audio-rate and scalar values).',
     examples: ['heaviside(sine(220)) |> out($)'],
   },
   select: {
