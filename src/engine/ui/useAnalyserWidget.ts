@@ -349,7 +349,7 @@ function drawAmplitudeScroller(
   const ampBarHeight = Math.max(1, Math.min(st.pxH, peak * st.pxH))
   const ampY = (st.pxH - ampBarHeight) / 2
   if (Number.isFinite(peak) && Number.isFinite(ampBarHeight) && Number.isFinite(ampY)) {
-    const grad = createGreyVerticalGradient(offCtx, drawX, ampY, ampY + ampBarHeight, peak > 1)
+    const grad = peak > 1 ? '#f00' : createGreyVerticalGradient(offCtx, drawX, ampY, ampY + ampBarHeight)
     offCtx.fillStyle = grad
     offCtx.fillRect(drawX, ampY, 1, ampBarHeight)
   }

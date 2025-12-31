@@ -258,6 +258,166 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Delay)
       return
     }
+    if (sym === VmSym.Sin) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Sin)
+      return
+    }
+    if (sym === VmSym.Cos) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Cos)
+      return
+    }
+    if (sym === VmSym.Tan) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Tan)
+      return
+    }
+    if (sym === VmSym.Asin) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Asin)
+      return
+    }
+    if (sym === VmSym.Acos) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Acos)
+      return
+    }
+    if (sym === VmSym.Tanh) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Tanh)
+      return
+    }
+    if (sym === VmSym.Atan) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Atan)
+      return
+    }
+    if (sym === VmSym.Abs) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Abs)
+      return
+    }
+    if (sym === VmSym.Sqrt) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Sqrt)
+      return
+    }
+    if (sym === VmSym.Square) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Square)
+      return
+    }
+    if (sym === VmSym.Cube) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Cube)
+      return
+    }
+    if (sym === VmSym.Hypot) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Hypot)
+      return
+    }
+    if (sym === VmSym.Log) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Log)
+      return
+    }
+    if (sym === VmSym.Exp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Exp)
+      return
+    }
+    if (sym === VmSym.Log10) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Log10)
+      return
+    }
+    if (sym === VmSym.Log2) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Log2)
+      return
+    }
+    if (sym === VmSym.Exp2) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Exp2)
+      return
+    }
+    if (sym === VmSym.Min) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Min)
+      return
+    }
+    if (sym === VmSym.Max) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Max)
+      return
+    }
+    if (sym === VmSym.Clamp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Clamp)
+      return
+    }
+    if (sym === VmSym.Wrap) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Wrap)
+      return
+    }
+    if (sym === VmSym.Mod) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Mod)
+      return
+    }
+    if (sym === VmSym.Pingpong) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Pingpong)
+      return
+    }
+    if (sym === VmSym.Fold) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Fold)
+      return
+    }
+    if (sym === VmSym.Floor) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Floor)
+      return
+    }
+    if (sym === VmSym.Ceil) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Ceil)
+      return
+    }
+    if (sym === VmSym.Round) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Round)
+      return
+    }
+    if (sym === VmSym.Trunc) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Trunc)
+      return
+    }
+    if (sym === VmSym.Snap) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Snap)
+      return
+    }
+    if (sym === VmSym.Fract) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Fract)
+      return
+    }
+    if (sym === VmSym.Sign) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Sign)
+      return
+    }
+    if (sym === VmSym.Lerp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Lerp)
+      return
+    }
+    if (sym === VmSym.Smoothstep) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Smoothstep)
+      return
+    }
+    if (sym === VmSym.Smootherstep) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Smootherstep)
+      return
+    }
+    if (sym === VmSym.Step) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Step)
+      return
+    }
+    if (sym === VmSym.Heaviside) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Heaviside)
+      return
+    }
+    if (sym === VmSym.Select) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Select)
+      return
+    }
+    if (sym === VmSym.Isnan) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Isnan)
+      return
+    }
+    if (sym === VmSym.Isinf) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Isinf)
+      return
+    }
+    if (sym === VmSym.Safediv) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Safediv)
+      return
+    }
     if (sym === VmSym.T) {
       const outIndex = audio.getTRamp(length, program)
       stack.push(VmTag.Audio, 0.0, outIndex)
