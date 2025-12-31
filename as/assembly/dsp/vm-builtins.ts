@@ -10,6 +10,7 @@ import { callCompressor } from './builtins/compressor'
 import { callLimiter } from './builtins/limiter'
 import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
+import { callFreeverb } from './builtins/freeverb'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
 import { callGlide } from './builtins/glide'
@@ -357,6 +358,12 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Delay) {
       callDelay(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Freeverb) {
+      callFreeverb(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
       return
     }
 

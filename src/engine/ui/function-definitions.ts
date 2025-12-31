@@ -709,6 +709,67 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'sine(220) |> delay($, seconds:.35, feedback:.4, callback:x -> lp(x, cutoff:1000, q:.8)) |> out($)',
     ],
   },
+  freeverb: {
+    name: 'freeverb',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to reverberate' },
+      {
+        name: 'roomsize',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.5,
+        description: 'Room size (0..1); higher values increase decay/feedback',
+      },
+      {
+        name: 'damp',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.5,
+        description: 'High-frequency damping (0..1); higher values damp more',
+      },
+      {
+        name: 'wet',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.33,
+        description: 'Wet mix amount (0..1)',
+      },
+      {
+        name: 'dry',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.7,
+        description: 'Dry mix amount (0..1)',
+      },
+      {
+        name: 'width',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Width (0..1); affects wet blend (mono-friendly)',
+      },
+      {
+        name: 'freeze',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Freeze mode (0/1); locks into infinite reverb-like sustain',
+      },
+      {
+        name: 'index',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Widget/history index (0..63)',
+      },
+    ],
+    returnType: 'number',
+    description: 'Freeverb-style reverb effect; returns wet+dry mixed signal.',
+    examples: [
+      'saw(hz) |> freeverb($, roomsize:.6, damp:.3, wet:.25, dry:.75) |> out($)',
+      'sine(220) |> freeverb($, roomsize:.85, damp:.1, wet:.35, dry:.65, freeze:0) |> out($)',
+    ],
+  },
   note: {
     name: 'note',
     parameters: [

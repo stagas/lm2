@@ -5,6 +5,7 @@ import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
 import { Delay } from './gen/delay'
+import { Freeverb } from './gen/freeverb'
 import { Limiter } from './gen/limiter'
 import { Euclid } from './gen/euclid'
 import { Every } from './gen/every'
@@ -96,6 +97,7 @@ export class GensPool {
   private fractals: GenPool<FractalNoise> = new GenPool<FractalNoise>(() => new FractalNoise())
   private delays: GenPool<Delay> = new GenPool<Delay>(() => new Delay())
   private limiters: GenPool<Limiter> = new GenPool<Limiter>(() => new Limiter())
+  private freeverbs: GenPool<Freeverb> = new GenPool<Freeverb>(() => new Freeverb())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -138,6 +140,7 @@ export class GensPool {
     this.fractals.resetIndex()
     this.delays.resetIndex()
     this.limiters.resetIndex()
+    this.freeverbs.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -181,6 +184,7 @@ export class GensPool {
     this.fractals.reset()
     this.delays.reset()
     this.limiters.reset()
+    this.freeverbs.reset()
   }
 
   get(op: Op): Gen {
@@ -267,6 +271,8 @@ export class GensPool {
         return this.delays.get()
       case Op.Limiter:
         return this.limiters.get()
+      case Op.Freeverb:
+        return this.freeverbs.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -311,5 +317,6 @@ export class GensPool {
     this.smooths.copyFrom(source.smooths)
     this.fractals.copyFrom(source.fractals)
     this.limiters.copyFrom(source.limiters)
+    this.freeverbs.copyFrom(source.freeverbs)
   }
 }

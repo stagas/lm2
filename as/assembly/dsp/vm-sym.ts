@@ -155,4 +155,10 @@ export enum VmSym {
   Edge1,
   Cond,
   Limiter,
+  Freeverb,
+  Roomsize,
+  Damp,
+  Wet,
+  Dry,
+  Freeze,
 }

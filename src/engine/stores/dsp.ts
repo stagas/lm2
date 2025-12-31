@@ -66,6 +66,7 @@ export type EngineDspState = {
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
+  freeverbRefs: FreeverbRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
@@ -88,6 +89,7 @@ export type EngineDspState = {
   uiCompressorRefs: CompressorRef[]
   uiLimiterRefs: LimiterRef[]
   uiLpRefs: LpRef[]
+  uiFreeverbRefs: FreeverbRef[]
   uiSlicerRefs: SlicerRef[]
   uiLfoRefs: LfoRef[]
   uiEveryRefs: EveryRef[]
@@ -124,6 +126,7 @@ export type EngineDspState = {
     analyserRefs: AnalyserRef[]
     compressorRefs: CompressorRef[]
     filterRefs: FilterRef[]
+    freeverbRefs: FreeverbRef[]
     slicerRefs: SlicerRef[]
     lfoRefs: LfoRef[]
     everyRefs: EveryRef[]
@@ -395,6 +398,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const compressorRefs = primaryResult.compressorRefs
       const limiterRefs = primaryResult.limiterRefs
       const filterRefs = primaryResult.filterRefs
+      const freeverbRefs = primaryResult.freeverbRefs
       const slicerRefs = primaryResult.slicerRefs
       const lfoRefs = primaryResult.lfoRefs
       const everyRefs = primaryResult.everyRefs
@@ -425,6 +429,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           compressorRefs,
           limiterRefs,
           filterRefs,
+          freeverbRefs,
           slicerRefs,
           lfoRefs,
           everyRefs,
@@ -447,6 +452,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiCompressorRefs: compressorRefs,
           uiLimiterRefs: limiterRefs,
           uiLpRefs: filterRefs,
+          uiFreeverbRefs: freeverbRefs,
           uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
@@ -580,6 +586,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         analyserRefs: stagingResult.analyserRefs,
         compressorRefs: stagingResult.compressorRefs,
         filterRefs: stagingResult.filterRefs,
+        freeverbRefs: stagingResult.freeverbRefs,
         slicerRefs: stagingResult.slicerRefs,
         lfoRefs: stagingResult.lfoRefs,
         everyRefs: stagingResult.everyRefs,
@@ -767,6 +774,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiCompressorRefs: [],
     uiLimiterRefs: [],
     uiLpRefs: [],
+    uiFreeverbRefs: [],
     uiSlicerRefs: [],
     uiLfoRefs: [],
     uiEveryRefs: [],
@@ -863,6 +871,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiCompressorRefs: [],
         uiLimiterRefs: [],
         uiLpRefs: [],
+    uiFreeverbRefs: [],
         uiSlicerRefs: [],
         uiLfoRefs: [],
         uiEveryRefs: [],
@@ -1056,6 +1065,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           compressorRefs,
           limiterRefs,
           filterRefs,
+          freeverbRefs,
           slicerRefs,
           lfoRefs,
           everyRefs,
@@ -1078,6 +1088,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiCompressorRefs: compressorRefs,
           uiLimiterRefs: limiterRefs,
           uiLpRefs: filterRefs,
+          uiFreeverbRefs: freeverbRefs,
           uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
