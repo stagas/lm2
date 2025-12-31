@@ -17,8 +17,7 @@ import { compileMiniNotation } from '../../mini/compiler.ts'
 import { isLocalId, makeLocalId } from '../../utils/id.ts'
 import {
   encodeLangToVmOps,
-  extractBarsFromSource,
-  extractTimelineLabelsFromSource,
+  extractEarlyDataFromSource,
 } from '../bytecode/bytecode.ts'
 import type { VmCompileSnapshot } from '../dsp/program.ts'
 import { buildTimelineLabels } from '../dsp/timeline-labels.ts'
@@ -444,22 +443,19 @@ function DspSourceEditorReady(
     if (code === dspSource) return timelineLabels
     if (hasCompileErrors) return timelineLabels
 
-    const labelsExtracted = extractTimelineLabelsFromSource(code)
-    if (labelsExtracted.errors.length) return timelineLabels
+    const earlyData = extractEarlyDataFromSource(code)
+    if (earlyData.errors.length) return timelineLabels
 
-    const barsExtracted = extractBarsFromSource(code)
-    if (barsExtracted.errors.length) return timelineLabels
-
-    return buildTimelineLabels(labelsExtracted.labels, barsExtracted.bars)
+    return buildTimelineLabels(earlyData.timelineLabels, earlyData.bars)
   }, [code, dspSource, hasCompileErrors, timelineLabels])
 
   const barsForView = useMemo(() => {
     if (code === dspSource) return bars
     if (hasCompileErrors) return bars
 
-    const extracted = extractBarsFromSource(code)
-    if (extracted.errors.length) return bars
-    return extracted.bars
+    const earlyData = extractEarlyDataFromSource(code)
+    if (earlyData.errors.length) return bars
+    return earlyData.bars
   }, [bars, code, dspSource, hasCompileErrors])
 
   useEffect(() => {

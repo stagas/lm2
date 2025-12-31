@@ -2,6 +2,7 @@ import { SEQ_VOICES } from '../../../as/assembly/constants.ts'
 import { Op, SeqOp } from '../../../as/assembly/shared.ts'
 import type {
   Loc,
+  Program,
 } from '../../lang/ast.ts'
 import { compile } from '../../lang/bytecode.ts'
 import { type LangError, lineText } from '../../lang/errors.ts'
@@ -11,24 +12,54 @@ import type { LexError, Token } from '../../lang/token.ts'
 import { checkUndefinedVariableErrors } from '../../lang/undefined-variable.ts'
 import { parseChordSuffix, romanToDegree } from '../../mini/chord-parser.ts'
 import { findScaleIndex } from '../../mini/scales.ts'
+import { walkAst } from './ast-walker.ts'
 import { builtinSyms } from './builtin-syms.ts'
-import { extractAnalysersFromProgramWithRefs } from './extract-analysers.ts'
-import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bars.ts'
-import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
-import { extractFilterNumberLiteralsFromProgram, extractFiltersFromProgramWithRefs } from './extract-filter.ts'
-import { extractLfosFromProgramWithRefs } from './extract-lfo.ts'
-import { extractLimitersFromProgramWithRefs } from './extract-limiters.ts'
-import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
-import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
-import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
-import { extractScaleFromProgram } from './extract-scale.ts'
-import { extractSlicersFromProgramWithRefs } from './extract-slicers.ts'
-import { extractTimelineLabelsFromProgram } from './extract-timeline-labels.ts'
-import { extractTimelineSequencesFromProgramWithRefs } from './extract-timeline-sequences.ts'
 import {
-  extractAtsFromProgramWithRefs,
-  extractEuclidsFromProgramWithRefs,
-  extractEveriesFromProgramWithRefs,
+  createAnalyserVisitor,
+} from './extract-analysers.ts'
+import {
+  createBarsVisitor,
+  createBpmVisitor,
+} from './extract-bpm-bars.ts'
+import {
+  createCompressorVisitor,
+} from './extract-compressors.ts'
+import {
+  createFilterNumberLiteralsVisitor,
+  createFiltersVisitor,
+} from './extract-filter.ts'
+import {
+  createLfoVisitor,
+} from './extract-lfo.ts'
+import {
+  createLimiterVisitor,
+} from './extract-limiters.ts'
+import {
+  createMiniSequencesVisitor,
+} from './extract-mini.ts'
+import {
+  createNumberLiteralsVisitor,
+  createNumberParamsVisitor,
+} from './extract-numbers.ts'
+import {
+  createSamplesVisitor,
+} from './extract-samples.ts'
+import {
+  createScaleVisitor,
+} from './extract-scale.ts'
+import {
+  createSlicersVisitor,
+} from './extract-slicers.ts'
+import {
+  createTimelineLabelsVisitor,
+} from './extract-timeline-labels.ts'
+import {
+  createTimelineSequencesVisitor,
+} from './extract-timeline-sequences.ts'
+import {
+  createAtVisitor,
+  createEuclidVisitor,
+  createEveryVisitor,
 } from './extract-trigs.ts'
 import { binaryCode, encoderError, tryEvalConstNumber, unaryCode } from './helpers.ts'
 import { POSTLUDE, PRELUDE } from './prelude.ts'
@@ -82,8 +113,10 @@ const NOTE_OFFSETS: Record<string, number> = {
   b: 11,
 }
 
+const NOTE_REGEXP = /^([a-gA-G])([#b]?)(\d+)$/
+
 function noteIdentToMidi(name: string): number | null {
-  const m = name.match(/^([a-gA-G])([#b]?)(\d+)$/)
+  const m = name.match(NOTE_REGEXP)
   if (!m) return null
   const note = m[1]!.toLowerCase()
   const acc = m[2] ?? ''
@@ -97,6 +130,134 @@ function noteIdentToMidi(name: string): number | null {
 }
 
 export { Op, SEQ_VOICES, SeqOp }
+
+function extractEarlyDataFromProgram(src: string, program: Program, errors: LangError[]) {
+  // Initialize result collections
+  const sequences: string[] = []
+  const miniRefs: MiniSequenceRef[] = []
+  const timelineSequences: TimelineSequenceDef[] = []
+  const timelineRefs: TimelineSequenceRef[] = []
+  const timelineLabels: TimelineLabel[] = []
+  const samples: SampleDef[] = []
+  const numberParams: NumberWithParamsInfo[] = []
+  const filterNumberLiterals: NumberWithParamsInfo[] = []
+  const numberLiterals: NumberLiteralInfo[] = []
+  const result = { bpm: undefined as number | undefined, bars: undefined as number | undefined,
+    scale: undefined as number | undefined }
+
+  // Create all visitor instances for early extraction
+  const visitors = [
+    createBpmVisitor(src, errors, result),
+    createBarsVisitor(src, errors, result),
+    createScaleVisitor(src, errors, result),
+    createMiniSequencesVisitor(src, sequences, miniRefs),
+    createTimelineSequencesVisitor(src, timelineSequences, timelineRefs),
+    createTimelineLabelsVisitor(timelineLabels),
+    createSamplesVisitor(src, samples, errors),
+    createNumberParamsVisitor(numberParams),
+    createFilterNumberLiteralsVisitor(filterNumberLiterals),
+    createNumberLiteralsVisitor(numberLiterals),
+  ]
+
+  // Run all visitors in a single AST traversal
+  walkAst(program, visitors, { src })
+
+  return {
+    bpm: result.bpm,
+    bars: result.bars,
+    scale: result.scale,
+    sequences,
+    miniRefs,
+    timelineSequences,
+    timelineRefs,
+    timelineLabels,
+    samples,
+    numberParams: numberParams.filter(p => p.line > 0),
+    filterNumberLiterals: filterNumberLiterals.filter(p => p.line > 0),
+    numberLiterals: numberLiterals.filter(p => p.line > 0),
+  }
+}
+
+function extractAllRefsFromProgram(src: string, program: Program) {
+  // Initialize result collections
+  const analyserRefs: AnalyserRef[] = []
+  const compressorRefs: CompressorRef[] = []
+  const limiterRefs: LimiterRef[] = []
+  const filterRefs: FilterRef[] = []
+  const slicerRefs: SlicerRef[] = []
+  const lfoRefs: LfoRef[] = []
+  const everyRefs: EveryRef[] = []
+  const atRefs: AtRef[] = []
+  const euclidRefs: EuclidRef[] = []
+
+  // Create all visitor instances
+  const visitors = [
+    createAnalyserVisitor(analyserRefs),
+    createCompressorVisitor(src, compressorRefs),
+    createLimiterVisitor(src, limiterRefs),
+    createFiltersVisitor(src, filterRefs),
+    createSlicersVisitor(src, slicerRefs),
+    createLfoVisitor(src, lfoRefs),
+    createEveryVisitor(everyRefs),
+    createAtVisitor(atRefs),
+    createEuclidVisitor(euclidRefs),
+  ]
+
+  // Run all visitors in a single AST traversal
+  walkAst(program, visitors, { src })
+
+  return {
+    analyserRefs,
+    compressorRefs,
+    limiterRefs,
+    filterRefs,
+    slicerRefs,
+    lfoRefs,
+    everyRefs,
+    atRefs,
+    euclidRefs,
+  }
+}
+
+export function extractEarlyDataFromSource(src: string): {
+  bpm?: number
+  bars?: number
+  scale?: number
+  sequences: string[]
+  miniRefs: MiniSequenceRef[]
+  timelineSequences: TimelineSequenceDef[]
+  timelineRefs: TimelineSequenceRef[]
+  timelineLabels: TimelineLabel[]
+  samples: SampleDef[]
+  numberParams: NumberWithParamsInfo[]
+  filterNumberLiterals: NumberWithParamsInfo[]
+  numberLiterals: NumberLiteralInfo[]
+  errors: LangError[]
+} {
+  const lexed = lex(src)
+  const parsed = parse(src, lexed.tokens)
+  const errors: LangError[] = [...lexed.errors, ...parsed.errors]
+  if (errors.length) {
+    return {
+      bpm: undefined,
+      bars: undefined,
+      scale: undefined,
+      sequences: [],
+      miniRefs: [],
+      timelineSequences: [],
+      timelineRefs: [],
+      timelineLabels: [],
+      samples: [],
+      numberParams: [],
+      filterNumberLiterals: [],
+      numberLiterals: [],
+      errors,
+    }
+  }
+
+  const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
+  return { ...earlyData, errors: [] }
+}
 
 export function encodeLangToVmOps(
   src: string,
@@ -219,27 +380,24 @@ export function encodeLangToVmOps(
 
   if (errors.length) return { errors, visualizerVertex, visualizerFragment }
 
-  const bpm = extractBpmFromProgram(src, parsed.program, errors)
-  const bars = extractBarsFromProgram(src, parsed.program, errors)
-  const scale = extractScaleFromProgram(src, parsed.program, errors)
+  // Extract all early data in a single AST traversal
+  const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
   if (errors.length) return { errors }
 
-  const { sequences, refs } = extractMiniSequencesFromProgramWithRefs(src, parsed.program)
-  const timelineExtracted = extractTimelineSequencesFromProgramWithRefs(src, parsed.program)
-  const timelineLabels = extractTimelineLabelsFromProgram(parsed.program)
-  const samplesExtracted = extractSamplesFromProgramWithRefs(src, parsed.program, errors)
-  if (errors.length) return { errors }
-  let analyserRefs: AnalyserRef[] = []
-  let compressorRefs: CompressorRef[] = []
-  let limiterRefs: LimiterRef[] = []
-  let filterRefs: FilterRef[] = []
-  let slicerRefs: SlicerRef[] = []
-  let lfoRefs: LfoRef[] = []
-  let everyRefs: EveryRef[] = []
-  let atRefs: AtRef[] = []
-  let euclidRefs: EuclidRef[] = []
-  const explicitNumberParams = extractNumberParamsFromProgram(parsed.program).filter(p => p.line > 0)
-  const lpNumberLiterals = extractFilterNumberLiteralsFromProgram(src, parsed.program).filter(p => p.line > 0)
+  const {
+    bpm,
+    bars,
+    scale,
+    sequences,
+    miniRefs,
+    timelineSequences,
+    timelineRefs,
+    timelineLabels,
+    samples,
+    numberParams: explicitNumberParams,
+    filterNumberLiterals: lpNumberLiterals,
+    numberLiterals,
+  } = earlyData
 
   // Create a set of locations that already have explicit sliders
   const explicitSliderKeys = new Set(explicitNumberParams.map(p => `${p.line}:${p.column}:${p.length}`))
@@ -250,16 +408,26 @@ export function encodeLangToVmOps(
   )
 
   const numberParams = [...explicitNumberParams, ...filteredLpNumberLiterals]
-  const numberLiterals = extractNumberLiteralsFromProgram(parsed.program).filter(p => p.line > 0)
+
+  // Initialize ref collections for late extraction
+  let analyserRefs: AnalyserRef[] = []
+  let compressorRefs: CompressorRef[] = []
+  let limiterRefs: LimiterRef[] = []
+  let filterRefs: FilterRef[] = []
+  let slicerRefs: SlicerRef[] = []
+  let lfoRefs: LfoRef[] = []
+  let everyRefs: EveryRef[] = []
+  let atRefs: AtRef[] = []
+  let euclidRefs: EuclidRef[] = []
   const sliderKeyOf = (loc: Pick<Loc, 'line' | 'column' | 'length'>) => `${loc.line}:${loc.column}:${loc.length}`
   const sliderKeys = new Set(numberParams.map(p => sliderKeyOf(p)))
   const sequenceToIndex = new Map<string, number>()
   sequences.forEach((seq, idx) => sequenceToIndex.set(seq, idx))
   const timelineKeyToIndex = new Map<string, number>()
-  timelineExtracted.sequences.forEach((s, idx) => timelineKeyToIndex.set(s.sequence, idx))
+  timelineSequences.forEach((s, idx) => timelineKeyToIndex.set(s.sequence, idx))
   const miniCount = sequences.length
   const sampleKeyToIndex = new Map<string, number>()
-  for (const s of samplesExtracted.samples) {
+  for (const s of samples) {
     sampleKeyToIndex.set(`freesound:${s.id}`, s.sampleIndex)
   }
 
@@ -864,15 +1032,17 @@ export function encodeLangToVmOps(
   const transformedProgram = { ...parsed.program, body: parsed.program.body.map(transformStmt).filter(Boolean) } as any
   errors.push(...checkUndefinedVariableErrors(src, transformedProgram))
   if (errors.length) return { errors }
-  analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
-  compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
-  limiterRefs = extractLimitersFromProgramWithRefs(src, transformedProgram)
-  filterRefs = extractFiltersFromProgramWithRefs(src, transformedProgram)
-  slicerRefs = extractSlicersFromProgramWithRefs(src, transformedProgram)
-  lfoRefs = extractLfosFromProgramWithRefs(src, transformedProgram)
-  everyRefs = extractEveriesFromProgramWithRefs(src, transformedProgram)
-  atRefs = extractAtsFromProgramWithRefs(src, transformedProgram)
-  euclidRefs = extractEuclidsFromProgramWithRefs(src, transformedProgram)
+  // Extract all references in a single AST traversal
+  const extractionResults = extractAllRefsFromProgram(src, transformedProgram)
+  analyserRefs = extractionResults.analyserRefs
+  compressorRefs = extractionResults.compressorRefs
+  limiterRefs = extractionResults.limiterRefs
+  filterRefs = extractionResults.filterRefs
+  slicerRefs = extractionResults.slicerRefs
+  lfoRefs = extractionResults.lfoRefs
+  everyRefs = extractionResults.everyRefs
+  atRefs = extractionResults.atRefs
+  euclidRefs = extractionResults.euclidRefs
   const compiled = compile(src, transformedProgram)
   errors.push(...compiled.errors)
   if (errors.length) return { errors }
@@ -1234,7 +1404,7 @@ export function encodeLangToVmOps(
     }
   }
 
-  const timelineRefs = timelineExtracted.refs.map(r => ({ ...r, seqIndex: miniCount + r.seqIndex }))
+  const timelineRefsMapped = timelineRefs.map(r => ({ ...r, seqIndex: miniCount + r.seqIndex }))
   const numberParamsWithLiteralIndex = numberParams.map(p => ({
     ...p,
     literalIndex: locKeyToLiteralIndex.get(sliderKeyOf(p)),
@@ -1253,9 +1423,9 @@ export function encodeLangToVmOps(
       bars,
       scale,
       miniSequences: sequences,
-      miniRefs: refs,
-      timelineSequences: timelineExtracted.sequences,
-      timelineRefs,
+      miniRefs: miniRefs,
+      timelineSequences,
+      timelineRefs: timelineRefsMapped,
       timelineLabels,
       analyserRefs,
       compressorRefs,
@@ -1270,7 +1440,7 @@ export function encodeLangToVmOps(
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,
       numberLiterals: numberLiteralsWithLiteralIndex,
-      sampleDefs: samplesExtracted.samples,
+      sampleDefs: samples,
     }
     : {
       errors: [],
@@ -1280,9 +1450,9 @@ export function encodeLangToVmOps(
       bars,
       scale,
       miniSequences: sequences,
-      miniRefs: refs,
-      timelineSequences: timelineExtracted.sequences,
-      timelineRefs,
+      miniRefs: miniRefs,
+      timelineSequences,
+      timelineRefs: timelineRefsMapped,
       timelineLabels,
       analyserRefs,
       compressorRefs,
@@ -1297,6 +1467,6 @@ export function encodeLangToVmOps(
       branchMarks,
       numberParams: numberParamsWithLiteralIndex,
       numberLiterals: numberLiteralsWithLiteralIndex,
-      sampleDefs: samplesExtracted.samples,
+      sampleDefs: samples,
     }
 }

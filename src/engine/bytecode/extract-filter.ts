@@ -60,14 +60,13 @@ function getDefaultParams(filterType: FilterType): { cutoff: number; q: number; 
   }
 }
 
-function visit(src: string, program: Program): FilterRef[] {
-  const refs: FilterRef[] = []
+
+
+export function createFiltersVisitor(src: string, refs: FilterRef[]) {
   const lineStarts = buildLineStartsForLocs(src)
 
-  function visitExpr(expr: Expr): void {
-    if (!expr) return
-
-    if (expr.kind === 'call') {
+  return {
+    visitCall(expr: Expr): void {
       const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
       const filterType = getFilterType(calleeName ?? '')
       if (filterType) {
@@ -102,205 +101,11 @@ function visit(src: string, program: Program): FilterRef[] {
           },
         })
       }
-
-      visitExpr(expr.callee)
-      for (const a of expr.args ?? []) {
-        if (a?.kind === 'pos' || a?.kind === 'named') visitExpr(a.value)
-      }
-      return
-    }
-
-    if (expr.kind === 'binary') {
-      visitExpr(expr.left)
-      visitExpr(expr.right)
-      return
-    }
-
-    if (expr.kind === 'assign') {
-      visitExpr(expr.target)
-      visitExpr(expr.value)
-      return
-    }
-
-    if (expr.kind === 'unary' || expr.kind === 'postfix') {
-      visitExpr(expr.expr)
-      return
-    }
-
-    if (expr.kind === 'member') {
-      visitExpr(expr.object)
-      if (expr.computed) visitExpr(expr.index)
-      return
-    }
-
-    if (expr.kind === 'array') {
-      for (const it of expr.items ?? []) visitExpr(it)
-      return
-    }
-
-    if (expr.kind === 'object') {
-      for (const p of expr.props ?? []) visitExpr(p.value)
-      return
-    }
-
-    if (expr.kind === 'if') {
-      visitExpr(expr.test)
-      if (expr.then?.kind === 'block') visitStmt(expr.then)
-      else visitExpr(expr.then)
-      if (expr.else) {
-        if (expr.else.kind === 'block') visitStmt(expr.else)
-        else visitExpr(expr.else)
-      }
-      return
-    }
-
-    if (expr.kind === 'func') {
-      if (expr.body?.kind === 'block') visitStmt(expr.body)
-      else visitExpr(expr.body)
-      return
     }
   }
-
-  function visitStmt(stmt: any): void {
-    if (!stmt) return
-    if (stmt.kind === 'expr_stmt') {
-      visitExpr(stmt.expr)
-      return
-    }
-    if (stmt.kind === 'block') {
-      for (const s of stmt.body ?? []) visitStmt(s)
-      return
-    }
-    if (stmt.kind === 'for') {
-      if (stmt.head?.kind === 'c_style') {
-        if (stmt.head.init) visitExpr(stmt.head.init)
-        if (stmt.head.test) visitExpr(stmt.head.test)
-        if (stmt.head.update) visitExpr(stmt.head.update)
-      }
-      else {
-        visitExpr(stmt.head?.iterable)
-      }
-      visitStmt(stmt.body)
-      return
-    }
-    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
-      visitExpr(stmt.test)
-      visitStmt(stmt.body)
-      return
-    }
-    if (stmt.kind === 'switch') {
-      visitExpr(stmt.test)
-      for (const c of stmt.cases ?? []) {
-        if (c.test) visitExpr(c.test)
-        for (const s of c.body ?? []) visitStmt(s)
-      }
-      return
-    }
-    if (stmt.kind === 'try') {
-      visitStmt(stmt.body)
-      if (stmt.catchBody) visitStmt(stmt.catchBody)
-      if (stmt.finallyBody) visitStmt(stmt.finallyBody)
-      return
-    }
-    if (stmt.kind === 'throw') {
-      visitExpr(stmt.value)
-      return
-    }
-    if (stmt.kind === 'return') {
-      if (stmt.value) visitExpr(stmt.value)
-      return
-    }
-    if (stmt.kind === 'label') {
-      visitStmt(stmt.stmt)
-      return
-    }
-    if (stmt.kind === 'destructure') {
-      visitExpr(stmt.value)
-      return
-    }
-  }
-
-  for (const s of program.body) visitStmt(s as any)
-  return refs
 }
 
-function collectFilterNumberLiterals(src: string, program: Program): NumberWithParamsInfo[] {
-  const refs: NumberWithParamsInfo[] = []
-  const lineStarts = buildLineStartsForLocs(src)
-
-  function visitExpr(expr: Expr): void {
-    if (!expr) return
-
-    if (expr.kind === 'call') {
-      const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
-      const filterType = getFilterType(calleeName ?? '')
-      if (filterType) {
-        // Collect number literals from the 2nd parameter (cutoff) of filter calls
-        const secondArg = expr.args?.[1]
-        if (secondArg && (secondArg.kind === 'pos' || secondArg.kind === 'named')) {
-          collectNumbersFromExpr(secondArg.value)
-        }
-      }
-
-      visitExpr(expr.callee)
-      for (const a of expr.args ?? []) {
-        if (a?.kind === 'pos' || a?.kind === 'named') visitExpr(a.value)
-      }
-      return
-    }
-
-    // ... other expression types remain the same
-    if (expr.kind === 'binary') {
-      visitExpr(expr.left)
-      visitExpr(expr.right)
-      return
-    }
-
-    if (expr.kind === 'assign') {
-      visitExpr(expr.target)
-      visitExpr(expr.value)
-      return
-    }
-
-    if (expr.kind === 'unary' || expr.kind === 'postfix') {
-      visitExpr(expr.expr)
-      return
-    }
-
-    if (expr.kind === 'member') {
-      visitExpr(expr.object)
-      if (expr.computed) visitExpr(expr.index)
-      return
-    }
-
-    if (expr.kind === 'array') {
-      for (const it of expr.items ?? []) visitExpr(it)
-      return
-    }
-
-    if (expr.kind === 'object') {
-      for (const p of expr.props ?? []) visitExpr(p.value)
-      return
-    }
-
-    if (expr.kind === 'if') {
-      visitExpr(expr.test)
-      if (expr.then?.kind === 'block') visitStmt(expr.then)
-      else visitExpr(expr.then)
-      if (expr.else) {
-        if (expr.else.kind === 'block') visitStmt(expr.else)
-        else visitExpr(expr.else)
-      }
-      return
-    }
-
-    if (expr.kind === 'func') {
-      if (expr.body?.kind === 'block') visitStmt(expr.body)
-      else visitExpr(expr.body)
-      return
-    }
-  }
-
+export function createFilterNumberLiteralsVisitor(refs: NumberWithParamsInfo[]) {
   function collectNumbersFromExpr(expr: Expr): void {
     if (!expr) return
 
@@ -351,73 +156,18 @@ function collectFilterNumberLiterals(src: string, program: Program): NumberWithP
     // Don't collect from calls, functions, etc. - only literals and their containing expressions
   }
 
-  function visitStmt(stmt: any): void {
-    if (!stmt) return
-    if (stmt.kind === 'expr_stmt') {
-      visitExpr(stmt.expr)
-      return
-    }
-    if (stmt.kind === 'block') {
-      for (const s of stmt.body ?? []) visitStmt(s)
-      return
-    }
-    if (stmt.kind === 'for') {
-      if (stmt.head?.kind === 'c_style') {
-        if (stmt.head.init) visitExpr(stmt.head.init)
-        if (stmt.head.test) visitExpr(stmt.head.test)
-        if (stmt.head.update) visitExpr(stmt.head.update)
+  return {
+    visitCall(expr: Expr): void {
+      const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
+      const filterType = getFilterType(calleeName ?? '')
+      if (filterType) {
+        // Collect number literals from the 2nd parameter (cutoff) of filter calls
+        const secondArg = expr.args?.[1]
+        if (secondArg && (secondArg.kind === 'pos' || secondArg.kind === 'named')) {
+          collectNumbersFromExpr(secondArg.value)
+        }
       }
-      else {
-        visitExpr(stmt.head?.iterable)
-      }
-      visitStmt(stmt.body)
-      return
-    }
-    if (stmt.kind === 'while' || stmt.kind === 'do_while') {
-      visitExpr(stmt.test)
-      visitStmt(stmt.body)
-      return
-    }
-    if (stmt.kind === 'switch') {
-      visitExpr(stmt.test)
-      for (const c of stmt.cases ?? []) {
-        if (c.test) visitExpr(c.test)
-        for (const s of c.body ?? []) visitStmt(s)
-      }
-      return
-    }
-    if (stmt.kind === 'try') {
-      visitStmt(stmt.body)
-      if (stmt.catchBody) visitStmt(stmt.catchBody)
-      if (stmt.finallyBody) visitStmt(stmt.finallyBody)
-      return
-    }
-    if (stmt.kind === 'throw') {
-      visitExpr(stmt.value)
-      return
-    }
-    if (stmt.kind === 'return') {
-      if (stmt.value) visitExpr(stmt.value)
-      return
-    }
-    if (stmt.kind === 'label') {
-      visitStmt(stmt.stmt)
-      return
-    }
-    if (stmt.kind === 'destructure') {
-      visitExpr(stmt.value)
-      return
     }
   }
-
-  for (const s of program.body) visitStmt(s as any)
-  return refs
 }
 
-export function extractFiltersFromProgramWithRefs(src: string, program: Program): FilterRef[] {
-  return visit(src, program)
-}
-
-export function extractFilterNumberLiteralsFromProgram(src: string, program: Program): NumberWithParamsInfo[] {
-  return collectFilterNumberLiterals(src, program)
-}

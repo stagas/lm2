@@ -17,9 +17,7 @@ import {
   encodeLangToVmOps,
   type EuclidRef,
   type EveryRef,
-  extractBarsFromSource,
-  extractBpmFromSource,
-  extractTimelineLabelsFromSource,
+  extractEarlyDataFromSource,
   type FilterRef,
   type LfoRef,
   type LimiterRef,
@@ -306,20 +304,15 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     const newNorm = normalizeSourceWithRanges(source, ranges.filter((_, i) => i % 2 === 1))
     if (oldNorm !== newNorm) return undefined
 
-    const extracted = extractTimelineLabelsFromSource(source)
-    if (extracted.errors.length) return undefined
+    const earlyData = extractEarlyDataFromSource(source)
+    if (earlyData.errors.length) return undefined
 
-    const bpmExtracted = extractBpmFromSource(source)
-    if (bpmExtracted.errors.length) return undefined
-    if (bpmExtracted.bpm !== undefined && runtime.bpmValue) {
-      runtime.bpmValue[0] = bpmExtracted.bpm
+    if (earlyData.bpm !== undefined && runtime.bpmValue) {
+      runtime.bpmValue[0] = earlyData.bpm
     }
 
-    const barsExtracted = extractBarsFromSource(source)
-    if (barsExtracted.errors.length) return undefined
-
-    const bars = barsExtracted.bars
-    const nextTimelineLabels = buildTimelineLabels(extracted.labels, bars)
+    const bars = earlyData.bars
+    const nextTimelineLabels = buildTimelineLabels(earlyData.timelineLabels, bars)
     runtime.syncBarsHardLoop(bars)
 
     if (updates.length === 0) {
