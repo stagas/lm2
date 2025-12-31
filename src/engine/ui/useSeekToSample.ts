@@ -3,11 +3,9 @@ import { ControlOp } from '../dsp/worklet-shared.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 
 export function useSeekToSample() {
-  const {
-    globalSampleCount,
-    control,
-    seekSampleCount,
-  } = useEngineRuntimeStore()
+  const globalSampleCount = useEngineRuntimeStore(state => state.globalSampleCount)
+  const control = useEngineRuntimeStore(state => state.control)
+  const seekSampleCount = useEngineRuntimeStore(state => state.seekSampleCount)
 
   const seekToSample = useCallback((targetSampleCount: number) => {
     if (!control || !seekSampleCount || !globalSampleCount) return
@@ -22,11 +20,9 @@ export function useSeekToSample() {
 }
 
 export function useSeekToSampleImmediate() {
-  const {
-    globalSampleCount,
-    control,
-    seekSampleCount,
-  } = useEngineRuntimeStore()
+  const globalSampleCount = useEngineRuntimeStore(state => state.globalSampleCount)
+  const control = useEngineRuntimeStore(state => state.control)
+  const seekSampleCount = useEngineRuntimeStore(state => state.seekSampleCount)
 
   const seekToSampleImmediate = useCallback(async (targetSampleCount: number) => {
     if (!control || !seekSampleCount || !globalSampleCount) return

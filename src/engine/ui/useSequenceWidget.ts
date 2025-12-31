@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
+import { useCallback, useEffect, useMemo } from 'preact/hooks'
 import {
   FUTURE_BARS,
   HISTORY_DATA_OFFSET,
@@ -12,11 +12,10 @@ import {
 } from '../../../as/assembly/constants.ts'
 import type { SourceLocation } from '../../lib/mini-source-map.ts'
 import { splitValueAndModifiers } from '../../mini/tokenizer.ts'
-import type { ProgramInstance } from '../dsp/program.ts'
 import { extractScaleFromSource } from '../bytecode/bytecode.ts'
+import type { ProgramInstance } from '../dsp/program.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
-import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 export type SeqFrame = {
   events: Map<number, number>
@@ -198,10 +197,6 @@ export function useSequenceWidget({
   controlStateRef,
   resetKey,
 }: UseSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
-  const predictedSampleCountRef = useRef<number | null>(null)
-  const lastWallTimeRef = useRef<number | null>(null)
-  const isFirstFrameRef = useRef(true)
-
   const controls = new Map<number, number>()
 
   const defaultScaleIndex = useMemo(() => {
@@ -211,9 +206,6 @@ export function useSequenceWidget({
   }, [dspSource])
 
   useEffect(() => {
-    predictedSampleCountRef.current = null
-    lastWallTimeRef.current = null
-    isFirstFrameRef.current = true
     frameRef.current = []
     controlStateRef.current?.clear()
   }, [resetKey])
@@ -223,11 +215,7 @@ export function useSequenceWidget({
     const visualWasm = useEngineRuntimeStore.getState().visualWasm
     if (!visualWasm) return
     const FADEOUT_SECONDS = 0.3
-    const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
-      predictedSampleCountRef,
-      lastWallTimeRef,
-      isFirstFrameRef,
-    }, { isPlaying })
+    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
     const { sampleRate, sampleCount: currentSampleCount } = pred
 

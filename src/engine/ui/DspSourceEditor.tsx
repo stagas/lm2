@@ -30,6 +30,7 @@ import type { Loop } from './loop.ts'
 import { useRouter } from './router.tsx'
 import { useTheme } from './theme.ts'
 import { tokenizer } from './tokenizer.ts'
+import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 import { useAnalyserWidget } from './useAnalyserWidget.ts'
 import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useBranchWidget } from './useBranchWidget.ts'
@@ -102,6 +103,12 @@ function DspSourceEditorReady(
   const nextCodeFileKeyRef = useRef(0)
 
   const previewTargetRef = useRef<{ ops: Int32Array; literals: Float32Array } | null>(null)
+
+  // Local refs for predicted sample count calculation
+  const predictedSampleCountResultRef = useRef<ReturnType<typeof updatePredictedSampleCount>>(null)
+  const predictedSampleCountRef = useRef<number | null>(null)
+  const lastWallTimeRef = useRef<number | null>(null)
+  const isFirstFrameRef = useRef(true)
   if (!previewTargetRef.current) {
     previewTargetRef.current = {
       ops: new Int32Array(OPS_COUNT),
@@ -137,18 +144,19 @@ function DspSourceEditorReady(
   const isUpdatingDsp = useEngineDspStore(state => state.isUpdatingDsp)
   const setUiCompilePreview = useEngineDspStore(state => state.setUiCompilePreview)
   const restartLoop = useRestartLoop()
+  const isProgramReady = useEngineRuntimeStore(state => state.isProgramReady)
+  const program1 = useEngineRuntimeStore(state => state.program1)
+  const program2 = useEngineRuntimeStore(state => state.program2)
+  const audioContext = useEngineRuntimeStore(state => state.audioContext)
+  const bpmValue = useEngineRuntimeStore(state => state.bpmValue)
+  const ringPos = useEngineRuntimeStore(state => state.ringPos)
+  const playbackState = useEngineRuntimeStore(state => state.playbackState)
+  const setPredictedSampleCountResult = useEngineRuntimeStore(state => state.setPredictedSampleCountResult)
+  const showFunctionDefinitions = useEngineUiStore(state => state.showFunctionDefinitions)
+  const uiShowWidgets = useEngineUiStore(state => state.showWidgets)
+  const showVisualizer = useEngineUiStore(state => state.showVisualizer)
+  const wordWrap = useEngineUiStore(state => state.wordWrap)
 
-  const {
-    isProgramReady,
-    program1,
-    program2,
-    audioContext,
-    bpmValue,
-    ringPos,
-    playbackState,
-  } = useEngineRuntimeStore()
-
-  const { showFunctionDefinitions, showWidgets: uiShowWidgets, showVisualizer, wordWrap } = useEngineUiStore()
   const theme = useTheme()
   const themeForEditor = useMemo(() => {
     const withAlpha = (c: string, a: number): string => {
@@ -827,6 +835,20 @@ function DspSourceEditorReady(
   })
 
   const onBeforeDrawCombined = useCallback(() => {
+    // Update predicted sample count once for all widgets to use
+    const result = updatePredictedSampleCount(
+      audioContext,
+      globalSampleCount,
+      {
+        predictedSampleCountRef,
+        lastWallTimeRef,
+        isFirstFrameRef,
+      },
+      { isPlaying: isPlaybackRunningForView },
+    )
+    predictedSampleCountResultRef.current = result
+    setPredictedSampleCountResult(result)
+
     if (showVisualizer) onBeforeDrawLissajous()
     onBeforeDraw()
     onBeforeDrawPianoroll()
@@ -857,6 +879,9 @@ function DspSourceEditorReady(
     onBeforeDrawArrayAccess,
     onBeforeDrawBranch,
     onBeforeDrawSample,
+    audioContext,
+    globalSampleCount,
+    isPlaybackRunningForView,
   ])
 
   const widgets = useMemo((): EditorWidget[] => {

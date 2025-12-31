@@ -1,6 +1,7 @@
 import type { Loc, Program } from '../../lang/ast.ts'
+import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault,
+  getPosArg } from './extract-call-utils.ts'
 import { tryEvalConstNumber } from './helpers.ts'
-import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault, getPosArg } from './extract-call-utils.ts'
 import type { LfoRef } from './types.ts'
 
 const MAX_LFO_INDEX = 63
@@ -68,7 +69,8 @@ function visit(src: string, program: Program): LfoRef[] {
           offsetExpr = namedOffset?.value ?? getPosArg(expr, offsetPos)?.value
           trigExpr = namedTrig?.value ?? getPosArg(expr, trigPos)?.value
           seedExpr = namedSeed?.value ?? getPosArg(expr, seedPos)?.value
-        } else if (isSmooth) {
+        }
+        else if (isSmooth) {
           // smooth(rate, seed, curve, trig)
           offsetPos = 0
           trigPos = 3
@@ -76,7 +78,8 @@ function visit(src: string, program: Program): LfoRef[] {
           barExpr = namedSeed?.value ?? getPosArg(expr, 1)?.value ?? namedBar?.value ?? getPosArg(expr, 0)?.value
           offsetExpr = namedOffset?.value ?? findNamedArg(expr, 'rate')?.value ?? getPosArg(expr, 0)?.value
           trigExpr = namedTrig?.value ?? getPosArg(expr, 3)?.value
-        } else if (isFractal) {
+        }
+        else if (isFractal) {
           // fractal(rate, seed, octaves, gain, trig)
           offsetPos = 0
           trigPos = 4
@@ -84,7 +87,8 @@ function visit(src: string, program: Program): LfoRef[] {
           barExpr = namedSeed?.value ?? getPosArg(expr, 1)?.value ?? namedBar?.value ?? getPosArg(expr, 0)?.value
           offsetExpr = namedOffset?.value ?? findNamedArg(expr, 'rate')?.value ?? getPosArg(expr, 0)?.value
           trigExpr = namedTrig?.value ?? getPosArg(expr, 4)?.value
-        } else {
+        }
+        else {
           // regular LFOs: lfo*(bar, offset, trig)
           offsetExpr = namedOffset?.value ?? getPosArg(expr, 1)?.value
           trigExpr = namedTrig?.value ?? getPosArg(expr, 2)?.value
@@ -99,10 +103,16 @@ function visit(src: string, program: Program): LfoRef[] {
           loc: calleeLoc,
           aboveLoc,
           callLoc: expr.loc,
-          barArgLoc: isSmooth || isFractal ? (namedSeed?.loc ?? getPosArg(expr, 0)?.loc ?? namedBar?.loc ?? getPosArg(expr, 0)?.loc ?? null) : (namedBar?.loc ?? getPosArg(expr, 0)?.loc ?? null),
-          offsetArgLoc: isSmooth || isFractal ? (namedOffset?.loc ?? findNamedArg(expr, 'rate')?.loc ?? getPosArg(expr, 1)?.loc ?? null) : (namedOffset?.loc ?? getPosArg(expr, offsetPos)?.loc ?? null),
+          barArgLoc: isSmooth || isFractal
+            ? (namedSeed?.loc ?? getPosArg(expr, 0)?.loc ?? namedBar?.loc ?? getPosArg(expr, 0)?.loc ?? null)
+            : (namedBar?.loc ?? getPosArg(expr, 0)?.loc ?? null),
+          offsetArgLoc: isSmooth || isFractal
+            ? (namedOffset?.loc ?? findNamedArg(expr, 'rate')?.loc ?? getPosArg(expr, 1)?.loc ?? null)
+            : (namedOffset?.loc ?? getPosArg(expr, offsetPos)?.loc ?? null),
           trigArgLoc: (namedTrig?.loc ?? getPosArg(expr, trigPos)?.loc ?? null),
-          seedArgLoc: (isSah || isSmooth || isFractal) ? (namedSeed?.loc ?? getPosArg(expr, seedPos)?.loc ?? null) : null,
+          seedArgLoc: (isSah || isSmooth || isFractal)
+            ? (namedSeed?.loc ?? getPosArg(expr, seedPos)?.loc ?? null)
+            : null,
           params: {
             bar: getNumberOrDefault(barExpr, 1 / 16),
             offset: getNumberOrDefault(offsetExpr, 0),
@@ -235,5 +245,3 @@ function visit(src: string, program: Program): LfoRef[] {
 export function extractLfosFromProgramWithRefs(src: string, program: Program): LfoRef[] {
   return visit(src, program)
 }
-
-

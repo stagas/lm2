@@ -46,7 +46,11 @@ export function MinimapScrollbar({
   timelineWindowRef,
   canControlPlayback = true,
 }: MinimapScrollbarProps) {
-  const { loop, setLoop, clearLoop, animationManager, currentLoop } = useEngineRuntimeStore()
+  const loop = useEngineRuntimeStore(state => state.loop)
+  const setLoop = useEngineRuntimeStore(state => state.setLoop)
+  const clearLoop = useEngineRuntimeStore(state => state.clearLoop)
+  const animationManager = useEngineRuntimeStore(state => state.animationManager)
+  const currentLoop = useEngineRuntimeStore(state => state.currentLoop)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
