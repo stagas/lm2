@@ -2,6 +2,7 @@ import { rpc } from 'utils/rpc'
 import { create } from 'zustand'
 import { useAppStore } from '../../app/store.ts'
 import { AnimationManager } from '../../lib/animation-manager.ts'
+import { updatePredictedSampleCount } from '../ui/update-predicted-sample-count.ts'
 import type { Dsp } from '../dsp/assembly.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import type { VisualWasm } from '../dsp/visual-wasm.ts'
@@ -39,6 +40,9 @@ export type EngineRuntimeState = {
   isProgramReady: boolean
   playbackState: PlaybackState
 
+  // Predicted sample count result (updated each frame)
+  predictedSampleCountResult: ReturnType<typeof updatePredictedSampleCount> | null
+
   setCurrentLoop: (loop: Loop | null) => void
 
   setPlayingLoopId: (loopId: string | null) => void
@@ -48,6 +52,7 @@ export type EngineRuntimeState = {
   setLoop: (startSample: number, endSample: number) => void
   clearLoop: () => void
   syncBarsHardLoop: (bars: number | undefined) => void
+  setPredictedSampleCountResult: (result: ReturnType<typeof updatePredictedSampleCount> | null) => void
 }
 
 export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
@@ -105,6 +110,7 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
     playbackState: 'stopped',
     currentLoop: null,
     currentLoopId: null,
+    predictedSampleCountResult: null,
 
     setPlayingLoopId: (loopId: string | null) => {
       set({ playingLoopId: loopId })
@@ -189,5 +195,9 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
     },
 
     syncBarsHardLoop,
+
+    setPredictedSampleCountResult: (result: ReturnType<typeof updatePredictedSampleCount> | null) => {
+      set({ predictedSampleCountResult: result })
+    },
   }
 })

@@ -3,7 +3,7 @@ import { useEngineRuntimeStore } from '../store.ts'
 import { useSeekToSampleImmediate } from './useSeekToSample.ts'
 
 export function useRestartLoop() {
-  const { loop } = useEngineRuntimeStore()
+  const loop = useEngineRuntimeStore(state => state.loop)
   const seekToSampleImmediate = useSeekToSampleImmediate()
 
   const restartLoop = useCallback(async () => {

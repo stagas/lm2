@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import { FILTER_DATA_OFFSET, FILTER_ENTRY_SIZE, FILTER_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { FilterRef } from '../bytecode/types.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
+import { useEngineRuntimeStore } from '../store.ts'
 import { getCurrentTheme } from './theme.ts'
-import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 type UseFilterWidgetParams = {
   program1: ProgramInstance | undefined
@@ -188,17 +188,11 @@ export function useFilterWidget({
 
   const lastWritePosRef = useRef<number>(0)
   const stRef = useRef<Array<St | undefined>>([])
-  const predictedSampleCountRef = useRef<number | null>(null)
-  const lastWallTimeRef = useRef<number | null>(null)
-  const isFirstFrameRef = useRef(true)
   const lastSampleCountRef = useRef<number | null>(null)
 
   useEffect(() => {
     lastWritePosRef.current = 0
     stRef.current.length = 0
-    predictedSampleCountRef.current = null
-    lastWallTimeRef.current = null
-    isFirstFrameRef.current = true
     lastSampleCountRef.current = null
   }, [dspSource])
 
@@ -213,18 +207,11 @@ export function useFilterWidget({
     const writePos = Math.floor(history.writePos) >>> 0
     if (playbackState !== 'running') {
       lastWritePosRef.current = writePos
-      predictedSampleCountRef.current = null
-      lastWallTimeRef.current = null
-      isFirstFrameRef.current = true
       lastSampleCountRef.current = null
       return
     }
 
-    const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
-      predictedSampleCountRef,
-      lastWallTimeRef,
-      isFirstFrameRef,
-    }, { isPlaying: true })
+    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
 
     const MOD = 1 << 20

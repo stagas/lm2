@@ -11,7 +11,7 @@ export function updatePredictedSampleCount(
   globalSampleCount: Int32Array<SharedArrayBuffer> | undefined,
   state: PredictedSampleCountState,
   opts?: { isPlaying?: boolean },
-): { sampleRate: number; sampleCount: number; timeSeconds: number } | null {
+) {
   if (!audioContext || !globalSampleCount) return null
   const isPlaying = opts?.isPlaying ?? (useEngineRuntimeStore.getState().playbackState === 'running')
 
@@ -53,5 +53,5 @@ export function updatePredictedSampleCount(
 
   const sampleCount = predicted
   const timeSeconds = sampleCount / sampleRate
-  return { sampleRate, sampleCount, timeSeconds }
+  return { latencySamples, latencySeconds, deltaTime, sampleRate, sampleCount, timeSeconds }
 }

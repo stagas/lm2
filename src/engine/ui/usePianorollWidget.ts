@@ -16,7 +16,6 @@ import { useEngineRuntimeStore } from '../store.ts'
 import { applySmoothing } from '../util.ts'
 import type { GridOwnerByLine } from './grid-owner.ts'
 import { useTheme } from './theme.ts'
-import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 const MIDI_IS_BLACK = new Uint8Array(128)
 const MIDI_IS_OCTAVE = new Uint8Array(128)
@@ -84,9 +83,6 @@ export function usePianorollWidget({
   resetKey,
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
-  const predictedSampleCountRef = useRef<number | null>(null)
-  const lastWallTimeRef = useRef<number | null>(null)
-  const isFirstFrameRef = useRef(true)
 
   const theme = useTheme()
 
@@ -98,9 +94,6 @@ export function usePianorollWidget({
 
   useEffect(() => {
     pianorollStateRef.current.clear()
-    predictedSampleCountRef.current = null
-    lastWallTimeRef.current = null
-    isFirstFrameRef.current = true
   }, [resetKey])
 
   const onBeforeDraw = useCallback(() => {
@@ -108,14 +101,10 @@ export function usePianorollWidget({
     const visualWasm = useEngineRuntimeStore.getState().visualWasm
     if (!visualWasm) return
 
-    const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
-      predictedSampleCountRef,
-      lastWallTimeRef,
-      isFirstFrameRef,
-    }, { isPlaying })
+    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
     const { sampleRate, sampleCount, timeSeconds } = pred
-
+    // console.log('pianoroll', timeSeconds)
     const seenSeqs = new Set<number>()
     for (const ref of miniRefs) {
       const seqIndex = ref.seqIndex

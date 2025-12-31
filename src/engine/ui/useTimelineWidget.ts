@@ -17,10 +17,10 @@ import {
   readTimelineSegsFromHistory,
   type TimelineSeg,
 } from '../dsp/timeline-history.ts'
+import { useEngineRuntimeStore } from '../store.ts'
 import { applySmoothing } from '../util.ts'
 import type { GridOwnerByLine } from './grid-owner.ts'
 import { useTheme } from './theme.ts'
-import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 type TimelineState = {
   timeSeconds: number | null
@@ -61,29 +61,18 @@ export function useTimelineWidget({
   const stateRef = useRef<Map<number, TimelineState>>(new Map())
   const compiledCacheRef = useRef<Map<number, { sequence: string; arrayRaw: Float32Array }>>(new Map())
 
-  const predictedSampleCountRef = useRef<number | null>(null)
-  const lastWallTimeRef = useRef<number | null>(null)
-  const isFirstFrameRef = useRef(true)
-
   const theme = useTheme()
 
   useEffect(() => {
     stateRef.current.clear()
     compiledCacheRef.current.clear()
-    predictedSampleCountRef.current = null
-    lastWallTimeRef.current = null
-    isFirstFrameRef.current = true
   }, [resetKey])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (isLive && !program1?.program?.histories) return
 
-    const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
-      predictedSampleCountRef,
-      lastWallTimeRef,
-      isFirstFrameRef,
-    }, { isPlaying })
+    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
     const { sampleRate, sampleCount, timeSeconds } = pred
 

@@ -9,10 +9,9 @@ import {
 import type { SampleDef } from '../bytecode/bytecode.ts'
 import { computePeaks } from '../dsp/peaks.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
-import { useEngineDspStore } from '../store.ts'
+import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { createGreyVerticalGradient } from './grey-gradient.ts'
 import { getCurrentTheme } from './theme.ts'
-import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 import {
   createWidgetCanvas,
   getWidgetContext,
@@ -199,20 +198,10 @@ export function useSampleWidget({
   const lastWritePosRef = useRef<number>(0)
   const needleRef = useRef<Map<number, NeedleState>>(new Map())
   const waveRef = useRef<WeakMap<ArrayBuffer, Map<string, WaveCache>>>(new WeakMap())
-  const predictedSampleCountRef = useRef<number | null>(null)
-  const lastWallTimeRef = useRef<number | null>(null)
-  const isFirstFrameRef = useRef(true)
-  const lastSampleCountRef = useRef<number | null>(null)
-  const latencySamplesRef = useRef<number>(0)
 
   useEffect(() => {
     lastWritePosRef.current = 0
     needleRef.current.clear()
-    predictedSampleCountRef.current = null
-    lastWallTimeRef.current = null
-    isFirstFrameRef.current = true
-    lastSampleCountRef.current = null
-    latencySamplesRef.current = 0
   }, [dspSource])
 
   const onBeforeDraw = useCallback(() => {
@@ -223,32 +212,13 @@ export function useSampleWidget({
     const writePos = Math.floor(history.writePos) >>> 0
     if (playbackState !== 'running') {
       lastWritePosRef.current = writePos
-      predictedSampleCountRef.current = null
-      lastWallTimeRef.current = null
-      isFirstFrameRef.current = true
-      lastSampleCountRef.current = null
-      latencySamplesRef.current = 0
       return
     }
-    const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
-      predictedSampleCountRef,
-      lastWallTimeRef,
-      isFirstFrameRef,
-    }, { isPlaying: true })
+    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
-    const { sampleRate, sampleCount } = pred
+    const { latencySamples, latencySeconds, deltaTime, sampleCount } = pred
     if (!globalSampleCount) return
 
-    const lastSampleCount = lastSampleCountRef.current ?? sampleCount
-    lastSampleCountRef.current = sampleCount
-    const dtSec = Math.max(0, (sampleCount - lastSampleCount) / sampleRate)
-
-    const latencySeconds = (audioContext?.outputLatency || 0) - (audioContext?.baseLatency || 0)
-    const latencySamplesNow = latencySeconds * sampleRate
-    const latencyTau = 0.35
-    const latencyA = 1 - Math.exp(-dtSec / latencyTau)
-    const latencySamples = latencySamplesRef.current + (latencySamplesNow - latencySamplesRef.current) * latencyA
-    latencySamplesRef.current = latencySamples
     const MOD = 1 << 20
     const rawNow = (Atomics.load(globalSampleCount, 0) >>> 0) as number
     const rawNowEnd = rawNow + CHUNK_SIZE
@@ -314,7 +284,7 @@ export function useSampleWidget({
         continue
       }
       const tau = latencySeconds / 2
-      const a = 1 - Math.exp(-dtSec / tau)
+      const a = 1 - Math.exp(-deltaTime / tau)
       st.posFrames = st.posFrames + diff * a
     }
   }, [showWidgets, program1, audioContext, globalSampleCount, playbackState])

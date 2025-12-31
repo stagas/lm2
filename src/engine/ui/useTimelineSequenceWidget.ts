@@ -10,8 +10,8 @@ import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import type { TimelineSequenceRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { curveValue } from '../dsp/timeline-history.ts'
+import { useEngineRuntimeStore } from '../store.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
-import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 type UseTimelineSequenceParams = {
   program1: ProgramInstance | undefined
@@ -94,28 +94,18 @@ export function useTimelineSequenceWidget({
   resetKey,
 }: UseTimelineSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const activeSegRef = useRef<Map<number, { si: number; tt: number } | null>>(new Map())
-  const predictedSampleCountRef = useRef<number | null>(null)
-  const lastWallTimeRef = useRef<number | null>(null)
-  const isFirstFrameRef = useRef(true)
   const compiledCacheRef = useRef<Map<number, { sequence: string; arrayRaw: Float32Array }>>(new Map())
 
   useEffect(() => {
     activeSegRef.current.clear()
     compiledCacheRef.current.clear()
-    predictedSampleCountRef.current = null
-    lastWallTimeRef.current = null
-    isFirstFrameRef.current = true
   }, [resetKey])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (!audioContext || !bpmValue) return
 
-    const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
-      predictedSampleCountRef,
-      lastWallTimeRef,
-      isFirstFrameRef,
-    }, { isPlaying })
+    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
     const { sampleCount, sampleRate } = pred
 

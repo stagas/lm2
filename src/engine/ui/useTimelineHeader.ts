@@ -6,7 +6,6 @@ import { PIANOROLL_KEY_WIDTH } from '../constants.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
 import { applySmoothing } from '../util.ts'
-import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 import { useLoopView } from './useLoopView.ts'
 
 export function useTimelineHeader(currentLoopId: string | null) {
@@ -177,16 +176,12 @@ export function useTimelineHeader(currentLoopId: string | null) {
         const viewW = vw
         const timelineW = Math.max(1, viewW - PIANOROLL_KEY_WIDTH)
 
-        // Predict audible sample count (delegated to shared helper)
-        const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
-          predictedSampleCountRef,
-          lastWallTimeRef,
-          isFirstFrameRef,
-        }, { isPlaying: isPlaybackRunningForView })
+        // Use centralized predicted sample count result
+        const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
         if (!pred) return
 
         const nowSeconds = pred.timeSeconds
-
+        // console.log('timeline header', nowSeconds)
         let smoothed = timelineTimeRef.current
         if (smoothed == null) smoothed = nowSeconds
         else smoothed = applySmoothing(smoothed, nowSeconds)

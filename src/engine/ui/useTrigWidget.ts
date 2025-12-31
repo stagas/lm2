@@ -1,5 +1,4 @@
 import type { EditorWidget } from 'mini-code'
-import type React from 'preact/hooks'
 import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import {
   TRIG_DATA_OFFSET,
@@ -8,8 +7,8 @@ import {
 } from '../../../as/assembly/constants.ts'
 import type { AtRef, EuclidRef, EveryRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance, VmTrigHistory } from '../dsp/program.ts'
+import { useEngineRuntimeStore } from '../store.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
-import { updatePredictedSampleCount } from './update-predicted-sample-count.ts'
 
 type UseTrigWidgetParams = {
   program1: ProgramInstance | undefined
@@ -133,9 +132,6 @@ export function useTrigWidget({
   const everyStRef = useRef<Array<St | undefined>>([])
   const atStRef = useRef<Array<St | undefined>>([])
   const euclidStRef = useRef<Array<St | undefined>>([])
-  const predictedSampleCountRef = useRef<number | null>(null)
-  const lastWallTimeRef = useRef<number | null>(null)
-  const isFirstFrameRef = useRef(true)
 
   useEffect(() => {
     lastWritePosEveryRef.current = 0
@@ -144,9 +140,6 @@ export function useTrigWidget({
     everyStRef.current.length = 0
     atStRef.current.length = 0
     euclidStRef.current.length = 0
-    predictedSampleCountRef.current = null
-    lastWallTimeRef.current = null
-    isFirstFrameRef.current = true
   }, [dspSource])
 
   const onBeforeDraw = useCallback(() => {
@@ -163,17 +156,10 @@ export function useTrigWidget({
       lastWritePosEveryRef.current = trigWritePos
       lastWritePosAtRef.current = trigWritePos
       lastWritePosEuclidRef.current = trigWritePos
-      predictedSampleCountRef.current = null
-      lastWallTimeRef.current = null
-      isFirstFrameRef.current = true
       return
     }
 
-    const pred = updatePredictedSampleCount(audioContext, globalSampleCount, {
-      predictedSampleCountRef,
-      lastWallTimeRef,
-      isFirstFrameRef,
-    }, { isPlaying: true })
+    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
 
     const MOD = 1 << 20
