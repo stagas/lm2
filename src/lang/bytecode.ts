@@ -20,6 +20,22 @@ import { type LangError, lineText } from './errors.ts'
 
 export type ConstVal = number | string | boolean | null | undefined
 
+const builtinSigNames: Record<string, string[]> = Object.fromEntries(
+  Object
+    .entries(functionDefinitions)
+    .map(([name, sig]) => [name, sig.parameters.map(p => p.name)]),
+)
+
+const builtinSigIndex: Record<string, Map<string, number>> = Object.fromEntries(
+  Object
+    .entries(builtinSigNames)
+    .map(([name, names]) => {
+      const idx = new Map<string, number>()
+      for (let i = 0; i < names.length; i++) idx.set(names[i]!, i)
+      return [name, idx]
+    }),
+)
+
 export type Instr =
   | { op: 'PUSH_CONST'; k: number; loc?: Loc }
   | { op: 'BRANCH' }
@@ -129,6 +145,7 @@ export function disassemble(chunk: Chunk): string {
 class Compiler {
   readonly chunk: Chunk = { consts: [], funcs: [], code: [], arrayLiterals: [], branchMarks: [] }
   readonly errors: LangError[] = []
+  private constIndex = new Map<ConstVal, number>()
   private pipe: string[] = []
   private labelId = 0
   private callTempId = 0
@@ -137,10 +154,12 @@ class Compiler {
   constructor(private readonly src: string) {}
 
   private k(v: ConstVal): number {
-    const i = this.chunk.consts.indexOf(v)
-    if (i !== -1) return i
+    const hit = this.constIndex.get(v)
+    if (hit !== undefined) return hit
+    const i = this.chunk.consts.length
     this.chunk.consts.push(v)
-    return this.chunk.consts.length - 1
+    this.constIndex.set(v, i)
+    return i
   }
 
   private nameConst(name: string): number {
@@ -314,46 +333,49 @@ class Compiler {
     const iterTemp = `$for#${id}#iter`
     const indexTemp = `$for#${id}#i`
     const lenTemp = `$for#${id}#len`
+    const iterName = this.nameConst(iterTemp)
+    const indexName = this.nameConst(indexTemp)
+    const lenName = this.nameConst(lenTemp)
 
     // iterable
     this.compileExpr(stmt.head.iterable)
-    this.emit({ op: 'STORE', name: this.nameConst(iterTemp) })
+    this.emit({ op: 'STORE', name: iterName })
     this.emit({ op: 'POP' })
 
     // length (cache it once)
-    this.emit({ op: 'LOAD', name: this.nameConst(iterTemp) })
+    this.emit({ op: 'LOAD', name: iterName })
     this.emit({ op: 'LEN' })
-    this.emit({ op: 'STORE', name: this.nameConst(lenTemp) })
+    this.emit({ op: 'STORE', name: lenName })
     this.emit({ op: 'POP' })
 
     if (stmt.head.length) {
-      this.emit({ op: 'LOAD', name: this.nameConst(lenTemp) })
+      this.emit({ op: 'LOAD', name: lenName })
       this.emit({ op: 'STORE', name: this.nameConst(stmt.head.length) })
       this.emit({ op: 'POP' })
     }
 
     // index = 0
     this.emit({ op: 'PUSH_CONST', k: this.k(0) })
-    this.emit({ op: 'STORE', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'STORE', name: indexName })
     this.emit({ op: 'POP' })
 
     const start = this.emit({ op: 'LABEL', id: this.labelId++ })
 
     // while (index < len)
-    this.emit({ op: 'LOAD', name: this.nameConst(indexTemp) })
-    this.emit({ op: 'LOAD', name: this.nameConst(lenTemp) })
+    this.emit({ op: 'LOAD', name: indexName })
+    this.emit({ op: 'LOAD', name: lenName })
     this.emit({ op: 'BINARY', opName: '<' })
     const jEnd = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
 
     if (stmt.head.index) {
-      this.emit({ op: 'LOAD', name: this.nameConst(indexTemp) })
+      this.emit({ op: 'LOAD', name: indexName })
       this.emit({ op: 'STORE', name: this.nameConst(stmt.head.index) })
       this.emit({ op: 'POP' })
     }
 
     // value = iterable[index]
-    this.emit({ op: 'LOAD', name: this.nameConst(iterTemp) })
-    this.emit({ op: 'LOAD', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'LOAD', name: iterName })
+    this.emit({ op: 'LOAD', name: indexName })
     this.emit({ op: 'GET_INDEX' })
     this.emit({ op: 'STORE', name: this.nameConst(stmt.head.value) })
     this.emit({ op: 'POP' })
@@ -361,10 +383,10 @@ class Compiler {
     this.compileStmt(stmt.body, false)
 
     // index++
-    this.emit({ op: 'LOAD', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'LOAD', name: indexName })
     this.emit({ op: 'PUSH_CONST', k: this.k(1) })
     this.emit({ op: 'BINARY', opName: '+' })
-    this.emit({ op: 'STORE', name: this.nameConst(indexTemp) })
+    this.emit({ op: 'STORE', name: indexName })
     this.emit({ op: 'POP' })
 
     this.emit({ op: 'JUMP', to: start })
@@ -651,21 +673,22 @@ class Compiler {
       const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
 
       // Generic call layout: positional values first, then named pairs (reverse order so last wins).
-      const posTemps: string[] = [recvTemp]
       const namedTemps: { name: string; temp: string }[] = []
+      let pos = 1
       for (const a of temps) {
-        if (a.kind === 'pos') posTemps.push(a.temp)
+        if (a.kind === 'pos') pos++
         else namedTemps.push({ name: a.name, temp: a.temp })
       }
 
-      for (const t of posTemps) emitLoadTemp(t)
+      emitLoadTemp(recvTemp)
+      for (const a of temps) if (a.kind === 'pos') emitLoadTemp(a.temp)
       for (let i = namedTemps.length - 1; i >= 0; i--) {
         const a = namedTemps[i]!
         this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
         emitLoadTemp(a.temp)
       }
 
-      this.emit({ op: 'CALL', pos: posTemps.length, named: namedTemps.length })
+      this.emit({ op: 'CALL', pos, named: namedTemps.length })
       return
     }
 
@@ -712,21 +735,22 @@ class Compiler {
 
       const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
 
-      const posTemps: string[] = [recvTemp]
       const namedTemps: { name: string; temp: string }[] = []
+      let pos = 1
       for (const a of temps) {
-        if (a.kind === 'pos') posTemps.push(a.temp)
+        if (a.kind === 'pos') pos++
         else namedTemps.push({ name: a.name, temp: a.temp })
       }
 
-      for (const t of posTemps) emitLoadTemp(t)
+      emitLoadTemp(recvTemp)
+      for (const a of temps) if (a.kind === 'pos') emitLoadTemp(a.temp)
       for (let i = namedTemps.length - 1; i >= 0; i--) {
         const a = namedTemps[i]!
         this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
         emitLoadTemp(a.temp)
       }
 
-      this.emit({ op: 'CALL', pos: posTemps.length, named: namedTemps.length })
+      this.emit({ op: 'CALL', pos, named: namedTemps.length })
       return true
     }
 
@@ -777,50 +801,40 @@ class Compiler {
       temps.push({ kind: 'named', temp: t, name: a.name })
     }
 
-    // Builtin signatures (compile-time arg binding for named + shorthand + mixed ordering).
-    const sigs: Record<string, string[]> = Object.fromEntries(
-      Object
-        .entries(functionDefinitions)
-        .map(([name, sig]) => [name, sig.parameters.map(p => p.name)]),
-    )
-
-    const sig = calleeName ? sigs[calleeName] : undefined
+    const sig = calleeName ? builtinSigNames[calleeName] : undefined
+    const idxOf = calleeName ? builtinSigIndex[calleeName] : undefined
 
     const emitUndef = () => this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
     const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
 
-    if (sig) {
-      const idxOf = new Map<string, number>()
-      for (let i = 0; i < sig.length; i++) idxOf.set(sig[i]!, i)
-
-      const reserved = new Set<number>()
+    if (sig && idxOf) {
+      const reserved: boolean[] = []
+      const slots: Array<string | undefined> = []
       const extraNamed: { name: string; temp: string }[] = []
 
       for (const a of temps) {
         if (a.kind === 'named') {
           const idx = idxOf.get(a.name)
-          if (idx !== undefined) reserved.add(idx)
+          if (idx !== undefined) reserved[idx] = true
           else extraNamed.push({ name: a.name, temp: a.temp })
           continue
         }
         if (a.isImplicitNamedCandidate && a.identName) {
           const idx = idxOf.get(a.identName)
-          if (idx !== undefined) reserved.add(idx)
+          if (idx !== undefined) reserved[idx] = true
         }
       }
-
-      const slots = new Map<number, string>()
 
       // Assign named + implicit shorthand-by-name (last write wins).
       for (const a of temps) {
         if (a.kind === 'named') {
           const idx = idxOf.get(a.name)
-          if (idx !== undefined) slots.set(idx, a.temp)
+          if (idx !== undefined) slots[idx] = a.temp
           continue
         }
         if (a.isImplicitNamedCandidate && a.identName) {
           const idx = idxOf.get(a.identName)
-          if (idx !== undefined) slots.set(idx, a.temp)
+          if (idx !== undefined) slots[idx] = a.temp
         }
       }
 
@@ -829,18 +843,18 @@ class Compiler {
       for (const a of temps) {
         if (a.kind !== 'pos') continue
         if (a.isImplicitNamedCandidate && a.identName && idxOf.has(a.identName)) continue
-        while (reserved.has(next) || slots.has(next)) next++
-        slots.set(next, a.temp)
+        while (reserved[next] === true || slots[next] !== undefined) next++
+        slots[next] = a.temp
         next++
       }
 
       let maxIdx = -1
-      for (const i of slots.keys()) if (i > maxIdx) maxIdx = i
+      for (let i = 0; i < slots.length; i++) if (slots[i] !== undefined) maxIdx = i
       const pos = maxIdx + 1
 
       for (let i = 0; i < pos; i++) {
-        const t = slots.get(i)
-        if (t) emitLoadTemp(t)
+        const t = slots[i]
+        if (t !== undefined) emitLoadTemp(t)
         else emitUndef()
       }
 
@@ -856,21 +870,21 @@ class Compiler {
     }
 
     // Generic call layout: positional values first, then named pairs (reverse order so last wins).
-    const posTemps: string[] = []
     const namedTemps: { name: string; temp: string }[] = []
+    let pos = 0
     for (const a of temps) {
-      if (a.kind === 'pos') posTemps.push(a.temp)
+      if (a.kind === 'pos') pos++
       else namedTemps.push({ name: a.name, temp: a.temp })
     }
 
-    for (const t of posTemps) emitLoadTemp(t)
+    for (const a of temps) if (a.kind === 'pos') emitLoadTemp(a.temp)
     for (let i = namedTemps.length - 1; i >= 0; i--) {
       const a = namedTemps[i]!
       this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
       emitLoadTemp(a.temp)
     }
 
-    this.emit({ op: 'CALL', pos: posTemps.length, named: namedTemps.length })
+    this.emit({ op: 'CALL', pos, named: namedTemps.length })
   }
 
   private compileArg(arg: Arg): void {
