@@ -7,6 +7,7 @@ import { callAnalyser } from './builtins/analyser'
 import { callAt } from './builtins/at'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
 import { callCompressor } from './builtins/compressor'
+import { callLimiter } from './builtins/limiter'
 import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
 import { callEuclid } from './builtins/euclid'
@@ -104,6 +105,7 @@ export class VmBuiltins {
 
   analyserRingBase: i32 = 0
   compressorRingBase: i32 = 0
+  limiterRingBase: i32 = 0
 
   private coerceArrayToScalar(
     tags: StaticArray<i32>,
@@ -277,6 +279,12 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Compressor) {
       callCompressor(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
         audio, program, length, this.compressorRingBase)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Limiter) {
+      callLimiter(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, this.limiterRingBase)
       return
     }
 

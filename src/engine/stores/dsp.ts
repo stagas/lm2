@@ -65,6 +65,7 @@ export type EngineDspState = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
@@ -86,6 +87,7 @@ export type EngineDspState = {
   uiMiniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   uiAnalyserRefs: AnalyserRef[]
   uiCompressorRefs: CompressorRef[]
+  uiLimiterRefs: LimiterRef[]
   uiLpRefs: LpRef[]
   uiSlicerRefs: SlicerRef[]
   uiLfoRefs: LfoRef[]
@@ -397,6 +399,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const miniSourceMaps = primaryResult.miniSourceMaps
       const analyserRefs = primaryResult.analyserRefs
       const compressorRefs = primaryResult.compressorRefs
+      const limiterRefs = primaryResult.limiterRefs
       const filterRefs = primaryResult.filterRefs
       const slicerRefs = primaryResult.slicerRefs
       const lfoRefs = primaryResult.lfoRefs
@@ -426,6 +429,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           miniSourceMaps,
           analyserRefs,
           compressorRefs,
+          limiterRefs,
           filterRefs,
           slicerRefs,
           lfoRefs,
@@ -447,6 +451,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiMiniSourceMaps: miniSourceMaps,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
+          uiLimiterRefs: limiterRefs,
           uiLpRefs: filterRefs,
           uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
@@ -744,6 +749,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     miniSourceMaps: [],
     analyserRefs: [],
     compressorRefs: [],
+    limiterRefs: [],
     filterRefs: [],
     slicerRefs: [],
     lfoRefs: [],
@@ -844,6 +850,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         miniSourceMaps: [],
         analyserRefs: [],
         compressorRefs: [],
+        limiterRefs: [],
         filterRefs: [],
         slicerRefs: [],
         lfoRefs: [],
@@ -859,6 +866,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiMiniSourceMaps: [],
         uiAnalyserRefs: [],
         uiCompressorRefs: [],
+        uiLimiterRefs: [],
         uiLpRefs: [],
         uiSlicerRefs: [],
         uiLfoRefs: [],
@@ -1014,6 +1022,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const miniSourceMaps = stagingResult.miniSourceMaps
         const analyserRefs = stagingResult.analyserRefs
         const compressorRefs = stagingResult.compressorRefs
+        const limiterRefs = stagingResult.limiterRefs
         const filterRefs = stagingResult.filterRefs
         const slicerRefs = stagingResult.slicerRefs
         const lfoRefs = stagingResult.lfoRefs
@@ -1050,6 +1059,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           miniSourceMaps,
           analyserRefs,
           compressorRefs,
+          limiterRefs,
           filterRefs,
           slicerRefs,
           lfoRefs,
@@ -1071,6 +1081,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiMiniSourceMaps: miniSourceMaps,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
+          uiLimiterRefs: limiterRefs,
           uiLpRefs: filterRefs,
           uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,

@@ -17,6 +17,7 @@ import { extractBarsFromProgram, extractBpmFromProgram } from './extract-bpm-bar
 import { extractCompressorsFromProgramWithRefs } from './extract-compressors.ts'
 import { extractFilterNumberLiteralsFromProgram, extractFiltersFromProgramWithRefs } from './extract-filter.ts'
 import { extractLfosFromProgramWithRefs } from './extract-lfo.ts'
+import { extractLimitersFromProgramWithRefs } from './extract-limiters.ts'
 import { extractMiniSequencesFromProgramWithRefs } from './extract-mini.ts'
 import { extractNumberLiteralsFromProgram, extractNumberParamsFromProgram } from './extract-numbers.ts'
 import { extractSamplesFromProgramWithRefs } from './extract-samples.ts'
@@ -41,6 +42,7 @@ import {
   EveryRef,
   type FilterRef,
   LfoRef,
+  type LimiterRef,
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
@@ -115,6 +117,7 @@ export function encodeLangToVmOps(
   timelineLabels?: TimelineLabel[]
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
+  limiterRefs?: LimiterRef[]
   filterRefs?: FilterRef[]
   slicerRefs?: SlicerRef[]
   lfoRefs?: LfoRef[]
@@ -228,6 +231,7 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
   let analyserRefs: AnalyserRef[] = []
   let compressorRefs: CompressorRef[] = []
+  let limiterRefs: LimiterRef[] = []
   let filterRefs: FilterRef[] = []
   let slicerRefs: SlicerRef[] = []
   let lfoRefs: LfoRef[] = []
@@ -287,6 +291,19 @@ export function encodeLangToVmOps(
     const idx = nextCompressorIndex
     usedCompressorIndices.add(idx)
     nextCompressorIndex = Math.min(MAX_COMPRESSOR_INDEX, idx + 1)
+    return idx
+  }
+
+  const MAX_LIMITER_INDEX = 63
+  const clampLimiterIndex = (n: number) => Math.max(0, Math.min(MAX_LIMITER_INDEX, Math.floor(Number(n || 0))))
+  const usedLimiterIndices = new Set<number>([0])
+  let nextLimiterIndex = 1
+  const allocLimiterIndex = (): number => {
+    if (nextLimiterIndex > MAX_LIMITER_INDEX) return MAX_LIMITER_INDEX
+    while (usedLimiterIndices.has(nextLimiterIndex) && nextLimiterIndex < MAX_LIMITER_INDEX) nextLimiterIndex++
+    const idx = nextLimiterIndex
+    usedLimiterIndices.add(idx)
+    nextLimiterIndex = Math.min(MAX_LIMITER_INDEX, idx + 1)
     return idx
   }
 
@@ -438,6 +455,7 @@ export function encodeLangToVmOps(
       const isTimeline = calleeName === 'timeline'
       const isAnalyser = calleeName === 'analyser'
       const isCompressor = calleeName === 'compressor'
+      const isLimiter = calleeName === 'limiter'
       const isFilter = calleeName === 'lp'
         || calleeName === 'hp'
         || calleeName === 'bp'
@@ -505,6 +523,27 @@ export function encodeLangToVmOps(
 
         if (!namedIndexArg) {
           const idx = allocCompressorIndex()
+          return {
+            ...expr,
+            callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }],
+          }
+        }
+      }
+
+      if (isLimiter) {
+        const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
+        const idxVal = namedIndexArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = clampLimiterIndex(Number(idxVal.value ?? 0))
+          usedLimiterIndices.add(idx)
+          namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (!namedIndexArg) {
+          const idx = allocLimiterIndex()
           return {
             ...expr,
             callee,
@@ -827,6 +866,7 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
   analyserRefs = extractAnalysersFromProgramWithRefs(transformedProgram)
   compressorRefs = extractCompressorsFromProgramWithRefs(src, transformedProgram)
+  limiterRefs = extractLimitersFromProgramWithRefs(src, transformedProgram)
   filterRefs = extractFiltersFromProgramWithRefs(src, transformedProgram)
   slicerRefs = extractSlicersFromProgramWithRefs(src, transformedProgram)
   lfoRefs = extractLfosFromProgramWithRefs(src, transformedProgram)
@@ -1219,6 +1259,7 @@ export function encodeLangToVmOps(
       timelineLabels,
       analyserRefs,
       compressorRefs,
+      limiterRefs,
       filterRefs,
       slicerRefs,
       lfoRefs,
@@ -1245,6 +1286,7 @@ export function encodeLangToVmOps(
       timelineLabels,
       analyserRefs,
       compressorRefs,
+      limiterRefs,
       filterRefs,
       slicerRefs,
       lfoRefs,

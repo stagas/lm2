@@ -120,6 +120,7 @@ function DspSourceEditorReady(
   const miniSourceMaps = useEngineDspStore(state => state.miniSourceMaps)
   const analyserRefs = useEngineDspStore(state => state.analyserRefs)
   const compressorRefs = useEngineDspStore(state => state.compressorRefs)
+  const limiterRefs = useEngineDspStore(state => state.limiterRefs)
   const filterRefs = useEngineDspStore(state => state.filterRefs)
   const slicerRefs = useEngineDspStore(state => state.slicerRefs)
   const lfoRefs = useEngineDspStore(state => state.lfoRefs)
@@ -340,9 +341,10 @@ function DspSourceEditorReady(
         miniRefs,
         timelineRefs,
         miniSourceMaps,
-        analyserRefs,
-        compressorRefs,
-        filterRefs,
+        analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
+        compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
+        limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
+        filterRefs: previewCompile.filterRefs ?? filterRefs,
         slicerRefs,
         lfoRefs,
         everyRefs,
@@ -363,18 +365,19 @@ function DspSourceEditorReady(
         miniRefs,
         timelineRefs,
         miniSourceMaps,
-        analyserRefs,
-        compressorRefs,
-        filterRefs,
-        slicerRefs,
-        lfoRefs,
-        everyRefs,
-        atRefs,
-        euclidRefs,
-        arrayLiterals,
-        branchMarks,
-        numberParams,
-        sampleDefs,
+        analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
+        compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
+        limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
+        filterRefs: previewCompile.filterRefs ?? filterRefs,
+        slicerRefs: previewCompile.slicerRefs ?? slicerRefs,
+        lfoRefs: previewCompile.lfoRefs ?? lfoRefs,
+        everyRefs: previewCompile.everyRefs ?? everyRefs,
+        atRefs: previewCompile.atRefs ?? atRefs,
+        euclidRefs: previewCompile.euclidRefs ?? euclidRefs,
+        arrayLiterals: previewCompile.arrayLiterals ?? arrayLiterals,
+        branchMarks: previewCompile.branchMarks ?? branchMarks,
+        numberParams: previewCompile.numberParams ?? numberParams,
+        sampleDefs: previewCompile.sampleDefs ?? sampleDefs,
         errors: previewCompile.errors,
       }
     }
@@ -394,6 +397,7 @@ function DspSourceEditorReady(
       miniSourceMaps: previewMiniSourceMaps,
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
+      limiterRefs: previewCompile.limiterRefs ?? [],
       filterRefs: previewCompile.filterRefs ?? [],
       slicerRefs: previewCompile.slicerRefs ?? [],
       lfoRefs: previewCompile.lfoRefs ?? [],
@@ -664,9 +668,10 @@ function DspSourceEditorReady(
     program1: runtimeProgram,
     ringPos,
     compressorRefs: widgetCompileState.compressorRefs,
+    limiterRefs: widgetCompileState.limiterRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
-    isLive,
+    isLive: isLiveView,
     playbackState,
     sampleRate: audioContext?.sampleRate,
   })
@@ -768,6 +773,19 @@ function DspSourceEditorReady(
         else if (p.name === 'knee') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
             min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
+        }
+      }
+    }
+
+    for (const ref of widgetCompileState.limiterRefs ?? []) {
+      for (const p of ref.knobParams ?? []) {
+        if (p.name === 'release') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
+        }
+        else if (p.name === 'threshold') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
         }
       }
     }
@@ -893,6 +911,7 @@ function DspSourceEditorReady(
     (widgetCompileState.sampleDefs?.length ?? 0) > 0
     || (widgetCompileState.analyserRefs?.length ?? 0) > 0
     || (widgetCompileState.compressorRefs?.length ?? 0) > 0
+    || (widgetCompileState.limiterRefs?.length ?? 0) > 0
     || (widgetCompileState.filterRefs?.length ?? 0) > 0
     || (widgetCompileState.slicerRefs?.length ?? 0) > 0
     || (widgetCompileState.lfoRefs?.length ?? 0) > 0

@@ -1,5 +1,6 @@
 import { AnalyserOutsPool } from './analyser-outs-pool'
 import { CompressorOutsPool } from './compressor-outs-pool'
+import { LimiterOutsPool } from './limiter-outs-pool'
 import {
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
@@ -35,6 +36,7 @@ export class Program {
   histories: StaticArray<usize> = new StaticArray<usize>(HISTORIES_COUNT)
   analyserOutsPool: AnalyserOutsPool = new AnalyserOutsPool()
   compressorOutsPool: CompressorOutsPool = new CompressorOutsPool()
+  limiterOutsPool: LimiterOutsPool = new LimiterOutsPool()
   arrayAccessHistory: StaticArray<f32> = new StaticArray<f32>(1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE)
   branchHistory: StaticArray<f32> = new StaticArray<f32>(1 + BRANCH_HISTORY_SIZE * BRANCH_HISTORY_ENTRY_SIZE)
   sampleNeedleHistory: StaticArray<f32> = new StaticArray<f32>(
@@ -184,6 +186,16 @@ export class Program {
 
       const srcGr$ = source.compressorOutsPool.getGrDb(i)
       const dstGr$ = this.compressorOutsPool.getGrDb(i)
+      memory.copy(dstGr$, srcGr$, compressorBytes)
+    }
+
+    for (let i = 0; i < 64; i++) {
+      const srcLevel$ = source.limiterOutsPool.getLevelDb(i)
+      const dstLevel$ = this.limiterOutsPool.getLevelDb(i)
+      memory.copy(dstLevel$, srcLevel$, compressorBytes)
+
+      const srcGr$ = source.limiterOutsPool.getGrDb(i)
+      const dstGr$ = this.limiterOutsPool.getGrDb(i)
       memory.copy(dstGr$, srcGr$, compressorBytes)
     }
 

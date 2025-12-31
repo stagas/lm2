@@ -57,7 +57,8 @@ import {
   type TimelineSequenceRef,
 } from '../bytecode/bytecode.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
-import { AnalyserOutsPoolStruct, CompressorOutsPoolStruct, ProgramDataStruct, ProgramStruct } from './assembly.ts'
+import { AnalyserOutsPoolStruct, CompressorOutsPoolStruct, LimiterOutsPoolStruct, ProgramDataStruct,
+  ProgramStruct } from './assembly.ts'
 import type { DspProcessor } from './worklet.ts'
 
 export type VmArray = {
@@ -482,6 +483,18 @@ async function createProgram(
     grDb: [...grDbOuts$].map(out$ => toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)),
   }
 
+  const limiterOutsPool = LimiterOutsPoolStruct(wasmMemory.buffer, program.limiterOutsPool)
+  const limiterLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, limiterOutsPool.levelDbOuts, 64)
+  const limiterGrDbOuts$ = new Uint32Array(wasmMemory.buffer, limiterOutsPool.grDbOuts, 64)
+  const limiterOuts = {
+    levelDb: [...limiterLevelDbOuts$].map(out$ =>
+      toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+    grDb: [...limiterGrDbOuts$].map(out$ =>
+      toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+  }
+
   let programData: ProgramDataView | undefined
 
   const out = {
@@ -489,6 +502,7 @@ async function createProgram(
     lock,
     analyserOuts,
     compressorOuts,
+    limiterOuts,
     histories,
     arrayAccessHistory,
     branchHistory,

@@ -66,6 +66,7 @@ export enum Op {
   Smooth,
   Fractal,
   Delay,
+  Limiter,
 }
 
 export enum SeqOp {

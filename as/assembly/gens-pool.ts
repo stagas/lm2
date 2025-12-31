@@ -5,6 +5,7 @@ import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
 import { Delay } from './gen/delay'
+import { Limiter } from './gen/limiter'
 import { Euclid } from './gen/euclid'
 import { Every } from './gen/every'
 import { Gen } from './gen/gen'
@@ -94,6 +95,7 @@ export class GensPool {
   private smooths: GenPool<SmoothNoise> = new GenPool<SmoothNoise>(() => new SmoothNoise())
   private fractals: GenPool<FractalNoise> = new GenPool<FractalNoise>(() => new FractalNoise())
   private delays: GenPool<Delay> = new GenPool<Delay>(() => new Delay())
+  private limiters: GenPool<Limiter> = new GenPool<Limiter>(() => new Limiter())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -135,6 +137,7 @@ export class GensPool {
     this.smooths.resetIndex()
     this.fractals.resetIndex()
     this.delays.resetIndex()
+    this.limiters.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -177,6 +180,7 @@ export class GensPool {
     this.smooths.reset()
     this.fractals.reset()
     this.delays.reset()
+    this.limiters.reset()
   }
 
   get(op: Op): Gen {
@@ -261,6 +265,8 @@ export class GensPool {
         return this.fractals.get()
       case Op.Delay:
         return this.delays.get()
+      case Op.Limiter:
+        return this.limiters.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -304,5 +310,6 @@ export class GensPool {
     this.browns.copyFrom(source.browns)
     this.smooths.copyFrom(source.smooths)
     this.fractals.copyFrom(source.fractals)
+    this.limiters.copyFrom(source.limiters)
   }
 }
