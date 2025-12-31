@@ -682,9 +682,10 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'array.sum() |> out($)',
     ],
   },
-  '.delay': {
-    name: '.delay',
+  delay: {
+    name: 'delay',
     parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be delayed' },
       { name: 'seconds', type: 'number', description: 'Delay time in seconds (clamped to 0..10)' },
       {
         name: 'feedback',
@@ -704,11 +705,11 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Delay effect as a signal method; returns the delayed signal (wet only).',
     examples: [
-      'sine(440).delay(.25) |> out($)',
-      'sine(220).delay(.35, feedback:.4, callback:x -> lp(x, cutoff:1000, q:.8)) |> out($)',
+      'sine(440) |> delay($, seconds:.25) |> out($)',
+      'sine(220) |> delay($, seconds:.35, feedback:.4, callback:x -> lp(x, cutoff:1000, q:.8)) |> out($)',
     ],
   },
-  'note': {
+  note: {
     name: 'note',
     parameters: [
       { name: 'midi', type: 'number', description: 'MIDI note number' },
@@ -719,7 +720,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'note(60) |> out($)',
     ],
   },
-  'degree': {
+  degree: {
     name: 'degree',
     parameters: [
       { name: 'degree', type: 'number', description: 'Degree of the scale' },
@@ -730,7 +731,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'degree(1) |> out($)',
     ],
   },
-  'label': {
+  label: {
     name: 'label',
     parameters: [
       { name: 'bar', type: 'number', description: 'Bar position of the label' },
