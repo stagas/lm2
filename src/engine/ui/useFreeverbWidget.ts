@@ -122,8 +122,8 @@ export function useFreeverbWidget({
           const c30 = 0.8660254037844386
           const s30 = 0.35
 
-          const dxCoef = 0.62
-          const dzCoef = 0.4
+          const dxCoef = 0.68
+          const dzCoef = 0.48
           const dyCoef = 0.48
           const sumCoef = dxCoef + dzCoef
 

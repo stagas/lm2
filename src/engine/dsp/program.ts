@@ -11,6 +11,9 @@ import {
   BRANCH_HISTORY_ENTRY_SIZE,
   BRANCH_HISTORY_SIZE,
   CHUNK_SIZE,
+  ENVELOPE_DATA_OFFSET,
+  ENVELOPE_ENTRY_SIZE,
+  ENVELOPE_HISTORY_SIZE,
   FILTER_DATA_OFFSET,
   FILTER_ENTRY_SIZE,
   FILTER_HISTORY_SIZE,
@@ -40,6 +43,8 @@ import { buildMiniSourceMap, type SourceLocation } from '../../lib/mini-source-m
 import { compileMiniNotation } from '../../mini/compiler.ts'
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import {
+  type AdRef,
+  type AdsrRef,
   type AnalyserRef,
   type ArrayLiteralRef,
   type AtRef,
@@ -116,6 +121,11 @@ export type VmTrigHistory = {
   raw: Float32Array
 }
 
+export type VmEnvelopeHistory = {
+  writePos: number
+  raw: Float32Array
+}
+
 export type VmAtTrigHistory = {
   writePos: number
   raw: Float32Array
@@ -187,6 +197,8 @@ function buildProgram(
   miniRefs: MiniSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
+  adRefs: AdRef[]
+  adsrRefs: AdsrRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
@@ -209,7 +221,7 @@ function buildProgram(
     ? (data.ops.set(vm.ops), data.literals.set(vm.literals), vm.result)
     : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
 
-  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs,
+  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, analyserRefs,
     compressorRefs, limiterRefs, filterRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals,
     branchMarks, numberParams, numberLiterals, bpm, bars, scale, sampleDefs } = compiled
   if (errors.length) {
@@ -222,6 +234,8 @@ function buildProgram(
     miniRefs: miniRefs ?? [],
     timelineRefs: timelineRefs ?? [],
     timelineLabels: timelineLabels ?? [],
+    adRefs: adRefs ?? [],
+    adsrRefs: adsrRefs ?? [],
     analyserRefs: analyserRefs ?? [],
     compressorRefs: compressorRefs ?? [],
     limiterRefs: limiterRefs ?? [],
@@ -262,6 +276,8 @@ export type ProgramBuildResult = {
   miniRefs: MiniSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
+  adRefs: AdRef[]
+  adsrRefs: AdsrRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
@@ -491,6 +507,19 @@ async function createProgram(
     ),
   }
 
+  const envelopeHistory$ = program.envelopeHistory
+  const envelopeWritePos = new Float32Array(wasmMemory.buffer, envelopeHistory$, ENVELOPE_DATA_OFFSET)
+  const envelopeHistory: VmEnvelopeHistory = {
+    get writePos() {
+      return envelopeWritePos[0] || 0
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      envelopeHistory$,
+      ENVELOPE_DATA_OFFSET + ENVELOPE_HISTORY_SIZE * ENVELOPE_ENTRY_SIZE,
+    ),
+  }
+
   function nextProgramData() {
     const data = programDataPool[programDataPoolIndex]
     programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length
@@ -541,6 +570,7 @@ async function createProgram(
     lfoHistory,
     freeverbHistory,
     trigHistory,
+    envelopeHistory,
     get data() {
       return programData
     },
@@ -552,7 +582,7 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, analyserRefs, compressorRefs,
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, analyserRefs, compressorRefs,
           limiterRefs, filterRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
           numberParams, numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
@@ -602,6 +632,8 @@ async function createProgram(
           miniRefs,
           timelineRefs,
           timelineLabels,
+          adRefs,
+          adsrRefs,
           analyserRefs,
           compressorRefs,
           limiterRefs,

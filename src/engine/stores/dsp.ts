@@ -9,6 +9,8 @@ import { AnimationManager } from '../../lib/animation-manager.ts'
 import { waitForNonZero } from '../../lib/atomics.ts'
 import type { SourceLocation } from '../../lib/mini-source-map.ts'
 import {
+  type AdRef,
+  type AdsrRef,
   type AnalyserRef,
   type ArrayLiteralRef,
   type AtRef,
@@ -62,6 +64,8 @@ export type EngineDspState = {
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  adRefs: AdRef[]
+  adsrRefs: AdsrRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
@@ -85,6 +89,8 @@ export type EngineDspState = {
   uiTimelineRefs: TimelineSequenceRef[]
   uiTimelineLabels: TimelineLabel[]
   uiMiniSourceMaps: Array<Map<number, SourceLocation> | undefined>
+  uiAdRefs: AdRef[]
+  uiAdsrRefs: AdsrRef[]
   uiAnalyserRefs: AnalyserRef[]
   uiCompressorRefs: CompressorRef[]
   uiLimiterRefs: LimiterRef[]
@@ -394,6 +400,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const bars = primaryResult.bars
       const timelineLabels = buildTimelineLabels(primaryResult.timelineLabels, bars)
       const miniSourceMaps = primaryResult.miniSourceMaps
+      const adRefs = primaryResult.adRefs
+      const adsrRefs = primaryResult.adsrRefs
       const analyserRefs = primaryResult.analyserRefs
       const compressorRefs = primaryResult.compressorRefs
       const limiterRefs = primaryResult.limiterRefs
@@ -448,6 +456,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiTimelineLabels: timelineLabels,
           uiBars: bars,
           uiMiniSourceMaps: miniSourceMaps,
+          uiAdRefs: adRefs,
+          uiAdsrRefs: adsrRefs,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
           uiLimiterRefs: limiterRefs,
@@ -748,6 +758,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     timelineRefs: [],
     timelineLabels: [],
     miniSourceMaps: [],
+    adRefs: [],
+    adsrRefs: [],
     analyserRefs: [],
     compressorRefs: [],
     limiterRefs: [],
@@ -770,6 +782,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiTimelineRefs: [],
     uiTimelineLabels: [],
     uiMiniSourceMaps: [],
+    uiAdRefs: [],
+    uiAdsrRefs: [],
     uiAnalyserRefs: [],
     uiCompressorRefs: [],
     uiLimiterRefs: [],
@@ -851,6 +865,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         bars: undefined,
         uiBars: undefined,
         miniSourceMaps: [],
+        adRefs: [],
+        adsrRefs: [],
         analyserRefs: [],
         compressorRefs: [],
         limiterRefs: [],
@@ -867,6 +883,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiTimelineRefs: [],
         uiTimelineLabels: [],
         uiMiniSourceMaps: [],
+        uiAdRefs: [],
+        uiAdsrRefs: [],
         uiAnalyserRefs: [],
         uiCompressorRefs: [],
         uiLimiterRefs: [],
@@ -1084,6 +1102,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiTimelineLabels: timelineLabels,
           uiBars: bars,
           uiMiniSourceMaps: miniSourceMaps,
+          uiAdRefs: adRefs,
+          uiAdsrRefs: adsrRefs,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
           uiLimiterRefs: limiterRefs,

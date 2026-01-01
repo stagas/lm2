@@ -295,6 +295,54 @@ export type NumberLiteralInfo = {
   literalIndex?: number
 }
 
+export type AdRef = {
+  adIndex: number
+  /** Location of the `ad` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the attack arg (positional or `attack:`). */
+  attackArgLoc: Loc | null
+  /** Location of the decay arg (positional or `decay:`). */
+  decayArgLoc: Loc | null
+  /** Location of the trig arg (positional or `trig:`). */
+  trigArgLoc: Loc | null
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: {
+    attack: number
+    decay: number
+  }
+}
+
+export type AdsrRef = {
+  adsrIndex: number
+  /** Location of the `adsr` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the attack arg (positional or `attack:`). */
+  attackArgLoc: Loc | null
+  /** Location of the decay arg (positional or `decay:`). */
+  decayArgLoc: Loc | null
+  /** Location of the sustain arg (positional or `sustain:`). */
+  sustainArgLoc: Loc | null
+  /** Location of the release arg (positional or `release:`). */
+  releaseArgLoc: Loc | null
+  /** Location of the trig arg (positional or `trig:`). */
+  trigArgLoc: Loc | null
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: {
+    attack: number
+    decay: number
+    sustain: number
+    release: number
+  }
+}
+
 export type SampleDef = {
   sampleIndex: number
   url: string

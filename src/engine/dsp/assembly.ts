@@ -48,5 +48,6 @@ export const ProgramStruct = Struct({
   lfoHistory: 'usize',
   freeverbHistory: 'usize',
   trigHistory: 'usize',
+  envelopeHistory: 'usize',
 })
 export type Program = typeof ProgramStruct.type
