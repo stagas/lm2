@@ -25,11 +25,9 @@ export function createFreeverbVisitor(src: string, refs: FreeverbRef[]) {
         const namedIn = findNamedArg(expr, 'in')
         const namedSize = findNamedArg(expr, 'size')
         const namedDamp = findNamedArg(expr, 'damp')
-        const namedWidth = findNamedArg(expr, 'width')
 
         const sizeExpr = namedSize?.value ?? getPosArg(expr, 1)?.value
         const dampExpr = namedDamp?.value ?? getPosArg(expr, 2)?.value
-        const widthExpr = namedWidth?.value ?? getPosArg(expr, 3)?.value
 
         const calleeLoc = (expr.callee?.loc ?? expr.loc) as Loc
         const aboveLoc = computeAboveLoc(src, lineStarts, calleeLoc)
@@ -42,11 +40,9 @@ export function createFreeverbVisitor(src: string, refs: FreeverbRef[]) {
           inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
           sizeArgLoc: (namedSize?.loc ?? getPosArg(expr, 1)?.loc ?? null),
           dampArgLoc: (namedDamp?.loc ?? getPosArg(expr, 2)?.loc ?? null),
-          widthArgLoc: (namedWidth?.loc ?? getPosArg(expr, 3)?.loc ?? null),
           params: {
             size: getNumberOrDefault(sizeExpr, 0.5),
             damp: getNumberOrDefault(dampExpr, 0.5),
-            width: getNumberOrDefault(widthExpr, 1.0),
           },
         })
       }

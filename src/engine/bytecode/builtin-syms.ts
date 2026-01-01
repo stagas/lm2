@@ -124,7 +124,6 @@ export const builtinSyms: Record<string, number> = {
   damp: VmSym.Damp,
   wet: VmSym.Wet,
   dry: VmSym.Dry,
-  freeze: VmSym.Freeze,
   // Math functions
   sin: VmSym.Sin,
   cos: VmSym.Cos,

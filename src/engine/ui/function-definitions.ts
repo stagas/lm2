@@ -727,26 +727,12 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         defaultValue: 0.5,
         description: 'High-frequency damping (0..1); higher values damp more',
       },
-      {
-        name: 'width',
-        type: 'number',
-        optional: true,
-        defaultValue: 1,
-        description: 'Width (0..1); affects wet blend (mono-friendly)',
-      },
-      {
-        name: 'freeze',
-        type: 'number',
-        optional: true,
-        defaultValue: 0,
-        description: 'Freeze mode (0/1); locks into infinite reverb-like sustain',
-      },
     ],
     returnType: 'number',
     description: 'Freeverb-style reverb effect; returns wet signal.',
     examples: [
       'saw(hz) |> freeverb($, size:.6, damp:.3) |> out($)',
-      'sine(220) |> freeverb($, size:.85, damp:.1, freeze:0) |> out($)',
+      'sine(220) |> freeverb($, size:.85, damp:.1) |> out($)',
     ],
   },
   note: {
