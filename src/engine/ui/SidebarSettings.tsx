@@ -45,6 +45,8 @@ export function SidebarSettings(
   const setUiZeroBased = useEngineUiStore(state => state.setZeroBasedTimelines)
   const uiShowFunctionDefinitions = useEngineUiStore(state => state.showFunctionDefinitions)
   const setUiShowFunctionDefinitions = useEngineUiStore(state => state.setShowFunctionDefinitions)
+  const uiShowFunctionDefinitionsHover = useEngineUiStore(state => state.showFunctionDefinitionsHover)
+  const setUiShowFunctionDefinitionsHover = useEngineUiStore(state => state.setShowFunctionDefinitionsHover)
   const uiShowWidgets = useEngineUiStore(state => state.showWidgets)
   const setUiShowWidgets = useEngineUiStore(state => state.setShowWidgets)
   const uiShowVisualizer = useEngineUiStore(state => state.showVisualizer)
@@ -110,7 +112,7 @@ export function SidebarSettings(
                     type="text"
                     value={localArtistName}
                     className="text-xs flex py-1 px-2 flex-1 min-w-0 bg-gradient-to-b from-black to-neutral-700 rounded-sm outline-none text-white"
-                    onChange={e => setLocalArtistName(e.target.value)}
+                    onChange={e => setLocalArtistName((e.target as HTMLInputElement).value)}
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
                         void handleSaveArtistName()
@@ -175,21 +177,20 @@ export function SidebarSettings(
       <SidebarSettingsSwitch onClick={setUiShowFunctionDefinitions} checked={uiShowFunctionDefinitions}
         onChange={setUiShowFunctionDefinitions}
       >
-        Show Function Popup
+        Show Function Popup While Typing
       </SidebarSettingsSwitch>
-      <SidebarSettingsSwitch onClick={setUiShowWidgets} checked={uiShowWidgets}
-        onChange={setUiShowWidgets}
+      <SidebarSettingsSwitch onClick={setUiShowFunctionDefinitionsHover} checked={uiShowFunctionDefinitionsHover}
+        onChange={setUiShowFunctionDefinitionsHover}
       >
+        Show Function Popup On Hover
+      </SidebarSettingsSwitch>
+      <SidebarSettingsSwitch onClick={setUiShowWidgets} checked={uiShowWidgets} onChange={setUiShowWidgets}>
         Show Widgets
       </SidebarSettingsSwitch>
-      <SidebarSettingsSwitch onClick={setUiShowVisualizer} checked={uiShowVisualizer}
-        onChange={setUiShowVisualizer}
-      >
+      <SidebarSettingsSwitch onClick={setUiShowVisualizer} checked={uiShowVisualizer} onChange={setUiShowVisualizer}>
         Show Visualizer
       </SidebarSettingsSwitch>
-      <SidebarSettingsSwitch onClick={setUiWordWrap} checked={uiWordWrap}
-        onChange={setUiWordWrap}
-      >
+      <SidebarSettingsSwitch onClick={setUiWordWrap} checked={uiWordWrap} onChange={setUiWordWrap}>
         Word Wrap
       </SidebarSettingsSwitch>
     </>
