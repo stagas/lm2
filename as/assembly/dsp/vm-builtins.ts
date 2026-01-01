@@ -9,6 +9,7 @@ import { callAvg } from './builtins/avg'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
 import { callCompressor } from './builtins/compressor'
 import { callDattorro } from './builtins/dattorro'
+import { callDc } from './builtins/dc'
 import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
 import { callEuclid } from './builtins/euclid'
@@ -686,6 +687,11 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Dattorro) {
       callDattorro(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
+      return
+    }
+    if (calleeAux === VmBuiltin.Dc) {
+      callDc(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
       return
     }
 

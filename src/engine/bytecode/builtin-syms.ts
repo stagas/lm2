@@ -57,6 +57,7 @@ export const builtinSyms: Record<string, number> = {
   delay: VmSym.Delay,
   freeverb: VmSym.Freeverb,
   dattorro: VmSym.Dattorro,
+  dc: VmSym.Dc,
   // Runtime directive globals (stable ids so VM can provide defaults)
   tune: VmSym.Tune,
   octave: VmSym.Octave,

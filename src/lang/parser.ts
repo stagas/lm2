@@ -1,3 +1,5 @@
+import { functionDefinitions } from '../engine/ui/function-definitions.ts'
+import { decimalsOf } from '../utils/number.ts'
 import type {
   Arg,
   AssignOp,
@@ -14,8 +16,6 @@ import type {
 } from './ast.ts'
 import { type LangError, lineText } from './errors.ts'
 import type { Token, TokenKind } from './token.ts'
-import { decimalsOf } from '../utils/number.ts'
-import { functionDefinitions } from '../engine/ui/function-definitions.ts'
 
 const locFrom = (a: { line: number; column: number; length: number },
   b?: { line: number; column: number; length: number }): Loc =>
@@ -652,7 +652,7 @@ class Parser {
                 const caseInsensitiveMatch = paramNames.find(p => p.toLowerCase() === arg.name.toLowerCase())
                 if (caseInsensitiveMatch) {
                   // Update the argument name to the correct case
-                  (arg as any).name = caseInsensitiveMatch
+                  ;(arg as any).name = caseInsensitiveMatch
                   continue
                 }
 
@@ -660,11 +660,19 @@ class Parser {
                 const prefixMatches = paramNames.filter(p => p.startsWith(arg.name))
                 if (prefixMatches.length === 1) {
                   // Update the argument name to the full parameter name
-                  (arg as any).name = prefixMatches[0]
-                } else if (prefixMatches.length === 0) {
-                  this.error(arg.loc, `Unknown parameter '${arg.name}' for function '${expr.callee.name}'. Valid parameters are: ${paramNames.join(', ')}`)
-                } else {
-                  this.error(arg.loc, `Ambiguous parameter '${arg.name}' for function '${expr.callee.name}'. It matches: ${prefixMatches.join(', ')}`)
+                  ;(arg as any).name = prefixMatches[0]
+                }
+                else if (prefixMatches.length === 0) {
+                  this.error(arg.loc as Token,
+                    `Unknown parameter '${arg.name}' for function '${expr.callee.name}'. Valid parameters are: ${
+                      paramNames.join(', ')
+                    }`)
+                }
+                else {
+                  this.error(arg.loc as Token,
+                    `Ambiguous parameter '${arg.name}' for function '${expr.callee.name}'. It matches: ${
+                      prefixMatches.join(', ')
+                    }`)
                 }
               }
             }

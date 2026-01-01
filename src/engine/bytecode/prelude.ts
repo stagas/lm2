@@ -8,5 +8,6 @@ mix=in->in
 `
 
 export const POSTLUDE = `
+post((L,R)->[dc(L),dc(R)])
 post((L,R)->[mix(L),mix(R)])
 `
