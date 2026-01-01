@@ -683,18 +683,18 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         description: 'Feedback amount; 0 produces a single echo only',
       },
       {
-        name: 'callback',
+        name: 'cb',
         type: '(in: number) -> number',
         optional: true,
         defaultValue: 'x -> x',
-        description: 'Applied to the delayed signal before output and feedback',
+        description: 'Applied to the feedback signal',
       },
     ],
     returnType: 'number',
     description: 'Delay effect as a signal method; returns the delayed signal (wet only).',
     examples: [
       'sine(440) |> delay($, seconds:.25) |> out($)',
-      'sine(220) |> delay($, seconds:.35, feedback:.4, callback:x -> lp(x, cutoff:1000, q:.8)) |> out($)',
+      'sine(220) |> delay($, seconds:.35, feedback:.4, cb:x -> lp(x, cutoff:1000, q:.8)) |> out($)',
     ],
   },
   freeverb: {
