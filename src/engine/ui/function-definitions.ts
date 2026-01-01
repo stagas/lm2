@@ -814,6 +814,47 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       '[saw(220), saw(221)] |> dattorro($, roomSize:.75, damping:.01) |> out($)',
     ],
   },
+  fdn: {
+    name: 'fdn',
+    parameters: [
+      { name: 'in', type: 'number | [L:number, R:number]', description: 'Signal to reverberate (mono or stereo)' },
+      {
+        name: 'roomSize',
+        type: 'number',
+        optional: true,
+        defaultValue: 1.0,
+        description: 'Room size scaling (0..1); affects delay line lengths',
+      },
+      {
+        name: 'decay',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.5,
+        description: 'Global feedback gain (0..1); higher values increase decay time',
+      },
+      {
+        name: 'damping',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.5,
+        description: 'High-frequency damping (0..1); 0=bright, 1=dark',
+      },
+      {
+        name: 'modulationDepth',
+        type: 'number',
+        optional: true,
+        defaultValue: 1.0,
+        description: 'Modulation depth scalar (0..1); affects chorus-like modulation',
+      },
+    ],
+    returnType: '[L:number, R:number]',
+    description: 'Feedback Delay Network (FDN) reverb with 8 delay lines, Hadamard feedback matrix, and modulated fractional delays; returns wet stereo signal.',
+    examples: [
+      'saw(hz) |> fdn($, roomSize:0.8, decay:0.6) |> out($)',
+      'saw(hz) |> fdn($, roomSize:1.0, decay:0.5, damping:0.3, modulationDepth:0.8) |> out($)',
+      '[saw(220), saw(221)] |> fdn($, roomSize:0.9, decay:0.7, damping:0.2) |> out($)',
+    ],
+  },
   dc: {
     name: 'dc',
     parameters: [

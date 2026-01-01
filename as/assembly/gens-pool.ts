@@ -7,6 +7,7 @@ import { Compressor } from './gen/compressor'
 import { DC } from './gen/dc'
 import { Delay } from './gen/delay'
 import { Dattorro } from './gen/dattorro'
+import { Fdn } from './gen/fdn'
 import { Freeverb } from './gen/freeverb'
 import { Limiter } from './gen/limiter'
 import { Euclid } from './gen/euclid'
@@ -101,6 +102,7 @@ export class GensPool {
   private limiters: GenPool<Limiter> = new GenPool<Limiter>(() => new Limiter())
   private freeverbs: GenPool<Freeverb> = new GenPool<Freeverb>(() => new Freeverb())
   private dattorros: GenPool<Dattorro> = new GenPool<Dattorro>(() => new Dattorro())
+  private fdns: GenPool<Fdn> = new GenPool<Fdn>(() => new Fdn())
   private dcs: GenPool<DC> = new GenPool<DC>(() => new DC())
   resetIndices(): void {
     this.sines.resetIndex()
@@ -146,6 +148,7 @@ export class GensPool {
     this.limiters.resetIndex()
     this.freeverbs.resetIndex()
     this.dattorros.resetIndex()
+    this.fdns.resetIndex()
     this.dcs.resetIndex()
   }
   reset(): void {
@@ -192,6 +195,7 @@ export class GensPool {
     this.limiters.reset()
     this.freeverbs.reset()
     this.dattorros.reset()
+    this.fdns.reset()
     this.dcs.reset()
   }
 
@@ -283,6 +287,8 @@ export class GensPool {
         return this.freeverbs.get()
       case Op.Dattorro:
         return this.dattorros.get()
+      case Op.Fdn:
+        return this.fdns.get()
       case Op.Dc:
         return this.dcs.get()
     }
@@ -331,6 +337,7 @@ export class GensPool {
     this.limiters.copyFrom(source.limiters)
     this.freeverbs.copyFrom(source.freeverbs)
     this.dattorros.copyFrom(source.dattorros)
+    this.fdns.copyFrom(source.fdns)
     this.dcs.copyFrom(source.dcs)
   }
 }

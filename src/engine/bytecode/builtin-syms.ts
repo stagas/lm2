@@ -57,6 +57,7 @@ export const builtinSyms: Record<string, number> = {
   delay: VmSym.Delay,
   freeverb: VmSym.Freeverb,
   dattorro: VmSym.Dattorro,
+  fdn: VmSym.Fdn,
   dc: VmSym.Dc,
   // Runtime directive globals (stable ids so VM can provide defaults)
   tune: VmSym.Tune,
@@ -137,6 +138,8 @@ export const builtinSyms: Record<string, number> = {
   decayDiffusion2: VmSym.DecayDiffusion2,
   excursionRate: VmSym.ExcursionRate,
   excursionDepth: VmSym.ExcursionDepth,
+  hfDecay: VmSym.HfDecay,
+  modDepth: VmSym.ModDepth,
   // Math functions
   sin: VmSym.Sin,
   cos: VmSym.Cos,
