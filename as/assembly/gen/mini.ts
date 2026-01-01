@@ -222,26 +222,12 @@ export class Mini extends Gen {
   }
 
   @inline
-  private bindVoiceToEvent(voiceIndex: i32, eventIndex: i32): void {
-    const size = ARRAY_SIZE * MAX_EVENT_VALUES
-    const prevEvent = this.voiceEventIndex[voiceIndex]
-    if (prevEvent >= 0 && prevEvent < size) {
-      this.eventVoices[prevEvent] = -1
-    }
-    this.voiceEventIndex[voiceIndex] = eventIndex
-    if (eventIndex >= 0 && eventIndex < size) {
-      this.eventVoices[eventIndex] = voiceIndex
-    }
-  }
-
-  @inline
   private pairLess(aKey: i64, aSlot: i32, bKey: i64, bSlot: i32): bool {
     if (aKey < bKey) return true
     if (aKey > bKey) return false
     return aSlot < bSlot
   }
 
-  @inline
   private sortGlidePairs(lo: i32, hi: i32): void {
     let i: i32 = lo
     let j: i32 = hi
