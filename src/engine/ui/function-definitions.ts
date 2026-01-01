@@ -814,6 +814,18 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       '[saw(220), saw(221)] |> dattorro($, roomSize:.75, damping:.01) |> out($)',
     ],
   },
+  dc: {
+    name: 'dc',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be DC-blocked' },
+    ],
+    returnType: 'number',
+    description: 'DC blocker filter that removes very low frequency content (DC offset) from the signal.',
+    examples: [
+      'saw(110) |> dc($) |> out($)',
+      'sine(440) + 0.1 |> dc($) |> out($)',
+    ],
+  },
   note: {
     name: 'note',
     parameters: [

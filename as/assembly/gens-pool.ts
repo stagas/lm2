@@ -4,6 +4,7 @@ import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
+import { DC } from './gen/dc'
 import { Delay } from './gen/delay'
 import { Dattorro } from './gen/dattorro'
 import { Freeverb } from './gen/freeverb'
@@ -100,6 +101,7 @@ export class GensPool {
   private limiters: GenPool<Limiter> = new GenPool<Limiter>(() => new Limiter())
   private freeverbs: GenPool<Freeverb> = new GenPool<Freeverb>(() => new Freeverb())
   private dattorros: GenPool<Dattorro> = new GenPool<Dattorro>(() => new Dattorro())
+  private dcs: GenPool<DC> = new GenPool<DC>(() => new DC())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -144,6 +146,7 @@ export class GensPool {
     this.limiters.resetIndex()
     this.freeverbs.resetIndex()
     this.dattorros.resetIndex()
+    this.dcs.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -189,6 +192,7 @@ export class GensPool {
     this.limiters.reset()
     this.freeverbs.reset()
     this.dattorros.reset()
+    this.dcs.reset()
   }
 
   get(op: Op): Gen {
@@ -279,6 +283,8 @@ export class GensPool {
         return this.freeverbs.get()
       case Op.Dattorro:
         return this.dattorros.get()
+      case Op.Dc:
+        return this.dcs.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -325,5 +331,6 @@ export class GensPool {
     this.limiters.copyFrom(source.limiters)
     this.freeverbs.copyFrom(source.freeverbs)
     this.dattorros.copyFrom(source.dattorros)
+    this.dcs.copyFrom(source.dcs)
   }
 }
