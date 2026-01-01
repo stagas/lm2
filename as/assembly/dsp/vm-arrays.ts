@@ -1,6 +1,7 @@
 import { ARRAY_HISTORY_ENTRY_SIZE, ARRAY_HISTORY_SIZE } from '../constants'
 import { setVmError } from '../globals'
 import { Program } from '../program'
+import { copyAudio, fillAudio } from './audio-ops'
 import { VmTag } from './types'
 import { VmAudio } from './vm-audio'
 import { VmStack } from './vm-stack'
@@ -38,7 +39,7 @@ export class VmArrays {
   }
 
   @inline
-  create(n: i32, stack: VmStack, pc: i32): void {
+  create(n: i32, stack: VmStack, pc: i32, audio: VmAudio, program: Program, length: i32): void {
     const arrId = this.count
     const start = this.elemCount
     const end = start + n
@@ -56,21 +57,57 @@ export class VmArrays {
 
     let tag0: i32 = -1
     let mixed: bool = false
+    let hasAudio: bool = false
+    let hasNonAudio: bool = false
     for (let i = n - 1; i >= 0; i--) {
       const idx = stack.pop()
       const t = stack.tag[idx]
       if (tag0 < 0) tag0 = t
       else if (t !== tag0) mixed = true
+      if (t === VmTag.Audio) hasAudio = true
+      else hasNonAudio = true
       this.elemTag[start + i] = t
       this.elemNum[start + i] = stack.num[idx]
       this.elemAux[start + i] = stack.aux[idx]
     }
 
     if (mixed) {
-      // Mixed-type arrays are not supported; keep runtime predictable for audio-rate indexing.
-      setVmError(22, pc)
-      stack.push(VmTag.Undef)
-      return
+      // Allow mixing Audio with scalars by promoting all elements to Audio.
+      if (hasAudio && hasNonAudio) {
+        for (let i = 0; i < n; i++) {
+          const t = this.elemTag[start + i] as VmTag
+          if (t === VmTag.Audio) continue
+
+          const num = this.elemNum[start + i]
+          const aux = this.elemAux[start + i]
+
+          const outIndex = audio.allocOut(program)
+          const out$ = program.getOutBuffer(outIndex)
+
+          if (t === VmTag.Num && aux >= 0) {
+            fillAudio(out$, num as f32, length)
+          }
+          else if (t === VmTag.Bool) {
+            fillAudio(out$, (num != 0.0 ? 1.0 : 0.0) as f32, length)
+          }
+          else {
+            const in$ = audio.toAudioPtr(t, num, aux, length, program)
+            copyAudio(out$, in$, length)
+          }
+
+          this.elemTag[start + i] = VmTag.Audio
+          this.elemNum[start + i] = 0.0
+          this.elemAux[start + i] = outIndex
+        }
+
+        tag0 = VmTag.Audio
+      }
+      else {
+        // Mixed-type arrays are not supported; keep runtime predictable for audio-rate indexing.
+        setVmError(22, pc)
+        stack.push(VmTag.Undef)
+        return
+      }
     }
 
     this.start[arrId] = start

@@ -25,73 +25,104 @@ export function callOut(
   length: i32,
   dsp: Dsp,
 ): void {
-  if (posCount < 1) {
-    stack.push(VmTag.Undef)
-    return
-  }
-
-  // L channel (positional or named)
-  let lTag = (posTags[0] as VmTag)
-  let lNum = posNums[0]
-  let lAux = posAux[0]
-
-  // Check for named L parameter
-  for (let i = 0; i < namedCount; i++) {
-    if (nameSyms[i] === VmSym.L) {
-      lTag = nameTags[i] as VmTag
-      lNum = nameNums[i]
-      lAux = nameAux[i]
-      break
-    }
-  }
-
-  const lPtr$ = audio.toAudioPtr(lTag, lNum, lAux, length, program)
-  addAudio(dsp.outLeft$, dsp.outLeft$, lPtr$, length)
+  let lPtr$: usize = 0
+  let rPtr$: usize = 0
+  let returnTag = VmTag.Undef
+  let returnNum = 0.0
+  let returnAux = 0
 
   if (posCount >= 2) {
-    // R channel from positional arg
-    let rTag = (posTags[1] as VmTag)
-    let rNum = posNums[1]
-    let rAux = posAux[1]
+    // Handle old syntax: out(L, R)
+    const lTag = posTags[0] as VmTag
+    const lNum = posNums[0]
+    const lAux = posAux[0]
+    lPtr$ = audio.toAudioPtr(lTag, lNum, lAux, length, program)
 
-    // Check for named R parameter
-    for (let i = 0; i < namedCount; i++) {
-      if (nameSyms[i] === VmSym.R) {
-        rTag = nameTags[i] as VmTag
-        rNum = nameNums[i]
-        rAux = nameAux[i]
-        break
+    const rTag = posTags[1] as VmTag
+    const rNum = posNums[1]
+    const rAux = posAux[1]
+    rPtr$ = audio.toAudioPtr(rTag, rNum, rAux, length, program)
+
+    returnTag = lTag
+    returnNum = lNum
+    returnAux = lAux
+  } else if (posCount >= 1) {
+    // Get the first positional argument
+    const argTag = posTags[0] as VmTag
+    const argNum = posNums[0]
+    const argAux = posAux[0]
+
+    if (argTag === VmTag.Arr) {
+      // Handle array case: out([L, R])
+      const arrId: i32 = argAux
+      if (arrId < 0 || arrId >= dsp.arrays.count) {
+        // Invalid array, output silence
+        lPtr$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
+        rPtr$ = lPtr$
+        returnTag = VmTag.Num
+        returnNum = 0.0
+        returnAux = 0
+      } else {
+        const arrLen = dsp.arrays.len[arrId]
+        const start: i32 = dsp.arrays.start[arrId]
+
+        if (arrLen >= 2) {
+          // Get left channel
+          const lTag = dsp.arrays.elemTag[start] as VmTag
+          const lNum = dsp.arrays.elemNum[start]
+          const lAux = dsp.arrays.elemAux[start]
+          lPtr$ = audio.toAudioPtr(lTag, lNum, lAux, length, program)
+
+          // Get right channel
+          const rTag = dsp.arrays.elemTag[start + 1] as VmTag
+          const rNum = dsp.arrays.elemNum[start + 1]
+          const rAux = dsp.arrays.elemAux[start + 1]
+          rPtr$ = audio.toAudioPtr(rTag, rNum, rAux, length, program)
+
+          returnTag = lTag
+          returnNum = lNum
+          returnAux = lAux
+        } else if (arrLen >= 1) {
+          // Single element array, use for both channels
+          const elemTag = dsp.arrays.elemTag[start] as VmTag
+          const elemNum = dsp.arrays.elemNum[start]
+          const elemAux = dsp.arrays.elemAux[start]
+          lPtr$ = audio.toAudioPtr(elemTag, elemNum, elemAux, length, program)
+          rPtr$ = lPtr$
+
+          returnTag = elemTag
+          returnNum = elemNum
+          returnAux = elemAux
+        } else {
+          // Empty array, output silence
+          lPtr$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
+          rPtr$ = lPtr$
+          returnTag = VmTag.Num
+          returnNum = 0.0
+          returnAux = 0
+        }
       }
+    } else {
+      // Handle single signal case: out(signal)
+      lPtr$ = audio.toAudioPtr(argTag, argNum, argAux, length, program)
+      rPtr$ = lPtr$ // Same signal to both channels
+      returnTag = argTag
+      returnNum = argNum
+      returnAux = argAux
     }
-
-    const rPtr$ = audio.toAudioPtr(rTag, rNum, rAux, length, program)
-    addAudio(dsp.outRight$, dsp.outRight$, rPtr$, length)
-  }
-  else {
-    // Check for named R parameter only
-    let rTag = VmTag.Undef
-    let rNum = 0.0
-    let rAux = 0
-
-    for (let i = 0; i < namedCount; i++) {
-      if (nameSyms[i] === VmSym.R) {
-        rTag = nameTags[i] as VmTag
-        rNum = nameNums[i]
-        rAux = nameAux[i]
-        break
-      }
-    }
-
-    if (rTag !== VmTag.Undef) {
-      const rPtr$ = audio.toAudioPtr(rTag, rNum, rAux, length, program)
-      addAudio(dsp.outRight$, dsp.outRight$, rPtr$, length)
-    }
-    else {
-      addAudio(dsp.outRight$, dsp.outRight$, lPtr$, length)
-    }
+  } else {
+    // No arguments, output silence
+    lPtr$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
+    rPtr$ = lPtr$
+    returnTag = VmTag.Num
+    returnNum = 0.0
+    returnAux = 0
   }
 
-  // Return the left input
-  if (lTag === VmTag.Audio) stack.push(VmTag.Audio, 0.0, lAux)
-  else stack.push(lTag, lNum, lAux)
+  // Add to output channels
+  addAudio(dsp.outLeft$, dsp.outLeft$, lPtr$, length)
+  addAudio(dsp.outRight$, dsp.outRight$, rPtr$, length)
+
+  // Return the input value
+  stack.push(returnTag, returnNum, returnAux)
 }

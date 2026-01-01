@@ -239,7 +239,13 @@ export class VmBuiltins {
 
     // Coerce arrays-of-nums / arrays-of-audio to a scalar by summing (like `array.sum()`),
     // so passing `[a,b,c]` into a numeric/audio parameter works naturally.
-    if (calleeAux !== VmBuiltin.Map && calleeAux !== VmBuiltin.Sum && calleeAux !== VmBuiltin.Glide) {
+    if (
+      calleeAux !== VmBuiltin.Map &&
+      calleeAux !== VmBuiltin.Sum &&
+      calleeAux !== VmBuiltin.Glide &&
+      calleeAux !== VmBuiltin.Out &&
+      calleeAux !== VmBuiltin.Solo
+    ) {
       for (let i = 0; i < posCount; i++) {
         this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
       }
