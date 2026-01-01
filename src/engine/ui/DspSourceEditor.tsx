@@ -19,6 +19,7 @@ import {
   encodeLangToVmOps,
   extractEarlyDataFromSource,
 } from '../bytecode/bytecode.ts'
+import type { TimelineLabel } from '../bytecode/bytecode.ts'
 import type { VmCompileSnapshot } from '../dsp/program.ts'
 import { buildTimelineLabels } from '../dsp/timeline-labels.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
@@ -300,6 +301,17 @@ function DspSourceEditorReady(
   const compileErrors = previewCompile.errors ?? []
   const hasCompileErrors = compileErrors.length > 0
 
+  const lastGoodPreviewRef = useRef<{
+    widgetCompileState: WidgetCompileResult
+    timelineLabelsForView: TimelineLabel[]
+    barsForView: number | undefined
+  } | null>(null)
+
+  useEffect(() => {
+    if (!loopId) return
+    lastGoodPreviewRef.current = null
+  }, [loopId])
+
   const showWidgets = uiShowWidgets && (
     currentLoop != null && (code.length > 0 || dspSource.length > 0)
     || isUpdatingDsp
@@ -375,6 +387,8 @@ function DspSourceEditorReady(
     }
 
     if (previewCompile.errors.length) {
+      const prev = lastGoodPreviewRef.current?.widgetCompileState
+      if (prev) return { ...prev, errors: previewCompile.errors }
       return {
         dspSource,
         sequences,
@@ -383,20 +397,20 @@ function DspSourceEditorReady(
         miniSourceMaps,
         adRefs,
         adsrRefs,
-        analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
-        compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
-        limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
-        filterRefs: previewCompile.filterRefs ?? filterRefs,
-        freeverbRefs: previewCompile.freeverbRefs ?? freeverbRefs,
-        slicerRefs: previewCompile.slicerRefs ?? slicerRefs,
-        lfoRefs: previewCompile.lfoRefs ?? lfoRefs,
-        everyRefs: previewCompile.everyRefs ?? everyRefs,
-        atRefs: previewCompile.atRefs ?? atRefs,
-        euclidRefs: previewCompile.euclidRefs ?? euclidRefs,
-        arrayLiterals: previewCompile.arrayLiterals ?? arrayLiterals,
-        branchMarks: previewCompile.branchMarks ?? branchMarks,
-        numberParams: previewCompile.numberParams ?? numberParams,
-        sampleDefs: previewCompile.sampleDefs ?? sampleDefs,
+        analyserRefs,
+        compressorRefs,
+        limiterRefs,
+        filterRefs,
+        freeverbRefs,
+        slicerRefs,
+        lfoRefs,
+        everyRefs,
+        atRefs,
+        euclidRefs,
+        arrayLiterals,
+        branchMarks,
+        numberParams,
+        sampleDefs,
         errors: previewCompile.errors,
       }
     }
@@ -456,7 +470,7 @@ function DspSourceEditorReady(
 
   const timelineLabelsForView = useMemo(() => {
     if (code === dspSource) return timelineLabels
-    if (hasCompileErrors) return timelineLabels
+    if (hasCompileErrors) return lastGoodPreviewRef.current?.timelineLabelsForView ?? timelineLabels
 
     const earlyData = extractEarlyDataFromSource(code)
     if (earlyData.errors.length) return timelineLabels
@@ -466,12 +480,22 @@ function DspSourceEditorReady(
 
   const barsForView = useMemo(() => {
     if (code === dspSource) return bars
-    if (hasCompileErrors) return bars
+    if (hasCompileErrors) return lastGoodPreviewRef.current?.barsForView ?? bars
 
     const earlyData = extractEarlyDataFromSource(code)
     if (earlyData.errors.length) return bars
     return earlyData.bars
   }, [bars, code, dspSource, hasCompileErrors])
+
+  useEffect(() => {
+    if (code === dspSource) return
+    if (hasCompileErrors) return
+    lastGoodPreviewRef.current = {
+      widgetCompileState,
+      timelineLabelsForView,
+      barsForView,
+    }
+  }, [barsForView, code, dspSource, hasCompileErrors, timelineLabelsForView, widgetCompileState])
 
   useEffect(() => {
     if (isUpdatingDsp || isProgramSwapPending) return
