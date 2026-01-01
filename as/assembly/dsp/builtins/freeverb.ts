@@ -32,7 +32,7 @@ export function callFreeverb(
   program: Program,
   length: i32,
 ): void {
-  // freeverb(in, size=0.5, damp=0.5, width=1, freeze=0)
+  // freeverb(in, size=0.5, damp=0.5)
   if (posCount < 1) {
     stack.push(VmTag.Undef)
     return
@@ -52,14 +52,6 @@ export function callFreeverb(
   let dampNum: f64 = 0.5
   let dampAux: i32 = 0
 
-  let widthTag: VmTag = VmTag.Num
-  let widthNum: f64 = 1.0
-  let widthAux: i32 = 0
-
-  let freezeTag: VmTag = VmTag.Num
-  let freezeNum: f64 = 0.0
-  let freezeAux: i32 = 0
-
   if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
     inTag = posTags[0] as VmTag
     inNum = posNums[0]
@@ -76,18 +68,6 @@ export function callFreeverb(
     dampTag = posTags[2] as VmTag
     dampNum = posNums[2]
     dampAux = posAux[2]
-  }
-
-  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
-    widthTag = posTags[3] as VmTag
-    widthNum = posNums[3]
-    widthAux = posAux[3]
-  }
-
-  if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
-    freezeTag = posTags[4] as VmTag
-    freezeNum = posNums[4]
-    freezeAux = posAux[4]
   }
 
   for (let i = 0; i < namedCount; i++) {
@@ -110,23 +90,11 @@ export function callFreeverb(
       dampNum = nameNums[i]
       dampAux = nameAux[i]
     }
-    else if (k === VmSym.Width) {
-      widthTag = nameTags[i] as VmTag
-      widthNum = nameNums[i]
-      widthAux = nameAux[i]
-    }
-    else if (k === VmSym.Freeze) {
-      freezeTag = nameTags[i] as VmTag
-      freezeNum = nameNums[i]
-      freezeAux = nameAux[i]
-    }
   }
 
   const in$ = audio.toAudioPtr(inTag, inNum, inAux, length, program)
   const size$ = audio.toAudioPtr(sizeTag, sizeNum, sizeAux, length, program)
   const damp$ = audio.toAudioPtr(dampTag, dampNum, dampAux, length, program)
-  const width$ = audio.toAudioPtr(widthTag, widthNum, widthAux, length, program)
-  const freeze$ = audio.toAudioPtr(freezeTag, freezeNum, freezeAux, length, program)
 
   const outIndex = audio.allocOut(program)
   const out$ = program.getOutBuffer(outIndex)
@@ -135,8 +103,6 @@ export function callFreeverb(
   gen.in$ = in$
   gen.size$ = size$
   gen.damp$ = damp$
-  gen.width$ = width$
-  gen.freeze$ = freeze$
   gen.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
@@ -148,8 +114,7 @@ export function callFreeverb(
     hist[base] = f32(freeverbIndex)
     hist[base + 1] = load<f32>(size$)
     hist[base + 2] = load<f32>(damp$)
-    hist[base + 3] = load<f32>(width$)
-    hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 3] = f32((globalSampleCount + length) & 0xfffff)
     hist[FREEVERB_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 

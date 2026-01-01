@@ -232,13 +232,10 @@ export type FreeverbRef = {
   sizeArgLoc: Loc | null
   /** Location of the damp arg (positional or `damp:`). */
   dampArgLoc: Loc | null
-  /** Location of the width arg (positional or `width:`). */
-  widthArgLoc: Loc | null
   /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
     size: number
     damp: number
-    width: number
   }
 }
 

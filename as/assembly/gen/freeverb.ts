@@ -7,11 +7,10 @@ const NUM_ALLPASSES: i32 = 4
 
 const BASE_SR: f64 = 44100.0
 
-const FIXED_GAIN: f32 = 0.015 as f32
-const SCALE_DAMP: f32 = 0.4 as f32
-const SCALE_ROOM: f32 = 0.28 as f32
-const OFFSET_ROOM: f32 = 0.7 as f32
-const ALLPASS_FEEDBACK: f32 = 0.5 as f32
+const FIXED_GAIN: f32 = 0.015
+const SCALE_DAMP: f32 = 1.0
+const SCALE_ROOM: f32 = 1.0
+const ALLPASS_FEEDBACK: f32 = 0.5
 
 // @ts-ignore
 @inline
@@ -33,8 +32,6 @@ export class Freeverb extends Gen {
   in$: usize = 0
   size$: usize = 0
   damp$: usize = 0
-  width$: usize = 0
-  freeze$: usize = 0
 
   private lastSampleRate: i32 = 0
 
@@ -169,8 +166,6 @@ export class Freeverb extends Gen {
     let i$: usize = this.in$
     let size$: usize = this.size$
     let damp$: usize = this.damp$
-    let width$: usize = this.width$
-    let freeze$: usize = this.freeze$
 
     const combBufs = this.combBufs
     const combLen = this.combLen
@@ -187,15 +182,10 @@ export class Freeverb extends Gen {
 
       const size: f32 = clamp01(load<f32>(size$))
       const damp: f32 = clamp01(load<f32>(damp$))
-      const width: f32 = clamp01(load<f32>(width$))
-      const freezeMode: bool = load<f32>(freeze$) > 0.0
 
-      const room1: f32 = freezeMode ? 1.0 : (size * SCALE_ROOM + OFFSET_ROOM)
-      const damp1: f32 = freezeMode ? 0.0 : (damp * SCALE_DAMP)
+      const room1: f32 = size * SCALE_ROOM
+      const damp1: f32 = damp * SCALE_DAMP
       const damp2: f32 = 1.0 - damp1
-
-      // Width affects the wet signal amplitude
-      const widthScale: f32 = freezeMode ? 1.0 : (0.5 + 0.5 * width)
 
       const x: f32 = input * FIXED_GAIN
 
@@ -237,14 +227,12 @@ export class Freeverb extends Gen {
         allpassIdx[ai] = p
       }
 
-      store<f32>(o$, (y * widthScale) as f32)
+      store<f32>(o$, y)
 
       o$ += 4
       i$ += 4
       size$ += 4
       damp$ += 4
-      width$ += 4
-      freeze$ += 4
     }
   }
 }
