@@ -1,13 +1,13 @@
 // dprint-ignore-file
-import { Fdn } from '../../gen/fdn'
+import { Velvet } from '../../gen/velvet'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { Dsp } from '../dsp'
-import { publishReverbRoomSize } from '../reverb-history'
 import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
+import { publishReverbRoomSize } from '../reverb-history'
 
 // @ts-ignore
 @inline
@@ -17,7 +17,7 @@ function clampIndex(v: i32): i32 {
 
 // @ts-ignore
 @inline
-export function callFdn(
+export function callVelvet(
   posCount: i32,
   nameSyms: StaticArray<i32>,
   nameTags: StaticArray<i32>,
@@ -33,34 +33,29 @@ export function callFdn(
   length: i32,
   dsp: Dsp,
 ): void {
-  // fdn(in, roomSize=1.0, damping=0.5, decay=0.5, modulationDepth=1.0)
+  // velvet(in, roomSize=0.5, damping=0.5, decay=0.5)
   if (posCount < 1) {
     stack.push(VmTag.Undef)
     return
   }
 
-  let fdnIndex: i32 = 0
+  let velvetIndex: i32 = 0
 
   let inTag: VmTag = VmTag.Num
   let inNum: f64 = 0.0
   let inAux: i32 = 0
 
   let roomSizeTag: VmTag = VmTag.Num
-  let roomSizeNum: f64 = 1.0
+  let roomSizeNum: f64 = 0.5
   let roomSizeAux: i32 = 0
-
-  let decayTag: VmTag = VmTag.Num
-  let decayNum: f64 = 0.5
-  let decayAux: i32 = 0
 
   let dampingTag: VmTag = VmTag.Num
   let dampingNum: f64 = 0.5
   let dampingAux: i32 = 0
 
-  let modulationDepthTag: VmTag = VmTag.Num
-  let modulationDepthNum: f64 = 1.0
-  let modulationDepthAux: i32 = 0
-
+  let decayTag: VmTag = VmTag.Num
+  let decayNum: f64 = 0.5
+  let decayAux: i32 = 0
 
   if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
     inTag = posTags[0] as VmTag
@@ -86,17 +81,10 @@ export function callFdn(
     decayAux = posAux[3]
   }
 
-  if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
-    modulationDepthTag = posTags[4] as VmTag
-    modulationDepthNum = posNums[4]
-    modulationDepthAux = posAux[4]
-  }
-
-
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      fdnIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      velvetIndex = clampIndex(i32(Math.floor(nameNums[i])))
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -108,20 +96,15 @@ export function callFdn(
       roomSizeNum = nameNums[i]
       roomSizeAux = nameAux[i]
     }
-    else if (k === VmSym.Decay) {
-      decayTag = nameTags[i] as VmTag
-      decayNum = nameNums[i]
-      decayAux = nameAux[i]
-    }
     else if (k === VmSym.Damping) {
       dampingTag = nameTags[i] as VmTag
       dampingNum = nameNums[i]
       dampingAux = nameAux[i]
     }
-    else if (k === VmSym.ModDepth) {
-      modulationDepthTag = nameTags[i] as VmTag
-      modulationDepthNum = nameNums[i]
-      modulationDepthAux = nameAux[i]
+    else if (k === VmSym.Decay) {
+      decayTag = nameTags[i] as VmTag
+      decayNum = nameNums[i]
+      decayAux = nameAux[i]
     }
   }
 
@@ -168,25 +151,23 @@ export function callFdn(
   }
 
   const roomSize$ = audio.toAudioPtr(roomSizeTag, roomSizeNum, roomSizeAux, length, program)
-  const decay$ = audio.toAudioPtr(decayTag, decayNum, decayAux, length, program)
   const damping$ = audio.toAudioPtr(dampingTag, dampingNum, dampingAux, length, program)
-  const modulationDepth$ = audio.toAudioPtr(modulationDepthTag, modulationDepthNum, modulationDepthAux, length, program)
+  const decay$ = audio.toAudioPtr(decayTag, decayNum, decayAux, length, program)
 
   const outLIndex = audio.allocOut(program)
   const outRIndex = audio.allocOut(program)
   const outL$ = program.getOutBuffer(outLIndex)
   const outR$ = program.getOutBuffer(outRIndex)
 
-  const gen = program.gensPool.get(Op.Fdn) as Fdn
+  const gen = program.gensPool.get(Op.Velvet) as Velvet
   gen.inL$ = inL$
   gen.inR$ = inR$
   gen.roomSize$ = roomSize$
   gen.damping$ = damping$
   gen.decay$ = decay$
-  gen.modulationDepth$ = modulationDepth$
   gen.processStereo(outL$, outR$, length)
 
-  publishReverbRoomSize(program.reverbHistory, fdnIndex, load<f32>(roomSize$))
+  publishReverbRoomSize(program.reverbHistory, velvetIndex, load<f32>(roomSize$))
 
   stack.push(VmTag.Audio, 0.0, outLIndex)
   stack.push(VmTag.Audio, 0.0, outRIndex)

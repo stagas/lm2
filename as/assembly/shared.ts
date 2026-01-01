@@ -70,6 +70,7 @@ export enum Op {
   Freeverb,
   Dattorro,
   Fdn,
+  Velvet,
   Dc,
 }
 

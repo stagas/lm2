@@ -60,8 +60,8 @@ export class Fdn extends Gen {
   inL$: usize = 0
   inR$: usize = 0
   roomSize$: usize = 0
-  decay$: usize = 0
   damping$: usize = 0
+  decay$: usize = 0
   modulationDepth$: usize = 0
 
   // Delay lines (power-of-two sized buffers with masks) @ 48 kHz fixed.
@@ -179,8 +179,8 @@ export class Fdn extends Gen {
     let iL$: usize = this.inL$
     let iR$: usize = this.inR$ !== 0 ? this.inR$ : this.inL$
     let roomSize$: usize = this.roomSize$
-    let decay$: usize = this.decay$
     let damping$: usize = this.damping$
+    let decay$: usize = this.decay$
     let modulationDepth$: usize = this.modulationDepth$
 
     let oL$: usize = outL$
@@ -258,8 +258,8 @@ export class Fdn extends Gen {
       iL$ += 4
       iR$ += 4
       roomSize$ += 4
-      decay$ += 4
       damping$ += 4
+      decay$ += 4
       modulationDepth$ += 4
     }
   }

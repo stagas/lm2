@@ -128,6 +128,7 @@ export enum VmBuiltin {
   Freeverb = VmSym.Freeverb,
   Dattorro = VmSym.Dattorro,
   Fdn = VmSym.Fdn,
+  Velvet = VmSym.Velvet,
   Dc = VmSym.Dc,
   Sin = VmSym.Sin,
   Cos = VmSym.Cos,

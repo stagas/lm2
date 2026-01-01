@@ -172,6 +172,7 @@ export enum VmSym {
   ExcursionDepth,
   Dattorro,
   Fdn,
+  Velvet,
   HfDecay,
   ModDepth,
   Dc,

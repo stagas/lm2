@@ -33,15 +33,15 @@ export class Dattorro extends Gen {
   inL$: usize = 0
   inR$: usize = 0
   roomSize$: usize = 0
-  preDelay$: usize = 0
+  damping$: usize = 0
   bandwidth$: usize = 0
   inputDiffusion1$: usize = 0
   inputDiffusion2$: usize = 0
   decayDiffusion1$: usize = 0
   decayDiffusion2$: usize = 0
-  damping$: usize = 0
   excursionRate$: usize = 0
   excursionDepth$: usize = 0
+  preDelay$: usize = 0
 
   private lastSampleRate: i32 = 0
 
@@ -272,15 +272,15 @@ export class Dattorro extends Gen {
     let iL$: usize = this.inL$
     let iR$: usize = this.inR$ !== 0 ? this.inR$ : this.inL$
     let roomSize$: usize = this.roomSize$
-    let preDelay$: usize = this.preDelay$
+    let damping$: usize = this.damping$
     let bandwidth$: usize = this.bandwidth$
     let inputDiffusion1$: usize = this.inputDiffusion1$
     let inputDiffusion2$: usize = this.inputDiffusion2$
     let decayDiffusion1$: usize = this.decayDiffusion1$
     let decayDiffusion2$: usize = this.decayDiffusion2$
-    let damping$: usize = this.damping$
     let excursionRate$: usize = this.excursionRate$
     let excursionDepth$: usize = this.excursionDepth$
+    let preDelay$: usize = this.preDelay$
 
     let oL$: usize = outL$
     let oR$: usize = outR$
@@ -375,15 +375,15 @@ export class Dattorro extends Gen {
       iL$ += 4
       iR$ += 4
       roomSize$ += 4
-      preDelay$ += 4
+      damping$ += 4
       bandwidth$ += 4
       inputDiffusion1$ += 4
       inputDiffusion2$ += 4
       decayDiffusion1$ += 4
       decayDiffusion2$ += 4
-      damping$ += 4
       excursionRate$ += 4
       excursionDepth$ += 4
+      preDelay$ += 4
     }
 
     this.excPhase = phase

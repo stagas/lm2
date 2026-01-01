@@ -218,7 +218,7 @@ export type EuclidRef = {
   callLoc: Loc
 }
 
-export type ReverbKind = 'freeverb' | 'dattorro' | 'fdn'
+export type ReverbKind = 'freeverb' | 'dattorro' | 'fdn' | 'velvet'
 
 export type ReverbRef = {
   reverbIndex: number
