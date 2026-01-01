@@ -15,9 +15,9 @@ import {
   FILTER_DATA_OFFSET,
   FILTER_ENTRY_SIZE,
   FILTER_HISTORY_SIZE,
-  FREEVERB_DATA_OFFSET,
-  FREEVERB_ENTRY_SIZE,
-  FREEVERB_HISTORY_SIZE,
+  REVERB_DATA_OFFSET,
+  REVERB_ENTRY_SIZE,
+  REVERB_HISTORY_SIZE,
   HISTORIES_COUNT,
   LFO_DATA_OFFSET,
   LFO_ENTRY_SIZE,
@@ -54,8 +54,8 @@ export class Program {
   lfoHistory: StaticArray<f32> = new StaticArray<f32>(
     LFO_DATA_OFFSET + LFO_HISTORY_SIZE * LFO_ENTRY_SIZE,
   )
-  freeverbHistory: StaticArray<f32> = new StaticArray<f32>(
-    FREEVERB_DATA_OFFSET + FREEVERB_HISTORY_SIZE * FREEVERB_ENTRY_SIZE,
+  reverbHistory: StaticArray<f32> = new StaticArray<f32>(
+    REVERB_DATA_OFFSET + REVERB_HISTORY_SIZE * REVERB_ENTRY_SIZE,
   )
   trigHistory: StaticArray<f32> = new StaticArray<f32>(
     TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE,

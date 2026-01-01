@@ -29,8 +29,8 @@ import {
   createFiltersVisitor,
 } from './extract-filter.ts'
 import {
-  createFreeverbVisitor,
-} from './extract-freeverb.ts'
+  createReverbVisitor,
+} from './extract-reverb.ts'
 import {
   createAdVisitor,
 } from './extract-ad.ts'
@@ -81,7 +81,7 @@ import {
   type EuclidRef,
   EveryRef,
   type FilterRef,
-  type FreeverbRef,
+  type ReverbRef,
   LfoRef,
   type LimiterRef,
   type MiniSequenceRef,
@@ -196,7 +196,7 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   const filterRefs: FilterRef[] = []
   const adRefs: AdRef[] = []
   const adsrRefs: AdsrRef[] = []
-  const freeverbRefs: FreeverbRef[] = []
+  const reverbRefs: ReverbRef[] = []
   const slicerRefs: SlicerRef[] = []
   const lfoRefs: LfoRef[] = []
   const everyRefs: EveryRef[] = []
@@ -211,7 +211,7 @@ function extractAllRefsFromProgram(src: string, program: Program) {
     createCompressorVisitor(src, compressorRefs),
     createLimiterVisitor(src, limiterRefs),
     createFiltersVisitor(src, filterRefs),
-    createFreeverbVisitor(src, freeverbRefs),
+    createReverbVisitor(src, reverbRefs),
     createSlicersVisitor(src, slicerRefs),
     createLfoVisitor(src, lfoRefs),
     createEveryVisitor(everyRefs),
@@ -229,7 +229,7 @@ function extractAllRefsFromProgram(src: string, program: Program) {
     compressorRefs,
     limiterRefs,
     filterRefs,
-    freeverbRefs,
+    reverbRefs,
     slicerRefs,
     lfoRefs,
     everyRefs,
@@ -301,7 +301,7 @@ export function encodeLangToVmOps(
   compressorRefs?: CompressorRef[]
   limiterRefs?: LimiterRef[]
   filterRefs?: FilterRef[]
-  freeverbRefs?: FreeverbRef[]
+  reverbRefs?: ReverbRef[]
   slicerRefs?: SlicerRef[]
   lfoRefs?: LfoRef[]
   everyRefs?: EveryRef[]
@@ -439,7 +439,7 @@ export function encodeLangToVmOps(
   let compressorRefs: CompressorRef[] = []
   let limiterRefs: LimiterRef[] = []
   let filterRefs: FilterRef[] = []
-  let freeverbRefs: FreeverbRef[] = []
+  let reverbRefs: ReverbRef[] = []
   let slicerRefs: SlicerRef[] = []
   let lfoRefs: LfoRef[] = []
   let everyRefs: EveryRef[] = []
@@ -529,13 +529,15 @@ export function encodeLangToVmOps(
     return idx
   }
 
-  const MAX_FREEVERB_INDEX = 63
-  let nextFreeverbIndex = 0
-  const allocFreeverbIndex = (): number => {
-    const idx = Math.min(MAX_FREEVERB_INDEX, nextFreeverbIndex)
-    nextFreeverbIndex++
+  const MAX_REVERB_INDEX = 63
+  let nextReverbIndex = 0
+  const allocReverbIndex = (): number => {
+    const idx = Math.min(MAX_REVERB_INDEX, nextReverbIndex)
+    nextReverbIndex++
     return idx
   }
+
+  const isReverbCall = (name: string | null): boolean => name === 'freeverb' || name === 'dattorro'
 
   const MAX_AD_INDEX = 63
   const clampAdIndex = (n: number) => Math.max(0, Math.min(MAX_AD_INDEX, Math.floor(Number(n || 0))))
@@ -675,7 +677,7 @@ export function encodeLangToVmOps(
 
     if (expr.kind === 'call') {
       const preCalleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
-      const freeverbIndex = preCalleeName === 'freeverb' ? allocFreeverbIndex() : null
+      const reverbIndex = isReverbCall(preCalleeName) ? allocReverbIndex() : null
 
       const callee = transformExpr(expr.callee)
       let args = (expr.args ?? []).map((a: any) => {
@@ -683,9 +685,9 @@ export function encodeLangToVmOps(
         return a
       })
 
-      if (freeverbIndex !== null) {
+      if (reverbIndex !== null) {
         args = args.filter((a: any) => !(a.kind === 'named' && a.name === 'index'))
-        args = [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, freeverbIndex), loc: expr.loc }]
+        args = [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, reverbIndex), loc: expr.loc }]
       }
 
       const calleeName = callee?.kind === 'ident' ? callee.name : null
@@ -1063,8 +1065,54 @@ export function encodeLangToVmOps(
     }
 
     if (expr.kind === 'func') {
+      const params = (expr.params ?? []).map((p: any) => (p.default ? { ...p, default: transformExpr(p.default) } : p))
       const body = expr.body?.kind === 'block' ? transformStmt(expr.body) : transformExpr(expr.body)
-      return { ...expr, body }
+
+      const defaultStmts = (params ?? []).flatMap((p: any) => {
+        if (!p?.default) return []
+        if (p.isRest) return []
+        const pLoc = p.loc ?? expr.loc
+        const ident = { kind: 'ident', name: p.name, loc: pLoc }
+        const test = {
+          kind: 'binary',
+          op: '==',
+          left: ident,
+          right: { kind: 'undefined', loc: pLoc },
+          loc: pLoc,
+        }
+        const value = {
+          kind: 'if',
+          test,
+          then: p.default,
+          else: ident,
+          loc: pLoc,
+          __noBranchMark: true,
+        }
+        const assign = {
+          kind: 'assign',
+          op: '=',
+          target: ident,
+          value,
+          loc: pLoc,
+        }
+        return [{ kind: 'expr_stmt', expr: assign, loc: pLoc }]
+      })
+
+      if (defaultStmts.length === 0) return { ...expr, params, body }
+
+      if (body?.kind === 'block') {
+        return { ...expr, params, body: { ...body, body: [...defaultStmts, ...(body.body ?? [])] } }
+      }
+
+      return {
+        ...expr,
+        params,
+        body: {
+          kind: 'block',
+          body: [...defaultStmts, { kind: 'expr_stmt', expr: body, loc: body.loc }],
+          loc: expr.loc,
+        },
+      }
     }
 
     return expr
@@ -1151,7 +1199,7 @@ export function encodeLangToVmOps(
   compressorRefs = extractionResults.compressorRefs
   limiterRefs = extractionResults.limiterRefs
   filterRefs = extractionResults.filterRefs
-  freeverbRefs = extractionResults.freeverbRefs
+  reverbRefs = extractionResults.reverbRefs
   slicerRefs = extractionResults.slicerRefs
   lfoRefs = extractionResults.lfoRefs
   everyRefs = extractionResults.everyRefs
@@ -1547,7 +1595,7 @@ export function encodeLangToVmOps(
       compressorRefs,
       limiterRefs,
       filterRefs,
-      freeverbRefs,
+      reverbRefs,
       slicerRefs,
       lfoRefs,
       everyRefs,
@@ -1577,7 +1625,7 @@ export function encodeLangToVmOps(
       compressorRefs,
       limiterRefs,
       filterRefs,
-      freeverbRefs,
+      reverbRefs,
       slicerRefs,
       lfoRefs,
       everyRefs,

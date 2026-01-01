@@ -27,6 +27,7 @@ import {
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
+  type ReverbRef,
   type SampleDef,
   type SlicerRef,
   type TimelineLabel,
@@ -70,7 +71,7 @@ export type EngineDspState = {
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
-  freeverbRefs: FreeverbRef[]
+  reverbRefs: ReverbRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
@@ -95,7 +96,7 @@ export type EngineDspState = {
   uiCompressorRefs: CompressorRef[]
   uiLimiterRefs: LimiterRef[]
   uiLpRefs: LpRef[]
-  uiFreeverbRefs: FreeverbRef[]
+  uiReverbRefs: ReverbRef[]
   uiSlicerRefs: SlicerRef[]
   uiLfoRefs: LfoRef[]
   uiEveryRefs: EveryRef[]
@@ -132,7 +133,7 @@ export type EngineDspState = {
     analyserRefs: AnalyserRef[]
     compressorRefs: CompressorRef[]
     filterRefs: FilterRef[]
-    freeverbRefs: FreeverbRef[]
+    reverbRefs: ReverbRef[]
     slicerRefs: SlicerRef[]
     lfoRefs: LfoRef[]
     everyRefs: EveryRef[]
@@ -406,7 +407,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const compressorRefs = primaryResult.compressorRefs
       const limiterRefs = primaryResult.limiterRefs
       const filterRefs = primaryResult.filterRefs
-      const freeverbRefs = primaryResult.freeverbRefs
+      const reverbRefs = primaryResult.reverbRefs
       const slicerRefs = primaryResult.slicerRefs
       const lfoRefs = primaryResult.lfoRefs
       const everyRefs = primaryResult.everyRefs
@@ -437,7 +438,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           compressorRefs,
           limiterRefs,
           filterRefs,
-          freeverbRefs,
+          reverbRefs,
           slicerRefs,
           lfoRefs,
           everyRefs,
@@ -462,7 +463,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiCompressorRefs: compressorRefs,
           uiLimiterRefs: limiterRefs,
           uiLpRefs: filterRefs,
-          uiFreeverbRefs: freeverbRefs,
+          uiReverbRefs: reverbRefs,
           uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,
@@ -513,7 +514,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiCompressorRefs: stagingResult.compressorRefs,
         uiLimiterRefs: stagingResult.limiterRefs,
         uiLpRefs: stagingResult.filterRefs,
-        uiFreeverbRefs: stagingResult.freeverbRefs,
+        uiReverbRefs: stagingResult.reverbRefs,
         uiSlicerRefs: stagingResult.slicerRefs,
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
@@ -573,7 +574,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiCompressorRefs: current.compressorRefs,
           uiLimiterRefs: current.limiterRefs,
           uiLpRefs: current.filterRefs,
-          uiFreeverbRefs: current.freeverbRefs,
+          uiReverbRefs: current.reverbRefs,
           uiSlicerRefs: current.slicerRefs,
           uiLfoRefs: current.lfoRefs,
           uiEveryRefs: current.everyRefs,
@@ -607,7 +608,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         compressorRefs: stagingResult.compressorRefs,
         limiterRefs: stagingResult.limiterRefs,
         filterRefs: stagingResult.filterRefs,
-        freeverbRefs: stagingResult.freeverbRefs,
+        reverbRefs: stagingResult.reverbRefs,
         slicerRefs: stagingResult.slicerRefs,
         lfoRefs: stagingResult.lfoRefs,
         everyRefs: stagingResult.everyRefs,
@@ -631,7 +632,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiCompressorRefs: stagingResult.compressorRefs,
         uiLimiterRefs: stagingResult.limiterRefs,
         uiLpRefs: stagingResult.filterRefs,
-        uiFreeverbRefs: stagingResult.freeverbRefs,
+        uiReverbRefs: stagingResult.reverbRefs,
         uiSlicerRefs: stagingResult.slicerRefs,
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
@@ -779,6 +780,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     compressorRefs: [],
     limiterRefs: [],
     filterRefs: [],
+    reverbRefs: [],
     slicerRefs: [],
     lfoRefs: [],
     everyRefs: [],
@@ -803,7 +805,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiCompressorRefs: [],
     uiLimiterRefs: [],
     uiLpRefs: [],
-    uiFreeverbRefs: [],
+    uiReverbRefs: [],
     uiSlicerRefs: [],
     uiLfoRefs: [],
     uiEveryRefs: [],
@@ -886,6 +888,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         compressorRefs: [],
         limiterRefs: [],
         filterRefs: [],
+        reverbRefs: [],
         slicerRefs: [],
         lfoRefs: [],
         everyRefs: [],
@@ -904,7 +907,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiCompressorRefs: [],
         uiLimiterRefs: [],
         uiLpRefs: [],
-    uiFreeverbRefs: [],
+        uiReverbRefs: [],
         uiSlicerRefs: [],
         uiLfoRefs: [],
         uiEveryRefs: [],
@@ -1065,7 +1068,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const compressorRefs = stagingResult.compressorRefs
         const limiterRefs = stagingResult.limiterRefs
         const filterRefs = stagingResult.filterRefs
-        const freeverbRefs = stagingResult.freeverbRefs
+        const reverbRefs = stagingResult.reverbRefs
         const slicerRefs = stagingResult.slicerRefs
         const lfoRefs = stagingResult.lfoRefs
         const everyRefs = stagingResult.everyRefs
@@ -1103,7 +1106,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           compressorRefs,
           limiterRefs,
           filterRefs,
-          freeverbRefs,
+          reverbRefs,
           slicerRefs,
           lfoRefs,
           everyRefs,
@@ -1128,7 +1131,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiCompressorRefs: compressorRefs,
           uiLimiterRefs: limiterRefs,
           uiLpRefs: filterRefs,
-          uiFreeverbRefs: freeverbRefs,
+          uiReverbRefs: reverbRefs,
           uiSlicerRefs: slicerRefs,
           uiLfoRefs: lfoRefs,
           uiEveryRefs: everyRefs,

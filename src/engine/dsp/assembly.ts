@@ -46,7 +46,7 @@ export const ProgramStruct = Struct({
   sampleNeedleHistory: 'usize',
   filterHistory: 'usize',
   lfoHistory: 'usize',
-  freeverbHistory: 'usize',
+  reverbHistory: 'usize',
   trigHistory: 'usize',
   envelopeHistory: 'usize',
 })

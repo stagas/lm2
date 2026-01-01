@@ -43,12 +43,12 @@ export const LFO_ENTRY_SIZE = 7
 export const LFO_WRITE_POS_OFFSET = 0
 export const LFO_DATA_OFFSET = 1
 
-// Best-effort freeverb history for UI widgets.
-// entry: freeverbIndex, roomsize, damp, wet, dry, width, sampleCountMod
-export const FREEVERB_HISTORY_SIZE = 2048
-export const FREEVERB_ENTRY_SIZE = 7
-export const FREEVERB_WRITE_POS_OFFSET = 0
-export const FREEVERB_DATA_OFFSET = 1
+// Best-effort reverb history for UI widgets.
+// entry: reverbIndex, roomSize
+export const REVERB_HISTORY_SIZE = 2048
+export const REVERB_ENTRY_SIZE = 2
+export const REVERB_WRITE_POS_OFFSET = 0
+export const REVERB_DATA_OFFSET = 1
 
 // Best-effort impulse history for UI widgets (every/at/euclid).
 // entry: index, value, sampleCountMod

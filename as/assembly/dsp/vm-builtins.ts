@@ -5,21 +5,19 @@ import { callAd } from './builtins/ad'
 import { callAdsr } from './builtins/adsr'
 import { callAnalyser } from './builtins/analyser'
 import { callAt } from './builtins/at'
+import { callAvg } from './builtins/avg'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
 import { callCompressor } from './builtins/compressor'
-import { callLimiter } from './builtins/limiter'
+import { callDattorro } from './builtins/dattorro'
 import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
-import { callFreeverb } from './builtins/freeverb'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
+import { callFreeverb } from './builtins/freeverb'
 import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
+import { callLimiter } from './builtins/limiter'
 import { callMap } from './builtins/map'
-import { callMini } from './builtins/mini'
-import { callBrown, callFractal, callGauss, callPink, callSmooth, callWhite } from './builtins/noise'
-import { callNote } from './builtins/note'
-import { callOut } from './builtins/out'
 import {
   callAbs,
   callAcos,
@@ -62,6 +60,10 @@ import {
   callTrunc,
   callWrap,
 } from './builtins/math'
+import { callMini } from './builtins/mini'
+import { callBrown, callFractal, callGauss, callPink, callSmooth, callWhite } from './builtins/noise'
+import { callNote } from './builtins/note'
+import { callOut } from './builtins/out'
 import { callPhasor } from './builtins/phasor'
 import { callPlay } from './builtins/play'
 import { callPlayPick } from './builtins/play-pick'
@@ -76,7 +78,6 @@ import { callSlicer } from './builtins/slicer'
 import { callSolo } from './builtins/solo'
 import { callSqr } from './builtins/sqr'
 import { callSum } from './builtins/sum'
-import { callAvg } from './builtins/avg'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { Dsp } from './dsp'
@@ -86,13 +87,13 @@ import { VmStack } from './vm-stack'
 import { VmSym } from './vm-sym'
 
 export class VmBuiltins {
-  callKeySyms: StaticArray<i32> = new StaticArray<i32>(8)
-  callValTags: StaticArray<i32> = new StaticArray<i32>(8)
-  callValNums: StaticArray<f64> = new StaticArray<f64>(8)
-  callValAux: StaticArray<i32> = new StaticArray<i32>(8)
-  callPosTags: StaticArray<i32> = new StaticArray<i32>(8)
-  callPosNums: StaticArray<f64> = new StaticArray<f64>(8)
-  callPosAux: StaticArray<i32> = new StaticArray<i32>(8)
+  callKeySyms: StaticArray<i32> = new StaticArray<i32>(16)
+  callValTags: StaticArray<i32> = new StaticArray<i32>(16)
+  callValNums: StaticArray<f64> = new StaticArray<f64>(16)
+  callValAux: StaticArray<i32> = new StaticArray<i32>(16)
+  callPosTags: StaticArray<i32> = new StaticArray<i32>(16)
+  callPosNums: StaticArray<f64> = new StaticArray<f64>(16)
+  callPosAux: StaticArray<i32> = new StaticArray<i32>(16)
 
   miniTrigOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
   miniVelOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
@@ -245,14 +246,15 @@ export class VmBuiltins {
     dsp: Dsp,
   ): void {
     if (
-      calleeAux !== VmBuiltin.Map &&
-      calleeAux !== VmBuiltin.Sum &&
-      calleeAux !== VmBuiltin.Avg &&
-      calleeAux !== VmBuiltin.Glide &&
-      calleeAux !== VmBuiltin.Out &&
-      calleeAux !== VmBuiltin.Solo &&
-      calleeAux !== VmBuiltin.Analyser &&
-      calleeAux !== VmBuiltin.Freeverb
+      calleeAux !== VmBuiltin.Map
+      && calleeAux !== VmBuiltin.Sum
+      && calleeAux !== VmBuiltin.Avg
+      && calleeAux !== VmBuiltin.Glide
+      && calleeAux !== VmBuiltin.Out
+      && calleeAux !== VmBuiltin.Solo
+      && calleeAux !== VmBuiltin.Analyser
+      && calleeAux !== VmBuiltin.Freeverb
+      && calleeAux !== VmBuiltin.Dattorro
     ) {
       for (let i: i32 = 0; i < posCount; i++) {
         this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
@@ -290,8 +292,8 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.Limiter) {
-      callLimiter(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
-        audio, program, length, this.limiterRingBase)
+      callLimiter(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, this.limiterRingBase)
       return
     }
 
@@ -450,11 +452,11 @@ export class VmBuiltins {
         nameAux[inIndex] = eAux
       }
 
-      this.coerceArraysForBuiltin(calleeAux, posCount, posTags, posNums, posAux, namedCount, nameTags, nameNums, nameAux,
-        audio, program, length, dsp)
+      this.coerceArraysForBuiltin(calleeAux, posCount, posTags, posNums, posAux, namedCount, nameTags, nameNums,
+        nameAux, audio, program, length, dsp)
 
-      this.dispatchAutoLiftBuiltin(calleeAux, posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums,
-        posAux, stack, audio, program, length, left$, right$, dsp)
+      this.dispatchAutoLiftBuiltin(calleeAux, posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags,
+        posNums, posAux, stack, audio, program, length, left$, right$, dsp)
 
       const resIdx: i32 = stack.pop()
       const rTag: i32 = stack.tag[resIdx]
@@ -491,7 +493,7 @@ export class VmBuiltins {
   ): void {
     // Named args are on stack as (nameSym, value) pairs.
     // Collect named args into linear arrays (small fixed cap).
-    const maxNamed = 8
+    const maxNamed = 16
     const nameSyms = this.callKeySyms
     const nameTags = this.callValTags
     const nameNums = this.callValNums
@@ -511,7 +513,7 @@ export class VmBuiltins {
     }
 
     // Collect positional args (reverse on stack).
-    const maxPos = 8
+    const maxPos = 16
     const posTags = this.callPosTags
     const posNums = this.callPosNums
     const posAux = this.callPosAux
@@ -541,8 +543,9 @@ export class VmBuiltins {
     }
 
     if (calleeAux >= 0 && calleeAux < this.autoLift.length && this.autoLift[calleeAux] !== 0) {
-      if (this.tryAutoLift(calleeAux, posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux,
-        stack, audio, program, length, left$, right$, dsp)) {
+      if (this.tryAutoLift(calleeAux, posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums,
+        posAux, stack, audio, program, length, left$, right$, dsp))
+      {
         return
       }
     }
@@ -592,8 +595,8 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.Limiter) {
-      callLimiter(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
-        audio, program, length, this.limiterRingBase)
+      callLimiter(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, this.limiterRingBase)
       return
     }
 
@@ -677,6 +680,11 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Freeverb) {
       callFreeverb(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
+      return
+    }
+    if (calleeAux === VmBuiltin.Dattorro) {
+      callDattorro(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
       return
     }
@@ -1026,8 +1034,8 @@ export class VmBuiltins {
       return
     }
     if (calleeAux === VmBuiltin.Smoothstep) {
-      callSmoothstep(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length)
+      callSmoothstep(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length)
       return
     }
     if (calleeAux === VmBuiltin.Smootherstep) {
