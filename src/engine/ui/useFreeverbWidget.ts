@@ -160,7 +160,7 @@ export function useFreeverbWidget({
 
           c.save()
           c.fillStyle = primary
-          c.globalAlpha = 0.3
+          c.globalAlpha = 0.15
 
           // Floor
           c.beginPath()
