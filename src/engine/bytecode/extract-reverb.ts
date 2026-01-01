@@ -10,7 +10,7 @@ import type { ReverbKind, ReverbRef } from './types.ts'
 
 const MAX_REVERB_INDEX = 63
 
-const isReverbKind = (name: string): name is ReverbKind => name === 'freeverb' || name === 'dattorro'
+const isReverbKind = (name: string): name is ReverbKind => name === 'freeverb' || name === 'dattorro' || name === 'fdn'
 
 export function createReverbVisitor(src: string, refs: ReverbRef[]) {
   const lineStarts = buildLineStartsForLocs(src)
@@ -27,8 +27,9 @@ export function createReverbVisitor(src: string, refs: ReverbRef[]) {
       const pos0 = getPosArg(expr, 0)
       const namedIn = findNamedArg(expr, 'in')
       const namedRoomSize = findNamedArg(expr, 'roomSize')
+      const namedSize = findNamedArg(expr, 'size')
 
-      const roomSizeExpr = namedRoomSize?.value ?? getPosArg(expr, 1)?.value
+      const roomSizeExpr = namedRoomSize?.value ?? namedSize?.value ?? getPosArg(expr, 1)?.value
 
       const calleeLoc = (expr.callee?.loc ?? expr.loc) as Loc
       const aboveLoc = computeAboveLoc(src, lineStarts, calleeLoc)
@@ -40,7 +41,7 @@ export function createReverbVisitor(src: string, refs: ReverbRef[]) {
         aboveLoc,
         callLoc: expr.loc,
         inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
-        roomSizeArgLoc: (namedRoomSize?.loc ?? getPosArg(expr, 1)?.loc ?? null),
+        roomSizeArgLoc: (namedRoomSize?.loc ?? namedSize?.loc ?? getPosArg(expr, 1)?.loc ?? null),
         params: {
           roomSize: getNumberOrDefault(roomSizeExpr, 0.5),
         },

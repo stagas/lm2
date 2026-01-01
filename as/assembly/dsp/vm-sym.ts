@@ -171,5 +171,8 @@ export enum VmSym {
   ExcursionRate,
   ExcursionDepth,
   Dattorro,
+  Fdn,
+  HfDecay,
+  ModDepth,
   Dc,
 }

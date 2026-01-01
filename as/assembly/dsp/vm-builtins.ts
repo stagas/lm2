@@ -14,6 +14,7 @@ import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
+import { callFdn } from './builtins/fdn'
 import { callFreeverb } from './builtins/freeverb'
 import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
@@ -256,6 +257,7 @@ export class VmBuiltins {
       && calleeAux !== VmBuiltin.Analyser
       && calleeAux !== VmBuiltin.Freeverb
       && calleeAux !== VmBuiltin.Dattorro
+      && calleeAux !== VmBuiltin.Fdn
     ) {
       for (let i: i32 = 0; i < posCount; i++) {
         this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
@@ -686,6 +688,11 @@ export class VmBuiltins {
     }
     if (calleeAux === VmBuiltin.Dattorro) {
       callDattorro(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
+      return
+    }
+    if (calleeAux === VmBuiltin.Fdn) {
+      callFdn(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
       return
     }

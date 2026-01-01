@@ -537,7 +537,7 @@ export function encodeLangToVmOps(
     return idx
   }
 
-  const isReverbCall = (name: string | null): boolean => name === 'freeverb' || name === 'dattorro'
+  const isReverbCall = (name: string | null): boolean => name === 'freeverb' || name === 'dattorro' || name === 'fdn'
 
   const MAX_AD_INDEX = 63
   const clampAdIndex = (n: number) => Math.max(0, Math.min(MAX_AD_INDEX, Math.floor(Number(n || 0))))
