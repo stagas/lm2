@@ -1,8 +1,5 @@
 import type { FunctionSignature } from 'mini-code'
 
-const miniCallbackType = '(trig: audio, velocity: audio, hz: audio) -> audio'
-const postCallbackType = '(L: audio, R: audio) -> array'
-
 export const functionDefinitions: Record<string, FunctionSignature> = {
   out: {
     name: 'out',
@@ -56,8 +53,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     parameters: [
       {
         name: 'callback',
-        type: postCallbackType,
-        description: 'Post-processing callback that receives the final (L,R) mix and must return [L,R]',
+        type: '(L: number, R: number) -> [L,R]',
+        description: 'Post-processing callback',
       },
     ],
     returnType: 'number',
@@ -348,17 +345,16 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   mini: {
     name: 'mini',
     parameters: [
-      { name: 'pattern', type: 'string', description: 'Mini notation string describing the sequence to be played' },
+      { name: 'pattern', type: 'string', description: 'Mini notation sequence' },
       {
         name: 'color',
         type: 'string',
         optional: true,
-        description: 'Optional UI color hint for the sequence (compile-time only)',
+        description: 'UI color hint for the sequence (e.g. \'#05f\')',
       },
     ],
-    returnType: 'sequence | audio',
-    description:
-      'Defines a Mini notation sequence. Without a callback it compiles to a sequence reference; with a callback the callback runs for every voice and its return value becomes audio.',
+    returnType: 'number',
+    description: 'Defines a Mini notation sequence. It compiles and returns a sequence reference.',
     examples: [
       'mel = mini(\'scale dorian [i ii v]$.5/2\', \'#05f\')',
       'play(mel, (trig, velocity, hz) -> sine(hz, trig) * velocity) |> out($)',
@@ -370,13 +366,12 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'seq', type: 'sequence', description: 'Reference returned by `mini(pattern)`' },
       {
         name: 'cb',
-        type: miniCallbackType,
-        description: 'Callback that runs for each voice (trig, velocity, hz) and must return audio',
+        type: '(trig: number, velocity: number, hz: number) -> number',
+        description: 'Callback that runs for each voice',
       },
     ],
     returnType: 'number',
-    description:
-      'Compile-time alias of `mini(sequence, callback)` that plays a sequence reference with the provided callback.',
+    description: 'Plays a sequence reference with the provided callback.',
     examples: [
       'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity) |> out($)',
     ],
@@ -689,7 +684,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       },
       {
         name: 'callback',
-        type: '(in: audio) -> audio',
+        type: '(in: number) -> number',
         optional: true,
         defaultValue: 'x -> x',
         description: 'Applied to the delayed signal before output and feedback',

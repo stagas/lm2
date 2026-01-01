@@ -44,9 +44,9 @@ export function callFreeverb(
   let inNum: f64 = 0.0
   let inAux: i32 = 0
 
-  let sizeTag: VmTag = VmTag.Num
-  let sizeNum: f64 = 0.5
-  let sizeAux: i32 = 0
+  let roomSizeTag: VmTag = VmTag.Num
+  let roomSizeNum: f64 = 0.5
+  let roomSizeAux: i32 = 0
 
   let dampTag: VmTag = VmTag.Num
   let dampNum: f64 = 0.5
@@ -59,9 +59,9 @@ export function callFreeverb(
   }
 
   if (posCount >= 2 && posTags[1] !== VmTag.Undef && posTags[1] !== VmTag.Null) {
-    sizeTag = posTags[1] as VmTag
-    sizeNum = posNums[1]
-    sizeAux = posAux[1]
+    roomSizeTag = posTags[1] as VmTag
+    roomSizeNum = posNums[1]
+    roomSizeAux = posAux[1]
   }
 
   if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
@@ -81,9 +81,9 @@ export function callFreeverb(
       inAux = nameAux[i]
     }
     else if (k === VmSym.Size) {
-      sizeTag = nameTags[i] as VmTag
-      sizeNum = nameNums[i]
-      sizeAux = nameAux[i]
+      roomSizeTag = nameTags[i] as VmTag
+      roomSizeNum = nameNums[i]
+      roomSizeAux = nameAux[i]
     }
     else if (k === VmSym.Damp) {
       dampTag = nameTags[i] as VmTag
@@ -93,7 +93,7 @@ export function callFreeverb(
   }
 
   const in$ = audio.toAudioPtr(inTag, inNum, inAux, length, program)
-  const size$ = audio.toAudioPtr(sizeTag, sizeNum, sizeAux, length, program)
+  const roomSize$ = audio.toAudioPtr(roomSizeTag, roomSizeNum, roomSizeAux, length, program)
   const damp$ = audio.toAudioPtr(dampTag, dampNum, dampAux, length, program)
 
   const outIndex = audio.allocOut(program)
@@ -101,7 +101,7 @@ export function callFreeverb(
 
   const gen = program.gensPool.get(Op.Freeverb) as Freeverb
   gen.in$ = in$
-  gen.size$ = size$
+  gen.roomSize$ = roomSize$
   gen.damp$ = damp$
   gen.process(out$, length)
 
@@ -112,7 +112,7 @@ export function callFreeverb(
     const slot = writePos % FREEVERB_HISTORY_SIZE
     const base = FREEVERB_DATA_OFFSET + slot * FREEVERB_ENTRY_SIZE
     hist[base] = f32(freeverbIndex)
-    hist[base + 1] = load<f32>(size$)
+    hist[base + 1] = load<f32>(roomSize$)
     hist[base + 2] = load<f32>(damp$)
     hist[base + 3] = f32((globalSampleCount + length) & 0xfffff)
     hist[FREEVERB_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
