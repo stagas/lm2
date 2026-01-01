@@ -313,6 +313,7 @@ export function encodeLangToVmOps(
   numberLiterals?: NumberLiteralInfo[]
   sampleDefs?: SampleDef[]
 } {
+  try {
   const normalizePrelude = (s: string): string => {
     const t = s.trimEnd()
     if (!t) return ''
@@ -1591,4 +1592,9 @@ export function encodeLangToVmOps(
       numberLiterals: numberLiteralsWithLiteralIndex,
       sampleDefs: samples,
     }
+  }
+  catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { errors: [encoderError(src, message)] }
+  }
 }

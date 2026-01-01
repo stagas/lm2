@@ -993,6 +993,8 @@ function DspSourceEditorReady(
 
   const shouldDelayEditorMount = !editorGateRef.current.allow
     && hasSavedScroll
+    && !hasCompileErrors
+    && !dspError
     && (isBootingCode || (expectsWidgets && widgets.length === 0))
 
   if (!editorGateRef.current.allow && !shouldDelayEditorMount) {
@@ -1084,7 +1086,7 @@ function DspSourceEditorReady(
           />
         )}
       </div>
-      {(isBootingCode || isPreloadingSamples || isAwaitingSamples || !showEditor) && (
+      {(isBootingCode || isPreloadingSamples || isAwaitingSamples || !showEditor) && !hasCompileErrors && !dspError && (
         <div className="absolute inset-0 z-40 pointer-events-none">
           <RadialGradient>
             <SpinnerLarge />

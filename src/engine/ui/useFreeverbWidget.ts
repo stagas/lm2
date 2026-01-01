@@ -29,7 +29,7 @@ export function useFreeverbWidget({
 }: UseFreeverbWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const refs = freeverbRefs ?? []
 
-  type St = { size: number; damp: number; targetSize: number }
+  type St = { roomSize: number; damp: number; targetRoomSize: number }
   const stRef = useRef<Array<St | undefined>>([])
   const lastWritePosRef = useRef<number>(0)
 
@@ -72,18 +72,18 @@ export function useFreeverbWidget({
         const base = FREEVERB_DATA_OFFSET + slot * FREEVERB_ENTRY_SIZE
 
         const idx = Math.floor(raw[base] ?? 0)
-        const size = raw[base + 1] ?? 0
+        const roomSize = raw[base + 1] ?? 0
         const damp = raw[base + 2] ?? 0
 
         if (idx < 0 || idx > 63) continue
 
         let st = stRef.current[idx]
         if (!st) {
-          st = { size, damp, targetSize: size }
+          st = { roomSize, damp, targetRoomSize: roomSize }
           stRef.current[idx] = st
         }
 
-        st.targetSize = size
+        st.targetRoomSize = roomSize
         st.damp = damp
       }
     }
@@ -103,11 +103,11 @@ export function useFreeverbWidget({
         render: (c, x, y, w, h, _vx, _vw) => {
           const st = stRef.current[ref.freeverbIndex | 0]
           if (st) {
-            // Smooth size changes every frame
+            // Smooth roomSize changes every frame
             const smoothFactor = 0.15
-            st.size = st.size + (st.targetSize - st.size) * smoothFactor
+            st.roomSize = st.roomSize + (st.targetRoomSize - st.roomSize) * smoothFactor
           }
-          const size = st?.size ?? ref.params.size
+          const roomSize = st?.roomSize ?? ref.params.roomSize
 
           c.save()
           c.translate(x, y)
@@ -130,7 +130,7 @@ export function useFreeverbWidget({
           const maxSx = (w - pad * 2) / Math.max(1e-6, c30 * sumCoef)
           const maxSy = (h - pad * 2) / Math.max(1e-6, dyCoef + s30 * sumCoef)
           const maxS = Math.min(maxSx, maxSy)
-          const s = Math.max(0, size * (maxS - 6)) + 6
+          const s = Math.max(0, roomSize * (maxS - 6)) + 6
 
           const ox = w / 2
           const dx = s * dxCoef

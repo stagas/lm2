@@ -507,9 +507,13 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiTimelineLabels: buildTimelineLabels(stagingResult.timelineLabels, stagingBars),
         uiBars: stagingBars,
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
+        uiAdRefs: stagingResult.adRefs,
+        uiAdsrRefs: stagingResult.adsrRefs,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
+        uiLimiterRefs: stagingResult.limiterRefs,
         uiLpRefs: stagingResult.filterRefs,
+        uiFreeverbRefs: stagingResult.freeverbRefs,
         uiSlicerRefs: stagingResult.slicerRefs,
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
@@ -563,9 +567,13 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiTimelineLabels: current.timelineLabels,
           uiBars: current.bars,
           uiMiniSourceMaps: current.miniSourceMaps,
+          uiAdRefs: current.adRefs,
+          uiAdsrRefs: current.adsrRefs,
           uiAnalyserRefs: current.analyserRefs,
           uiCompressorRefs: current.compressorRefs,
+          uiLimiterRefs: current.limiterRefs,
           uiLpRefs: current.filterRefs,
+          uiFreeverbRefs: current.freeverbRefs,
           uiSlicerRefs: current.slicerRefs,
           uiLfoRefs: current.lfoRefs,
           uiEveryRefs: current.everyRefs,
@@ -593,8 +601,11 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         timelineLabels: committedLabels,
         bars: committedBars,
         miniSourceMaps: stagingResult.miniSourceMaps,
+        adRefs: stagingResult.adRefs,
+        adsrRefs: stagingResult.adsrRefs,
         analyserRefs: stagingResult.analyserRefs,
         compressorRefs: stagingResult.compressorRefs,
+        limiterRefs: stagingResult.limiterRefs,
         filterRefs: stagingResult.filterRefs,
         freeverbRefs: stagingResult.freeverbRefs,
         slicerRefs: stagingResult.slicerRefs,
@@ -614,9 +625,13 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiTimelineLabels: committedLabels,
         uiBars: committedBars,
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
+        uiAdRefs: stagingResult.adRefs,
+        uiAdsrRefs: stagingResult.adsrRefs,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
+        uiLimiterRefs: stagingResult.limiterRefs,
         uiLpRefs: stagingResult.filterRefs,
+        uiFreeverbRefs: stagingResult.freeverbRefs,
         uiSlicerRefs: stagingResult.slicerRefs,
         uiLfoRefs: stagingResult.lfoRefs,
         uiEveryRefs: stagingResult.everyRefs,
@@ -926,17 +941,19 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       if (!source) return
       const preloadId = ++samplePreloadId
       set({ isPreloadingSamples: true })
-
-      samplePreviewTarget.ops.fill(0)
-      samplePreviewTarget.literals.fill(0)
-      const result = encodeLangToVmOps(source, samplePreviewTarget)
-      if (result.errors.length) {
-        if (preloadId === samplePreloadId) set({ isPreloadingSamples: false })
-        return
+      try {
+        samplePreviewTarget.ops.fill(0)
+        samplePreviewTarget.literals.fill(0)
+        const result = encodeLangToVmOps(source, samplePreviewTarget)
+        if (result.errors.length) return
+        await scheduleSampleLoad(result.sampleDefs ?? [], { uploadToWorklet: false })
       }
-
-      await scheduleSampleLoad(result.sampleDefs ?? [], { uploadToWorklet: false })
-      if (preloadId === samplePreloadId) set({ isPreloadingSamples: false })
+      catch (err) {
+        console.warn('Failed to preload samples:', err)
+      }
+      finally {
+        if (preloadId === samplePreloadId) set({ isPreloadingSamples: false })
+      }
     },
 
     playLoop: async (loopId: string, source: string, startSample?: number) => {
@@ -1042,10 +1059,13 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const bars = stagingResult.bars
         const timelineLabels = buildTimelineLabels(stagingResult.timelineLabels, bars)
         const miniSourceMaps = stagingResult.miniSourceMaps
+        const adRefs = stagingResult.adRefs
+        const adsrRefs = stagingResult.adsrRefs
         const analyserRefs = stagingResult.analyserRefs
         const compressorRefs = stagingResult.compressorRefs
         const limiterRefs = stagingResult.limiterRefs
         const filterRefs = stagingResult.filterRefs
+        const freeverbRefs = stagingResult.freeverbRefs
         const slicerRefs = stagingResult.slicerRefs
         const lfoRefs = stagingResult.lfoRefs
         const everyRefs = stagingResult.everyRefs

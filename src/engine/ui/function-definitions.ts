@@ -714,7 +714,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to reverberate' },
       {
-        name: 'size',
+        name: 'roomSize',
         type: 'number',
         optional: true,
         defaultValue: 0.5,
@@ -731,8 +731,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Freeverb-style reverb effect; returns wet signal.',
     examples: [
-      'saw(hz) |> freeverb($, size:.6, damp:.3) |> out($)',
-      'sine(220) |> freeverb($, size:.85, damp:.1) |> out($)',
+      'saw(hz) |> freeverb($, roomSize:.6, damp:.3) |> out($)',
+      'sine(220) |> freeverb($, roomSize:.85, damp:.1) |> out($)',
     ],
   },
   note: {
