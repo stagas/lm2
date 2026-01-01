@@ -350,12 +350,6 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     parameters: [
       { name: 'pattern', type: 'string', description: 'Mini notation string describing the sequence to be played' },
       {
-        name: 'callback',
-        type: miniCallbackType,
-        optional: true,
-        description: 'Per-voice callback fired for each trigger (trig, velocity, hz) so you can synthesize audio',
-      },
-      {
         name: 'color',
         type: 'string',
         optional: true,
@@ -368,7 +362,6 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'mel = mini(\'scale dorian [i ii v]$.5/2\', \'#05f\')',
       'play(mel, (trig, velocity, hz) -> sine(hz, trig) * velocity) |> out($)',
-      'mini(\'c4 on 4/4\', (trig, _, hz) -> sine(hz, trig) * .5) |> out($)',
     ],
   },
   play: {
