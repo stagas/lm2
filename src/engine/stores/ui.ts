@@ -6,6 +6,7 @@ export type EngineUiState = {
   viewSampleCountByLoopId: Record<string, number>
   zeroBasedTimelines: boolean
   showFunctionDefinitions: boolean
+  showFunctionDefinitionsHover: boolean
   showWidgets: boolean
   showVisualizer: boolean
   wordWrap: boolean
@@ -15,6 +16,7 @@ export type EngineUiState = {
   renameLoopId: (oldId: string, nextId: string) => void
   setZeroBasedTimelines: (zeroBased: boolean) => void
   setShowFunctionDefinitions: (showFunctionDefinitions: boolean) => void
+  setShowFunctionDefinitionsHover: (showFunctionDefinitionsHover: boolean) => void
   setShowWidgets: (showWidgets: boolean) => void
   setShowVisualizer: (showVisualizer: boolean) => void
   setWordWrap: (wordWrap: boolean) => void
@@ -26,6 +28,7 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
     viewSampleCountByLoopId: {},
     zeroBasedTimelines: false,
     showFunctionDefinitions: true,
+    showFunctionDefinitionsHover: true,
     showWidgets: true,
     showVisualizer: true,
     wordWrap: true,
@@ -65,6 +68,10 @@ export const useEngineUiStore = create<EngineUiState>()(persist(set => {
 
     setShowFunctionDefinitions: (showFunctionDefinitions: boolean) => {
       set({ showFunctionDefinitions: showFunctionDefinitions })
+    },
+
+    setShowFunctionDefinitionsHover: (showFunctionDefinitionsHover: boolean) => {
+      set({ showFunctionDefinitionsHover: showFunctionDefinitionsHover })
     },
 
     setShowWidgets: (showWidgets: boolean) => {

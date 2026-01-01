@@ -157,6 +157,7 @@ function DspSourceEditorReady(
   const playbackState = useEngineRuntimeStore(state => state.playbackState)
   const setPredictedSampleCountResult = useEngineRuntimeStore(state => state.setPredictedSampleCountResult)
   const showFunctionDefinitions = useEngineUiStore(state => state.showFunctionDefinitions)
+  const showFunctionDefinitionsHover = useEngineUiStore(state => state.showFunctionDefinitionsHover)
   const uiShowWidgets = useEngineUiStore(state => state.showWidgets)
   const showVisualizer = useEngineUiStore(state => state.showVisualizer)
   const wordWrap = useEngineUiStore(state => state.wordWrap)
@@ -1077,6 +1078,7 @@ function DspSourceEditorReady(
             theme={themeForEditor}
             tokenizer={tokenizer}
             hideFunctionSignatures={!showFunctionDefinitions}
+            hideHoverFunctionSignatures={!showFunctionDefinitionsHover}
             functionDefinitions={functionDefinitions}
             isAnimating={true}
             gutter={true}

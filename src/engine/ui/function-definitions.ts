@@ -1,6 +1,47 @@
 import type { FunctionSignature } from 'mini-code'
 
 export const functionDefinitions: Record<string, FunctionSignature> = {
+  '.map': {
+    name: '.map',
+    parameters: [
+      { name: 'callback', type: 'function', description: 'Callback to be called for each element' },
+    ],
+    returnType: 'array',
+    description: 'Maps over an array and returns a new array with the results.',
+    examples: [
+      '[1,2,3].map(x -> x * 2)',
+    ],
+  },
+  '.glide': {
+    name: '.glide',
+    parameters: [
+      { name: 'bar', type: 'number', description: 'Step duration in bars (1 = 4 beats)' },
+      {
+        name: 'exponent',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Curve shape: 1=linear, >0 uses pow(t,exp), <0 uses logarithmic curve base=-exp',
+      },
+    ],
+    returnType: 'number',
+    description: 'Iterates numeric array values on a beat-locked bar division and glides between them.',
+    examples: [
+      '[0,1,0.25,0.75].glide(1) |> out($)',
+      '[100,200,400,800].glide(bar:0.5, exponent:2) |> sine(hz:$) |> out($)',
+    ],
+  },
+  '.sum': {
+    name: '.sum',
+    parameters: [
+      { name: 'array', type: 'array', description: 'Array to be summed' },
+    ],
+    returnType: 'number',
+    description: 'Sums an array and returns the result.',
+    examples: [
+      'array.sum() |> out($)',
+    ],
+  },
   out: {
     name: 'out',
     parameters: [
@@ -292,19 +333,12 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   analyser: {
     name: 'analyser',
     parameters: [
-      { name: 'signal', type: 'number', description: 'Signal that should be copied into the analyser history ring' },
-      {
-        name: 'index',
-        type: 'number',
-        optional: true,
-        description: 'Optional analyser slot index (0 by default) to overwrite from this signal',
-      },
+      { name: 'signal', type: 'number', description: 'Signal to create an analyser' },
     ],
     returnType: 'number',
-    description: 'Mirrors the signal into the UI’s analyser buffer while passing the original audio through unchanged.',
+    description: 'Creates an analyser for the signal. Returns the original signal.',
     examples: [
-      'sine(440) |> analyser($) |> out($)',
-      'playing |> analyser($, 1) |> out($)',
+      'signal |> analyser($) |> out($)',
     ],
   },
   compressor: {
@@ -326,7 +360,6 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'compressor(in:$, attack:.005, release:.2, threshold:-18, ratio:6, knee:8) |> out($)',
     ],
   },
-
   limiter: {
     name: 'limiter',
     parameters: [
@@ -627,47 +660,6 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'kick = freesound(id: 123456)',
       'sampler(sample: kick, trig)',
-    ],
-  },
-  '.map': {
-    name: '.map',
-    parameters: [
-      { name: 'callback', type: 'function', description: 'Callback to be called for each element' },
-    ],
-    returnType: 'array',
-    description: 'Maps over an array and returns a new array with the results.',
-    examples: [
-      '[1,2,3].map(x -> x * 2)',
-    ],
-  },
-  '.glide': {
-    name: '.glide',
-    parameters: [
-      { name: 'bar', type: 'number', description: 'Step duration in bars (1 = 4 beats)' },
-      {
-        name: 'exponent',
-        type: 'number',
-        optional: true,
-        defaultValue: 1,
-        description: 'Curve shape: 1=linear, >0 uses pow(t,exp), <0 uses logarithmic curve base=-exp',
-      },
-    ],
-    returnType: 'number',
-    description: 'Iterates numeric array values on a beat-locked bar division and glides between them.',
-    examples: [
-      '[0,1,0.25,0.75].glide(1) |> out($)',
-      '[100,200,400,800].glide(bar:0.5, exponent:2) |> sine(hz:$) |> out($)',
-    ],
-  },
-  '.sum': {
-    name: '.sum',
-    parameters: [
-      { name: 'array', type: 'array', description: 'Array to be summed' },
-    ],
-    returnType: 'number',
-    description: 'Sums an array and returns the result.',
-    examples: [
-      'array.sum() |> out($)',
     ],
   },
   delay: {
@@ -1087,77 +1079,77 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     name: 'sin',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Sine function (works with audio-rate and scalar values).',
+    description: 'Sine function.',
     examples: ['sin(t * 440 * 2 * 3.14159) |> out($)'],
   },
   cos: {
     name: 'cos',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Cosine function (works with audio-rate and scalar values).',
+    description: 'Cosine function.',
     examples: ['cos(t * 440 * 2 * 3.14159) |> out($)'],
   },
   tan: {
     name: 'tan',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Tangent function (works with audio-rate and scalar values).',
+    description: 'Tangent function.',
     examples: ['tan(x) |> out($)'],
   },
   asin: {
     name: 'asin',
     parameters: [{ name: 'x', type: 'number', description: 'Input value (-1..1)' }],
     returnType: 'number',
-    description: 'Arcsine function (works with audio-rate and scalar values).',
+    description: 'Arcsine function.',
     examples: ['asin(sine(440)) |> out($)'],
   },
   acos: {
     name: 'acos',
     parameters: [{ name: 'x', type: 'number', description: 'Input value (-1..1)' }],
     returnType: 'number',
-    description: 'Arccosine function (works with audio-rate and scalar values).',
+    description: 'Arccosine function.',
     examples: ['acos(sine(440)) |> out($)'],
   },
   tanh: {
     name: 'tanh',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Hyperbolic tangent function; useful for soft clipping (works with audio-rate and scalar values).',
+    description: 'Hyperbolic tangent function; useful for soft clipping.',
     examples: ['sine(220) * 5 |> tanh($) |> out($)'],
   },
   atan: {
     name: 'atan',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Arctangent function (works with audio-rate and scalar values).',
+    description: 'Arctangent function.',
     examples: ['atan(x) |> out($)'],
   },
   abs: {
     name: 'abs',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Absolute value (works with audio-rate and scalar values).',
+    description: 'Absolute value.',
     examples: ['sine(220) |> abs($) |> out($)'],
   },
   sqrt: {
     name: 'sqrt',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Square root (works with audio-rate and scalar values).',
+    description: 'Square root.',
     examples: ['sqrt(x) |> out($)'],
   },
   square: {
     name: 'square',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Square function (x²) (works with audio-rate and scalar values).',
+    description: 'Square function (x²).',
     examples: ['square(sine(220)) |> out($)'],
   },
   cube: {
     name: 'cube',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Cube function (x³) (works with audio-rate and scalar values).',
+    description: 'Cube function (x³).',
     examples: ['cube(sine(220)) |> out($)'],
   },
   hypot: {
@@ -1167,42 +1159,42 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'y', type: 'number', description: 'Second value' },
     ],
     returnType: 'number',
-    description: 'Euclidean distance sqrt(x² + y²) (works with audio-rate and scalar values).',
+    description: 'Euclidean distance sqrt(x² + y²).',
     examples: ['hypot(3, 4) |> out($)'],
   },
   log: {
     name: 'log',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Natural logarithm (works with audio-rate and scalar values).',
+    description: 'Natural logarithm.',
     examples: ['log(x) |> out($)'],
   },
   exp: {
     name: 'exp',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Exponential function (e^x) (works with audio-rate and scalar values).',
+    description: 'Exponential function (e^x).',
     examples: ['exp(x) |> out($)'],
   },
   log10: {
     name: 'log10',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Base-10 logarithm (works with audio-rate and scalar values).',
+    description: 'Base-10 logarithm.',
     examples: ['log10(x) |> out($)'],
   },
   log2: {
     name: 'log2',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Base-2 logarithm (works with audio-rate and scalar values).',
+    description: 'Base-2 logarithm.',
     examples: ['log2(x) |> out($)'],
   },
   exp2: {
     name: 'exp2',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Base-2 exponential function (2^x) (works with audio-rate and scalar values).',
+    description: 'Base-2 exponential function (2^x).',
     examples: ['exp2(x) |> out($)'],
   },
   min: {
@@ -1212,7 +1204,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'y', type: 'number', description: 'Second value' },
     ],
     returnType: 'number',
-    description: 'Minimum of two values (works with audio-rate and scalar values).',
+    description: 'Minimum of two values.',
     examples: ['min(sine(220), 0.5) |> out($)'],
   },
   max: {
@@ -1222,7 +1214,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'y', type: 'number', description: 'Second value' },
     ],
     returnType: 'number',
-    description: 'Maximum of two values (works with audio-rate and scalar values).',
+    description: 'Maximum of two values.',
     examples: ['max(sine(220), 0.5) |> out($)'],
   },
   clamp: {
@@ -1233,7 +1225,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'hi', type: 'number', description: 'Upper bound' },
     ],
     returnType: 'number',
-    description: 'Clamps value between lo and hi (works with audio-rate and scalar values).',
+    description: 'Clamps value between lo and hi.',
     examples: ['sine(220) * 2 |> clamp($, -0.5, 0.5) |> out($)'],
   },
   wrap: {
@@ -1244,7 +1236,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'hi', type: 'number', description: 'Upper bound' },
     ],
     returnType: 'number',
-    description: 'Wraps value into range [lo, hi) with sawtooth pattern (works with audio-rate and scalar values).',
+    description: 'Wraps value into range [lo, hi) with sawtooth pattern.',
     examples: ['t * 10 |> wrap($, 0, 1) |> out($)'],
   },
   mod: {
@@ -1254,7 +1246,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'y', type: 'number', description: 'Divisor' },
     ],
     returnType: 'number',
-    description: 'Modulo operation: x - y * floor(x / y) (works with audio-rate and scalar values).',
+    description: 'Modulo operation: x - y * floor(x / y).',
     examples: ['mod(t * 10, 1) |> out($)'],
   },
   pingpong: {
@@ -1265,8 +1257,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'hi', type: 'number', description: 'Upper bound' },
     ],
     returnType: 'number',
-    description:
-      'Wraps value back and forth between lo and hi, producing a triangle-wave pattern (works with audio-rate and scalar values).',
+    description: 'Wraps value back and forth between lo and hi, producing a triangle-wave pattern.',
     examples: ['t * 10 |> pingpong($, 0, 1) |> out($)'],
   },
   fold: {
@@ -1277,35 +1268,35 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'hi', type: 'number', description: 'Upper bound' },
     ],
     returnType: 'number',
-    description: 'Folds value at boundaries (works with audio-rate and scalar values).',
+    description: 'Folds value at boundaries.',
     examples: ['sine(220) * 3 |> fold($, -0.5, 0.5) |> out($)'],
   },
   floor: {
     name: 'floor',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Rounds down to nearest integer (works with audio-rate and scalar values).',
+    description: 'Rounds down to nearest integer.',
     examples: ['floor(sine(220) * 10) |> out($)'],
   },
   ceil: {
     name: 'ceil',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Rounds up to nearest integer (works with audio-rate and scalar values).',
+    description: 'Rounds up to nearest integer.',
     examples: ['ceil(sine(220) * 10) |> out($)'],
   },
   round: {
     name: 'round',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Rounds to nearest integer (works with audio-rate and scalar values).',
+    description: 'Rounds to nearest integer.',
     examples: ['round(sine(220) * 10) |> out($)'],
   },
   trunc: {
     name: 'trunc',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Truncates to integer (rounds toward zero) (works with audio-rate and scalar values).',
+    description: 'Truncates to integer (rounds toward zero).',
     examples: ['trunc(sine(220) * 10) |> out($)'],
   },
   snap: {
@@ -1315,23 +1306,21 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'step', type: 'number', description: 'Step size' },
     ],
     returnType: 'number',
-    description:
-      'Snaps value to nearest multiple of step: round(x / step) * step (works with audio-rate and scalar values).',
+    description: 'Snaps value to nearest multiple of step: round(x / step) * step.',
     examples: ['sine(220) |> snap($, 0.25) |> out($)'],
   },
   fract: {
     name: 'fract',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Fractional part (x - floor(x)) (works with audio-rate and scalar values).',
+    description: 'Fractional part (x - floor(x)).',
     examples: ['fract(t * 10) |> out($)'],
   },
   sign: {
     name: 'sign',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description:
-      'Sign function: -1 for negative, 0 for zero, 1 for positive (works with audio-rate and scalar values).',
+    description: 'Sign function: -1 for negative, 0 for zero, 1 for positive.',
     examples: ['sign(sine(220)) |> out($)'],
   },
   lerp: {
@@ -1342,7 +1331,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 't', type: 'number', description: 'Interpolation factor (0..1)' },
     ],
     returnType: 'number',
-    description: 'Linear interpolation: a + (b - a) * t (works with audio-rate and scalar values).',
+    description: 'Linear interpolation: a + (b - a) * t.',
     examples: ['lerp(0, 1, sine(1)) |> out($)'],
   },
   smoothstep: {
@@ -1353,8 +1342,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'edge1', type: 'number', description: 'Upper edge' },
     ],
     returnType: 'number',
-    description:
-      'Smooth Hermite interpolation between 0 and 1 when x is between edge0 and edge1 (works with audio-rate and scalar values).',
+    description: 'Smooth Hermite interpolation between 0 and 1 when x is between edge0 and edge1.',
     examples: ['smoothstep(sine(1), -0.5, 0.5) |> out($)'],
   },
   smootherstep: {
@@ -1365,8 +1353,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'edge1', type: 'number', description: 'Upper edge' },
     ],
     returnType: 'number',
-    description:
-      'Even smoother interpolation (6t⁵ - 15t⁴ + 10t³) between 0 and 1 (works with audio-rate and scalar values).',
+    description: 'Even smoother interpolation (6t⁵ - 15t⁴ + 10t³) between 0 and 1.',
     examples: ['smootherstep(sine(1), -0.5, 0.5) |> out($)'],
   },
   step: {
@@ -1376,15 +1363,14 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'edge', type: 'number', description: 'Edge threshold' },
     ],
     returnType: 'number',
-    description: 'Step function: 0 if x < edge, 1 otherwise (works with audio-rate and scalar values).',
+    description: 'Step function: 0 if x < edge, 1 otherwise.',
     examples: ['step(sine(220), 0) |> out($)'],
   },
   heaviside: {
     name: 'heaviside',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description:
-      'Heaviside step function: 0 for x < 0, 0.5 for x = 0, 1 for x > 0 (works with audio-rate and scalar values).',
+    description: 'Heaviside step function: 0 for x < 0, 0.5 for x = 0, 1 for x > 0.',
     examples: ['heaviside(sine(220)) |> out($)'],
   },
   select: {
@@ -1395,21 +1381,21 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'cond', type: 'number', description: 'Condition (0 = false, non-zero = true)' },
     ],
     returnType: 'number',
-    description: 'Selects between two values based on condition (works with audio-rate and scalar values).',
+    description: 'Selects between two values based on condition.',
     examples: ['select(0, 1, sine(220) > 0) |> out($)'],
   },
   isnan: {
     name: 'isnan',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Returns 1 if x is NaN, 0 otherwise (works with audio-rate and scalar values).',
+    description: 'Returns 1 if x is NaN, 0 otherwise.',
     examples: ['isnan(x) |> out($)'],
   },
   isinf: {
     name: 'isinf',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
-    description: 'Returns 1 if x is infinite, 0 otherwise (works with audio-rate and scalar values).',
+    description: 'Returns 1 if x is infinite, 0 otherwise.',
     examples: ['isinf(x) |> out($)'],
   },
   safediv: {
@@ -1419,7 +1405,17 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'y', type: 'number', description: 'Denominator' },
     ],
     returnType: 'number',
-    description: 'Safe division: returns 0 when y is 0, otherwise x / y (works with audio-rate and scalar values).',
+    description: 'Safe division: returns 0 when y is 0, otherwise x / y.',
     examples: ['safediv(sine(220), sine(110)) |> out($)'],
+  },
+  db: {
+    name: 'db',
+    parameters: [{ name: 'x', type: 'number', description: 'Gain in decibels' }],
+    returnType: 'number',
+    description: 'Converts gain in decibels to linear gain.',
+    examples: [
+      'signal * db(6) |> out($)',
+      'signal * db(-3) |> out($)',
+    ],
   },
 }
