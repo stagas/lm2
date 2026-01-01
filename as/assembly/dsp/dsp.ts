@@ -656,12 +656,19 @@ export class Dsp {
         this.soloRight$ = targetR$
         this.soloHas = 0
 
-        argAux[0] = curLIndex
-        argAux[1] = curRIndex
+        // Create [L, R] array argument for post callback
+        this.stack.push(VmTag.Audio, 0.0, curLIndex)
+        this.stack.push(VmTag.Audio, 0.0, curRIndex)
+        this.arrays.create(2, this.stack, 0, this.audio, this.program, block)
+
+        const arrIdx = this.stack.pop()
+        argTags[0] = VmTag.Arr
+        argNums[0] = 0.0
+        argAux[0] = this.stack.aux[arrIdx]
 
         const postPc: i32 = this.postPcs[i]
         this.stack.reset()
-        this.vmInvokeFunc(postPc, 2, argTags, argNums, argAux, block, targetL$, targetR$)
+        this.vmInvokeFunc(postPc, 1, argTags, argNums, argAux, block, targetL$, targetR$)
 
         if (vmErrorCode !== 0) return
 
@@ -691,7 +698,7 @@ export class Dsp {
           }
         }
         else {
-          // Allow mono returns for convenience: post((L,R)->mix(L)) or post((L,R)->L)
+          // Allow mono returns for convenience: post(([L,R])->mix(L)) or post(([L,R])->L)
           const mNum = this.stack.num[resIdx]
           const mAux = this.stack.aux[resIdx]
           const mPtr$ = this.audio.toAudioPtr(resTag, mNum, mAux, block, this.program)
