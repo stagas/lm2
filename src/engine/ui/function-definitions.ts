@@ -46,22 +46,25 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     name: 'out',
     parameters: [
       {
-        name: 'L',
-        type: 'number',
-        description: 'Audio-rate signal to be mixed into the left output channel (and right as well if R is omitted)',
+        name: 'signal',
+        type: 'number | [L:number, R:number]',
+        description:
+          'Audio-rate signal to be mixed into the output channels. If a single signal is provided, it will be sent to both left and right channels. If an array [L, R] is provided, L goes to left channel and R to right channel.',
       },
       {
         name: 'R',
         type: 'number',
         optional: true,
-        description: 'Audio-rate signal to be mixed into the right output channel (defaults to L)',
+        description:
+          'Audio-rate signal to be mixed into the right output channel (for backward compatibility with out(L, R) syntax)',
       },
     ],
     returnType: 'number',
     description: 'Routes signals to the stereo output bus so that `... |> out($)` becomes the final mix-down stage.',
     examples: [
       'sine(440) |> out($)',
-      'out(sine(440), sine(441))',
+      'out([sine(440), sine(441)])',
+      'out(sine(440), sine(441))', // backward compatibility
       'play(seq, (trig, _, hz) -> sine(hz, trig)) |> analyser($) |> out($)',
     ],
   },

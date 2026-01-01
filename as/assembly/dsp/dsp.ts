@@ -264,7 +264,7 @@ export class Dsp {
       }
       if (op === VmOp.Array) {
         const n = ops[pc++]
-        this.arrays.create(n, this.stack, pc - 2)
+        this.arrays.create(n, this.stack, pc - 2, this.audio, this.program, length)
         continue
       }
       if (op === VmOp.Len) {

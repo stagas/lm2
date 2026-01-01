@@ -769,6 +769,11 @@ class Compiler {
     const temps: TempArg[] = []
 
     const tmp = () => `%arg${this.callTempId++}`
+    const tapAnalyserIndex: number | null = typeof (expr as any).__tapAnalyserIndex === 'number'
+      ? (expr as any).__tapAnalyserIndex as number
+      : null
+    let firstPosTemp: string | null = null
+    let posSeen = 0
 
     // Evaluate args left-to-right, storing each into a temp so we can reorder stack layout later.
     for (const a of expr.args) {
@@ -777,6 +782,8 @@ class Compiler {
         this.compileExpr(a.value)
         this.emit({ op: 'STORE', name: this.nameConst(t) })
         this.emit({ op: 'POP' })
+        if (posSeen === 0) firstPosTemp = t
+        posSeen++
         let identName: string | undefined
         if (a.value.kind === 'ident') identName = a.value.name
         temps.push({
@@ -806,6 +813,22 @@ class Compiler {
 
     const emitUndef = () => this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
     const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
+
+    // Side-effect analyser tap for out()/solo(): emit `analyser(arg0, idx)` without rewriting the expression to
+    // `out(analyser(arg0))` (which would change semantics for arrays).
+    if ((calleeName === 'out' || calleeName === 'solo') && tapAnalyserIndex !== null && firstPosTemp) {
+      const calleeTemp = `%callee${this.callTempId++}`
+      this.emit({ op: 'STORE', name: this.nameConst(calleeTemp) })
+      this.emit({ op: 'POP' })
+
+      this.emit({ op: 'LOAD', name: this.nameConst('analyser') })
+      emitLoadTemp(firstPosTemp)
+      this.emit({ op: 'PUSH_CONST', k: this.k(tapAnalyserIndex) })
+      this.emit({ op: 'CALL', pos: 2, named: 0 })
+      this.emit({ op: 'POP' })
+
+      this.emit({ op: 'LOAD', name: this.nameConst(calleeTemp) })
+    }
 
     if (sig && idxOf) {
       const reserved: boolean[] = []

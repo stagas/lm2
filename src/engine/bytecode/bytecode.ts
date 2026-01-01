@@ -473,6 +473,8 @@ export function encodeLangToVmOps(
     return idx
   }
 
+  const implicitAnalyserRefs: AnalyserRef[] = []
+
   const MAX_COMPRESSOR_INDEX = 63
   const clampCompressorIndex = (n: number) => Math.max(0, Math.min(MAX_COMPRESSOR_INDEX, Math.floor(Number(n || 0))))
   const usedCompressorIndices = new Set<number>([0])
@@ -926,20 +928,15 @@ export function encodeLangToVmOps(
           ? audioExpr.callee.name
           : null
 
-        // If the signal is already analysed (common: `... |> analyser(%) |> out(%)`), don't wrap again.
+        // If the signal is already analysed (common: `... |> analyser(%) |> out(%)`), don't add an implicit tap.
+        //
+        // Important: we do NOT desugar to `out(analyser(x))` because that changes semantics for arrays
+        // (e.g. `array |> out($)` would get coerced). Instead, attach an analyser tap index and emit
+        // a side-effect analyser call at bytecode compile time.
         if (audioArg?.kind === 'pos' && audioExpr && audioCalleeName !== 'analyser') {
           const idx = allocAnalyserIndex()
-          const analyserCall = {
-            kind: 'call',
-            callee: { kind: 'ident', name: 'analyser', loc: expr.callee?.loc ?? expr.loc },
-            args: [
-              { kind: 'pos', value: audioExpr },
-              { kind: 'pos', value: toSeqIndexExpr(expr.loc, idx) },
-            ],
-            loc: expr.loc,
-          }
-          const args2 = args.map((a: any) => a === audioArg ? { ...a, value: analyserCall } : a)
-          return { ...expr, callee, args: args2 }
+          implicitAnalyserRefs.push({ analyserIndex: idx, loc: expr.callee?.loc ?? expr.loc })
+          return { ...(expr as any), callee, args, __tapAnalyserIndex: idx }
         }
       }
 
@@ -1150,7 +1147,7 @@ export function encodeLangToVmOps(
   const extractionResults = extractAllRefsFromProgram(src, transformedProgram)
   adRefs = extractionResults.adRefs
   adsrRefs = extractionResults.adsrRefs
-  analyserRefs = extractionResults.analyserRefs
+  analyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs]
   compressorRefs = extractionResults.compressorRefs
   limiterRefs = extractionResults.limiterRefs
   filterRefs = extractionResults.filterRefs
