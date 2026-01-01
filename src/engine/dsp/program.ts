@@ -17,9 +17,9 @@ import {
   FILTER_DATA_OFFSET,
   FILTER_ENTRY_SIZE,
   FILTER_HISTORY_SIZE,
-  FREEVERB_DATA_OFFSET,
-  FREEVERB_ENTRY_SIZE,
-  FREEVERB_HISTORY_SIZE,
+  REVERB_DATA_OFFSET,
+  REVERB_ENTRY_SIZE,
+  REVERB_HISTORY_SIZE,
   HISTORIES_COUNT,
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
@@ -59,6 +59,7 @@ import {
   type MiniSequenceRef,
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
+  type ReverbRef,
   type SampleDef,
   type SlicerRef,
   type TimelineLabel,
@@ -111,7 +112,7 @@ export type VmLfoHistory = {
   raw: Float32Array
 }
 
-export type VmFreeverbHistory = {
+export type VmReverbHistory = {
   writePos: number
   raw: Float32Array
 }
@@ -203,6 +204,7 @@ function buildProgram(
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
+  reverbRefs: ReverbRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
   atRefs: AtRef[]
@@ -222,7 +224,7 @@ function buildProgram(
     : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
 
   const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, analyserRefs,
-    compressorRefs, limiterRefs, filterRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals,
+    compressorRefs, limiterRefs, filterRefs, reverbRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals,
     branchMarks, numberParams, numberLiterals, bpm, bars, scale, sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
@@ -240,6 +242,7 @@ function buildProgram(
     compressorRefs: compressorRefs ?? [],
     limiterRefs: limiterRefs ?? [],
     filterRefs: filterRefs ?? [],
+    reverbRefs: reverbRefs ?? [],
     slicerRefs: slicerRefs ?? [],
     lfoRefs: lfoRefs ?? [],
     everyRefs: everyRefs ?? [],
@@ -282,6 +285,7 @@ export type ProgramBuildResult = {
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
+  reverbRefs: ReverbRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]
@@ -481,16 +485,16 @@ async function createProgram(
     ),
   }
 
-  const freeverbHistory$ = program.freeverbHistory
-  const freeverbWritePos = new Float32Array(wasmMemory.buffer, freeverbHistory$, FREEVERB_DATA_OFFSET)
-  const freeverbHistory: VmFreeverbHistory = {
+  const reverbHistory$ = program.reverbHistory
+  const reverbWritePos = new Float32Array(wasmMemory.buffer, reverbHistory$, REVERB_DATA_OFFSET)
+  const reverbHistory: VmReverbHistory = {
     get writePos() {
-      return freeverbWritePos[0] || 0
+      return reverbWritePos[0] || 0
     },
     raw: new Float32Array(
       wasmMemory.buffer,
-      freeverbHistory$,
-      FREEVERB_DATA_OFFSET + FREEVERB_HISTORY_SIZE * FREEVERB_ENTRY_SIZE,
+      reverbHistory$,
+      REVERB_DATA_OFFSET + REVERB_HISTORY_SIZE * REVERB_ENTRY_SIZE,
     ),
   }
 
@@ -568,7 +572,7 @@ async function createProgram(
     sampleNeedleHistory,
     filterHistory,
     lfoHistory,
-    freeverbHistory,
+    reverbHistory,
     trigHistory,
     envelopeHistory,
     get data() {
@@ -583,7 +587,7 @@ async function createProgram(
 
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, analyserRefs, compressorRefs,
-          limiterRefs, filterRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
+          limiterRefs, filterRefs, reverbRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
           numberParams, numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
@@ -638,6 +642,7 @@ async function createProgram(
           compressorRefs,
           limiterRefs,
           filterRefs,
+          reverbRefs,
           slicerRefs,
           lfoRefs,
           everyRefs,

@@ -68,6 +68,7 @@ export enum Op {
   Delay,
   Limiter,
   Freeverb,
+  Dattorro,
 }
 
 export enum SeqOp {

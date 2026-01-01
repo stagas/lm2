@@ -16,6 +16,7 @@ import {
   type LpRef,
   type MiniSequenceRef,
   type NumberWithParamsInfo,
+  type ReverbRef,
   type SampleDef,
   type SlicerRef,
   type TimelineSequenceRef,
@@ -39,7 +40,7 @@ export type WidgetCompileResult = {
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
-  freeverbRefs: FreeverbRef[]
+  reverbRefs: ReverbRef[]
   slicerRefs: SlicerRef[]
   lfoRefs: LfoRef[]
   everyRefs: EveryRef[]

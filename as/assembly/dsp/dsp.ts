@@ -27,7 +27,7 @@ export class Dsp {
   private audio: VmAudio = new VmAudio()
   private builtins: VmBuiltins = new VmBuiltins()
 
-  private funcParamSyms: StaticArray<i32> = new StaticArray<i32>(8)
+  private funcParamSyms: StaticArray<i32> = new StaticArray<i32>(16)
 
   // Runtime directive globals (segment-scoped; saved/restored across vmInvokeFunc)
   tuneTag: i32 = VmTag.Num

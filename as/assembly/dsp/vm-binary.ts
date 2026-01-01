@@ -23,6 +23,7 @@ import { VmAudio } from './vm-audio'
 import { VmArrays } from './vm-arrays'
 import { VmStack } from './vm-stack'
 import { Program } from '../program'
+import { setVmError } from '../globals'
 
 export function vmBinaryOp(
   code: VmBinary,
@@ -44,6 +45,43 @@ export function vmBinaryOp(
   let bAux = stack.aux[b]
 
   if (aTag === VmTag.Arr || bTag === VmTag.Arr) {
+    if (aTag === VmTag.Arr && bTag === VmTag.Arr) {
+      const aArrId = aAux
+      const bArrId = bAux
+      if (aArrId < 0 || aArrId >= arrays.count || bArrId < 0 || bArrId >= arrays.count) {
+        stack.push(VmTag.Undef)
+        return
+      }
+
+      const aStart = arrays.start[aArrId]
+      const bStart = arrays.start[bArrId]
+      const aLen = arrays.len[aArrId]
+      const bLen = arrays.len[bArrId]
+
+      if (aLen !== bLen) {
+        // Keep array math predictable: elementwise operations require matching lengths.
+        setVmError(23, pc)
+        stack.push(VmTag.Undef)
+        return
+      }
+
+      const n = aLen
+      if (n <= 0) {
+        stack.push(VmTag.Arr, 0.0, aArrId)
+        return
+      }
+
+      for (let i: i32 = 0; i < n; i++) {
+        const aAt = aStart + i
+        const bAt = bStart + i
+        stack.push(arrays.elemTag[aAt] as VmTag, arrays.elemNum[aAt], arrays.elemAux[aAt])
+        stack.push(arrays.elemTag[bAt] as VmTag, arrays.elemNum[bAt], arrays.elemAux[bAt])
+        vmBinaryOp(code, stack, audio, program, arrays, length, pc)
+      }
+      arrays.create(n, stack, pc, audio, program, length)
+      return
+    }
+
     // Broadcast scalar <op> array => array.map(x -> scalar <op> x)
     // and array <op> scalar => array.map(x -> x <op> scalar).
     if (aTag === VmTag.Arr && bTag !== VmTag.Arr) {
@@ -87,78 +125,6 @@ export function vmBinaryOp(
       }
       arrays.create(n, stack, pc, audio, program, length)
       return
-    }
-
-    // Fallback: preserve historical behavior for array <op> array by coercing each array to a scalar
-    // (sum for arrays-of-nums; mix for arrays-of-audio).
-    if (aTag === VmTag.Arr) {
-      const arrId = aAux
-      const elemType = arrId >= 0 && arrId < arrays.count ? (arrays.elemType[arrId] as VmTag) : VmTag.Undef
-      if (elemType === VmTag.Num) {
-        const start = arrays.start[arrId]
-        const n = arrays.len[arrId]
-        let sum: f64 = 0.0
-        for (let i: i32 = 0; i < n; i++) sum += arrays.elemNum[start + i]
-        aTag = VmTag.Num
-        aNum = sum
-        aAux = 0
-      }
-      else if (elemType === VmTag.Audio) {
-        const start = arrays.start[arrId]
-        const n = arrays.len[arrId]
-        const outIndex = audio.allocOut(program)
-        const out$ = program.getOutBuffer(outIndex)
-        clearAudio(out$, length)
-        for (let i: i32 = 0; i < n; i++) {
-          const srcIndex = arrays.elemAux[start + i]
-          if (srcIndex < 0) continue
-          const src$ = program.getOutBuffer(srcIndex)
-          addAudio(out$, out$, src$, length)
-        }
-        aTag = VmTag.Audio
-        aNum = 0.0
-        aAux = outIndex
-      }
-      else {
-        aTag = VmTag.Num
-        aNum = 0.0
-        aAux = 0
-      }
-    }
-
-    if (bTag === VmTag.Arr) {
-      const arrId = bAux
-      const elemType = arrId >= 0 && arrId < arrays.count ? (arrays.elemType[arrId] as VmTag) : VmTag.Undef
-      if (elemType === VmTag.Num) {
-        const start = arrays.start[arrId]
-        const n = arrays.len[arrId]
-        let sum: f64 = 0.0
-        for (let i: i32 = 0; i < n; i++) sum += arrays.elemNum[start + i]
-        bTag = VmTag.Num
-        bNum = sum
-        bAux = 0
-      }
-      else if (elemType === VmTag.Audio) {
-        const start = arrays.start[arrId]
-        const n = arrays.len[arrId]
-        const outIndex = audio.allocOut(program)
-        const out$ = program.getOutBuffer(outIndex)
-        clearAudio(out$, length)
-        for (let i: i32 = 0; i < n; i++) {
-          const srcIndex = arrays.elemAux[start + i]
-          if (srcIndex < 0) continue
-          const src$ = program.getOutBuffer(srcIndex)
-          addAudio(out$, out$, src$, length)
-        }
-        bTag = VmTag.Audio
-        bNum = 0.0
-        bAux = outIndex
-      }
-      else {
-        bTag = VmTag.Num
-        bNum = 0.0
-        bAux = 0
-      }
     }
   }
 

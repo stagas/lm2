@@ -126,6 +126,7 @@ export enum VmBuiltin {
   Fractal = VmSym.Fractal,
   Delay = VmSym.Delay,
   Freeverb = VmSym.Freeverb,
+  Dattorro = VmSym.Dattorro,
   Sin = VmSym.Sin,
   Cos = VmSym.Cos,
   Tan = VmSym.Tan,

@@ -218,9 +218,12 @@ export type EuclidRef = {
   callLoc: Loc
 }
 
-export type FreeverbRef = {
-  freeverbIndex: number
-  /** Location of the `freeverb` identifier (for widget anchoring). */
+export type ReverbKind = 'freeverb' | 'dattorro'
+
+export type ReverbRef = {
+  reverbIndex: number
+  reverbKind: ReverbKind
+  /** Location of the reverb identifier (for widget anchoring). */
   loc: Loc
   /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
   aboveLoc: Loc
@@ -230,12 +233,9 @@ export type FreeverbRef = {
   inArgLoc: Loc | null
   /** Location of the roomSize arg (positional or `roomSize:`). */
   roomSizeArgLoc: Loc | null
-  /** Location of the damp arg (positional or `damp:`). */
-  dampArgLoc: Loc | null
   /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
     roomSize: number
-    damp: number
   }
 }
 

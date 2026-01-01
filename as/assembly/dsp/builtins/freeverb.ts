@@ -1,7 +1,5 @@
 // dprint-ignore-file
 import { Freeverb } from '../../gen/freeverb'
-import { FREEVERB_DATA_OFFSET, FREEVERB_ENTRY_SIZE, FREEVERB_HISTORY_SIZE, FREEVERB_WRITE_POS_OFFSET } from '../../constants'
-import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { Dsp } from '../dsp'
@@ -9,6 +7,7 @@ import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
+import { publishReverbRoomSize } from '../reverb-history'
 
 // @ts-ignore
 @inline
@@ -34,7 +33,7 @@ export function callFreeverb(
   length: i32,
   dsp: Dsp,
 ): void {
-  // freeverb(in, size=0.5, damp=0.5)
+  // freeverb(in, roomSize=0.5, damping=0.5)
   if (posCount < 1) {
     stack.push(VmTag.Undef)
     return
@@ -50,9 +49,9 @@ export function callFreeverb(
   let roomSizeNum: f64 = 0.5
   let roomSizeAux: i32 = 0
 
-  let dampTag: VmTag = VmTag.Num
-  let dampNum: f64 = 0.5
-  let dampAux: i32 = 0
+  let dampingTag: VmTag = VmTag.Num
+  let dampingNum: f64 = 0.5
+  let dampingAux: i32 = 0
 
   if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
     inTag = posTags[0] as VmTag
@@ -67,9 +66,9 @@ export function callFreeverb(
   }
 
   if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
-    dampTag = posTags[2] as VmTag
-    dampNum = posNums[2]
-    dampAux = posAux[2]
+    dampingTag = posTags[2] as VmTag
+    dampingNum = posNums[2]
+    dampingAux = posAux[2]
   }
 
   for (let i = 0; i < namedCount; i++) {
@@ -82,15 +81,15 @@ export function callFreeverb(
       inNum = nameNums[i]
       inAux = nameAux[i]
     }
-    else if (k === VmSym.Size) {
+    else if (k === VmSym.Roomsize || k === VmSym.Size) {
       roomSizeTag = nameTags[i] as VmTag
       roomSizeNum = nameNums[i]
       roomSizeAux = nameAux[i]
     }
-    else if (k === VmSym.Damp) {
-      dampTag = nameTags[i] as VmTag
-      dampNum = nameNums[i]
-      dampAux = nameAux[i]
+    else if (k === VmSym.Damping) {
+      dampingTag = nameTags[i] as VmTag
+      dampingNum = nameNums[i]
+      dampingAux = nameAux[i]
     }
   }
 
@@ -137,7 +136,7 @@ export function callFreeverb(
   }
 
   const roomSize$ = audio.toAudioPtr(roomSizeTag, roomSizeNum, roomSizeAux, length, program)
-  const damp$ = audio.toAudioPtr(dampTag, dampNum, dampAux, length, program)
+  const damping$ = audio.toAudioPtr(dampingTag, dampingNum, dampingAux, length, program)
 
   const outLIndex = audio.allocOut(program)
   const outRIndex = audio.allocOut(program)
@@ -148,21 +147,10 @@ export function callFreeverb(
   gen.inL$ = inL$
   gen.inR$ = inR$
   gen.roomSize$ = roomSize$
-  gen.damp$ = damp$
+  gen.damping$ = damping$
   gen.processStereo(outL$, outR$, length)
 
-  // Best-effort history for UI widgets (no atomics needed).
-  {
-    const hist = program.freeverbHistory
-    const writePos = i32(hist[FREEVERB_WRITE_POS_OFFSET])
-    const slot = writePos % FREEVERB_HISTORY_SIZE
-    const base = FREEVERB_DATA_OFFSET + slot * FREEVERB_ENTRY_SIZE
-    hist[base] = f32(freeverbIndex)
-    hist[base + 1] = load<f32>(roomSize$)
-    hist[base + 2] = load<f32>(damp$)
-    hist[base + 3] = f32((globalSampleCount + length) & 0xfffff)
-    hist[FREEVERB_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
-  }
+  publishReverbRoomSize(program.reverbHistory, freeverbIndex, load<f32>(roomSize$))
 
   stack.push(VmTag.Audio, 0.0, outLIndex)
   stack.push(VmTag.Audio, 0.0, outRIndex)

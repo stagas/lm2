@@ -150,6 +150,7 @@ class Compiler {
   private labelId = 0
   private callTempId = 0
   private forTempId = 0
+  private destructureTempId = 0
 
   constructor(private readonly src: string) {}
 
@@ -216,8 +217,32 @@ class Compiler {
     }
 
     if (stmt.kind === 'destructure') {
+      const id = this.destructureTempId++
+      const temp = `%destr${id}`
+      const tempName = this.nameConst(temp)
+
       this.compileExpr(stmt.value)
+      this.emit({ op: 'STORE', name: tempName })
       this.emit({ op: 'POP' })
+
+      if (stmt.pattern.kind === 'arr') {
+        for (let i = 0; i < stmt.pattern.items.length; i++) {
+          const name = stmt.pattern.items[i]!
+          this.emit({ op: 'LOAD', name: tempName })
+          this.emit({ op: 'PUSH_CONST', k: this.k(i) })
+          this.emit({ op: 'GET_INDEX' })
+          this.emit({ op: 'STORE', name: this.nameConst(name) })
+          this.emit({ op: 'POP' })
+        }
+      }
+      else {
+        for (const key of stmt.pattern.keys) {
+          this.emit({ op: 'LOAD', name: tempName })
+          this.emit({ op: 'GET_PROP', key: this.k(key) })
+          this.emit({ op: 'STORE', name: this.nameConst(key) })
+          this.emit({ op: 'POP' })
+        }
+      }
       return
     }
 
@@ -1022,11 +1047,12 @@ class Compiler {
   }
 
   private compileIf(expr: IfExpr): void {
+    const noBranchMark = (expr as any).__noBranchMark === true
     this.compileExpr(expr.test)
     const jFalse = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
 
     const thenLoc = expr.ifLoc ?? expr.questionLoc ?? expr.then.loc ?? expr.loc
-    this.emitBranchMark(thenLoc)
+    if (!noBranchMark) this.emitBranchMark(thenLoc)
     this.compileIfBranch(expr.then)
     const jEnd = this.emit({ op: 'JUMP', to: -1 })
     this.patch(jFalse, this.chunk.code.length)
@@ -1036,7 +1062,7 @@ class Compiler {
       const elseIfLoc = expr.else.ifLoc
       if (elseIfLoc) elseLoc = this.locFrom(expr.elseLoc, elseIfLoc)
     }
-    this.emitBranchMark(elseLoc)
+    if (!noBranchMark) this.emitBranchMark(elseLoc)
     this.compileIfBranch(expr.else)
     this.patch(jEnd, this.chunk.code.length)
   }

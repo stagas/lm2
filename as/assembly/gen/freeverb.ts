@@ -32,7 +32,7 @@ export class Freeverb extends Gen {
   inL$: usize = 0
   inR$: usize = 0
   roomSize$: usize = 0
-  damp$: usize = 0
+  damping$: usize = 0
 
   private lastSampleRate: i32 = 0
 
@@ -183,7 +183,7 @@ export class Freeverb extends Gen {
 
     let i$: usize = this.inL$
     let roomSize$: usize = this.roomSize$
-    let damp$: usize = this.damp$
+    let damping$: usize = this.damping$
 
     const combBufs = this.combBufs
     const combLen = this.combLen
@@ -199,11 +199,11 @@ export class Freeverb extends Gen {
       const input: f32 = load<f32>(i$)
 
       const roomSize: f32 = clamp01(load<f32>(roomSize$))
-      const damp: f32 = clamp01(load<f32>(damp$))
+      const damping: f32 = clamp01(load<f32>(damping$))
 
       const room1: f32 = roomSize * SCALE_ROOM
-      const damp1: f32 = damp * SCALE_DAMP
-      const damp2: f32 = 1.0 - damp1
+      const damping1: f32 = damping * SCALE_DAMP
+      const damping2: f32 = 1.0 - damping1
 
       const x: f32 = input * FIXED_GAIN
 
@@ -217,7 +217,7 @@ export class Freeverb extends Gen {
 
         const y: f32 = unchecked(b[p])
         let fs: f32 = combFilter[ci]
-        fs = (y * damp2 + fs * damp1) as f32
+        fs = (y * damping2 + fs * damping1) as f32
         combFilter[ci] = fs
         unchecked(b[p] = (x + fs * room1) as f32)
 
@@ -250,7 +250,7 @@ export class Freeverb extends Gen {
       o$ += 4
       i$ += 4
       roomSize$ += 4
-      damp$ += 4
+      damping$ += 4
     }
   }
 
@@ -260,7 +260,7 @@ export class Freeverb extends Gen {
     let iL$: usize = this.inL$
     let iR$: usize = this.inR$ !== 0 ? this.inR$ : this.inL$
     let roomSize$: usize = this.roomSize$
-    let damp$: usize = this.damp$
+    let damping$: usize = this.damping$
 
     const combBufs = this.combBufs
     const combLen = this.combLen
@@ -284,11 +284,11 @@ export class Freeverb extends Gen {
       const inR: f32 = load<f32>(iR$)
 
       const roomSize: f32 = clamp01(load<f32>(roomSize$))
-      const damp: f32 = clamp01(load<f32>(damp$))
+      const damping: f32 = clamp01(load<f32>(damping$))
 
       const room1: f32 = roomSize * SCALE_ROOM
-      const damp1: f32 = damp * SCALE_DAMP
-      const damp2: f32 = 1.0 - damp1
+      const damping1: f32 = damping * SCALE_DAMP
+      const damping2: f32 = 1.0 - damping1
 
       const xL: f32 = inL * FIXED_GAIN
       const xR: f32 = inR * FIXED_GAIN
@@ -306,7 +306,7 @@ export class Freeverb extends Gen {
 
           const y: f32 = unchecked(b[p])
           let fs: f32 = combFilter[i]
-          fs = (y * damp2 + fs * damp1) as f32
+          fs = (y * damping2 + fs * damping1) as f32
           combFilter[i] = fs
           unchecked(b[p] = (xL + fs * room1) as f32)
 
@@ -325,7 +325,7 @@ export class Freeverb extends Gen {
 
           const y: f32 = unchecked(b[p])
           let fs: f32 = combFilter[i]
-          fs = (y * damp2 + fs * damp1) as f32
+          fs = (y * damping2 + fs * damping1) as f32
           combFilter[i] = fs
           unchecked(b[p] = (xR + fs * room1) as f32)
 
@@ -383,7 +383,7 @@ export class Freeverb extends Gen {
       iL$ += 4
       iR$ += 4
       roomSize$ += 4
-      damp$ += 4
+      damping$ += 4
     }
   }
 }

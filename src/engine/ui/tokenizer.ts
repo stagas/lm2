@@ -1,7 +1,6 @@
 import type { Token, Tokenizer } from 'mini-code'
 import { splitValueAndModifiers, tokenize as miniTokenize } from '../../mini/tokenizer.ts'
-
-const keywords = ['of']
+import { KEYWORDS } from '../constants.ts'
 
 // State for multiline strings and context
 let inMultilineString: string | null = null // Tracks the quote type we're inside
@@ -753,7 +752,7 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
         // Treat as parameter even if the function call spans multiple lines
         tokens.push({ type: 'parameter', content: word, length: word.length })
       }
-      else if (keywords.includes(word)) {
+      else if (KEYWORDS.includes(word)) {
         tokens.push({ type: 'function', content: word, length: word.length })
       }
       else if (inFunctionCall) {

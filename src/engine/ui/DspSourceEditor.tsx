@@ -20,6 +20,7 @@ import {
   extractEarlyDataFromSource,
 } from '../bytecode/bytecode.ts'
 import type { TimelineLabel } from '../bytecode/bytecode.ts'
+import { KEYWORDS } from '../constants.ts'
 import type { VmCompileSnapshot } from '../dsp/program.ts'
 import { buildTimelineLabels } from '../dsp/timeline-labels.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
@@ -38,13 +39,13 @@ import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useCompressorWidget } from './useCompressorWidget.ts'
 import { useEnvelopeVisualization } from './useEnvelopeVisualization.ts'
 import { useFilterWidget } from './useFilterWidget.ts'
-import { useFreeverbWidget } from './useFreeverbWidget.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
 import { useLfoWidget } from './useLfoWidget.ts'
 import { useLoopView } from './useLoopView.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
+import { useReverbWidget } from './useReverbWidget.ts'
 import { useSampleWidget } from './useSampleWidget.ts'
 import { type SeqControlState, type SeqFrame, useSequenceWidget } from './useSequenceWidget.ts'
 import { useSlicerWidget } from './useSlicerWidget.ts'
@@ -133,7 +134,7 @@ function DspSourceEditorReady(
   const compressorRefs = useEngineDspStore(state => state.compressorRefs)
   const limiterRefs = useEngineDspStore(state => state.limiterRefs)
   const filterRefs = useEngineDspStore(state => state.filterRefs)
-  const freeverbRefs = useEngineDspStore(state => state.freeverbRefs)
+  const reverbRefs = useEngineDspStore(state => state.reverbRefs)
   const slicerRefs = useEngineDspStore(state => state.slicerRefs)
   const lfoRefs = useEngineDspStore(state => state.lfoRefs)
   const everyRefs = useEngineDspStore(state => state.everyRefs)
@@ -372,7 +373,7 @@ function DspSourceEditorReady(
         compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
         limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
         filterRefs: previewCompile.filterRefs ?? filterRefs,
-        freeverbRefs: previewCompile.freeverbRefs ?? freeverbRefs,
+        reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
         slicerRefs,
         lfoRefs,
         everyRefs,
@@ -401,7 +402,7 @@ function DspSourceEditorReady(
         compressorRefs,
         limiterRefs,
         filterRefs,
-        freeverbRefs,
+        reverbRefs,
         slicerRefs,
         lfoRefs,
         everyRefs,
@@ -434,7 +435,7 @@ function DspSourceEditorReady(
       compressorRefs: previewCompile.compressorRefs ?? [],
       limiterRefs: previewCompile.limiterRefs ?? [],
       filterRefs: previewCompile.filterRefs ?? [],
-      freeverbRefs: previewCompile.freeverbRefs ?? freeverbRefs,
+      reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
       slicerRefs: previewCompile.slicerRefs ?? [],
       lfoRefs: previewCompile.lfoRefs ?? [],
       everyRefs: previewCompile.everyRefs ?? [],
@@ -510,7 +511,7 @@ function DspSourceEditorReady(
       analyserRefs: widgetCompileState.analyserRefs ?? [],
       compressorRefs: widgetCompileState.compressorRefs ?? [],
       filterRefs: widgetCompileState.filterRefs ?? [],
-      freeverbRefs: widgetCompileState.freeverbRefs ?? [],
+      reverbRefs: widgetCompileState.reverbRefs ?? [],
       slicerRefs: widgetCompileState.slicerRefs ?? [],
       lfoRefs: widgetCompileState.lfoRefs ?? [],
       everyRefs: widgetCompileState.everyRefs ?? [],
@@ -731,12 +732,9 @@ function DspSourceEditorReady(
     playbackState,
   })
 
-  const { widgets: freeverbWidgets, onBeforeDraw: onBeforeDrawFreeverb } = useFreeverbWidget({
+  const { widgets: reverbWidgets, onBeforeDraw: onBeforeDrawReverb } = useReverbWidget({
     program1: runtimeProgram,
-    audioContext,
-    globalSampleCount,
-    freeverbRefs: widgetCompileState.freeverbRefs,
-    dspSource: widgetCompileState.dspSource,
+    reverbRefs: widgetCompileState.reverbRefs,
     showWidgets,
     isLive,
     playbackState,
@@ -915,7 +913,7 @@ function DspSourceEditorReady(
     onBeforeDrawCompressor()
     onBeforeDrawEnvelope()
     onBeforeDrawFilter()
-    onBeforeDrawFreeverb()
+    onBeforeDrawReverb()
     onBeforeDrawSlicer()
     onBeforeDrawLfo()
     onBeforeDrawTrig()
@@ -933,7 +931,7 @@ function DspSourceEditorReady(
     onBeforeDrawCompressor,
     onBeforeDrawEnvelope,
     onBeforeDrawFilter,
-    onBeforeDrawFreeverb,
+    onBeforeDrawReverb,
     onBeforeDrawSlicer,
     onBeforeDrawLfo,
     onBeforeDrawTrig,
@@ -953,7 +951,7 @@ function DspSourceEditorReady(
       ...compressorWidgets,
       ...envelopeWidgets,
       ...filterWidgets,
-      ...freeverbWidgets,
+      ...reverbWidgets,
       ...slicerWidgets,
       ...lfoWidgets,
       ...trigWidgets,
@@ -968,7 +966,7 @@ function DspSourceEditorReady(
     ]
   }, [showWidgets, envelopeWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets,
     sequenceWidgets, arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, filterWidgets,
-    slicerWidgets, lfoWidgets, trigWidgets, knobWidgets, viewSampleCount])
+    reverbWidgets, slicerWidgets, lfoWidgets, trigWidgets, knobWidgets, viewSampleCount])
 
   const codeEditorKey = useMemo(() => {
     const codeFile = currentLoop?.codeFile
@@ -1101,6 +1099,7 @@ function DspSourceEditorReady(
             header={timelineHeader}
             theme={themeForEditor}
             tokenizer={tokenizer}
+            keywords={KEYWORDS}
             hideFunctionSignatures={!showFunctionDefinitions}
             hideHoverFunctionSignatures={!showFunctionDefinitionsHover}
             functionDefinitions={functionDefinitions}

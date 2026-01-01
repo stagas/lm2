@@ -5,6 +5,7 @@ import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
 import { Delay } from './gen/delay'
+import { Dattorro } from './gen/dattorro'
 import { Freeverb } from './gen/freeverb'
 import { Limiter } from './gen/limiter'
 import { Euclid } from './gen/euclid'
@@ -98,6 +99,7 @@ export class GensPool {
   private delays: GenPool<Delay> = new GenPool<Delay>(() => new Delay())
   private limiters: GenPool<Limiter> = new GenPool<Limiter>(() => new Limiter())
   private freeverbs: GenPool<Freeverb> = new GenPool<Freeverb>(() => new Freeverb())
+  private dattorros: GenPool<Dattorro> = new GenPool<Dattorro>(() => new Dattorro())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -141,6 +143,7 @@ export class GensPool {
     this.delays.resetIndex()
     this.limiters.resetIndex()
     this.freeverbs.resetIndex()
+    this.dattorros.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -185,6 +188,7 @@ export class GensPool {
     this.delays.reset()
     this.limiters.reset()
     this.freeverbs.reset()
+    this.dattorros.reset()
   }
 
   get(op: Op): Gen {
@@ -273,6 +277,8 @@ export class GensPool {
         return this.limiters.get()
       case Op.Freeverb:
         return this.freeverbs.get()
+      case Op.Dattorro:
+        return this.dattorros.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -318,5 +324,6 @@ export class GensPool {
     this.fractals.copyFrom(source.fractals)
     this.limiters.copyFrom(source.limiters)
     this.freeverbs.copyFrom(source.freeverbs)
+    this.dattorros.copyFrom(source.dattorros)
   }
 }

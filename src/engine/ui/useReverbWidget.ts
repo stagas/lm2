@@ -1,49 +1,37 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
-import { FREEVERB_DATA_OFFSET, FREEVERB_ENTRY_SIZE, FREEVERB_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
-import type { FreeverbRef } from '../bytecode/types.ts'
+import { useCallback, useMemo, useRef } from 'preact/hooks'
+import { REVERB_DATA_OFFSET, REVERB_ENTRY_SIZE, REVERB_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
+import type { ReverbRef } from '../bytecode/types.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
-import { useEngineRuntimeStore } from '../store.ts'
 import { getCurrentTheme } from './theme.ts'
 
-type UseFreeverbWidgetParams = {
+type UseReverbWidgetParams = {
   program1: ProgramInstance | undefined
-  audioContext: AudioContext | undefined
-  globalSampleCount: Int32Array<SharedArrayBuffer> | undefined
-  freeverbRefs: FreeverbRef[] | undefined
-  dspSource: string
+  reverbRefs: ReverbRef[] | undefined
   showWidgets: boolean
   isLive: boolean
   playbackState: 'stopped' | 'running' | 'paused'
 }
 
-export function useFreeverbWidget({
+export function useReverbWidget({
   program1,
-  audioContext,
-  globalSampleCount,
-  freeverbRefs,
-  dspSource,
+  reverbRefs,
   showWidgets,
   isLive,
   playbackState,
-}: UseFreeverbWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
-  const refs = freeverbRefs ?? []
+}: UseReverbWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
+  const refs = reverbRefs ?? []
 
-  type St = { roomSize: number; damp: number; targetRoomSize: number }
+  type St = { roomSize: number; targetRoomSize: number }
   const stRef = useRef<Array<St | undefined>>([])
   const lastWritePosRef = useRef<number>(0)
-
-  // useEffect(() => {
-  //   lastWritePosRef.current = 0
-  //   stRef.current.length = 0
-  // }, [dspSource])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (!refs.length) return
     if (!isLive) return
 
-    const history = program1?.program.freeverbHistory
+    const history = program1?.program.reverbHistory
     if (!history) return
 
     const writePos = Math.floor(history.writePos) >>> 0
@@ -52,40 +40,33 @@ export function useFreeverbWidget({
       return
     }
 
-    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
-    if (!pred) return
-
-    const MOD = 1 << 20
-    const nowMod = (Math.floor(pred.sampleCount) >>> 0) & (MOD - 1)
-
     const prevWritePos = lastWritePosRef.current >>> 0
     lastWritePosRef.current = writePos
 
-    if (writePos !== prevWritePos) {
-      const raw = history.raw
-      const deltaRaw = (writePos - prevWritePos + MOD) % MOD
-      const delta = Math.min(deltaRaw, FREEVERB_HISTORY_SIZE)
+    if (writePos === prevWritePos) return
 
-      for (let k = delta; k > 0; k--) {
-        const p = (writePos - k) >>> 0
-        const slot = p % FREEVERB_HISTORY_SIZE
-        const base = FREEVERB_DATA_OFFSET + slot * FREEVERB_ENTRY_SIZE
+    const raw = history.raw
+    const MOD = 1 << 20
+    const deltaRaw = (writePos - prevWritePos + MOD) % MOD
+    const delta = Math.min(deltaRaw, REVERB_HISTORY_SIZE)
 
-        const idx = Math.floor(raw[base] ?? 0)
-        const roomSize = raw[base + 1] ?? 0
-        const damp = raw[base + 2] ?? 0
+    for (let k = delta; k > 0; k--) {
+      const p = (writePos - k) >>> 0
+      const slot = p % REVERB_HISTORY_SIZE
+      const base = REVERB_DATA_OFFSET + slot * REVERB_ENTRY_SIZE
 
-        if (idx < 0 || idx > 63) continue
+      const idx = Math.floor(raw[base] ?? 0)
+      const roomSize = raw[base + 1] ?? 0
 
-        let st = stRef.current[idx]
-        if (!st) {
-          st = { roomSize, damp, targetRoomSize: roomSize }
-          stRef.current[idx] = st
-        }
+      if (idx < 0 || idx > 63) continue
 
-        st.targetRoomSize = roomSize
-        st.damp = damp
+      let st = stRef.current[idx]
+      if (!st) {
+        st = { roomSize, targetRoomSize: roomSize }
+        stRef.current[idx] = st
       }
+
+      st.targetRoomSize = roomSize
     }
   }, [showWidgets, refs.length, isLive, playbackState, program1])
 
@@ -100,10 +81,9 @@ export function useFreeverbWidget({
         length: Math.max(1, ref.aboveLoc.length),
         height: 40,
         culling: false,
-        render: (c, x, y, w, h, _vx, _vw) => {
-          const st = stRef.current[ref.freeverbIndex | 0]
+        render: (c, x, y, w, h) => {
+          const st = stRef.current[ref.reverbIndex | 0]
           if (st) {
-            // Smooth roomSize changes every frame
             const smoothFactor = 0.15
             st.roomSize = st.roomSize + (st.targetRoomSize - st.roomSize) * smoothFactor
           }
@@ -116,7 +96,6 @@ export function useFreeverbWidget({
           c.fillStyle = theme.background
           c.fillRect(0, 0, w, h)
 
-          // Isometric "room" (open front/top): floor + two walls. Use one theme color and vary alpha.
           const primary = theme.colors.function
           const pad = 0
           const c30 = 0.8660254037844386
@@ -146,10 +125,9 @@ export function useFreeverbWidget({
             return [px, py] as const
           }
 
-          // Corner at A, walls extend along +X (right) and +Z (left)
           const A = proj(0, 0, 0)
           const B = proj(dx, 0, 0)
-          const C = proj(dx, 0, dz)
+          const Cc = proj(dx, 0, dz)
           const D = proj(0, 0, dz)
           const A2 = proj(0, dy, 0)
           const B2 = proj(dx, dy, 0)
@@ -162,16 +140,14 @@ export function useFreeverbWidget({
           c.fillStyle = primary
           c.globalAlpha = 0.15
 
-          // Floor
           c.beginPath()
           c.moveTo(A[0], A[1])
           c.lineTo(B[0], B[1])
-          c.lineTo(C[0], C[1])
+          c.lineTo(Cc[0], Cc[1])
           c.lineTo(D[0], D[1])
           c.closePath()
           c.fill()
 
-          // Left wall (along +Z)
           c.beginPath()
           c.moveTo(A[0], A[1])
           c.lineTo(D[0], D[1])
@@ -180,7 +156,6 @@ export function useFreeverbWidget({
           c.closePath()
           c.fill()
 
-          // Right wall (along +X)
           c.beginPath()
           c.moveTo(A[0], A[1])
           c.lineTo(B[0], B[1])
@@ -189,19 +164,17 @@ export function useFreeverbWidget({
           c.closePath()
           c.fill()
 
-          // Back wall
           c.beginPath()
           c.moveTo(D[0], D[1])
-          c.lineTo(C[0], C[1])
+          c.lineTo(Cc[0], Cc[1])
           c.lineTo(C2[0], C2[1])
           c.lineTo(D2[0], D2[1])
           c.closePath()
           c.fill()
 
-          // Front wall
           c.beginPath()
           c.lineTo(B[0], B[1])
-          c.lineTo(C[0], C[1])
+          c.lineTo(Cc[0], Cc[1])
           c.lineTo(C2[0], C2[1])
           c.lineTo(B2[0], B2[1])
           c.closePath()
@@ -209,13 +182,12 @@ export function useFreeverbWidget({
 
           c.restore()
 
-          // Wireframe (room edges)
           c.strokeStyle = primary
           c.globalAlpha = 0.9
           c.beginPath()
           c.moveTo(A[0], A[1])
           c.lineTo(B[0], B[1])
-          c.lineTo(C[0], C[1])
+          c.lineTo(Cc[0], Cc[1])
           c.lineTo(D[0], D[1])
           c.closePath()
           c.moveTo(A[0], A[1])
@@ -224,7 +196,7 @@ export function useFreeverbWidget({
           c.lineTo(B2[0], B2[1])
           c.moveTo(D[0], D[1])
           c.lineTo(D2[0], D2[1])
-          c.moveTo(C[0], C[1])
+          c.moveTo(Cc[0], Cc[1])
           c.lineTo(C2[0], C2[1])
           c.moveTo(A2[0], A2[1])
           c.lineTo(B2[0], B2[1])
@@ -243,3 +215,5 @@ export function useFreeverbWidget({
 
   return { widgets, onBeforeDraw }
 }
+
+

@@ -122,6 +122,10 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Freeverb)
       return
     }
+    if (sym === VmSym.Dattorro) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Dattorro)
+      return
+    }
     if (sym === VmSym.Mini) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Mini)
       return

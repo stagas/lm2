@@ -158,8 +158,54 @@ function desugarExpr(expr: Expr): Expr {
     return { ...expr, test: desugarExpr(expr.test), then: thenPart, else: elsePart }
   }
   if (expr.kind === 'func') {
+    const params = (expr.params ?? []).map(p => (p.default ? { ...p, default: desugarExpr(p.default) } : p))
     const body: any = expr.body?.kind === 'block' ? desugarStmt(expr.body) : desugarExpr(expr.body as any)
-    return { ...expr, body }
+
+    const defaultStmts = params.flatMap(p => {
+      if (!p.default) return []
+      if (p.isRest) return []
+      const pLoc = p.loc
+      const ident = { kind: 'ident' as const, name: p.name, loc: pLoc }
+      const test = {
+        kind: 'binary' as const,
+        op: '==' as const,
+        left: ident,
+        right: { kind: 'undefined' as const, loc: pLoc },
+        loc: pLoc,
+      }
+      const value = {
+        kind: 'if' as const,
+        test,
+        then: p.default,
+        else: ident,
+        loc: pLoc,
+        __noBranchMark: true,
+      }
+      const assign = {
+        kind: 'assign' as const,
+        op: '=' as const,
+        target: ident,
+        value,
+        loc: pLoc,
+      }
+      return [{ kind: 'expr_stmt' as const, expr: assign, loc: pLoc }]
+    })
+
+    if (defaultStmts.length === 0) return { ...expr, params, body }
+
+    if (body?.kind === 'block') {
+      return { ...expr, params, body: { ...body, body: [...defaultStmts, ...(body.body ?? [])] } }
+    }
+
+    return {
+      ...expr,
+      params,
+      body: {
+        kind: 'block' as const,
+        body: [...defaultStmts, { kind: 'expr_stmt' as const, expr: body, loc: body.loc }],
+        loc: expr.loc,
+      },
+    }
   }
 
   return expr
