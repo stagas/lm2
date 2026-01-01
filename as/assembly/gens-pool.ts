@@ -4,16 +4,16 @@ import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
+import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
 import { Delay } from './gen/delay'
-import { Dattorro } from './gen/dattorro'
-import { Fdn } from './gen/fdn'
-import { Freeverb } from './gen/freeverb'
-import { Limiter } from './gen/limiter'
 import { Euclid } from './gen/euclid'
 import { Every } from './gen/every'
+import { Fdn } from './gen/fdn'
+import { Freeverb } from './gen/freeverb'
 import { Gen } from './gen/gen'
 import { LfoRamp, LfoSah, LfoSaw, LfoSine, LfoSqr, LfoTri } from './gen/lfo'
+import { Limiter } from './gen/limiter'
 import { Mini } from './gen/mini'
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from './gen/noise'
 import { Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
@@ -22,6 +22,7 @@ import { Sine } from './gen/sine'
 import { Slew } from './gen/slew'
 import { Slicer } from './gen/slicer'
 import { Timeline } from './gen/timeline'
+import { Velvet } from './gen/velvet'
 import { Op } from './shared'
 
 export class GenPool<T extends Gen> {
@@ -103,6 +104,7 @@ export class GensPool {
   private freeverbs: GenPool<Freeverb> = new GenPool<Freeverb>(() => new Freeverb())
   private dattorros: GenPool<Dattorro> = new GenPool<Dattorro>(() => new Dattorro())
   private fdns: GenPool<Fdn> = new GenPool<Fdn>(() => new Fdn())
+  private velvets: GenPool<Velvet> = new GenPool<Velvet>(() => new Velvet())
   private dcs: GenPool<DC> = new GenPool<DC>(() => new DC())
   resetIndices(): void {
     this.sines.resetIndex()
@@ -149,6 +151,7 @@ export class GensPool {
     this.freeverbs.resetIndex()
     this.dattorros.resetIndex()
     this.fdns.resetIndex()
+    this.velvets.resetIndex()
     this.dcs.resetIndex()
   }
   reset(): void {
@@ -196,6 +199,7 @@ export class GensPool {
     this.freeverbs.reset()
     this.dattorros.reset()
     this.fdns.reset()
+    this.velvets.reset()
     this.dcs.reset()
   }
 
@@ -289,6 +293,8 @@ export class GensPool {
         return this.dattorros.get()
       case Op.Fdn:
         return this.fdns.get()
+      case Op.Velvet:
+        return this.velvets.get()
       case Op.Dc:
         return this.dcs.get()
     }
@@ -338,6 +344,7 @@ export class GensPool {
     this.freeverbs.copyFrom(source.freeverbs)
     this.dattorros.copyFrom(source.dattorros)
     this.fdns.copyFrom(source.fdns)
+    this.velvets.copyFrom(source.velvets)
     this.dcs.copyFrom(source.dcs)
   }
 }

@@ -130,6 +130,10 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Fdn)
       return
     }
+    if (sym === VmSym.Velvet) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Velvet)
+      return
+    }
     if (sym === VmSym.Dc) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Dc)
       return

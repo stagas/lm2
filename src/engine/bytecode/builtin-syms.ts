@@ -56,6 +56,7 @@ export const builtinSyms: Record<string, number> = {
   fractal: VmSym.Fractal,
   delay: VmSym.Delay,
   freeverb: VmSym.Freeverb,
+  velvet: VmSym.Velvet,
   dattorro: VmSym.Dattorro,
   fdn: VmSym.Fdn,
   dc: VmSym.Dc,

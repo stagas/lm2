@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef } from 'preact/hooks'
 import { REVERB_DATA_OFFSET, REVERB_ENTRY_SIZE, REVERB_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { ReverbRef } from '../bytecode/types.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
+import { clamp } from '../util.ts'
 import { getCurrentTheme } from './theme.ts'
 
 type UseReverbWidgetParams = {
@@ -87,7 +88,7 @@ export function useReverbWidget({
             const smoothFactor = 0.15
             st.roomSize = st.roomSize + (st.targetRoomSize - st.roomSize) * smoothFactor
           }
-          const roomSize = st?.roomSize ?? ref.params.roomSize
+          const roomSize = clamp(st?.roomSize ?? ref.params.roomSize, 0.05, 1.0)
 
           c.save()
           c.translate(x, y)
@@ -215,5 +216,3 @@ export function useReverbWidget({
 
   return { widgets, onBeforeDraw }
 }
-
-

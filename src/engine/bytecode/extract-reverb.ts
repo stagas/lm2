@@ -10,7 +10,7 @@ import type { ReverbKind, ReverbRef } from './types.ts'
 
 const MAX_REVERB_INDEX = 63
 
-const isReverbKind = (name: string): name is ReverbKind => name === 'freeverb' || name === 'dattorro' || name === 'fdn'
+const isReverbKind = (name: string): name is ReverbKind => name === 'freeverb' || name === 'dattorro' || name === 'fdn' || name === 'velvet'
 
 export function createReverbVisitor(src: string, refs: ReverbRef[]) {
   const lineStarts = buildLineStartsForLocs(src)

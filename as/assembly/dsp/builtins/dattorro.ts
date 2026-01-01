@@ -33,7 +33,7 @@ export function callDattorro(
   length: i32,
   dsp: Dsp,
 ): void {
-  // dattorro(in, roomSize=0.5, preDelay=0, bandwidth=0.9999, inputDiffusion1=0.75, inputDiffusion2=0.625, decayDiffusion1=0.7, decayDiffusion2=0.5, damping=0.005, excursionRate=0.5, excursionDepth=0.7)
+  // dattorro(in, roomSize=0.5, damping=0.005, bandwidth=0.9999, inputDiffusion1=0.75, inputDiffusion2=0.625, decayDiffusion1=0.7, decayDiffusion2=0.5, excursionRate=0.5, excursionDepth=0.7, preDelay=0)
   if (posCount < 1) {
     stack.push(VmTag.Undef)
     return
@@ -49,9 +49,9 @@ export function callDattorro(
   let roomSizeNum: f64 = 0.5
   let roomSizeAux: i32 = 0
 
-  let preDelayTag: VmTag = VmTag.Num
-  let preDelayNum: f64 = 0.0
-  let preDelayAux: i32 = 0
+  let dampingTag: VmTag = VmTag.Num
+  let dampingNum: f64 = 0.005
+  let dampingAux: i32 = 0
 
   let bandwidthTag: VmTag = VmTag.Num
   let bandwidthNum: f64 = 0.9999
@@ -73,10 +73,6 @@ export function callDattorro(
   let decayDiffusion2Num: f64 = 0.5
   let decayDiffusion2Aux: i32 = 0
 
-  let dampingTag: VmTag = VmTag.Num
-  let dampingNum: f64 = 0.005
-  let dampingAux: i32 = 0
-
   let excursionRateTag: VmTag = VmTag.Num
   let excursionRateNum: f64 = 0.5
   let excursionRateAux: i32 = 0
@@ -84,6 +80,10 @@ export function callDattorro(
   let excursionDepthTag: VmTag = VmTag.Num
   let excursionDepthNum: f64 = 0.7
   let excursionDepthAux: i32 = 0
+
+  let preDelayTag: VmTag = VmTag.Num
+  let preDelayNum: f64 = 0.0
+  let preDelayAux: i32 = 0
 
   if (posCount >= 1 && posTags[0] !== VmTag.Undef && posTags[0] !== VmTag.Null) {
     inTag = posTags[0] as VmTag
@@ -98,9 +98,9 @@ export function callDattorro(
   }
 
   if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
-    preDelayTag = posTags[2] as VmTag
-    preDelayNum = posNums[2]
-    preDelayAux = posAux[2]
+    dampingTag = posTags[2] as VmTag
+    dampingNum = posNums[2]
+    dampingAux = posAux[2]
   }
 
   if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
@@ -134,21 +134,21 @@ export function callDattorro(
   }
 
   if (posCount >= 9 && posTags[8] !== VmTag.Undef && posTags[8] !== VmTag.Null) {
-    dampingTag = posTags[8] as VmTag
-    dampingNum = posNums[8]
-    dampingAux = posAux[8]
+    excursionRateTag = posTags[8] as VmTag
+    excursionRateNum = posNums[8]
+    excursionRateAux = posAux[8]
   }
 
   if (posCount >= 10 && posTags[9] !== VmTag.Undef && posTags[9] !== VmTag.Null) {
-    excursionRateTag = posTags[9] as VmTag
-    excursionRateNum = posNums[9]
-    excursionRateAux = posAux[9]
+    excursionDepthTag = posTags[9] as VmTag
+    excursionDepthNum = posNums[9]
+    excursionDepthAux = posAux[9]
   }
 
   if (posCount >= 11 && posTags[10] !== VmTag.Undef && posTags[10] !== VmTag.Null) {
-    excursionDepthTag = posTags[10] as VmTag
-    excursionDepthNum = posNums[10]
-    excursionDepthAux = posAux[10]
+    preDelayTag = posTags[10] as VmTag
+    preDelayNum = posNums[10]
+    preDelayAux = posAux[10]
   }
 
   for (let i = 0; i < namedCount; i++) {
@@ -256,15 +256,15 @@ export function callDattorro(
   }
 
   const roomSize$ = audio.toAudioPtr(roomSizeTag, roomSizeNum, roomSizeAux, length, program)
-  const preDelay$ = audio.toAudioPtr(preDelayTag, preDelayNum, preDelayAux, length, program)
+  const damping$ = audio.toAudioPtr(dampingTag, dampingNum, dampingAux, length, program)
   const bandwidth$ = audio.toAudioPtr(bandwidthTag, bandwidthNum, bandwidthAux, length, program)
   const inputDiffusion1$ = audio.toAudioPtr(inputDiffusion1Tag, inputDiffusion1Num, inputDiffusion1Aux, length, program)
   const inputDiffusion2$ = audio.toAudioPtr(inputDiffusion2Tag, inputDiffusion2Num, inputDiffusion2Aux, length, program)
   const decayDiffusion1$ = audio.toAudioPtr(decayDiffusion1Tag, decayDiffusion1Num, decayDiffusion1Aux, length, program)
   const decayDiffusion2$ = audio.toAudioPtr(decayDiffusion2Tag, decayDiffusion2Num, decayDiffusion2Aux, length, program)
-  const damping$ = audio.toAudioPtr(dampingTag, dampingNum, dampingAux, length, program)
   const excursionRate$ = audio.toAudioPtr(excursionRateTag, excursionRateNum, excursionRateAux, length, program)
   const excursionDepth$ = audio.toAudioPtr(excursionDepthTag, excursionDepthNum, excursionDepthAux, length, program)
+  const preDelay$ = audio.toAudioPtr(preDelayTag, preDelayNum, preDelayAux, length, program)
 
   const outLIndex = audio.allocOut(program)
   const outRIndex = audio.allocOut(program)
@@ -275,15 +275,15 @@ export function callDattorro(
   gen.inL$ = inL$
   gen.inR$ = inR$
   gen.roomSize$ = roomSize$
-  gen.preDelay$ = preDelay$
+  gen.damping$ = damping$
   gen.bandwidth$ = bandwidth$
   gen.inputDiffusion1$ = inputDiffusion1$
   gen.inputDiffusion2$ = inputDiffusion2$
   gen.decayDiffusion1$ = decayDiffusion1$
   gen.decayDiffusion2$ = decayDiffusion2$
-  gen.damping$ = damping$
   gen.excursionRate$ = excursionRate$
   gen.excursionDepth$ = excursionDepth$
+  gen.preDelay$ = preDelay$
   gen.processStereo(outL$, outR$, length)
 
   publishReverbRoomSize(program.reverbHistory, reverbIndex, load<f32>(roomSize$))
