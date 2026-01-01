@@ -29,28 +29,31 @@ function scaledDelaySamples(base: i32, sr: i32): i32 {
 }
 
 export class Freeverb extends Gen {
-  in$: usize = 0
+  inL$: usize = 0
+  inR$: usize = 0
   roomSize$: usize = 0
   damp$: usize = 0
 
   private lastSampleRate: i32 = 0
 
-  private combTuning: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS)
-  private allpassTuning: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES)
+  // Stereo Freeverb tunings (L + R) at 44.1kHz.
+  // Using two slightly different delay sets avoids perfectly correlated tails.
+  private combTuning: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS * 2)
+  private allpassTuning: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES * 2)
 
-  private combBufs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(NUM_COMBS)
-  private combLen: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS)
-  private combIdx: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS)
-  private combFilter: StaticArray<f32> = new StaticArray<f32>(NUM_COMBS)
+  private combBufs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(NUM_COMBS * 2)
+  private combLen: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS * 2)
+  private combIdx: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS * 2)
+  private combFilter: StaticArray<f32> = new StaticArray<f32>(NUM_COMBS * 2)
 
-  private allpassBufs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(NUM_ALLPASSES)
-  private allpassLen: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES)
-  private allpassIdx: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES)
+  private allpassBufs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(NUM_ALLPASSES * 2)
+  private allpassLen: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES * 2)
+  private allpassIdx: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES * 2)
 
   constructor() {
     super()
 
-    // Classic Freeverb tunings (mono set, 44.1kHz base).
+    // L combs
     this.combTuning[0] = 1116
     this.combTuning[1] = 1188
     this.combTuning[2] = 1277
@@ -59,20 +62,35 @@ export class Freeverb extends Gen {
     this.combTuning[5] = 1491
     this.combTuning[6] = 1557
     this.combTuning[7] = 1617
+    // R combs
+    this.combTuning[8] = 1139
+    this.combTuning[9] = 1211
+    this.combTuning[10] = 1300
+    this.combTuning[11] = 1379
+    this.combTuning[12] = 1445
+    this.combTuning[13] = 1514
+    this.combTuning[14] = 1580
+    this.combTuning[15] = 1640
 
+    // L allpasses
     this.allpassTuning[0] = 556
     this.allpassTuning[1] = 441
     this.allpassTuning[2] = 341
     this.allpassTuning[3] = 225
+    // R allpasses
+    this.allpassTuning[4] = 579
+    this.allpassTuning[5] = 464
+    this.allpassTuning[6] = 364
+    this.allpassTuning[7] = 248
 
-    for (let i: i32 = 0; i < NUM_COMBS; i++) {
+    for (let i: i32 = 0; i < NUM_COMBS * 2; i++) {
       this.combBufs[i] = new StaticArray<f32>(1)
       this.combLen[i] = 1
       this.combIdx[i] = 0
       this.combFilter[i] = 0.0 as f32
     }
 
-    for (let i: i32 = 0; i < NUM_ALLPASSES; i++) {
+    for (let i: i32 = 0; i < NUM_ALLPASSES * 2; i++) {
       this.allpassBufs[i] = new StaticArray<f32>(1)
       this.allpassLen[i] = 1
       this.allpassIdx[i] = 0
@@ -85,7 +103,7 @@ export class Freeverb extends Gen {
     if (sr === this.lastSampleRate) return
     this.lastSampleRate = sr
 
-    for (let i: i32 = 0; i < NUM_COMBS; i++) {
+    for (let i: i32 = 0; i < NUM_COMBS * 2; i++) {
       const n: i32 = scaledDelaySamples(this.combTuning[i], sr)
       this.combBufs[i] = new StaticArray<f32>(n)
       this.combLen[i] = n
@@ -96,7 +114,7 @@ export class Freeverb extends Gen {
       }
     }
 
-    for (let i: i32 = 0; i < NUM_ALLPASSES; i++) {
+    for (let i: i32 = 0; i < NUM_ALLPASSES * 2; i++) {
       const n: i32 = scaledDelaySamples(this.allpassTuning[i], sr)
       this.allpassBufs[i] = new StaticArray<f32>(n)
       this.allpassLen[i] = n
@@ -110,7 +128,7 @@ export class Freeverb extends Gen {
   reset(): void {
     this.ensureBuffers()
 
-    for (let i: i32 = 0; i < NUM_COMBS; i++) {
+    for (let i: i32 = 0; i < NUM_COMBS * 2; i++) {
       const n: i32 = this.combLen[i]
       this.combIdx[i] = 0
       this.combFilter[i] = 0.0 as f32
@@ -118,7 +136,7 @@ export class Freeverb extends Gen {
       for (let j: i32 = 0; j < n; j++) unchecked(b[j] = 0.0 as f32)
     }
 
-    for (let i: i32 = 0; i < NUM_ALLPASSES; i++) {
+    for (let i: i32 = 0; i < NUM_ALLPASSES * 2; i++) {
       const n: i32 = this.allpassLen[i]
       this.allpassIdx[i] = 0
       const b = this.allpassBufs[i]
@@ -130,7 +148,7 @@ export class Freeverb extends Gen {
     const src = other as Freeverb
     this.lastSampleRate = src.lastSampleRate
 
-    for (let i: i32 = 0; i < NUM_COMBS; i++) {
+    for (let i: i32 = 0; i < NUM_COMBS * 2; i++) {
       this.combTuning[i] = src.combTuning[i]
       const n: i32 = src.combLen[i]
       this.combLen[i] = n
@@ -145,7 +163,7 @@ export class Freeverb extends Gen {
       for (let j: i32 = 0; j < n; j++) unchecked(dstBuf[j] = srcBuf[j])
     }
 
-    for (let i: i32 = 0; i < NUM_ALLPASSES; i++) {
+    for (let i: i32 = 0; i < NUM_ALLPASSES * 2; i++) {
       this.allpassTuning[i] = src.allpassTuning[i]
       const n: i32 = src.allpassLen[i]
       this.allpassLen[i] = n
@@ -163,7 +181,7 @@ export class Freeverb extends Gen {
   process(out$: usize, length: i32): void {
     this.ensureBuffers()
 
-    let i$: usize = this.in$
+    let i$: usize = this.inL$
     let roomSize$: usize = this.roomSize$
     let damp$: usize = this.damp$
 
@@ -231,6 +249,139 @@ export class Freeverb extends Gen {
 
       o$ += 4
       i$ += 4
+      roomSize$ += 4
+      damp$ += 4
+    }
+  }
+
+  processStereo(outL$: usize, outR$: usize, length: i32): void {
+    this.ensureBuffers()
+
+    let iL$: usize = this.inL$
+    let iR$: usize = this.inR$ !== 0 ? this.inR$ : this.inL$
+    let roomSize$: usize = this.roomSize$
+    let damp$: usize = this.damp$
+
+    const combBufs = this.combBufs
+    const combLen = this.combLen
+    const combIdx = this.combIdx
+    const combFilter = this.combFilter
+
+    const allpassBufs = this.allpassBufs
+    const allpassLen = this.allpassLen
+    const allpassIdx = this.allpassIdx
+
+    const combBaseL: i32 = 0
+    const combBaseR: i32 = NUM_COMBS
+    const allpassBaseL: i32 = 0
+    const allpassBaseR: i32 = NUM_ALLPASSES
+
+    let oL$: usize = outL$
+    let oR$: usize = outR$
+
+    for (let s: i32 = 0; s < length; s++) {
+      const inL: f32 = load<f32>(iL$)
+      const inR: f32 = load<f32>(iR$)
+
+      const roomSize: f32 = clamp01(load<f32>(roomSize$))
+      const damp: f32 = clamp01(load<f32>(damp$))
+
+      const room1: f32 = roomSize * SCALE_ROOM
+      const damp1: f32 = damp * SCALE_DAMP
+      const damp2: f32 = 1.0 - damp1
+
+      const xL: f32 = inL * FIXED_GAIN
+      const xR: f32 = inR * FIXED_GAIN
+
+      let sumL: f32 = 0.0 as f32
+      let sumR: f32 = 0.0 as f32
+
+      for (let ci: i32 = 0; ci < NUM_COMBS; ci++) {
+        // L
+        {
+          const i: i32 = combBaseL + ci
+          const b = combBufs[i]
+          const n: i32 = combLen[i]
+          let p: i32 = combIdx[i]
+
+          const y: f32 = unchecked(b[p])
+          let fs: f32 = combFilter[i]
+          fs = (y * damp2 + fs * damp1) as f32
+          combFilter[i] = fs
+          unchecked(b[p] = (xL + fs * room1) as f32)
+
+          p++
+          if (p >= n) p = 0
+          combIdx[i] = p
+          sumL += y
+        }
+
+        // R
+        {
+          const i: i32 = combBaseR + ci
+          const b = combBufs[i]
+          const n: i32 = combLen[i]
+          let p: i32 = combIdx[i]
+
+          const y: f32 = unchecked(b[p])
+          let fs: f32 = combFilter[i]
+          fs = (y * damp2 + fs * damp1) as f32
+          combFilter[i] = fs
+          unchecked(b[p] = (xR + fs * room1) as f32)
+
+          p++
+          if (p >= n) p = 0
+          combIdx[i] = p
+          sumR += y
+        }
+      }
+
+      let yL: f32 = sumL
+      let yR: f32 = sumR
+
+      for (let ai: i32 = 0; ai < NUM_ALLPASSES; ai++) {
+        // L
+        {
+          const i: i32 = allpassBaseL + ai
+          const b = allpassBufs[i]
+          const n: i32 = allpassLen[i]
+          let p: i32 = allpassIdx[i]
+
+          const bufOut: f32 = unchecked(b[p])
+          const v: f32 = (yL + bufOut * ALLPASS_FEEDBACK) as f32
+          unchecked(b[p] = v)
+          yL = (bufOut - yL) as f32
+
+          p++
+          if (p >= n) p = 0
+          allpassIdx[i] = p
+        }
+
+        // R
+        {
+          const i: i32 = allpassBaseR + ai
+          const b = allpassBufs[i]
+          const n: i32 = allpassLen[i]
+          let p: i32 = allpassIdx[i]
+
+          const bufOut: f32 = unchecked(b[p])
+          const v: f32 = (yR + bufOut * ALLPASS_FEEDBACK) as f32
+          unchecked(b[p] = v)
+          yR = (bufOut - yR) as f32
+
+          p++
+          if (p >= n) p = 0
+          allpassIdx[i] = p
+        }
+      }
+
+      store<f32>(oL$, yL)
+      store<f32>(oR$, yR)
+
+      oL$ += 4
+      oR$ += 4
+      iL$ += 4
+      iR$ += 4
       roomSize$ += 4
       damp$ += 4
     }
