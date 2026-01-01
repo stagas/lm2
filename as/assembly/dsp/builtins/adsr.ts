@@ -1,11 +1,46 @@
 // dprint-ignore-file
 import { Adsr } from '../../gen/adsr'
+import { ENVELOPE_DATA_OFFSET, ENVELOPE_ENTRY_SIZE, ENVELOPE_HISTORY_SIZE, ENVELOPE_WRITE_POS_OFFSET } from '../../constants'
+import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
+
+// @ts-ignore
+@inline
+function clampIndex(v: i32): i32 {
+  return v < 0 ? 0 : v > 63 ? 63 : v
+}
+
+// @ts-ignore
+@inline
+export function writeEnvelopeHistory(
+  program: Program,
+  envIndex: i32,
+  envKind: i32,
+  attack$: usize,
+  decay$: usize,
+  sustain$: usize,
+  release$: usize,
+  length: i32,
+): void {
+  const hist = program.envelopeHistory
+  const writePos = i32(hist[ENVELOPE_WRITE_POS_OFFSET])
+  const slot = writePos % ENVELOPE_HISTORY_SIZE
+  const base = ENVELOPE_DATA_OFFSET + slot * ENVELOPE_ENTRY_SIZE
+
+  hist[base] = f32(envIndex)
+  hist[base + 1] = f32(envKind)
+  hist[base + 2] = load<f32>(attack$)
+  hist[base + 3] = load<f32>(decay$)
+  hist[base + 4] = sustain$ !== 0 ? load<f32>(sustain$) : 0
+  hist[base + 5] = release$ !== 0 ? load<f32>(release$) : 0
+  hist[base + 6] = f32((globalSampleCount + length) & 0xfffff)
+  hist[ENVELOPE_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
+}
 
 // @ts-ignore
 @inline
@@ -25,6 +60,8 @@ export function callAdsr(
   length: i32,
 ): void {
   // Positional fallback: (attack, decay, sustain, release, trig)
+  let adsrIndex: i32 = 0
+
   let attackTag: VmTag = VmTag.Num
   let attackNum: f64 = 0.0
   let attackAux: i32 = 0
@@ -78,7 +115,10 @@ export function callAdsr(
   // Named overrides (attack/decay/sustain/release/trig)
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.Attack) {
+    if (k === VmSym.Index) {
+      adsrIndex = clampIndex(i32(Math.floor(nameNums[i])))
+    }
+    else if (k === VmSym.Attack) {
       attackTag = nameTags[i] as VmTag
       attackNum = nameNums[i]
       attackAux = nameAux[i]
@@ -122,6 +162,7 @@ export function callAdsr(
   adsr.trig$ = trig$
   adsr.process(out$, length)
 
+  writeEnvelopeHistory(program, adsrIndex, 1, attack$, decay$, sustain$, release$, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 

@@ -35,6 +35,7 @@ import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useBranchWidget } from './useBranchWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useCompressorWidget } from './useCompressorWidget.ts'
+import { useEnvelopeVisualization } from './useEnvelopeVisualization.ts'
 import { useFilterWidget } from './useFilterWidget.ts'
 import { useFreeverbWidget } from './useFreeverbWidget.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
@@ -125,6 +126,8 @@ function DspSourceEditorReady(
   const timelineLabels = useEngineDspStore(state => state.timelineLabels)
   const bars = useEngineDspStore(state => state.bars)
   const miniSourceMaps = useEngineDspStore(state => state.miniSourceMaps)
+  const adRefs = useEngineDspStore(state => state.uiAdRefs)
+  const adsrRefs = useEngineDspStore(state => state.uiAdsrRefs)
   const analyserRefs = useEngineDspStore(state => state.analyserRefs)
   const compressorRefs = useEngineDspStore(state => state.compressorRefs)
   const limiterRefs = useEngineDspStore(state => state.limiterRefs)
@@ -350,6 +353,8 @@ function DspSourceEditorReady(
         miniRefs,
         timelineRefs,
         miniSourceMaps,
+        adRefs,
+        adsrRefs,
         analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
         compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
         limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
@@ -375,6 +380,8 @@ function DspSourceEditorReady(
         miniRefs,
         timelineRefs,
         miniSourceMaps,
+        adRefs,
+        adsrRefs,
         analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
         compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
         limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
@@ -406,6 +413,8 @@ function DspSourceEditorReady(
       miniRefs: previewCompile.miniRefs ?? [],
       timelineRefs: previewCompile.timelineRefs ?? [],
       miniSourceMaps: previewMiniSourceMaps,
+      adRefs: previewCompile.adRefs ?? adRefs,
+      adsrRefs: previewCompile.adsrRefs ?? adsrRefs,
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
       limiterRefs: previewCompile.limiterRefs ?? [],
@@ -763,6 +772,16 @@ function DspSourceEditorReady(
     playbackState,
   })
 
+  const { widgets: envelopeWidgets, onBeforeDraw: onBeforeDrawEnvelope } = useEnvelopeVisualization({
+    program1: runtimeProgram,
+    adRefs: widgetCompileState.adRefs,
+    adsrRefs: widgetCompileState.adsrRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive,
+    playbackState,
+  })
+
   const { widgets: sliderWidgets } = useSliderWidget({
     showWidgets,
     numberParams: widgetCompileState.numberParams?.filter(p => !(p.min === 20 && p.max === 20000)),
@@ -869,6 +888,7 @@ function DspSourceEditorReady(
     onBeforeDrawTimelineSequence()
     onBeforeDrawAnalyser()
     onBeforeDrawCompressor()
+    onBeforeDrawEnvelope()
     onBeforeDrawFilter()
     onBeforeDrawFreeverb()
     onBeforeDrawSlicer()
@@ -886,6 +906,7 @@ function DspSourceEditorReady(
     onBeforeDrawTimelineSequence,
     onBeforeDrawAnalyser,
     onBeforeDrawCompressor,
+    onBeforeDrawEnvelope,
     onBeforeDrawFilter,
     onBeforeDrawFreeverb,
     onBeforeDrawSlicer,
@@ -905,6 +926,7 @@ function DspSourceEditorReady(
       ...sampleWidgets,
       ...analyserWidgets,
       ...compressorWidgets,
+      ...envelopeWidgets,
       ...filterWidgets,
       ...freeverbWidgets,
       ...slicerWidgets,
@@ -919,9 +941,9 @@ function DspSourceEditorReady(
       ...sliderWidgets,
       ...knobWidgets,
     ]
-  }, [showWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets, sequenceWidgets,
-    arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, filterWidgets, slicerWidgets,
-    lfoWidgets, trigWidgets, knobWidgets, viewSampleCount])
+  }, [showWidgets, envelopeWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets,
+    sequenceWidgets, arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, filterWidgets,
+    slicerWidgets, lfoWidgets, trigWidgets, knobWidgets, viewSampleCount])
 
   const codeEditorKey = useMemo(() => {
     const codeFile = currentLoop?.codeFile
@@ -949,7 +971,9 @@ function DspSourceEditorReady(
   const isBootingCode = isAwaitingCode && !didSeeCodeRef.current.did
   const hasSavedScroll = currentLoop.codeFile.scrollX !== 0 || currentLoop.codeFile.scrollY !== 0
   const expectsWidgets = showWidgets && (
-    (widgetCompileState.sampleDefs?.length ?? 0) > 0
+    (widgetCompileState.adRefs?.length ?? 0) > 0
+    || (widgetCompileState.adsrRefs?.length ?? 0) > 0
+    || (widgetCompileState.sampleDefs?.length ?? 0) > 0
     || (widgetCompileState.analyserRefs?.length ?? 0) > 0
     || (widgetCompileState.compressorRefs?.length ?? 0) > 0
     || (widgetCompileState.limiterRefs?.length ?? 0) > 0

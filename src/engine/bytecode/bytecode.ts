@@ -32,6 +32,12 @@ import {
   createFreeverbVisitor,
 } from './extract-freeverb.ts'
 import {
+  createAdVisitor,
+} from './extract-ad.ts'
+import {
+  createAdsrVisitor,
+} from './extract-adsr.ts'
+import {
   createLfoVisitor,
 } from './extract-lfo.ts'
 import {
@@ -188,6 +194,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   const compressorRefs: CompressorRef[] = []
   const limiterRefs: LimiterRef[] = []
   const filterRefs: FilterRef[] = []
+  const adRefs: AdRef[] = []
+  const adsrRefs: AdsrRef[] = []
   const freeverbRefs: FreeverbRef[] = []
   const slicerRefs: SlicerRef[] = []
   const lfoRefs: LfoRef[] = []
@@ -197,6 +205,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
 
   // Create all visitor instances
   const visitors = [
+    createAdVisitor(src, adRefs),
+    createAdsrVisitor(src, adsrRefs),
     createAnalyserVisitor(analyserRefs),
     createCompressorVisitor(src, compressorRefs),
     createLimiterVisitor(src, limiterRefs),
@@ -213,6 +223,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   walkAst(program, visitors, { src })
 
   return {
+    adRefs,
+    adsrRefs,
     analyserRefs,
     compressorRefs,
     limiterRefs,
@@ -283,6 +295,8 @@ export function encodeLangToVmOps(
   timelineSequences?: TimelineSequenceDef[]
   timelineRefs?: TimelineSequenceRef[]
   timelineLabels?: TimelineLabel[]
+  adRefs?: AdRef[]
+  adsrRefs?: AdsrRef[]
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
   limiterRefs?: LimiterRef[]
@@ -418,6 +432,8 @@ export function encodeLangToVmOps(
   const numberParams = [...explicitNumberParams, ...filteredLpNumberLiterals]
 
   // Initialize ref collections for late extraction
+  let adRefs: AdRef[] = []
+  let adsrRefs: AdsrRef[] = []
   let analyserRefs: AnalyserRef[] = []
   let compressorRefs: CompressorRef[] = []
   let limiterRefs: LimiterRef[] = []
@@ -518,8 +534,36 @@ export function encodeLangToVmOps(
     return idx
   }
 
+  const MAX_AD_INDEX = 63
+  const clampAdIndex = (n: number) => Math.max(0, Math.min(MAX_AD_INDEX, Math.floor(Number(n || 0))))
+
+  const MAX_ADSR_INDEX = 63
+  const clampAdsrIndex = (n: number) => Math.max(0, Math.min(MAX_ADSR_INDEX, Math.floor(Number(n || 0))))
+
   const MAX_TRIG_INDEX = 255
   const clampTrigIndex = (n: number) => Math.max(0, Math.min(MAX_TRIG_INDEX, Math.floor(Number(n || 0))))
+
+  const usedAdIndices = new Set<number>()
+  let nextAdIndex = 0
+  const allocAdIndex = (): number => {
+    if (nextAdIndex > MAX_AD_INDEX) return MAX_AD_INDEX
+    while (usedAdIndices.has(nextAdIndex) && nextAdIndex < MAX_AD_INDEX) nextAdIndex++
+    const idx = nextAdIndex
+    usedAdIndices.add(idx)
+    nextAdIndex = Math.min(MAX_AD_INDEX, idx + 1)
+    return idx
+  }
+
+  const usedAdsrIndices = new Set<number>()
+  let nextAdsrIndex = 0
+  const allocAdsrIndex = (): number => {
+    if (nextAdsrIndex > MAX_ADSR_INDEX) return MAX_ADSR_INDEX
+    while (usedAdsrIndices.has(nextAdsrIndex) && nextAdsrIndex < MAX_ADSR_INDEX) nextAdsrIndex++
+    const idx = nextAdsrIndex
+    usedAdsrIndices.add(idx)
+    nextAdsrIndex = Math.min(MAX_ADSR_INDEX, idx + 1)
+    return idx
+  }
 
   const usedEveryIndices = new Set<number>([0])
   let nextEveryIndex = 1
@@ -646,6 +690,8 @@ export function encodeLangToVmOps(
       const isMini = calleeName === 'mini'
       const isPlay = calleeName === 'play'
       const isTimeline = calleeName === 'timeline'
+      const isAd = calleeName === 'ad'
+      const isAdsr = calleeName === 'adsr'
       const isAnalyser = calleeName === 'analyser'
       const isCompressor = calleeName === 'compressor'
       const isLimiter = calleeName === 'limiter'
@@ -683,6 +729,48 @@ export function encodeLangToVmOps(
           if (idx !== undefined) return toSeqIndexExpr(expr.loc, idx)
         }
         return { kind: 'undefined', loc: expr.loc }
+      }
+
+      if (isAd) {
+        const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
+        const idxVal = namedIndexArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = clampAdIndex(Number(idxVal.value ?? 0))
+          usedAdIndices.add(idx)
+          namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (!namedIndexArg) {
+          const idx = allocAdIndex()
+          return {
+            ...expr,
+            callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }],
+          }
+        }
+      }
+
+      if (isAdsr) {
+        const namedIndexArg = args.find((a: any) => a.kind === 'named' && a.name === 'index') ?? null
+        const idxVal = namedIndexArg?.value
+
+        if (idxVal?.kind === 'number') {
+          const idx = clampAdsrIndex(Number(idxVal.value ?? 0))
+          usedAdsrIndices.add(idx)
+          namedIndexArg.value = toSeqIndexExpr(idxVal.loc ?? expr.loc, idx)
+          return { ...expr, callee, args }
+        }
+
+        if (!namedIndexArg) {
+          const idx = allocAdsrIndex()
+          return {
+            ...expr,
+            callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }],
+          }
+        }
       }
 
       if (isAnalyser) {
@@ -1059,6 +1147,8 @@ export function encodeLangToVmOps(
   if (errors.length) return { errors }
   // Extract all references in a single AST traversal
   const extractionResults = extractAllRefsFromProgram(src, transformedProgram)
+  adRefs = extractionResults.adRefs
+  adsrRefs = extractionResults.adsrRefs
   analyserRefs = extractionResults.analyserRefs
   compressorRefs = extractionResults.compressorRefs
   limiterRefs = extractionResults.limiterRefs
@@ -1453,6 +1543,8 @@ export function encodeLangToVmOps(
       timelineSequences,
       timelineRefs: timelineRefsMapped,
       timelineLabels,
+      adRefs,
+      adsrRefs,
       analyserRefs,
       compressorRefs,
       limiterRefs,
@@ -1481,6 +1573,8 @@ export function encodeLangToVmOps(
       timelineSequences,
       timelineRefs: timelineRefsMapped,
       timelineLabels,
+      adRefs,
+      adsrRefs,
       analyserRefs,
       compressorRefs,
       limiterRefs,

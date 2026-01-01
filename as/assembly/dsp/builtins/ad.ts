@@ -6,6 +6,7 @@ import { VmTag } from '../types'
 import { VmSym } from '../vm-sym'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
+import { writeEnvelopeHistory } from './adsr'
 
 // @ts-ignore
 @inline
@@ -24,6 +25,8 @@ export function callAd(
   program: Program,
   length: i32,
 ): void {
+  let adIndex: i32 = 0
+
   // attack (required, no default)
   let attackTag: VmTag = VmTag.Num
   let attackNum: f64 = 0.0
@@ -59,7 +62,12 @@ export function callAd(
 
   // Check for named parameters
   for (let i = 0; i < namedCount; i++) {
-    if (nameSyms[i] === VmSym.Attack) {
+    if (nameSyms[i] === VmSym.Index) {
+      adIndex = i32(Math.floor(nameNums[i]))
+      if (adIndex < 0) adIndex = 0
+      else if (adIndex > 63) adIndex = 63
+    }
+    else if (nameSyms[i] === VmSym.Attack) {
       attackTag = nameTags[i] as VmTag
       attackNum = nameNums[i]
       attackAux = nameAux[i]
@@ -89,5 +97,6 @@ export function callAd(
   ad.trig$ = trig$
   ad.process(out$, length)
 
+  writeEnvelopeHistory(program, adIndex, 0, attack$, decay$, 0, 0, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }

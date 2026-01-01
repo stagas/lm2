@@ -9,6 +9,9 @@ import {
   CALLBACK_SCOPE_MAX_BINDINGS,
   CALLBACK_SCOPE_MAX_DEPTH,
   CHUNK_SIZE,
+  ENVELOPE_DATA_OFFSET,
+  ENVELOPE_ENTRY_SIZE,
+  ENVELOPE_HISTORY_SIZE,
   FILTER_DATA_OFFSET,
   FILTER_ENTRY_SIZE,
   FILTER_HISTORY_SIZE,
@@ -56,6 +59,9 @@ export class Program {
   )
   trigHistory: StaticArray<f32> = new StaticArray<f32>(
     TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE,
+  )
+  envelopeHistory: StaticArray<f32> = new StaticArray<f32>(
+    ENVELOPE_DATA_OFFSET + ENVELOPE_HISTORY_SIZE * ENVELOPE_ENTRY_SIZE,
   )
 
   gensPool: GensPool = new GensPool()
