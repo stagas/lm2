@@ -42,6 +42,17 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'array.sum() |> out($)',
     ],
   },
+  '.avg': {
+    name: '.avg',
+    parameters: [
+      { name: 'array', type: 'array', description: 'Array to be averaged' },
+    ],
+    returnType: 'number',
+    description: 'Averages an array and returns the result.',
+    examples: [
+      'array.avg() |> out($)',
+    ],
+  },
   out: {
     name: 'out',
     parameters: [

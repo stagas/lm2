@@ -161,4 +161,5 @@ export enum VmSym {
   Damp,
   Wet,
   Dry,
+  Avg,
 }

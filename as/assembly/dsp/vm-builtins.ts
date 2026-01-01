@@ -1,6 +1,6 @@
 import { SEQ_VOICES } from '../constants'
 import { Program } from '../program'
-import { addAudio, clearAudio } from './audio-ops'
+import { addAudio, clearAudio, mulAudioScalar } from './audio-ops'
 import { callAd } from './builtins/ad'
 import { callAdsr } from './builtins/adsr'
 import { callAnalyser } from './builtins/analyser'
@@ -76,6 +76,7 @@ import { callSlicer } from './builtins/slicer'
 import { callSolo } from './builtins/solo'
 import { callSqr } from './builtins/sqr'
 import { callSum } from './builtins/sum'
+import { callAvg } from './builtins/avg'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { Dsp } from './dsp'
@@ -108,7 +109,7 @@ export class VmBuiltins {
   compressorRingBase: i32 = 0
   limiterRingBase: i32 = 0
 
-  private coerceArrayToScalar(
+  private coerceArrayToScalarImpl(
     tags: StaticArray<i32>,
     nums: StaticArray<f64>,
     aux: StaticArray<i32>,
@@ -117,6 +118,7 @@ export class VmBuiltins {
     program: Program,
     length: i32,
     dsp: Dsp,
+    avg: bool,
   ): void {
     if ((tags[index] as VmTag) !== VmTag.Arr) return
 
@@ -145,7 +147,7 @@ export class VmBuiltins {
         sum += dsp.arrays.elemNum[start + i]
       }
       tags[index] = VmTag.Num
-      nums[index] = sum
+      nums[index] = avg ? (sum / (n as f64)) : sum
       aux[index] = 0
       return
     }
@@ -166,12 +168,43 @@ export class VmBuiltins {
       tags[index] = VmTag.Audio
       nums[index] = 0.0
       aux[index] = outIndex
+
+      if (avg) {
+        const inv: f32 = (1.0 as f32) / f32(n)
+        mulAudioScalar(out$, out$, inv, length)
+      }
       return
     }
 
     tags[index] = VmTag.Num
     nums[index] = 0.0
     aux[index] = 0
+  }
+
+  private coerceArrayToScalar(
+    tags: StaticArray<i32>,
+    nums: StaticArray<f64>,
+    aux: StaticArray<i32>,
+    index: i32,
+    audio: VmAudio,
+    program: Program,
+    length: i32,
+    dsp: Dsp,
+  ): void {
+    this.coerceArrayToScalarImpl(tags, nums, aux, index, audio, program, length, dsp, false)
+  }
+
+  private coerceArrayToScalarAvg(
+    tags: StaticArray<i32>,
+    nums: StaticArray<f64>,
+    aux: StaticArray<i32>,
+    index: i32,
+    audio: VmAudio,
+    program: Program,
+    length: i32,
+    dsp: Dsp,
+  ): void {
+    this.coerceArrayToScalarImpl(tags, nums, aux, index, audio, program, length, dsp, true)
   }
 
   @inline
@@ -242,9 +275,11 @@ export class VmBuiltins {
     if (
       calleeAux !== VmBuiltin.Map &&
       calleeAux !== VmBuiltin.Sum &&
+      calleeAux !== VmBuiltin.Avg &&
       calleeAux !== VmBuiltin.Glide &&
       calleeAux !== VmBuiltin.Out &&
-      calleeAux !== VmBuiltin.Solo
+      calleeAux !== VmBuiltin.Solo &&
+      calleeAux !== VmBuiltin.Analyser
     ) {
       for (let i = 0; i < posCount; i++) {
         this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
@@ -278,6 +313,10 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.Analyser) {
+      if (posCount >= 1) {
+        // The analyser is mono. If it's given an array (e.g. stereo [L,R]) mix it down via average, not sum.
+        this.coerceArrayToScalarAvg(posTags, posNums, posAux, 0, audio, program, length, dsp)
+      }
       callAnalyser(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, this.analyserRingBase)
       return
@@ -351,6 +390,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Sum) {
       callSum(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Avg) {
+      callAvg(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
       return
     }

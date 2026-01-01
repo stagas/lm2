@@ -27,6 +27,19 @@ export function addAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void
 
 // @ts-ignore
 @inline
+export function mulAudioScalar(out$: usize, a$: usize, k: f32, length: i32): void {
+  const len = length >> 2
+  const kv = f32x4.splat(k)
+  for (let i = 0; i < len; i++) {
+    const v = v128.load(a$)
+    v128.store(out$, f32x4.mul(v, kv))
+    out$ += 16
+    a$ += 16
+  }
+}
+
+// @ts-ignore
+@inline
 export function subAudio(out$: usize, a1$: usize, a2$: usize, length: i32): void {
   const len = length >> 2
   for (let i = 0; i < len; i++) {

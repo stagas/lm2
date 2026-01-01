@@ -30,6 +30,7 @@ export const builtinSyms: Record<string, number> = {
   degree: VmSym.Degree,
   map: VmSym.Map,
   sum: VmSym.Sum,
+  avg: VmSym.Avg,
   glide: VmSym.Glide,
   slew: VmSym.Slew,
   lp: VmSym.Lp,
