@@ -246,5 +246,5 @@ export type IfExpr = {
   colonLoc?: Loc
 }
 
-export type Param = { name: string; isRest: boolean; default?: Expr; loc: Loc }
+export type Param = { name: string; isRest: boolean; default?: Expr; pattern?: DestructurePattern; loc: Loc }
 export type FuncExpr = { kind: 'func'; params: Param[]; body: Expr | BlockStmt; loc: Loc }

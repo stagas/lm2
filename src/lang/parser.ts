@@ -846,6 +846,7 @@ class Parser {
     if (!this.at('l_paren') || !this.hasArrowAfterParen(this.i)) return null
     const start = this.next()
     const params: Param[] = []
+    let autoParamId = 0
 
     this.skipStatementSep()
     if (!this.at('r_paren')) {
@@ -853,11 +854,34 @@ class Parser {
         const pStart = this.cur()
         let isRest = false
         if (this.match('ellipsis')) isRest = true
-        const nameTok = this.expect('identifier', 'Expected parameter name')
-        const name = nameTok.kind === 'identifier' ? nameTok.lexeme : 'param'
+        let pattern: DestructurePattern | undefined
+        let nameTok: Token | Loc = this.cur()
+        let name = 'param'
+
+        if (this.at('l_brace') || this.at('l_bracket')) {
+          if (isRest) {
+            this.error(pStart, 'Rest parameter cannot be a destructuring pattern')
+            isRest = false
+          }
+          const pat = this.tryParseDestructurePattern()
+          if (!pat) {
+            this.error(this.cur(), 'Invalid destructuring parameter pattern')
+            while (!this.at('eof') && !this.at('comma') && !this.at('r_paren')) this.next()
+          }
+          else {
+            pattern = pat
+            nameTok = locOf(pat)
+          }
+          name = `__param${autoParamId++}`
+        }
+        else {
+          const tok = this.expect('identifier', 'Expected parameter name')
+          nameTok = tok
+          name = tok.kind === 'identifier' ? tok.lexeme : 'param'
+        }
         let def: Expr | undefined
         if (this.match('assign')) def = this.parseExpr()
-        params.push({ name, isRest, default: def, loc: locFrom(pStart, def?.loc ?? nameTok) })
+        params.push({ name, isRest, default: def, pattern, loc: locFrom(pStart, def?.loc ?? nameTok) })
         if (!this.match('comma')) break
         this.skipStatementSep()
       }

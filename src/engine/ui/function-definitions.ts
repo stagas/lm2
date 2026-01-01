@@ -108,7 +108,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     parameters: [
       {
         name: 'callback',
-        type: '(L: number, R: number) -> [L,R]',
+        type: '([L:number, R:number]) -> [L,R]',
         description: 'Post-processing callback',
       },
     ],
@@ -116,8 +116,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description:
       'Registers a post-processing stage that runs after all `out`/`solo` mixing; multiple `post` calls chain in order.',
     examples: [
-      'post((L, R) -> [L, R])',
-      'post((L, R) -> [L * .5, R * .5])',
+      'post(([L, R]) -> [L, R])',
+      'post(([L, R]) -> [L * .5, R * .5])',
     ],
   },
   sine: {

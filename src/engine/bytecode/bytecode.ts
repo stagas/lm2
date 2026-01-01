@@ -1068,40 +1068,54 @@ export function encodeLangToVmOps(
       const params = (expr.params ?? []).map((p: any) => (p.default ? { ...p, default: transformExpr(p.default) } : p))
       const body = expr.body?.kind === 'block' ? transformStmt(expr.body) : transformExpr(expr.body)
 
-      const defaultStmts = (params ?? []).flatMap((p: any) => {
-        if (!p?.default) return []
-        if (p.isRest) return []
-        const pLoc = p.loc ?? expr.loc
-        const ident = { kind: 'ident', name: p.name, loc: pLoc }
-        const test = {
-          kind: 'binary',
-          op: '==',
-          left: ident,
-          right: { kind: 'undefined', loc: pLoc },
-          loc: pLoc,
+      const initStmts = (params ?? []).flatMap((p: any) => {
+        const out: any[] = []
+
+        if (p?.default && !p.isRest) {
+          const pLoc = p.loc ?? expr.loc
+          const ident = { kind: 'ident', name: p.name, loc: pLoc }
+          const test = {
+            kind: 'binary',
+            op: '==',
+            left: ident,
+            right: { kind: 'undefined', loc: pLoc },
+            loc: pLoc,
+          }
+          const value = {
+            kind: 'if',
+            test,
+            then: p.default,
+            else: ident,
+            loc: pLoc,
+            __noBranchMark: true,
+          }
+          const assign = {
+            kind: 'assign',
+            op: '=',
+            target: ident,
+            value,
+            loc: pLoc,
+          }
+          out.push({ kind: 'expr_stmt', expr: assign, loc: pLoc })
         }
-        const value = {
-          kind: 'if',
-          test,
-          then: p.default,
-          else: ident,
-          loc: pLoc,
-          __noBranchMark: true,
+
+        if (p?.pattern) {
+          const pLoc = p.loc ?? expr.loc
+          out.push({
+            kind: 'destructure',
+            pattern: p.pattern,
+            value: { kind: 'ident', name: p.name, loc: pLoc },
+            loc: pLoc,
+          })
         }
-        const assign = {
-          kind: 'assign',
-          op: '=',
-          target: ident,
-          value,
-          loc: pLoc,
-        }
-        return [{ kind: 'expr_stmt', expr: assign, loc: pLoc }]
+
+        return out
       })
 
-      if (defaultStmts.length === 0) return { ...expr, params, body }
+      if (initStmts.length === 0) return { ...expr, params, body }
 
       if (body?.kind === 'block') {
-        return { ...expr, params, body: { ...body, body: [...defaultStmts, ...(body.body ?? [])] } }
+        return { ...expr, params, body: { ...body, body: [...initStmts, ...(body.body ?? [])] } }
       }
 
       return {
@@ -1109,7 +1123,7 @@ export function encodeLangToVmOps(
         params,
         body: {
           kind: 'block',
-          body: [...defaultStmts, { kind: 'expr_stmt', expr: body, loc: body.loc }],
+          body: [...initStmts, { kind: 'expr_stmt', expr: body, loc: body.loc }],
           loc: expr.loc,
         },
       }
