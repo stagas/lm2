@@ -181,10 +181,21 @@ function drawSpectrum(
 
   const fadeWidth = Math.min(64, w * 0.05)
   const fadeStart = Math.max(0, w - fadeWidth)
+  // Also fade in
   const getFadeFactor = (pos: number) => {
-    if (fadeWidth <= 0 || pos <= fadeStart) return 1
-    const factor = 1 - (pos - fadeStart) / fadeWidth
-    return factor < 0 ? 0 : factor
+    return 1
+    if (fadeWidth <= 0) return 1
+    // Fade-in
+    if (pos < fadeWidth) {
+      const inFactor = pos / fadeWidth
+      return inFactor < 0 ? 0 : inFactor > 1 ? 1 : inFactor
+    }
+    // Fade-out
+    if (pos > fadeStart) {
+      const outFactor = 1 - (pos - fadeStart) / fadeWidth
+      return outFactor < 0 ? 0 : outFactor > 1 ? 1 : outFactor
+    }
+    return 1
   }
 
   c.fillStyle = '#666'

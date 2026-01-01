@@ -47,7 +47,6 @@ export function useEnvelopeVisualization({
 
     const writePos = Math.floor(history.writePos) >>> 0
     if (playbackState !== 'running') {
-      lastWritePosRef.current = writePos
       return
     }
 
@@ -129,7 +128,7 @@ export function useEnvelopeVisualization({
           if (isAdsr) {
             // ADSR envelope: Attack -> Decay -> Sustain -> Release
             const adsrRef = ref as AdsrRef
-            const rt = isLive ? stRef.current.adsr[adsrRef.adsrIndex] : undefined
+            const rt = (isLive || playbackState !== 'running') ? stRef.current.adsr[adsrRef.adsrIndex] : undefined
             const attack = Math.max(0, rt?.attack ?? adsrRef.params.attack)
             const decay = Math.max(0, rt?.decay ?? adsrRef.params.decay)
             const sustain = rt?.sustain ?? adsrRef.params.sustain
@@ -164,7 +163,7 @@ export function useEnvelopeVisualization({
           else {
             // AD envelope: Attack -> Decay
             const adRef = ref as AdRef
-            const rt = isLive ? stRef.current.ad[adRef.adIndex] : undefined
+            const rt = (isLive || playbackState !== 'running') ? stRef.current.ad[adRef.adIndex] : undefined
             const attack = rt?.attack ?? adRef.params.attack
             const decay = rt?.decay ?? adRef.params.decay
             const total = attack + decay
@@ -181,7 +180,7 @@ export function useEnvelopeVisualization({
           }
 
           c.fillStyle = theme.colors.function
-          c.globalAlpha = 0.3
+          c.globalAlpha = 0.29
           c.fill()
           c.globalAlpha = 1.0
           c.stroke()
@@ -195,7 +194,7 @@ export function useEnvelopeVisualization({
             c.fillStyle = theme.colors.comment
 
             const adsrRef = ref as AdsrRef
-            const rt = isLive ? stRef.current.adsr[adsrRef.adsrIndex] : undefined
+            const rt = (isLive || playbackState !== 'running') ? stRef.current.adsr[adsrRef.adsrIndex] : undefined
             const attack = Math.max(0, rt?.attack ?? adsrRef.params.attack)
             const decay = Math.max(0, rt?.decay ?? adsrRef.params.decay)
             const release = Math.max(0, rt?.release ?? adsrRef.params.release)
@@ -257,7 +256,7 @@ export function useEnvelopeVisualization({
           else {
             // Draw phase labels for AD
             const adRef = ref as AdRef
-            const rt = isLive ? stRef.current.ad[adRef.adIndex] : undefined
+            const rt = (isLive || playbackState !== 'running') ? stRef.current.ad[adRef.adIndex] : undefined
             const attack = rt?.attack ?? adRef.params.attack
             const decay = rt?.decay ?? adRef.params.decay
             const total = attack + decay
@@ -290,7 +289,7 @@ export function useEnvelopeVisualization({
     }
 
     return out
-  }, [adRefs, adsrRefs, isLive])
+  }, [adRefs, adsrRefs, isLive, playbackState])
 
   return { widgets, onBeforeDraw }
 }
