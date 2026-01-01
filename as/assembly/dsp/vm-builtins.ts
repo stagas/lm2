@@ -83,6 +83,7 @@ import { Dsp } from './dsp'
 import { VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
 import { VmStack } from './vm-stack'
+import { VmSym } from './vm-sym'
 
 export class VmBuiltins {
   callKeySyms: StaticArray<i32> = new StaticArray<i32>(8)
@@ -108,6 +109,26 @@ export class VmBuiltins {
   analyserRingBase: i32 = 0
   compressorRingBase: i32 = 0
   limiterRingBase: i32 = 0
+
+  autoLift: StaticArray<i32> = new StaticArray<i32>(256)
+
+  constructor() {
+    // Some DSP builtins conceptually operate on a single (mono) input signal (`in`) and should be able to
+    // transparently operate on arrays-of-signals (e.g. stereo) by applying them elementwise.
+    // Keep this list in sync with `dispatchAutoLiftBuiltin` so the VM knows how to run the elementwise calls.
+    this.autoLift[VmBuiltin.Compressor] = 1
+    this.autoLift[VmBuiltin.Limiter] = 1
+    this.autoLift[VmBuiltin.Delay] = 1
+    this.autoLift[VmBuiltin.Lp] = 1
+    this.autoLift[VmBuiltin.Hp] = 1
+    this.autoLift[VmBuiltin.Bp] = 1
+    this.autoLift[VmBuiltin.Bs] = 1
+    this.autoLift[VmBuiltin.Ls] = 1
+    this.autoLift[VmBuiltin.Hs] = 1
+    this.autoLift[VmBuiltin.Peak] = 1
+    this.autoLift[VmBuiltin.Ap] = 1
+    this.autoLift[VmBuiltin.Slew] = 1
+  }
 
   private coerceArrayToScalarImpl(
     tags: StaticArray<i32>,
@@ -208,6 +229,255 @@ export class VmBuiltins {
   }
 
   @inline
+  private coerceArraysForBuiltin(
+    calleeAux: i32,
+    posCount: i32,
+    posTags: StaticArray<i32>,
+    posNums: StaticArray<f64>,
+    posAux: StaticArray<i32>,
+    namedCount: i32,
+    nameTags: StaticArray<i32>,
+    nameNums: StaticArray<f64>,
+    nameAux: StaticArray<i32>,
+    audio: VmAudio,
+    program: Program,
+    length: i32,
+    dsp: Dsp,
+  ): void {
+    if (
+      calleeAux !== VmBuiltin.Map &&
+      calleeAux !== VmBuiltin.Sum &&
+      calleeAux !== VmBuiltin.Avg &&
+      calleeAux !== VmBuiltin.Glide &&
+      calleeAux !== VmBuiltin.Out &&
+      calleeAux !== VmBuiltin.Solo &&
+      calleeAux !== VmBuiltin.Analyser &&
+      calleeAux !== VmBuiltin.Freeverb
+    ) {
+      for (let i: i32 = 0; i < posCount; i++) {
+        this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
+      }
+      for (let i: i32 = 0; i < namedCount; i++) {
+        this.coerceArrayToScalar(nameTags, nameNums, nameAux, i, audio, program, length, dsp)
+      }
+    }
+  }
+
+  @inline
+  private dispatchAutoLiftBuiltin(
+    calleeAux: i32,
+    posCount: i32,
+    nameSyms: StaticArray<i32>,
+    nameTags: StaticArray<i32>,
+    nameNums: StaticArray<f64>,
+    nameAux: StaticArray<i32>,
+    namedCount: i32,
+    posTags: StaticArray<i32>,
+    posNums: StaticArray<f64>,
+    posAux: StaticArray<i32>,
+    stack: VmStack,
+    audio: VmAudio,
+    program: Program,
+    length: i32,
+    left$: usize,
+    right$: usize,
+    dsp: Dsp,
+  ): void {
+    if (calleeAux === VmBuiltin.Compressor) {
+      callCompressor(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, this.compressorRingBase)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Limiter) {
+      callLimiter(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, this.limiterRingBase)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Delay) {
+      callDelay(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Lp) {
+      callLp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Hp) {
+      callHp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Bp) {
+      callBp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Bs) {
+      callBs(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Ls) {
+      callLs(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Hs) {
+      callHs(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Peak) {
+      callPeak(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Ap) {
+      callAp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Slew) {
+      callSlew(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    stack.push(VmTag.Undef)
+  }
+
+  private tryAutoLift(
+    calleeAux: i32,
+    posCount: i32,
+    nameSyms: StaticArray<i32>,
+    nameTags: StaticArray<i32>,
+    nameNums: StaticArray<f64>,
+    nameAux: StaticArray<i32>,
+    namedCount: i32,
+    posTags: StaticArray<i32>,
+    posNums: StaticArray<f64>,
+    posAux: StaticArray<i32>,
+    stack: VmStack,
+    audio: VmAudio,
+    program: Program,
+    length: i32,
+    left$: usize,
+    right$: usize,
+    dsp: Dsp,
+  ): bool {
+    let inIsPos: bool = false
+    let inIndex: i32 = -1
+    let arrId: i32 = -1
+
+    if (posCount >= 1 && (posTags[0] as VmTag) === VmTag.Arr) {
+      inIsPos = true
+      inIndex = 0
+      arrId = posAux[0]
+    }
+    else {
+      for (let i: i32 = 0; i < namedCount; i++) {
+        if (nameSyms[i] === VmSym.In && (nameTags[i] as VmTag) === VmTag.Arr) {
+          inIsPos = false
+          inIndex = i
+          arrId = nameAux[i]
+          break
+        }
+      }
+    }
+
+    if (arrId < 0) return false
+
+    if (arrId >= dsp.arrays.count) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+
+    const n: i32 = dsp.arrays.len[arrId]
+    if (n <= 0) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+
+    const start: i32 = dsp.arrays.start[arrId]
+
+    const outArrId: i32 = dsp.arrays.count
+    const outStart: i32 = dsp.arrays.elemCount
+    const outEnd: i32 = outStart + n
+    if (outArrId < 0 || outArrId >= dsp.arrays.start.length) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+    if (outEnd < 0 || outEnd > dsp.arrays.elemTag.length) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+
+    dsp.arrays.start[outArrId] = outStart
+    dsp.arrays.len[outArrId] = n
+    dsp.arrays.createPc[outArrId] = 0
+    dsp.arrays.elemType[outArrId] = VmTag.Undef
+    dsp.arrays.count = outArrId + 1
+    dsp.arrays.elemCount = outEnd
+
+    let outType: i32 = -1
+
+    for (let i: i32 = 0; i < n; i++) {
+      const at: i32 = start + i
+      const eTag: i32 = dsp.arrays.elemTag[at]
+      const eNum: f64 = dsp.arrays.elemNum[at]
+      const eAux: i32 = dsp.arrays.elemAux[at]
+
+      if (inIsPos) {
+        posTags[0] = eTag
+        posNums[0] = eNum
+        posAux[0] = eAux
+      }
+      else {
+        nameTags[inIndex] = eTag
+        nameNums[inIndex] = eNum
+        nameAux[inIndex] = eAux
+      }
+
+      this.coerceArraysForBuiltin(calleeAux, posCount, posTags, posNums, posAux, namedCount, nameTags, nameNums, nameAux,
+        audio, program, length, dsp)
+
+      this.dispatchAutoLiftBuiltin(calleeAux, posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums,
+        posAux, stack, audio, program, length, left$, right$, dsp)
+
+      const resIdx: i32 = stack.pop()
+      const rTag: i32 = stack.tag[resIdx]
+      const rNum: f64 = stack.num[resIdx]
+      const rAux: i32 = stack.aux[resIdx]
+
+      if (outType < 0) outType = rTag
+      else if (rTag !== outType) {
+        stack.push(VmTag.Undef)
+        return true
+      }
+
+      dsp.arrays.elemTag[outStart + i] = rTag
+      dsp.arrays.elemNum[outStart + i] = rNum
+      dsp.arrays.elemAux[outStart + i] = rAux
+    }
+
+    dsp.arrays.elemType[outArrId] = outType
+    stack.push(VmTag.Arr, 0.0, outArrId)
+    return true
+  }
+
+  @inline
   call(
     pos: i32,
     named: i32,
@@ -270,24 +540,17 @@ export class VmBuiltins {
       return
     }
 
-    // Coerce arrays-of-nums / arrays-of-audio to a scalar by summing (like `array.sum()`),
-    // so passing `[a,b,c]` into a numeric/audio parameter works naturally.
-    if (
-      calleeAux !== VmBuiltin.Map &&
-      calleeAux !== VmBuiltin.Sum &&
-      calleeAux !== VmBuiltin.Avg &&
-      calleeAux !== VmBuiltin.Glide &&
-      calleeAux !== VmBuiltin.Out &&
-      calleeAux !== VmBuiltin.Solo &&
-      calleeAux !== VmBuiltin.Analyser
-    ) {
-      for (let i = 0; i < posCount; i++) {
-        this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
-      }
-      for (let i = 0; i < namedCount; i++) {
-        this.coerceArrayToScalar(nameTags, nameNums, nameAux, i, audio, program, length, dsp)
+    if (calleeAux >= 0 && calleeAux < this.autoLift.length && this.autoLift[calleeAux] !== 0) {
+      if (this.tryAutoLift(calleeAux, posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux,
+        stack, audio, program, length, left$, right$, dsp)) {
+        return
       }
     }
+
+    // Coerce arrays-of-nums / arrays-of-audio to a scalar by summing (like `array.sum()`),
+    // so passing `[a,b,c]` into a numeric/audio parameter works naturally.
+    this.coerceArraysForBuiltin(calleeAux, posCount, posTags, posNums, posAux, namedCount, nameTags, nameNums, nameAux,
+      audio, program, length, dsp)
 
     if (calleeAux === VmBuiltin.Out) {
       callOut(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
