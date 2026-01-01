@@ -648,7 +648,15 @@ class Parser {
                 const exactMatch = paramNames.find(p => p === arg.name)
                 if (exactMatch) continue
 
-                // If no exact match, check for prefix matches
+                // If no exact match, check for case-insensitive match
+                const caseInsensitiveMatch = paramNames.find(p => p.toLowerCase() === arg.name.toLowerCase())
+                if (caseInsensitiveMatch) {
+                  // Update the argument name to the correct case
+                  (arg as any).name = caseInsensitiveMatch
+                  continue
+                }
+
+                // If no case-insensitive match, check for prefix matches
                 const prefixMatches = paramNames.filter(p => p.startsWith(arg.name))
                 if (prefixMatches.length === 1) {
                   // Update the argument name to the full parameter name

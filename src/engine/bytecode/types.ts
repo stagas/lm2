@@ -228,13 +228,13 @@ export type FreeverbRef = {
   callLoc: Loc
   /** Location of the input arg (positional or `in:`). */
   inArgLoc: Loc | null
-  /** Location of the size arg (positional or `size:`). */
-  sizeArgLoc: Loc | null
+  /** Location of the roomSize arg (positional or `roomSize:`). */
+  roomSizeArgLoc: Loc | null
   /** Location of the damp arg (positional or `damp:`). */
   dampArgLoc: Loc | null
   /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
-    size: number
+    roomSize: number
     damp: number
   }
 }

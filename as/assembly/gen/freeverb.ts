@@ -30,7 +30,7 @@ function scaledDelaySamples(base: i32, sr: i32): i32 {
 
 export class Freeverb extends Gen {
   in$: usize = 0
-  size$: usize = 0
+  roomSize$: usize = 0
   damp$: usize = 0
 
   private lastSampleRate: i32 = 0
@@ -164,7 +164,7 @@ export class Freeverb extends Gen {
     this.ensureBuffers()
 
     let i$: usize = this.in$
-    let size$: usize = this.size$
+    let roomSize$: usize = this.roomSize$
     let damp$: usize = this.damp$
 
     const combBufs = this.combBufs
@@ -180,10 +180,10 @@ export class Freeverb extends Gen {
     for (let s: i32 = 0; s < length; s++) {
       const input: f32 = load<f32>(i$)
 
-      const size: f32 = clamp01(load<f32>(size$))
+      const roomSize: f32 = clamp01(load<f32>(roomSize$))
       const damp: f32 = clamp01(load<f32>(damp$))
 
-      const room1: f32 = size * SCALE_ROOM
+      const room1: f32 = roomSize * SCALE_ROOM
       const damp1: f32 = damp * SCALE_DAMP
       const damp2: f32 = 1.0 - damp1
 
@@ -231,7 +231,7 @@ export class Freeverb extends Gen {
 
       o$ += 4
       i$ += 4
-      size$ += 4
+      roomSize$ += 4
       damp$ += 4
     }
   }
