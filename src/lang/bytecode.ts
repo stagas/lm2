@@ -756,6 +756,8 @@ class Compiler {
 
     // `array.sum()` is compiled as `sum(array)` to avoid GET_PROP in the VM encoder.
     if (compileMemberCallAsBuiltin('sum')) return
+    // `array.avg()` is compiled as `avg(array)` to avoid GET_PROP in the VM encoder.
+    if (compileMemberCallAsBuiltin('avg')) return
     // `array.glide(bar, exp?)` is compiled as `glide(array, bar, exp?)` to avoid GET_PROP in the VM encoder.
     if (compileMemberCallAsBuiltin('glide')) return
     // `signal.delay(seconds, feedback?, cb?)` is compiled as `delay(signal, seconds, feedback?, cb?)`.

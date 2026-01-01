@@ -100,6 +100,7 @@ export enum VmBuiltin {
   Degree = VmSym.Degree,
   Map = VmSym.Map,
   Sum = VmSym.Sum,
+  Avg = VmSym.Avg,
   Glide = VmSym.Glide,
   Slew = VmSym.Slew,
   Lp = VmSym.Lp,

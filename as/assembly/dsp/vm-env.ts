@@ -230,6 +230,10 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Sum)
       return
     }
+    if (sym === VmSym.Avg) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Avg)
+      return
+    }
     if (sym === VmSym.Glide) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Glide)
       return
