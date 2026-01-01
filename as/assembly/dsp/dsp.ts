@@ -323,7 +323,7 @@ export class Dsp {
       }
       if (op === VmOp.Binary) {
         const code = ops[pc++] as VmBinary
-        vmBinaryOp(code, this.stack, this.audio, this.program, this.arrays, length)
+        vmBinaryOp(code, this.stack, this.audio, this.program, this.arrays, length, pc - 2)
         continue
       }
       if (op === VmOp.Call) {

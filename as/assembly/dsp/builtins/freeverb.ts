@@ -4,6 +4,7 @@ import { FREEVERB_DATA_OFFSET, FREEVERB_ENTRY_SIZE, FREEVERB_HISTORY_SIZE, FREEV
 import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
 import { Op } from '../../shared'
+import { Dsp } from '../dsp'
 import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
@@ -31,6 +32,7 @@ export function callFreeverb(
   audio: VmAudio,
   program: Program,
   length: i32,
+  dsp: Dsp,
 ): void {
   // freeverb(in, size=0.5, damp=0.5)
   if (posCount < 1) {
@@ -92,18 +94,62 @@ export function callFreeverb(
     }
   }
 
-  const in$ = audio.toAudioPtr(inTag, inNum, inAux, length, program)
+  let inL$: usize = 0
+  let inR$: usize = 0
+
+  if (inTag === VmTag.Arr) {
+    const arrId: i32 = inAux
+    if (arrId < 0 || arrId >= dsp.arrays.count) {
+      inL$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
+      inR$ = inL$
+    }
+    else {
+      const arrLen: i32 = dsp.arrays.len[arrId]
+      const start: i32 = dsp.arrays.start[arrId]
+
+      if (arrLen >= 2) {
+        const lTag = dsp.arrays.elemTag[start] as VmTag
+        const lNum = dsp.arrays.elemNum[start]
+        const lAux = dsp.arrays.elemAux[start]
+        inL$ = audio.toAudioPtr(lTag, lNum, lAux, length, program)
+
+        const rTag = dsp.arrays.elemTag[start + 1] as VmTag
+        const rNum = dsp.arrays.elemNum[start + 1]
+        const rAux = dsp.arrays.elemAux[start + 1]
+        inR$ = audio.toAudioPtr(rTag, rNum, rAux, length, program)
+      }
+      else if (arrLen >= 1) {
+        const mTag = dsp.arrays.elemTag[start] as VmTag
+        const mNum = dsp.arrays.elemNum[start]
+        const mAux = dsp.arrays.elemAux[start]
+        inL$ = audio.toAudioPtr(mTag, mNum, mAux, length, program)
+        inR$ = inL$
+      }
+      else {
+        inL$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
+        inR$ = inL$
+      }
+    }
+  }
+  else {
+    inL$ = audio.toAudioPtr(inTag, inNum, inAux, length, program)
+    inR$ = inL$
+  }
+
   const roomSize$ = audio.toAudioPtr(roomSizeTag, roomSizeNum, roomSizeAux, length, program)
   const damp$ = audio.toAudioPtr(dampTag, dampNum, dampAux, length, program)
 
-  const outIndex = audio.allocOut(program)
-  const out$ = program.getOutBuffer(outIndex)
+  const outLIndex = audio.allocOut(program)
+  const outRIndex = audio.allocOut(program)
+  const outL$ = program.getOutBuffer(outLIndex)
+  const outR$ = program.getOutBuffer(outRIndex)
 
   const gen = program.gensPool.get(Op.Freeverb) as Freeverb
-  gen.in$ = in$
+  gen.inL$ = inL$
+  gen.inR$ = inR$
   gen.roomSize$ = roomSize$
   gen.damp$ = damp$
-  gen.process(out$, length)
+  gen.processStereo(outL$, outR$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
   {
@@ -118,7 +164,9 @@ export function callFreeverb(
     hist[FREEVERB_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
-  stack.push(VmTag.Audio, 0.0, outIndex)
+  stack.push(VmTag.Audio, 0.0, outLIndex)
+  stack.push(VmTag.Audio, 0.0, outRIndex)
+  dsp.arrays.create(2, stack, 0, audio, program, length)
 }
 
 

@@ -369,7 +369,7 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Freeverb) {
       callFreeverb(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length)
+        program, length, dsp)
       return
     }
 
