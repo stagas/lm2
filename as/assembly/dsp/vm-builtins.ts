@@ -16,7 +16,6 @@ import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
 import { callFdn } from './builtins/fdn'
 import { callFreeverb } from './builtins/freeverb'
-import { callVelvet } from './builtins/velvet'
 import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLimiter } from './builtins/limiter'
@@ -83,6 +82,7 @@ import { callSqr } from './builtins/sqr'
 import { callSum } from './builtins/sum'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
+import { callVelvet } from './builtins/velvet'
 import { Dsp } from './dsp'
 import { VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
@@ -132,6 +132,7 @@ export class VmBuiltins {
     this.autoLift[VmBuiltin.Peak] = 1
     this.autoLift[VmBuiltin.Ap] = 1
     this.autoLift[VmBuiltin.Slew] = 1
+    this.autoLift[VmBuiltin.Dc] = 1
   }
 
   private coerceArrayToScalarImpl(
@@ -362,6 +363,12 @@ export class VmBuiltins {
       return
     }
 
+    if (calleeAux === VmBuiltin.Dc) {
+      callDc(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
     stack.push(VmTag.Undef)
   }
 
@@ -585,11 +592,9 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Analyser) {
       if (posCount >= 1) {
-        // The analyser is mono. If it's given an array (e.g. stereo [L,R]) mix it down via average, not sum.
-        this.coerceArrayToScalarAvg(posTags, posNums, posAux, 0, audio, program, length, dsp)
       }
       callAnalyser(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length, this.analyserRingBase)
+        program, length, this.analyserRingBase, dsp)
       return
     }
 
