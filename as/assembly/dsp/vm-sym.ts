@@ -187,4 +187,5 @@ export enum VmSym {
   K,
   Saturation,
   DiodeLadder,
+  Oversample,
 }

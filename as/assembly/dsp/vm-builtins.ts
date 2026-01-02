@@ -23,6 +23,7 @@ import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLimiter } from './builtins/limiter'
 import { callMap } from './builtins/map'
+import { callOversample } from './builtins/oversample'
 import {
   callAbs,
   callAcos,
@@ -86,6 +87,7 @@ import { callSum } from './builtins/sum'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { callVelvet } from './builtins/velvet'
+import { GensPool } from '../gens-pool'
 import { Dsp } from './dsp'
 import { VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
@@ -108,6 +110,9 @@ export class VmBuiltins {
   cbArgTags: StaticArray<i32> = new StaticArray<i32>(3)
   cbArgNums: StaticArray<f64> = new StaticArray<f64>(3)
   cbArgAux: StaticArray<i32> = new StaticArray<i32>(3)
+
+  oversampleGens0: StaticArray<i32> = new StaticArray<i32>(GensPool.INDICES_COUNT)
+  oversampleGens1: StaticArray<i32> = new StaticArray<i32>(GensPool.INDICES_COUNT)
 
   mapArgTags: StaticArray<i32> = new StaticArray<i32>(3)
   mapArgNums: StaticArray<f64> = new StaticArray<f64>(3)
@@ -739,6 +744,13 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Avg) {
       callAvg(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Oversample) {
+      callOversample(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux, this.oversampleGens0,
+        this.oversampleGens1)
       return
     }
 

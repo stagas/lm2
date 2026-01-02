@@ -35,6 +35,14 @@ export class GenPool<T extends Gen> {
   resetIndex(): void {
     this.index = 0
   }
+  @inline
+  getIndex(): i32 {
+    return this.index
+  }
+  @inline
+  setIndex(index: i32): void {
+    this.index = index
+  }
   reset(): void {
     this.index = 0
     for (let i = 0; i < this.gens.length; i++) {
@@ -118,6 +126,129 @@ export class GensPool {
   private mlps: GenPool<Mlp> = new GenPool<Mlp>(() => new Mlp())
   private mhps: GenPool<Mhp> = new GenPool<Mhp>(() => new Mhp())
   private diodeLadders: GenPool<DiodeLadder> = new GenPool<DiodeLadder>(() => new DiodeLadder())
+
+  // Keep in sync with `saveIndices()`/`restoreIndices()`.
+  static readonly INDICES_COUNT: i32 = 55
+
+  @inline
+  saveIndices(out: StaticArray<i32>): void {
+    let i: i32 = 0
+    out[i++] = this.sines.getIndex()
+    out[i++] = this.tris.getIndex()
+    out[i++] = this.saws.getIndex()
+    out[i++] = this.ramps.getIndex()
+    out[i++] = this.sqrs.getIndex()
+    out[i++] = this.pwms.getIndex()
+    out[i++] = this.phasors.getIndex()
+    out[i++] = this.ads.getIndex()
+    out[i++] = this.adsrs.getIndex()
+    out[i++] = this.minis.getIndex()
+    out[i++] = this.timelines.getIndex()
+    out[i++] = this.analysers.getIndex()
+    out[i++] = this.samplers.getIndex()
+    out[i++] = this.slicers.getIndex()
+    out[i++] = this.slews.getIndex()
+    out[i++] = this.every.getIndex()
+    out[i++] = this.ats.getIndex()
+    out[i++] = this.euclids.getIndex()
+    out[i++] = this.lps.getIndex()
+    out[i++] = this.hps.getIndex()
+    out[i++] = this.bps.getIndex()
+    out[i++] = this.bss.getIndex()
+    out[i++] = this.lss.getIndex()
+    out[i++] = this.hss.getIndex()
+    out[i++] = this.peaks.getIndex()
+    out[i++] = this.aps.getIndex()
+    out[i++] = this.compressors.getIndex()
+    out[i++] = this.lfoSines.getIndex()
+    out[i++] = this.lfoTris.getIndex()
+    out[i++] = this.lfoSaws.getIndex()
+    out[i++] = this.lfoRamps.getIndex()
+    out[i++] = this.lfoSqrs.getIndex()
+    out[i++] = this.lfoSahs.getIndex()
+    out[i++] = this.whites.getIndex()
+    out[i++] = this.gausses.getIndex()
+    out[i++] = this.pinks.getIndex()
+    out[i++] = this.browns.getIndex()
+    out[i++] = this.smooths.getIndex()
+    out[i++] = this.fractals.getIndex()
+    out[i++] = this.delays.getIndex()
+    out[i++] = this.limiters.getIndex()
+    out[i++] = this.freeverbs.getIndex()
+    out[i++] = this.dattorros.getIndex()
+    out[i++] = this.fdns.getIndex()
+    out[i++] = this.velvets.getIndex()
+    out[i++] = this.dcs.getIndex()
+    out[i++] = this.slps.getIndex()
+    out[i++] = this.shps.getIndex()
+    out[i++] = this.sbps.getIndex()
+    out[i++] = this.sbss.getIndex()
+    out[i++] = this.speaks.getIndex()
+    out[i++] = this.saps.getIndex()
+    out[i++] = this.mlps.getIndex()
+    out[i++] = this.mhps.getIndex()
+    out[i++] = this.diodeLadders.getIndex()
+  }
+
+  @inline
+  restoreIndices(src: StaticArray<i32>): void {
+    let i: i32 = 0
+    this.sines.setIndex(src[i++])
+    this.tris.setIndex(src[i++])
+    this.saws.setIndex(src[i++])
+    this.ramps.setIndex(src[i++])
+    this.sqrs.setIndex(src[i++])
+    this.pwms.setIndex(src[i++])
+    this.phasors.setIndex(src[i++])
+    this.ads.setIndex(src[i++])
+    this.adsrs.setIndex(src[i++])
+    this.minis.setIndex(src[i++])
+    this.timelines.setIndex(src[i++])
+    this.analysers.setIndex(src[i++])
+    this.samplers.setIndex(src[i++])
+    this.slicers.setIndex(src[i++])
+    this.slews.setIndex(src[i++])
+    this.every.setIndex(src[i++])
+    this.ats.setIndex(src[i++])
+    this.euclids.setIndex(src[i++])
+    this.lps.setIndex(src[i++])
+    this.hps.setIndex(src[i++])
+    this.bps.setIndex(src[i++])
+    this.bss.setIndex(src[i++])
+    this.lss.setIndex(src[i++])
+    this.hss.setIndex(src[i++])
+    this.peaks.setIndex(src[i++])
+    this.aps.setIndex(src[i++])
+    this.compressors.setIndex(src[i++])
+    this.lfoSines.setIndex(src[i++])
+    this.lfoTris.setIndex(src[i++])
+    this.lfoSaws.setIndex(src[i++])
+    this.lfoRamps.setIndex(src[i++])
+    this.lfoSqrs.setIndex(src[i++])
+    this.lfoSahs.setIndex(src[i++])
+    this.whites.setIndex(src[i++])
+    this.gausses.setIndex(src[i++])
+    this.pinks.setIndex(src[i++])
+    this.browns.setIndex(src[i++])
+    this.smooths.setIndex(src[i++])
+    this.fractals.setIndex(src[i++])
+    this.delays.setIndex(src[i++])
+    this.limiters.setIndex(src[i++])
+    this.freeverbs.setIndex(src[i++])
+    this.dattorros.setIndex(src[i++])
+    this.fdns.setIndex(src[i++])
+    this.velvets.setIndex(src[i++])
+    this.dcs.setIndex(src[i++])
+    this.slps.setIndex(src[i++])
+    this.shps.setIndex(src[i++])
+    this.sbps.setIndex(src[i++])
+    this.sbss.setIndex(src[i++])
+    this.speaks.setIndex(src[i++])
+    this.saps.setIndex(src[i++])
+    this.mlps.setIndex(src[i++])
+    this.mhps.setIndex(src[i++])
+    this.diodeLadders.setIndex(src[i++])
+  }
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
