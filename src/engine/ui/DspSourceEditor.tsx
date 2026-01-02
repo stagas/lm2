@@ -37,7 +37,7 @@ import { useArrayAccessWidget } from './useArrayAccessWidget.ts'
 import { useBranchWidget } from './useBranchWidget.ts'
 import { useCodeFileValue } from './useCodeFileValue.ts'
 import { useCompressorWidget } from './useCompressorWidget.ts'
-import { useEnvelopeVisualization } from './useEnvelopeVisualization.ts'
+import { useEnvelopeWidget } from './useEnvelopeWidget.ts'
 import { useFilterWidget } from './useFilterWidget.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
@@ -795,7 +795,7 @@ function DspSourceEditorReady(
     playbackState,
   })
 
-  const { widgets: envelopeWidgets, onBeforeDraw: onBeforeDrawEnvelope } = useEnvelopeVisualization({
+  const { widgets: envelopeWidgets, onBeforeDraw: onBeforeDrawEnvelope } = useEnvelopeWidget({
     program1: runtimeProgram,
     adRefs: widgetCompileState.adRefs,
     adsrRefs: widgetCompileState.adsrRefs,

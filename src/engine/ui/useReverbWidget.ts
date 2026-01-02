@@ -183,7 +183,10 @@ export function useReverbWidget({
           c.restore()
 
           c.strokeStyle = primary
-          c.globalAlpha = 0.9
+          // c.globalAlpha = 0.9
+          c.lineCap = 'round'
+          c.lineJoin = 'round'
+          c.lineWidth = 1.15
           c.beginPath()
           c.moveTo(A[0], A[1])
           c.lineTo(B[0], B[1])

@@ -168,9 +168,9 @@ export function useLfoWidget({
     c.fillRect(0, 0, w, h)
 
     const pad = 0
-    const chartX = pad
+    const chartX = 0
     const chartY = pad
-    const chartW = Math.max(1, w - pad * 2)
+    const chartW = w // Math.max(1, w - pad * 2)
     const chartH = Math.max(1, h - pad * 2)
 
     const st = stRef.current[ref.lfoIndex | 0]

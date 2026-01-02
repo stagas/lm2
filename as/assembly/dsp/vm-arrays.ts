@@ -1,5 +1,5 @@
 import { ARRAY_HISTORY_ENTRY_SIZE, ARRAY_HISTORY_SIZE } from '../constants'
-import { setVmError } from '../globals'
+import { globalSampleCount, setVmError } from '../globals'
 import { Program } from '../program'
 import { copyAudio, fillAudio } from './audio-ops'
 import { VmTag } from './types'
@@ -9,6 +9,7 @@ import { VmStack } from './vm-stack'
 export class VmArrays {
   count: i32 = 0
   elemCount: i32 = 0
+  uiRecord: i32 = 1
   start: StaticArray<i32> = new StaticArray<i32>(512)
   len: StaticArray<i32> = new StaticArray<i32>(512)
   createPc: StaticArray<i32> = new StaticArray<i32>(512)
@@ -19,13 +20,18 @@ export class VmArrays {
 
   @inline
   recordAccess(program: Program, createPc: i32, index: i32): void {
+    if (this.uiRecord === 0) return
     // Best-effort ring buffer for UI widgets (no atomics needed).
+    // entry: createPc, index, sampleCountLo16, sampleCountHi16, (unused), (unused)
     const hist = program.arrayAccessHistory
     const writePos = i32(hist[0])
     const slot = writePos % ARRAY_HISTORY_SIZE
     const base = 1 + slot * ARRAY_HISTORY_ENTRY_SIZE
+    const sc: u32 = <u32> globalSampleCount
     hist[base] = f32(createPc)
     hist[base + 1] = f32(index)
+    hist[base + 2] = f32(sc & 0xffff)
+    hist[base + 3] = f32(sc >>> 16)
     hist[0] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -389,5 +395,6 @@ export class VmArrays {
   reset(): void {
     this.count = 0
     this.elemCount = 0
+    this.uiRecord = 1
   }
 }

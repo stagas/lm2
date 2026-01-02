@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef } from 'preact/hooks'
 import { ARRAY_HISTORY_ENTRY_SIZE, ARRAY_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { ArrayLiteralRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
+import { useEngineRuntimeStore } from '../store.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 
 function locKey(loc: ArrayLiteralRef['items'][number]): string {
@@ -23,6 +24,8 @@ export function useArrayAccessWidget({
   arrayLiterals,
 }: UseArrayAccessWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const lastWritePosRef = useRef<number>(0)
+  const lastTargetSampleRef = useRef<number | null>(null)
+  const pendingRef = useRef<Array<{ pc: number; idx: number; at: number }>>([])
   // active index per array pc (keep highlighted until index changes)
   const activeIndexRef = useRef<Map<number, number>>(new Map())
   // fading map for previous indices: key = "pc:idx" -> startTime
@@ -73,12 +76,50 @@ export function useArrayAccessWidget({
 
     const activeIndex = activeIndexRef.current
     const fading = fadingRef.current
+    const pending = pendingRef.current
+
+    const runtime = useEngineRuntimeStore.getState()
+    const pred = runtime.predictedSampleCountResult
+
+    if (pred) {
+      const target = pred.sampleCount
+      const lastTarget = lastTargetSampleRef.current
+      lastTargetSampleRef.current = target
+      // Seeking/scrubbing can move time backwards; drop queued future events so they don't block new ones.
+      // Also ignore old ring-buffer entries by jumping the cursor to the current writePos.
+      if (lastTarget != null && target + 256 < lastTarget) {
+        pending.length = 0
+        activeIndex.clear()
+        fading.clear()
+        lastWritePosRef.current = writePos
+      }
+    }
+
+    const applyAccess = (pc: number, idx: number) => {
+      const items = pcToItems.get(pc)
+      if (!items || idx < 0 || idx >= items.length) return
+
+      const prev = activeIndex.get(pc)
+      if (prev === undefined) {
+        activeIndex.set(pc, idx)
+        return
+      }
+
+      if (prev !== idx) {
+        const locKeys = pcToLocKeyByIdx.get(pc)
+        if (locKeys?.[prev] !== locKeys?.[idx]) {
+          fading.set(pc + ':' + prev, nowSec)
+        }
+        activeIndex.set(pc, idx)
+      }
+    }
 
     if (writePos !== prevWritePos) {
       const raw = history.raw
       const MOD = 1 << 20
       const deltaRaw = (writePos - prevWritePos + MOD) % MOD
       const delta = Math.min(deltaRaw, ARRAY_HISTORY_SIZE)
+
       for (let k = delta; k > 0; k--) {
         const p = (writePos - k) >>> 0
         const slot = p % ARRAY_HISTORY_SIZE
@@ -86,24 +127,33 @@ export function useArrayAccessWidget({
         const pc = Math.floor(raw[base] ?? 0)
         const idx = Math.floor(raw[base + 1] ?? 0)
         if (pc <= 0 || idx < 0) continue
-        const items = pcToItems.get(pc)
-        if (!items || idx >= items.length) continue
+        const lo = Math.floor(raw[base + 2] ?? 0) >>> 0
+        const hi = Math.floor(raw[base + 3] ?? 0) >>> 0
+        const at = (lo + hi * 65536) >>> 0
 
-        const prev = activeIndex.get(pc)
-        if (prev === undefined) {
-          // first seen index for this array -> set active
-          activeIndex.set(pc, idx)
+        if (pred) {
+          pending.push({ pc, idx, at })
+          continue
         }
-        else if (prev !== idx) {
-          const locKeys = pcToLocKeyByIdx.get(pc)
-          if (locKeys?.[prev] !== locKeys?.[idx]) {
-            // index changed to a different loc -> start fading previous entry
-            fading.set(pc + ':' + prev, nowSec)
-          }
-          activeIndex.set(pc, idx)
-        }
-        // if prev === idx => leave as active (no fade)
+
+        applyAccess(pc, idx)
       }
+    }
+
+    if (pred) {
+      const target = pred.sampleCount
+      let w = 0
+      for (let i = 0; i < pending.length; i++) {
+        const e = pending[i]!
+        if (e.at <= target) {
+          applyAccess(e.pc, e.idx)
+        }
+        else {
+          pending[w++] = e
+        }
+      }
+      pending.length = w
+      if (pending.length > 4096) pending.splice(0, pending.length - 4096)
     }
 
     const FADEOUT_SECONDS = 0.25

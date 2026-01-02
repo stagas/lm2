@@ -15,7 +15,7 @@ type UseEnvelopeVisualizationParams = {
   playbackState: 'stopped' | 'running' | 'paused'
 }
 
-export function useEnvelopeVisualization({
+export function useEnvelopeWidget({
   program1,
   adRefs,
   adsrRefs,
@@ -118,10 +118,10 @@ export function useEnvelopeVisualization({
           c.lineWidth = 1.35
           c.beginPath()
 
-          const padding = 6
-          const plotW = w - padding * 2
-          const plotH = h - padding * 2
-          const plotX = padding
+          const padding = 0
+          const plotW = w
+          const plotH = h // - padding * 3.2
+          const plotX = 0
           const plotY = padding
 
           if (isAdsr) {
@@ -189,98 +189,94 @@ export function useEnvelopeVisualization({
           c.fillStyle = theme.colors.comment
 
           // Draw phase labels for ADSR
-          if (isAdsr) {
-            c.fillStyle = theme.colors.comment
+          // if (isAdsr) {
+          //   c.fillStyle = theme.colors.comment
 
-            const adsrRef = ref as AdsrRef
-            const rt = (isLive || playbackState !== 'running') ? stRef.current.adsr[adsrRef.adsrIndex] : undefined
-            const attack = Math.max(0, rt?.attack ?? adsrRef.params.attack)
-            const decay = Math.max(0, rt?.decay ?? adsrRef.params.decay)
-            const release = Math.max(0, rt?.release ?? adsrRef.params.release)
-            const adrTotal = attack + decay + release
+          //   const adsrRef = ref as AdsrRef
+          //   const rt = (isLive || playbackState !== 'running') ? stRef.current.adsr[adsrRef.adsrIndex] : undefined
+          //   const attack = Math.max(0, rt?.attack ?? adsrRef.params.attack)
+          //   const decay = Math.max(0, rt?.decay ?? adsrRef.params.decay)
+          //   const release = Math.max(0, rt?.release ?? adsrRef.params.release)
+          //   const adrTotal = attack + decay + release
 
-            if (adrTotal > 0) {
-              const sustainW = plotW * 0.28
-              const adrW = Math.max(1e-6, plotW - sustainW)
-              const attackW = (attack / adrTotal) * adrW
-              const decayW = (decay / adrTotal) * adrW
-              const releaseW = (release / adrTotal) * adrW
+          //   if (adrTotal > 0) {
+          //     const sustainW = plotW * 0.28
+          //     const adrW = Math.max(1e-6, plotW - sustainW)
+          //     const attackW = (attack / adrTotal) * adrW
+          //     const decayW = (decay / adrTotal) * adrW
+          //     const releaseW = (release / adrTotal) * adrW
 
-              const attackX = attackW
-              const decayX = attackW + decayW
-              const sustainEndX = decayX + sustainW
+          //     const attackX = attackW
+          //     const decayX = attackW + decayW
+          //     const sustainEndX = decayX + sustainW
 
-              const minX = plotX + 3
-              const maxX = plotX + plotW - 3
-              const minGap = 10
+          //     const minX = plotX + 3
+          //     const maxX = plotX + plotW - 3
+          //     const minGap = 10
 
-              let ax = plotX + attackX / 2
-              let dx = plotX + (attackW + decayW / 2)
-              let sx = plotX + (decayX + sustainW / 2)
-              let rx = plotX + (sustainEndX + releaseW / 2)
+          //     let ax = plotX + attackX / 2
+          //     let dx = plotX + (attackW + decayW / 2)
+          //     let sx = plotX + (decayX + sustainW / 2)
+          //     let rx = plotX + (sustainEndX + releaseW / 2)
 
-              ax = Math.max(minX, Math.min(maxX, ax))
-              dx = Math.max(minX, Math.min(maxX, dx))
-              sx = Math.max(minX, Math.min(maxX, sx))
-              rx = Math.max(minX, Math.min(maxX, rx))
+          //     ax = Math.max(minX, Math.min(maxX, ax))
+          //     dx = Math.max(minX, Math.min(maxX, dx))
+          //     sx = Math.max(minX, Math.min(maxX, sx))
+          //     rx = Math.max(minX, Math.min(maxX, rx))
 
-              // Keep labels readable in extreme parameter ratios (best-effort spacing).
-              if (dx < ax + minGap) dx = ax + minGap
-              if (sx < dx + minGap) sx = dx + minGap
-              if (rx < sx + minGap) rx = sx + minGap
+          //     // Keep labels readable in extreme parameter ratios (best-effort spacing).
+          //     if (dx < ax + minGap) dx = ax + minGap
+          //     if (sx < dx + minGap) sx = dx + minGap
+          //     if (rx < sx + minGap) rx = sx + minGap
 
-              if (rx > maxX) {
-                const over = rx - maxX
-                rx -= over
-                sx -= over
-                dx -= over
-                ax -= over
-              }
+          //     if (rx > maxX) {
+          //       const over = rx - maxX
+          //       rx -= over
+          //       sx -= over
+          //       dx -= over
+          //       ax -= over
+          //     }
 
-              ax = Math.max(minX, Math.min(maxX, ax))
-              dx = Math.max(minX, Math.min(maxX, dx))
-              sx = Math.max(minX, Math.min(maxX, sx))
-              rx = Math.max(minX, Math.min(maxX, rx))
+          //     ax = Math.max(minX, Math.min(maxX, ax))
+          //     dx = Math.max(minX, Math.min(maxX, dx))
+          //     sx = Math.max(minX, Math.min(maxX, sx))
+          //     rx = Math.max(minX, Math.min(maxX, rx))
 
-              const y0 = plotY + plotH
-              const y1 = plotY + plotH - 8
-              const sY = Math.abs(dx - sx) < minGap ? y1 : y0
+          //     const y0 = plotY + plotH + 1.35
 
-              c.fillText('A', ax, y0)
-              c.fillText('D', dx, y0)
-              c.fillText('S', sx, sY)
-              c.fillText('R', rx, y0)
-            }
-          }
-          else {
-            // Draw phase labels for AD
-            const adRef = ref as AdRef
-            const rt = (isLive || playbackState !== 'running') ? stRef.current.ad[adRef.adIndex] : undefined
-            const attack = rt?.attack ?? adRef.params.attack
-            const decay = rt?.decay ?? adRef.params.decay
-            const total = attack + decay
+          //     c.fillText('A', ax, y0)
+          //     c.fillText('D', dx, y0)
+          //     c.fillText('S', sx, y0)
+          //     c.fillText('R', rx, y0)
+          //   }
+          // }
+          // else {
+          //   // Draw phase labels for AD
+          //   const adRef = ref as AdRef
+          //   const rt = (isLive || playbackState !== 'running') ? stRef.current.ad[adRef.adIndex] : undefined
+          //   const attack = rt?.attack ?? adRef.params.attack
+          //   const decay = rt?.decay ?? adRef.params.decay
+          //   const total = attack + decay
 
-            if (total > 0) {
-              const attackX = (attack / total) * plotW
+          //   if (total > 0) {
+          //     const attackX = (attack / total) * plotW
 
-              const minX = plotX + 3
-              const maxX = plotX + plotW - 3
-              const minGap = 10
+          //     const minX = plotX + 3
+          //     const maxX = plotX + plotW - 3
+          //     const minGap = 10
 
-              let ax = plotX + attackX / 2
-              let dx = plotX + (attackX + plotW) / 2
+          //     let ax = plotX + attackX / 2
+          //     let dx = plotX + (attackX + plotW) / 2
 
-              ax = Math.max(minX, Math.min(maxX, ax))
-              dx = Math.max(minX, Math.min(maxX, dx))
+          //     ax = Math.max(minX, Math.min(maxX, ax))
+          //     dx = Math.max(minX, Math.min(maxX, dx))
 
-              const y0 = plotY + plotH
-              const y1 = plotY + plotH - 8
-              const dY = Math.abs(dx - ax) < minGap ? y1 : y0
+          //     const y0 = plotY + plotH + 1.35
 
-              c.fillText('A', ax, y0)
-              c.fillText('D', dx, dY)
-            }
-          }
+          //     c.fillText('A', ax, y0)
+          //     c.fillText('D', dx, y0)
+          //   }
+          // }
 
           c.restore()
         },

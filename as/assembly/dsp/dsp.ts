@@ -70,6 +70,8 @@ export class Dsp {
   private ifThenNum: StaticArray<f64> = new StaticArray<f64>(64)
   private ifThenAux: StaticArray<i32> = new StaticArray<i32>(64)
   private ifThenHas: StaticArray<i32> = new StaticArray<i32>(64)
+  private ifCondC0: StaticArray<i32> = new StaticArray<i32>(64)
+  private ifUiPrev: StaticArray<i32> = new StaticArray<i32>(64)
 
   @inline
   private writeFinalOutAnalysers(left$: usize, right$: usize, block: i32, ringBase: i32): void {
@@ -106,6 +108,7 @@ export class Dsp {
     const ops = this.program.data.ops
     let pc = pcStart
     let ret: i32 = -1
+    const uiRecordStart: i32 = this.arrays.uiRecord
 
     const ifMaxDepth: i32 = 8
     const ifBase: i32 = this.ifStackDepth
@@ -125,6 +128,7 @@ export class Dsp {
         const condOutIndex = this.ifCondAux[frame]
         const baseSp = this.ifBaseSp[frame]
         ifDepth = f
+        this.arrays.uiRecord = this.ifUiPrev[frame]
 
         const cond$ = this.program.getOutBuffer(condOutIndex)
         const elseIdx = baseSp
@@ -346,6 +350,9 @@ export class Dsp {
               this.ifThenAux[frame] = this.stack.aux[thenIdx]
               this.ifThenHas[frame] = 1
             }
+            const prev: i32 = this.ifUiPrev[frame]
+            const c0: bool = this.ifCondC0[frame] !== 0
+            this.arrays.uiRecord = prev !== 0 && !c0 ? 1 : 0
             pc = elsePc
             continue
           }
@@ -372,10 +379,17 @@ export class Dsp {
             this.ifEndPc[frame] = ops[to - 1]
             this.ifElsePc[frame] = to
             this.ifThenBranchPc[frame] = thenBranchPc
-            this.ifCondAux[frame] = this.stack.aux[idx]
+            const condAux: i32 = this.stack.aux[idx]
+            const cond$: usize = this.program.getOutBuffer(condAux)
+            const c0: bool = load<f32>(cond$) != (0.0 as f32)
+            this.ifCondAux[frame] = condAux
             this.ifCondPc[frame] = ifPc
             this.ifBaseSp[frame] = this.stack.sp
             this.ifThenHas[frame] = 0
+            this.ifCondC0[frame] = c0 ? 1 : 0
+            const prev: i32 = this.arrays.uiRecord
+            this.ifUiPrev[frame] = prev
+            this.arrays.uiRecord = prev !== 0 && c0 ? 1 : 0
             ifDepth++
           }
           else {
@@ -413,6 +427,7 @@ export class Dsp {
       }
     }
     if (ifEnabled) this.ifStackDepth = ifBase
+    this.arrays.uiRecord = uiRecordStart
     return ret
   }
 
