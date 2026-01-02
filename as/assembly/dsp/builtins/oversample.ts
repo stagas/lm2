@@ -93,6 +93,7 @@ export function callOversample(
   tempCap: i32,
 ): void {
   // oversample(times, cb)
+  const baseSp: i32 = stack.sp
   if (posCount < 2) {
     stack.push(VmTag.Undef)
     return
@@ -236,7 +237,7 @@ export function callOversample(
     audio.smoothedCount = 0
 
     audio.outCursor = bodyBufBase
-    stack.reset()
+    stack.sp = baseSp
     audio.tHas = 0
     program.gensPool.restoreIndices(gens0)
 
