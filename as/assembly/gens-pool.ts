@@ -5,6 +5,7 @@ import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Sap, Sbp, Sbs, Shp, Slp, Speak } from './gen/svf'
 import { Mlp, Mhp } from './gen/moog'
+import { DiodeLadder } from './gen/diodeladder'
 import { Compressor } from './gen/compressor'
 import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
@@ -116,6 +117,7 @@ export class GensPool {
   private saps: GenPool<Sap> = new GenPool<Sap>(() => new Sap())
   private mlps: GenPool<Mlp> = new GenPool<Mlp>(() => new Mlp())
   private mhps: GenPool<Mhp> = new GenPool<Mhp>(() => new Mhp())
+  private diodeLadders: GenPool<DiodeLadder> = new GenPool<DiodeLadder>(() => new DiodeLadder())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -171,6 +173,7 @@ export class GensPool {
     this.saps.resetIndex()
     this.mlps.resetIndex()
     this.mhps.resetIndex()
+    this.diodeLadders.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -227,6 +230,7 @@ export class GensPool {
     this.saps.reset()
     this.mlps.reset()
     this.mhps.reset()
+    this.diodeLadders.reset()
   }
 
   get(op: Op): Gen {
@@ -339,6 +343,8 @@ export class GensPool {
         return this.mlps.get()
       case Op.Mhp:
         return this.mhps.get()
+      case Op.DiodeLadder:
+        return this.diodeLadders.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -396,5 +402,6 @@ export class GensPool {
     this.saps.copyFrom(source.saps)
     this.mlps.copyFrom(source.mlps)
     this.mhps.copyFrom(source.mhps)
+    this.diodeLadders.copyFrom(source.diodeLadders)
   }
 }

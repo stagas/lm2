@@ -112,6 +112,7 @@ export function callLp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(1) // gate enabled for LP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for biquad)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -207,6 +208,7 @@ export function callBp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(3) // gate enabled for BP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for biquad)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -314,6 +316,7 @@ export function callHp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(2) // gate enabled for HP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for biquad)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -409,6 +412,7 @@ export function callLs(
     hist[base + 2] = load<f32>(gain$)
     hist[base + 3] = f32(5) // gate enabled for LS filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for biquad)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -504,6 +508,7 @@ export function callHs(
     hist[base + 2] = load<f32>(gain$)
     hist[base + 3] = f32(6) // gate enabled for HS filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for biquad)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -599,6 +604,7 @@ export function callAp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(8) // gate enabled for AP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for biquad)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -694,6 +700,7 @@ export function callBs(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(4) // gate enabled for BS filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for biquad)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -800,6 +807,7 @@ export function callPeak(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(7) // gate enabled for Peak filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for biquad)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 

@@ -80,6 +80,7 @@ export enum Op {
   Sap,
   Mlp,
   Mhp,
+  DiodeLadder,
 }
 
 export enum SeqOp {
@@ -88,3 +89,7 @@ export enum SeqOp {
   Rest,
   Chord,
 }
+
+// Diode Ladder constants
+export const DIODELADDER_Q_COMP = 2.5
+export const DIODELADDER_K_COMP = 1.0

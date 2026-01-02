@@ -1,6 +1,7 @@
 import type { EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import { FILTER_DATA_OFFSET, FILTER_ENTRY_SIZE, FILTER_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
+import { DIODELADDER_K_COMP, DIODELADDER_Q_COMP } from '../../../as/assembly/shared.ts'
 import type { FilterRef } from '../bytecode/types.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { useEngineRuntimeStore } from '../store.ts'
@@ -460,8 +461,210 @@ function moogMagDb(type: string, freqHz: number, cutHz: number, q: number, sampl
   return 20 * Math.log10(Math.max(1e-12, mag))
 }
 
-function filterMagDb(type: string, freqHz: number, cutHz: number, q: number, gainDb: number,
-  sampleRate: number): number
+function diodeLadderMagDb(freqHz: number, cutHz: number, q: number, k: number, sampleRate: number): number {
+  // Small-signal (linearized) frequency response derived from `as/assembly/gen/diodeladder.ts`.
+  // We build a discrete-time LTI model around 0 via finite-difference Jacobian for one sample step,
+  // then evaluate H(e^{jw}) = C (zI - A)^-1 B + D.
+  const nyquist = Math.max(1, sampleRate / 2)
+  const cut = clamp(cutHz, 20, nyquist)
+  const qClamped = clamp(q, 0, 1)
+  const kClamped = clamp(k, 0, 1)
+
+  // Coefficients from updateCoeffs() (AssemblyScript version).
+  const K = kClamped * Math.PI
+  const ah = (K - 2.0) / (K + 2.0)
+  const bh = 2.0 / (K + 2.0)
+
+  const fbk = 20.0 * qClamped
+  const outA = 1.0 + 0.5 * fbk
+
+  // Keep the same cutoff compensation as the DSP.
+  const cutNorm = cut / nyquist
+  const qq = qClamped * qClamped
+  const comp = 1.0 + DIODELADDER_Q_COMP * qq + DIODELADDER_K_COMP * (kClamped * qClamped)
+  const cutComp = clamp((cutNorm / comp) * nyquist, 20, nyquist)
+
+  let a = Math.PI * (cutComp / nyquist)
+  a = 2.0 * Math.tan(0.5 * a)
+  const ainv = 1.0 / a
+  const a2 = a * a
+  const b = 2.0 * a + 1.0
+  const b2 = b * b
+  const c = 1.0 / (2.0 * a2 * a2 - 4.0 * a2 * b2 + b2 * b2)
+  const g0 = 2.0 * a2 * a2 * c
+  const g = g0 * bh
+
+  // Use sat=1 so soft() has unit slope at 0 (matches small-signal linearization intent).
+  const sat = 1.0
+  const soft = (x: number) => x / (1.0 / sat + Math.abs(x))
+
+  // One-step state update for x=[z0,z1,z2,z3,z4].
+  const step = (x: Float64Array, u: number): { x1: Float64Array; y: number } => {
+    const z0 = x[0]!
+    const z1 = x[1]!
+    const z2 = x[2]!
+    const z3 = x[3]!
+    const z4 = x[4]!
+
+    const s0 = (a2 * a * z0
+      + a2 * b * z1
+      + z2 * (b2 - 2.0 * a2) * a
+      + z3 * (b2 - 3.0 * a2) * b) * c
+    const s = bh * s0 - z4
+
+    let y5 = (g * u + s) / (1.0 + g * fbk)
+
+    const y0 = soft(u - fbk * y5)
+    y5 = g * y0 + s
+
+    const y4 = g0 * y0 + s0
+    const y3 = (b * y4 - z3) * ainv
+    const y2 = (b * y3 - a * y4 - z2) * ainv
+    const y1 = (b * y2 - a * y3 - z1) * ainv
+
+    const x1 = new Float64Array(5)
+    x1[0] = z0 + 4.0 * a * (y0 - y1 + y2)
+    x1[1] = z1 + 2.0 * a * (y1 - 2.0 * y2 + y3)
+    x1[2] = z2 + 2.0 * a * (y2 - 2.0 * y3 + y4)
+    x1[3] = z3 + 2.0 * a * (y3 - 2.0 * y4)
+    x1[4] = bh * y4 + ah * y5
+
+    return { x1, y: outA * y4 }
+  }
+
+  const n = 5
+  const eps = 1e-6
+  const x0 = new Float64Array(n) // all zeros
+  const base = step(x0, 0)
+
+  const A = new Float64Array(n * n)
+  const B = new Float64Array(n)
+  const C = new Float64Array(n)
+  let D = 0
+
+  for (let j = 0; j < n; j++) {
+    const xj = new Float64Array(n)
+    xj[j] = eps
+    const r = step(xj, 0)
+    for (let i = 0; i < n; i++) {
+      A[i * n + j] = (r.x1[i]! - base.x1[i]!) / eps
+    }
+    C[j] = (r.y - base.y) / eps
+  }
+  {
+    const r = step(x0, eps)
+    for (let i = 0; i < n; i++) {
+      B[i] = (r.x1[i]! - base.x1[i]!) / eps
+    }
+    D = (r.y - base.y) / eps
+  }
+
+  const w = (Math.PI * 2 * clamp(freqHz, 1e-6, nyquist)) / sampleRate
+  const zr = Math.cos(w)
+  const zi = Math.sin(w)
+
+  // Solve (zI - A) X = B for X, complex n x n elimination.
+  const mr = new Float64Array(n * n)
+  const mi = new Float64Array(n * n)
+  const br = new Float64Array(n)
+  const bi = new Float64Array(n)
+
+  for (let r = 0; r < n; r++) {
+    for (let c2 = 0; c2 < n; c2++) {
+      const idx = r * n + c2
+      mr[idx] = (r === c2 ? zr : 0) - A[idx]
+      mi[idx] = r === c2 ? zi : 0
+    }
+    br[r] = B[r]!
+    bi[r] = 0
+  }
+
+  for (let k2 = 0; k2 < n; k2++) {
+    let piv = k2
+    let best = 0
+    for (let r = k2; r < n; r++) {
+      const idx = r * n + k2
+      const mag2 = mr[idx] * mr[idx] + mi[idx] * mi[idx]
+      if (mag2 > best) {
+        best = mag2
+        piv = r
+      }
+    }
+    if (best < 1e-18) return -240
+
+    if (piv !== k2) {
+      for (let c2 = k2; c2 < n; c2++) {
+        const aidx = k2 * n + c2
+        const bidx = piv * n + c2
+        const tr = mr[aidx]
+        mr[aidx] = mr[bidx]
+        mr[bidx] = tr
+        const ti = mi[aidx]
+        mi[aidx] = mi[bidx]
+        mi[bidx] = ti
+      }
+      const trb = br[k2]
+      br[k2] = br[piv]
+      br[piv] = trb
+      const tib = bi[k2]
+      bi[k2] = bi[piv]
+      bi[piv] = tib
+    }
+
+    const kk = k2 * n + k2
+    const pr = mr[kk]
+    const pi = mi[kk]
+    const inv = 1 / (pr * pr + pi * pi)
+    const invr = pr * inv
+    const invi = -pi * inv
+
+    for (let c2 = k2; c2 < n; c2++) {
+      const idx = k2 * n + c2
+      const ar = mr[idx]
+      const ai = mi[idx]
+      mr[idx] = ar * invr - ai * invi
+      mi[idx] = ar * invi + ai * invr
+    }
+    {
+      const ar = br[k2]
+      const ai = bi[k2]
+      br[k2] = ar * invr - ai * invi
+      bi[k2] = ar * invi + ai * invr
+    }
+
+    for (let r = 0; r < n; r++) {
+      if (r === k2) continue
+      const rk = r * n + k2
+      const fr = mr[rk]
+      const fi = mi[rk]
+      if (fr === 0 && fi === 0) continue
+
+      for (let c2 = k2; c2 < n; c2++) {
+        const rc = r * n + c2
+        const kc = k2 * n + c2
+        const ar = mr[kc]
+        const ai = mi[kc]
+        mr[rc] -= fr * ar - fi * ai
+        mi[rc] -= fr * ai + fi * ar
+      }
+      br[r] -= fr * br[k2] - fi * bi[k2]
+      bi[r] -= fr * bi[k2] + fi * br[k2]
+    }
+  }
+
+  let Hr = D
+  let Hi = 0
+  for (let i = 0; i < n; i++) {
+    Hr += C[i]! * br[i]!
+    Hi += C[i]! * bi[i]!
+  }
+
+  const mag = Math.sqrt(Hr * Hr + Hi * Hi)
+  return 20 * Math.log10(Math.max(1e-12, mag))
+}
+
+function filterMagDb(type: string, freqHz: number, cutHz: number, q: number, gainDb: number, sampleRate: number,
+  resonance?: number, kParam?: number): number
 {
   // SVF filters
   if (type === 'slp' || type === 'shp' || type === 'sbp' || type === 'sbs' || type === 'speak' || type === 'sap') {
@@ -470,6 +673,10 @@ function filterMagDb(type: string, freqHz: number, cutHz: number, q: number, gai
   // Moog filters
   if (type === 'mlp' || type === 'mhp') {
     return moogMagDb(type, freqHz, cutHz, q, sampleRate)
+  }
+  // Diode ladder
+  if (type === 'diodeladder') {
+    return diodeLadderMagDb(freqHz, cutHz, resonance || q, kParam || 0, sampleRate)
   }
   return biquadMagDb(type, freqHz, cutHz, q, gainDb, sampleRate)
 }
@@ -516,8 +723,8 @@ export function useFilterWidget({
 }: UseFilterWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const refs = filterRefs ?? []
 
-  type Pt = { tsMod: number; cutoff: number; q?: number; gain?: number }
-  type St = { pts: Pt[]; cutoff: number; q?: number; gain?: number }
+  type Pt = { tsMod: number; cutoff: number; q?: number; gain?: number; resonance?: number; kParam?: number }
+  type St = { pts: Pt[]; cutoff: number; q?: number; gain?: number; resonance?: number; kParam?: number }
 
   const lastWritePosRef = useRef<number>(0)
   const stRef = useRef<Array<St | undefined>>([])
@@ -573,20 +780,24 @@ export function useFilterWidget({
         const p2 = raw[base + 2] ?? 0
         const gate = Math.floor(raw[base + 3] ?? 0)
         const tsMod = (Math.floor(raw[base + 4] ?? 0) >>> 0) & (MOD - 1)
+        const p5 = raw[base + 5] ?? 0
         if (idx < 0 || idx > 63) continue
 
-        // entry layout: idx, cutHz, qOrGain, gate, sampleCountMod
+        // entry layout: idx, cutHz, qOrGain, gate, sampleCountMod, extraParam
         // gate: 1..8 => lp,hp,bp,bs,ls,hs,peak,ap
+        // gate: 17 => diodeladder
         const isShelf = gate === 5 || gate === 6
         const isPeak = gate === 7
+        const isDiodeLadder = gate === 17
 
         let st = stRef.current[idx]
         if (!st) {
           st = {
             pts: [],
             cutoff: cutoff || 0,
-            ...(!isShelf ? { q: (p2 || 0.707) } : {}),
+            ...(!isShelf && !isDiodeLadder ? { q: (p2 || 0.707) } : {}),
             ...(isShelf ? { gain: p2 || 0 } : {}),
+            ...(isDiodeLadder ? { resonance: p2 || 0.5, kParam: p5 || 0.0 } : {}),
           }
           stRef.current[idx] = st
         }
@@ -596,8 +807,9 @@ export function useFilterWidget({
           tsMod,
           cutoff,
           ...(isShelf ? { gain: p2 } : {}),
-          ...(!isShelf ? { q: p2 } : {}),
+          ...(!isShelf && !isDiodeLadder ? { q: p2 } : {}),
           ...(isPeak ? { q: p2 } : {}),
+          ...(isDiodeLadder ? { resonance: p2, kParam: p5 } : {}),
         })
         const keep = 256
         if (pts.length > keep) pts.splice(0, pts.length - keep)
@@ -628,6 +840,12 @@ export function useFilterWidget({
       }
       if (best.gain !== undefined) {
         st.gain = (st.gain ?? best.gain) + (best.gain - (st.gain ?? best.gain)) * a
+      }
+      if (best.resonance !== undefined) {
+        st.resonance = (st.resonance ?? best.resonance) + (best.resonance - (st.resonance ?? best.resonance)) * a
+      }
+      if (best.kParam !== undefined) {
+        st.kParam = (st.kParam ?? best.kParam) + (best.kParam - (st.kParam ?? best.kParam)) * a
       }
     }
   }, [showWidgets, refs.length, isLive, playbackState, program1, audioContext, globalSampleCount])
@@ -676,10 +894,14 @@ export function useFilterWidget({
       || ref.filterType === 'sap'
 
     const isMoog = ref.filterType === 'mlp' || ref.filterType === 'mhp'
+    const isDiodeLadder = ref.filterType === 'diodeladder'
 
-    const cutoff = clamp(st?.cutoff ?? ref.params.cut, (isSvf || isMoog) ? 50 : minHz, maxHz)
-    const q = clamp(st?.q ?? ref.params.q, 0.01, (isSvf || isMoog) ? 0.985 : 20)
+    const cutoff = clamp(st?.cutoff ?? ref.params.cut, (isSvf || isMoog || isDiodeLadder) ? 20 : minHz, maxHz)
+    const q = clamp(st?.q ?? ref.params.q, 0.01, (isSvf || isMoog || isDiodeLadder) ? 0.985 : 20)
     const gain = st?.gain ?? ref.params.gain ?? 0
+
+    const dlQ = isDiodeLadder ? clamp(st?.resonance ?? ref.params.q ?? 0.5, 0, 1) : undefined
+    const dlK = isDiodeLadder ? clamp(st?.kParam ?? ref.params.gain ?? 0, 0, 1) : undefined
 
     const minDb = -60
     const maxDb = 24
@@ -768,7 +990,7 @@ export function useFilterWidget({
     for (let i = 0; i <= steps; i++) {
       const t = i / steps
       const hz = minHz * Math.exp(Math.log(maxHz / minHz) * t)
-      const db = filterMagDb(ref.filterType, hz, cutoff, q, gain, sr)
+      const db = filterMagDb(ref.filterType, hz, cutoff, q, gain, sr, dlQ, dlK)
       const px = t * chartW
       const py = dbToY(db)
       if (i === 0) c.moveTo(px, py)
@@ -792,6 +1014,11 @@ export function useFilterWidget({
     else if (ref.filterType === 'ls' || ref.filterType === 'hs') {
       c.fillText(`c:${cutTxt}`, 6, chartH - 10)
       c.fillText(`g:${gain >= 0 ? '+' : ''}${gain.toFixed(1)}dB`, 6, chartH)
+    }
+    else if (ref.filterType === 'diodeladder') {
+      c.fillText(`c:${cutTxt}`, 6, chartH - 20)
+      c.fillText(`q:${(dlQ ?? 0.5).toFixed(3)}`, 6, chartH - 10)
+      c.fillText(`k:${(dlK ?? 0).toFixed(3)}`, 6, chartH)
     }
     else {
       c.fillText(`c:${cutTxt}`, 6, chartH - 10)

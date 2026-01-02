@@ -49,6 +49,8 @@ export const builtinSyms: Record<string, number> = {
   sap: VmSym.Sap,
   mlp: VmSym.Mlp,
   mhp: VmSym.Mhp,
+  diodeladder: VmSym.DiodeLadder,
+  k: VmSym.K,
   euclid: VmSym.Euclid,
   lfosine: VmSym.LfoSine,
   lfotri: VmSym.LfoTri,

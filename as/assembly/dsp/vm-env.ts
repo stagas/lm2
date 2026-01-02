@@ -262,6 +262,10 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Mhp)
       return
     }
+    if (sym === VmSym.DiodeLadder) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.DiodeLadder)
+      return
+    }
     if (sym === VmSym.Note) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Note)
       return
