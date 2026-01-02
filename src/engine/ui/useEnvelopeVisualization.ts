@@ -105,7 +105,6 @@ export function useEnvelopeVisualization({
         column: ref.aboveLoc.column,
         length: Math.max(1, ref.aboveLoc.length),
         height,
-        culling: false,
         render: (c, x, y, w, h, _vx, _vw) => {
           c.save()
           c.translate(x, y)

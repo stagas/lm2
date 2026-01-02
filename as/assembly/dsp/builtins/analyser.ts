@@ -1,5 +1,6 @@
 // dprint-ignore-file
 import { Program } from '../../program'
+import { Dsp } from '../dsp'
 import { VmTag } from '../types'
 import { VmSym } from '../vm-sym'
 import { VmAudio } from '../vm-audio'
@@ -22,17 +23,13 @@ export function callAnalyser(
   program: Program,
   length: i32,
   analyserRingBase: i32,
+  dsp: Dsp,
 ): void {
-  // analyser(audio, index=0)
+  // analyser(audio, index=0) or analyser([audio1, audio2, ...], index=0)
   if (posCount < 1) {
     stack.push(VmTag.Undef)
     return
   }
-
-  const aTag = posTags[0] as VmTag
-  const aNum = posNums[0]
-  const aAux = posAux[0]
-  const aPtr$ = audio.toAudioPtr(aTag, aNum, aAux, length, program)
 
   // Optional second positional argument or named argument selects analyser index
   let analyserIndex = 0
@@ -48,15 +45,54 @@ export function callAnalyser(
 
   if (analyserIndex < 0) analyserIndex = 0
 
-  const analyser$ = program.analyserOutsPool.get(analyserIndex)
-  const baseOffset = analyserRingBase
-  // Copy samples into the analyser ring buffer at current base
-  for (let i = 0; i < length; i++) {
-    const s = load<f32>(aPtr$ + (i * 4) as usize)
-    store<f32>(analyser$ + ((baseOffset + i) * 4) as usize, s)
-  }
+  const argTag = posTags[0] as VmTag
+  const argNum = posNums[0]
+  const argAux = posAux[0]
 
-  // Return the input unchanged
-  if (aTag === VmTag.Audio) stack.push(VmTag.Audio, 0.0, aAux)
-  else stack.push(aTag, aNum, aAux)
+  if (argTag === VmTag.Arr) {
+    // Handle array case: analyser([audio1, audio2, ...], index)
+    const arrId: i32 = argAux
+    if (arrId < 0 || arrId >= dsp.arrays.count) {
+      // Invalid array, return undefined
+      stack.push(VmTag.Undef)
+      return
+    }
+
+    const arrLen = dsp.arrays.len[arrId]
+    const start: i32 = dsp.arrays.start[arrId]
+
+    // Copy each array element to consecutive analyser buffers
+    for (let elemIdx = 0; elemIdx < arrLen; elemIdx++) {
+      const elemTag = dsp.arrays.elemTag[start + elemIdx] as VmTag
+      const elemNum = dsp.arrays.elemNum[start + elemIdx]
+      const elemAux = dsp.arrays.elemAux[start + elemIdx]
+      const elemPtr$ = audio.toAudioPtr(elemTag, elemNum, elemAux, length, program)
+
+      const analyser$ = program.analyserOutsPool.get(analyserIndex + elemIdx)
+      const baseOffset = analyserRingBase
+      // Copy samples into the analyser ring buffer at current base
+      for (let i = 0; i < length; i++) {
+        const s = load<f32>(elemPtr$ + (i * 4) as usize)
+        store<f32>(analyser$ + ((baseOffset + i) * 4) as usize, s)
+      }
+    }
+
+    // Return the input array unchanged
+    stack.push(VmTag.Arr, 0.0, arrId)
+  } else {
+    // Handle single signal case: analyser(audio, index)
+    const aPtr$ = audio.toAudioPtr(argTag, argNum, argAux, length, program)
+
+    const analyser$ = program.analyserOutsPool.get(analyserIndex)
+    const baseOffset = analyserRingBase
+    // Copy samples into the analyser ring buffer at current base
+    for (let i = 0; i < length; i++) {
+      const s = load<f32>(aPtr$ + (i * 4) as usize)
+      store<f32>(analyser$ + ((baseOffset + i) * 4) as usize, s)
+    }
+
+    // Return the input unchanged
+    if (argTag === VmTag.Audio) stack.push(VmTag.Audio, 0.0, argAux)
+    else stack.push(argTag, argNum, argAux)
+  }
 }

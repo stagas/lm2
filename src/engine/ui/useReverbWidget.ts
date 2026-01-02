@@ -81,7 +81,6 @@ export function useReverbWidget({
         column: ref.aboveLoc.column,
         length: Math.max(1, ref.aboveLoc.length),
         height: 40,
-        culling: false,
         render: (c, x, y, w, h) => {
           const st = stRef.current[ref.reverbIndex | 0]
           if (st) {
