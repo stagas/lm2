@@ -1122,6 +1122,32 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'saw(hz) |> sap($, cutoff:1000, q:1) |> out($)',
     ],
   },
+  mlp: {
+    name: 'mlp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be low-passed' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Resonance factor' },
+    ],
+    returnType: 'number',
+    description: 'Low-passes a signal with a Moog ladder filter.',
+    examples: [
+      'saw(hz) |> mlp($, cutoff:1000) |> out($)',
+    ],
+  },
+  mhp: {
+    name: 'mhp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be high-passed' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Resonance factor' },
+    ],
+    returnType: 'number',
+    description: 'High-passes a signal with a Moog ladder filter.',
+    examples: [
+      'saw(hz) |> mhp($, cutoff:200) |> out($)',
+    ],
+  },
   lfosine: {
     name: 'lfosine',
     parameters: [

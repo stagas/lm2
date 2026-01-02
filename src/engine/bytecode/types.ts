@@ -131,7 +131,7 @@ export type LimiterRef = {
   }
 }
 
-export type FilterType = 'lp' | 'hp' | 'bp' | 'bs' | 'ls' | 'hs' | 'peak' | 'ap' | 'slp' | 'shp' | 'sbp' | 'sbs' | 'speak' | 'sap'
+export type FilterType = 'lp' | 'hp' | 'bp' | 'bs' | 'ls' | 'hs' | 'peak' | 'ap' | 'slp' | 'shp' | 'sbp' | 'sbs' | 'speak' | 'sap' | 'mlp' | 'mhp'
 
 export type FilterRef = {
   filterType: FilterType

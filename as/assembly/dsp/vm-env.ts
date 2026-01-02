@@ -254,6 +254,14 @@ export class VmEnv {
       stack.push(VmTag.Builtin, 0.0, VmSym.Sap)
       return
     }
+    if (sym === VmSym.Mlp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Mlp)
+      return
+    }
+    if (sym === VmSym.Mhp) {
+      stack.push(VmTag.Builtin, 0.0, VmSym.Mhp)
+      return
+    }
     if (sym === VmSym.Note) {
       stack.push(VmTag.Builtin, 0.0, VmSym.Note)
       return

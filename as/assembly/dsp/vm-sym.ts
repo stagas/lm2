@@ -182,4 +182,6 @@ export enum VmSym {
   Sbs,
   Speak,
   Sap,
+  Mlp,
+  Mhp,
 }

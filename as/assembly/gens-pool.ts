@@ -4,6 +4,7 @@ import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Sap, Sbp, Sbs, Shp, Slp, Speak } from './gen/svf'
+import { Mlp, Mhp } from './gen/moog'
 import { Compressor } from './gen/compressor'
 import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
@@ -113,6 +114,8 @@ export class GensPool {
   private sbss: GenPool<Sbs> = new GenPool<Sbs>(() => new Sbs())
   private speaks: GenPool<Speak> = new GenPool<Speak>(() => new Speak())
   private saps: GenPool<Sap> = new GenPool<Sap>(() => new Sap())
+  private mlps: GenPool<Mlp> = new GenPool<Mlp>(() => new Mlp())
+  private mhps: GenPool<Mhp> = new GenPool<Mhp>(() => new Mhp())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -166,6 +169,8 @@ export class GensPool {
     this.sbss.resetIndex()
     this.speaks.resetIndex()
     this.saps.resetIndex()
+    this.mlps.resetIndex()
+    this.mhps.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -220,6 +225,8 @@ export class GensPool {
     this.sbss.reset()
     this.speaks.reset()
     this.saps.reset()
+    this.mlps.reset()
+    this.mhps.reset()
   }
 
   get(op: Op): Gen {
@@ -328,6 +335,10 @@ export class GensPool {
         return this.speaks.get()
       case Op.Sap:
         return this.saps.get()
+      case Op.Mlp:
+        return this.mlps.get()
+      case Op.Mhp:
+        return this.mhps.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -383,5 +394,7 @@ export class GensPool {
     this.sbss.copyFrom(source.sbss)
     this.speaks.copyFrom(source.speaks)
     this.saps.copyFrom(source.saps)
+    this.mlps.copyFrom(source.mlps)
+    this.mhps.copyFrom(source.mhps)
   }
 }

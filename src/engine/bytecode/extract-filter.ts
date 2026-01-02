@@ -55,6 +55,10 @@ function getFilterType(calleeName: string): FilterType | null {
       return 'speak'
     case 'sap':
       return 'sap'
+    case 'mlp':
+      return 'mlp'
+    case 'mhp':
+      return 'mhp'
     default:
       return null
   }
@@ -62,7 +66,7 @@ function getFilterType(calleeName: string): FilterType | null {
 
 function getDefaultParams(filterType: FilterType): { cutoff: number; q: number; gain?: number } {
   // SVF filters use different default Q
-  if (filterType.startsWith('s')) {
+  if (filterType.startsWith('s') || filterType.startsWith('m')) {
     const baseParams = { cutoff: 1000, q: 0.333 }
     return baseParams
   }
