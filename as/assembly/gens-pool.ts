@@ -6,6 +6,7 @@ import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Sap, Sbp, Sbs, Shp, Slp, Speak } from './gen/svf'
 import { Mlp, Mhp } from './gen/moog'
 import { DiodeLadder } from './gen/diodeladder'
+import { Olp, Ohp } from './gen/onepole'
 import { Compressor } from './gen/compressor'
 import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
@@ -126,9 +127,11 @@ export class GensPool {
   private mlps: GenPool<Mlp> = new GenPool<Mlp>(() => new Mlp())
   private mhps: GenPool<Mhp> = new GenPool<Mhp>(() => new Mhp())
   private diodeLadders: GenPool<DiodeLadder> = new GenPool<DiodeLadder>(() => new DiodeLadder())
+  private olps: GenPool<Olp> = new GenPool<Olp>(() => new Olp())
+  private ohps: GenPool<Ohp> = new GenPool<Ohp>(() => new Ohp())
 
   // Keep in sync with `saveIndices()`/`restoreIndices()`.
-  static readonly INDICES_COUNT: i32 = 55
+  static readonly INDICES_COUNT: i32 = 57
 
   @inline
   saveIndices(out: StaticArray<i32>): void {
@@ -188,6 +191,8 @@ export class GensPool {
     out[i++] = this.mlps.getIndex()
     out[i++] = this.mhps.getIndex()
     out[i++] = this.diodeLadders.getIndex()
+    out[i++] = this.olps.getIndex()
+    out[i++] = this.ohps.getIndex()
   }
 
   @inline
@@ -248,6 +253,8 @@ export class GensPool {
     this.mlps.setIndex(src[i++])
     this.mhps.setIndex(src[i++])
     this.diodeLadders.setIndex(src[i++])
+    this.olps.setIndex(src[i++])
+    this.ohps.setIndex(src[i++])
   }
   resetIndices(): void {
     this.sines.resetIndex()
@@ -305,6 +312,8 @@ export class GensPool {
     this.mlps.resetIndex()
     this.mhps.resetIndex()
     this.diodeLadders.resetIndex()
+    this.olps.resetIndex()
+    this.ohps.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -362,6 +371,8 @@ export class GensPool {
     this.mlps.reset()
     this.mhps.reset()
     this.diodeLadders.reset()
+    this.olps.reset()
+    this.ohps.reset()
   }
 
   get(op: Op): Gen {
@@ -476,6 +487,10 @@ export class GensPool {
         return this.mhps.get()
       case Op.DiodeLadder:
         return this.diodeLadders.get()
+      case Op.Olp:
+        return this.olps.get()
+      case Op.Ohp:
+        return this.ohps.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -534,5 +549,7 @@ export class GensPool {
     this.mlps.copyFrom(source.mlps)
     this.mhps.copyFrom(source.mhps)
     this.diodeLadders.copyFrom(source.diodeLadders)
+    this.olps.copyFrom(source.olps)
+    this.ohps.copyFrom(source.ohps)
   }
 }

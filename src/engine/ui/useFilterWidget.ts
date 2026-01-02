@@ -663,6 +663,38 @@ function diodeLadderMagDb(freqHz: number, cutHz: number, q: number, k: number, s
   return 20 * Math.log10(Math.max(1e-12, mag))
 }
 
+function onePoleMagDb(type: string, freqHz: number, cutHz: number, sampleRate: number): number {
+  const nyquist = sampleRate / 2
+  const cutNorm = cutHz / nyquist
+  const alpha = cutNorm / (cutNorm + 1.0 / (2.0 * Math.PI))
+
+  const w = (Math.PI * 2 * clamp(freqHz, 1e-6, nyquist)) / sampleRate
+  const cos1 = Math.cos(w)
+  const sin1 = Math.sin(w)
+
+  let nr: number, ni: number, dr: number, di: number
+  if (type === 'olp') {
+    // Low-pass: H(z) = alpha / (1 - (1 - alpha) * z^-1)
+    // Transfer function: H(z) = alpha / (1 - (1 - alpha) * z^-1)
+    nr = alpha
+    ni = 0
+    dr = 1 - (1 - alpha) * cos1
+    di = (1 - alpha) * sin1
+  } else {
+    // High-pass: H(z) = (1 - alpha) / (1 - (1 - alpha) * z^-1)
+    nr = 1 - alpha
+    ni = 0
+    dr = 1 - (1 - alpha) * cos1
+    di = (1 - alpha) * sin1
+  }
+
+  const n2 = nr * nr + ni * ni
+  const d2 = dr * dr + di * di
+  const mag = d2 > 0 ? Math.sqrt(n2 / d2) : 1
+  const m = Math.max(1e-12, mag)
+  return 20 * Math.log10(m)
+}
+
 function filterMagDb(type: string, freqHz: number, cutHz: number, q: number, gainDb: number, sampleRate: number,
   resonance?: number, kParam?: number): number
 {
@@ -677,6 +709,10 @@ function filterMagDb(type: string, freqHz: number, cutHz: number, q: number, gai
   // Diode ladder
   if (type === 'diodeladder') {
     return diodeLadderMagDb(freqHz, cutHz, resonance || q, kParam || 0, sampleRate)
+  }
+  // One pole filters
+  if (type === 'olp' || type === 'ohp') {
+    return onePoleMagDb(type, freqHz, cutHz, sampleRate)
   }
   return biquadMagDb(type, freqHz, cutHz, q, gainDb, sampleRate)
 }
@@ -785,9 +821,11 @@ export function useFilterWidget({
 
         // entry layout: idx, cutHz, qOrGain, gate, sampleCountMod, extraParam
         // gate: 1..8 => lp,hp,bp,bs,ls,hs,peak,ap
+        // gate: 9 => olp, 10 => ohp
         // gate: 17 => diodeladder
         const isShelf = gate === 5 || gate === 6
         const isPeak = gate === 7
+        const isOnePole = gate === 9 || gate === 10
         const isDiodeLadder = gate === 17
 
         let st = stRef.current[idx]
@@ -795,7 +833,7 @@ export function useFilterWidget({
           st = {
             pts: [],
             cutoff: cutoff || 0,
-            ...(!isShelf && !isDiodeLadder ? { q: (p2 || 0.707) } : {}),
+            ...(!isShelf && !isDiodeLadder && !isOnePole ? { q: (p2 || 0.707) } : {}),
             ...(isShelf ? { gain: p2 || 0 } : {}),
             ...(isDiodeLadder ? { resonance: p2 || 0.5, kParam: p5 || 0.0 } : {}),
           }
@@ -807,7 +845,7 @@ export function useFilterWidget({
           tsMod,
           cutoff,
           ...(isShelf ? { gain: p2 } : {}),
-          ...(!isShelf && !isDiodeLadder ? { q: p2 } : {}),
+          ...(!isShelf && !isDiodeLadder && !isOnePole ? { q: p2 } : {}),
           ...(isPeak ? { q: p2 } : {}),
           ...(isDiodeLadder ? { resonance: p2, kParam: p5 } : {}),
         })
@@ -895,8 +933,9 @@ export function useFilterWidget({
 
     const isMoog = ref.filterType === 'mlp' || ref.filterType === 'mhp'
     const isDiodeLadder = ref.filterType === 'diodeladder'
+    const isOnePole = ref.filterType === 'olp' || ref.filterType === 'ohp'
 
-    const cutoff = clamp(st?.cutoff ?? ref.params.cut, (isSvf || isMoog || isDiodeLadder) ? 20 : minHz, maxHz)
+    const cutoff = clamp(st?.cutoff ?? ref.params.cut, (isSvf || isMoog || isDiodeLadder || isOnePole) ? 20 : minHz, maxHz)
     const q = clamp(st?.q ?? ref.params.q, 0.01, (isSvf || isMoog || isDiodeLadder) ? 0.985 : 20)
     const gain = st?.gain ?? ref.params.gain ?? 0
 
@@ -1019,6 +1058,9 @@ export function useFilterWidget({
       c.fillText(`c:${cutTxt}`, 6, chartH - 20)
       c.fillText(`q:${(dlQ ?? 0.5).toFixed(3)}`, 6, chartH - 10)
       c.fillText(`k:${(dlK ?? 0).toFixed(3)}`, 6, chartH)
+    }
+    else if (ref.filterType === 'olp' || ref.filterType === 'ohp') {
+      c.fillText(`c:${cutTxt}`, 6, chartH)
     }
     else {
       c.fillText(`c:${cutTxt}`, 6, chartH - 10)
