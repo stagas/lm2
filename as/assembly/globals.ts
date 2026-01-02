@@ -10,6 +10,10 @@ export let sampleRate: f32 = 48000
 
 // @ts-ignore
 @global
+export let baseSampleRate: f32 = 48000
+
+// @ts-ignore
+@global
 export let nyquist: f32 = sampleRate * 0.5 - sampleRate * 0.1
 
 // @ts-ignore
@@ -44,6 +48,7 @@ export function setVmError(code: i32, pc: i32): void {
 
 export function setSampleRateAndNyquist(sr: f32): void {
   sampleRate = sr
+  baseSampleRate = sr
   nyquist = sr * 0.5 - sr * 0.1
 }
 
