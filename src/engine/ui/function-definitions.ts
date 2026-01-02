@@ -848,7 +848,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       },
     ],
     returnType: '[L:number, R:number]',
-    description: 'Feedback Delay Network (FDN) reverb with 8 delay lines, Hadamard feedback matrix, and modulated fractional delays; returns wet stereo signal.',
+    description:
+      'Feedback Delay Network (FDN) reverb with 8 delay lines, Hadamard feedback matrix, and modulated fractional delays; returns wet stereo signal.',
     examples: [
       'saw(hz) |> fdn($, roomSize:0.8, decay:0.6) |> out($)',
       'saw(hz) |> fdn($, roomSize:1.0, decay:0.5, damping:0.3, modulationDepth:0.8) |> out($)',
@@ -882,7 +883,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       },
     ],
     returnType: '[L:number, R:number]',
-    description: 'Velvet noise reverb using 8 delay lines with rich texture and stereo decorrelation; returns wet stereo signal.',
+    description:
+      'Velvet noise reverb using 8 delay lines with rich texture and stereo decorrelation; returns wet stereo signal.',
     examples: [
       'saw(hz) |> velvet($, roomSize:0.8, damping:0.3) |> out($)',
       '[saw(220), saw(221)] |> velvet($, roomSize:1.2, damping:0.2) |> out($)',
@@ -1040,6 +1042,84 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description: 'Applies an all-pass filter for phase shifting.',
     examples: [
       'saw(hz) |> ap($, cutoff:1000, q:1) |> out($)',
+    ],
+  },
+  slp: {
+    name: 'slp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be low-passed' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Low-passes a signal with an SVF (State Variable Filter).',
+    examples: [
+      'saw(hz) |> slp($, cutoff:500) |> out($)',
+    ],
+  },
+  shp: {
+    name: 'shp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be high-passed' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'High-passes a signal with an SVF (State Variable Filter).',
+    examples: [
+      'saw(hz) |> shp($, cutoff:200) |> out($)',
+    ],
+  },
+  sbp: {
+    name: 'sbp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be band-passed' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Band-passes a signal with an SVF (State Variable Filter).',
+    examples: [
+      'saw(hz) |> sbp($, cutoff:1000, q:2) |> out($)',
+    ],
+  },
+  sbs: {
+    name: 'sbs',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be band-stopped' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Band-stops (notches) a signal with an SVF (State Variable Filter).',
+    examples: [
+      'saw(hz) |> sbs($, cutoff:1000, q:5) |> out($)',
+    ],
+  },
+  speak: {
+    name: 'speak',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be peaked' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Applies a peaking filter with an SVF (State Variable Filter).',
+    examples: [
+      'saw(hz) |> speak($, cutoff:1000, q:5) |> out($)',
+    ],
+  },
+  sap: {
+    name: 'sap',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be all-passed' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Q factor' },
+    ],
+    returnType: 'number',
+    description: 'Applies an all-pass filter with an SVF (State Variable Filter) for phase shifting.',
+    examples: [
+      'saw(hz) |> sap($, cutoff:1000, q:1) |> out($)',
     ],
   },
   lfosine: {

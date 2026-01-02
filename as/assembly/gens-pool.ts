@@ -3,6 +3,7 @@ import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
+import { Sap, Sbp, Sbs, Shp, Slp, Speak } from './gen/svf'
 import { Compressor } from './gen/compressor'
 import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
@@ -106,6 +107,12 @@ export class GensPool {
   private fdns: GenPool<Fdn> = new GenPool<Fdn>(() => new Fdn())
   private velvets: GenPool<Velvet> = new GenPool<Velvet>(() => new Velvet())
   private dcs: GenPool<DC> = new GenPool<DC>(() => new DC())
+  private slps: GenPool<Slp> = new GenPool<Slp>(() => new Slp())
+  private shps: GenPool<Shp> = new GenPool<Shp>(() => new Shp())
+  private sbps: GenPool<Sbp> = new GenPool<Sbp>(() => new Sbp())
+  private sbss: GenPool<Sbs> = new GenPool<Sbs>(() => new Sbs())
+  private speaks: GenPool<Speak> = new GenPool<Speak>(() => new Speak())
+  private saps: GenPool<Sap> = new GenPool<Sap>(() => new Sap())
   resetIndices(): void {
     this.sines.resetIndex()
     this.tris.resetIndex()
@@ -153,6 +160,12 @@ export class GensPool {
     this.fdns.resetIndex()
     this.velvets.resetIndex()
     this.dcs.resetIndex()
+    this.slps.resetIndex()
+    this.shps.resetIndex()
+    this.sbps.resetIndex()
+    this.sbss.resetIndex()
+    this.speaks.resetIndex()
+    this.saps.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -201,6 +214,12 @@ export class GensPool {
     this.fdns.reset()
     this.velvets.reset()
     this.dcs.reset()
+    this.slps.reset()
+    this.shps.reset()
+    this.sbps.reset()
+    this.sbss.reset()
+    this.speaks.reset()
+    this.saps.reset()
   }
 
   get(op: Op): Gen {
@@ -297,6 +316,18 @@ export class GensPool {
         return this.velvets.get()
       case Op.Dc:
         return this.dcs.get()
+      case Op.Slp:
+        return this.slps.get()
+      case Op.Shp:
+        return this.shps.get()
+      case Op.Sbp:
+        return this.sbps.get()
+      case Op.Sbs:
+        return this.sbss.get()
+      case Op.Speak:
+        return this.speaks.get()
+      case Op.Sap:
+        return this.saps.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -346,5 +377,11 @@ export class GensPool {
     this.fdns.copyFrom(source.fdns)
     this.velvets.copyFrom(source.velvets)
     this.dcs.copyFrom(source.dcs)
+    this.slps.copyFrom(source.slps)
+    this.shps.copyFrom(source.shps)
+    this.sbps.copyFrom(source.sbps)
+    this.sbss.copyFrom(source.sbss)
+    this.speaks.copyFrom(source.speaks)
+    this.saps.copyFrom(source.saps)
   }
 }

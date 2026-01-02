@@ -43,12 +43,30 @@ function getFilterType(calleeName: string): FilterType | null {
       return 'peak'
     case 'ap':
       return 'ap'
+    case 'slp':
+      return 'slp'
+    case 'shp':
+      return 'shp'
+    case 'sbp':
+      return 'sbp'
+    case 'sbs':
+      return 'sbs'
+    case 'speak':
+      return 'speak'
+    case 'sap':
+      return 'sap'
     default:
       return null
   }
 }
 
 function getDefaultParams(filterType: FilterType): { cutoff: number; q: number; gain?: number } {
+  // SVF filters use different default Q
+  if (filterType.startsWith('s')) {
+    const baseParams = { cutoff: 1000, q: 0.333 }
+    return baseParams
+  }
+
   const baseParams = { cutoff: 1000, q: 0.707 }
   switch (filterType) {
     case 'ls':

@@ -176,4 +176,10 @@ export enum VmSym {
   HfDecay,
   ModDepth,
   Dc,
+  Slp,
+  Shp,
+  Sbp,
+  Sbs,
+  Speak,
+  Sap,
 }

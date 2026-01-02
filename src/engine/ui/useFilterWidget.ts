@@ -141,6 +141,122 @@ function biquadCoeffs(type: string, cutHz: number, q: number, gainDb: number, sa
   return { a0: 1, a1: 0, a2: 0, b0: 1, b1: 0, b2: 0 }
 }
 
+function svfMagDb(type: string, freqHz: number, cutHz: number, q: number, sampleRate: number): number {
+  // Matches the DSP implementation in `as/assembly/gen/svf.ts`.
+  const nyquist = Math.max(1, sampleRate / 2)
+  const cut = clamp(cutHz, 50, nyquist)
+  const Q = clamp(q, 0.01, 0.985)
+
+  const g = Math.tan((Math.PI * cut) / sampleRate)
+  const k = 2.0 - 2.0 * Q
+  const a1 = 1.0 / (1.0 + g * (g + k))
+  const a2 = g * a1
+  const a3 = g * a2
+
+  // State-space (x = [c1, c2]) derived from the DSP update equations:
+  // c1' = (2a1-1)c1 + (-2a2)c2 + (2a2)u
+  // c2' = (2a2)c1 + (1-2a3)c2 + (2a3)u
+  const A11 = 2 * a1 - 1
+  const A12 = -2 * a2
+  const A21 = 2 * a2
+  const A22 = 1 - 2 * a3
+  const B1 = 2 * a2
+  const B2 = 2 * a3
+
+  // Output selection (y = Cx + Du).
+  let C1 = 0
+  let C2 = 0
+  let D = 0
+
+  if (type === 'slp') {
+    // v2
+    C1 = a2
+    C2 = 1 - a3
+    D = a3
+  }
+  else if (type === 'sbp') {
+    // v1
+    C1 = a1
+    C2 = -a2
+    D = a2
+  }
+  else if (type === 'shp') {
+    // v0 - k*v1 - v2
+    C1 = -k * a1 - a2
+    C2 = k * a2 - (1 - a3)
+    D = 1 - k * a2 - a3
+  }
+  else if (type === 'sbs') {
+    // v0 - k*v1
+    C1 = -k * a1
+    C2 = k * a2
+    D = 1 - k * a2
+  }
+  else if (type === 'speak') {
+    // v0 - k*v1 - 2*v2
+    C1 = -k * a1 - 2 * a2
+    C2 = k * a2 - 2 * (1 - a3)
+    D = 1 - k * a2 - 2 * a3
+  }
+  else if (type === 'sap') {
+    // v0 - 2*k*v1
+    C1 = -2 * k * a1
+    C2 = 2 * k * a2
+    D = 1 - 2 * k * a2
+  }
+
+  const w = (Math.PI * 2 * clamp(freqHz, 1e-6, nyquist)) / sampleRate
+  const zr = Math.cos(w)
+  const zi = Math.sin(w)
+
+  // (zI - A) inverse times B via 2x2 adjugate.
+  // m11 = z - A11 (complex), m22 = z - A22 (complex), m12 = -A12 (real), m21 = -A21 (real)
+  const m11r = zr - A11
+  const m11i = zi
+  const m22r = zr - A22
+  const m22i = zi
+  const m12r = -A12
+  const m21r = -A21
+
+  // det = m11*m22 - m12*m21
+  const p1r = m11r * m22r - m11i * m22i
+  const p1i = m11r * m22i + m11i * m22r
+  const p2r = m12r * m21r
+  const detr = p1r - p2r
+  const deti = p1i
+  const den = detr * detr + deti * deti
+  if (den <= 0) return -240
+
+  // y = adj(zI-A) * B
+  // y1 = m22*B1 + (-m12)*B2
+  const y1r = m22r * B1 + (-m12r) * B2
+  const y1i = m22i * B1
+  // y2 = (-m21)*B1 + m11*B2
+  const y2r = (-m21r) * B1 + m11r * B2
+  const y2i = m11i * B2
+
+  // x = y / det
+  const x1r = (y1r * detr + y1i * deti) / den
+  const x1i = (y1i * detr - y1r * deti) / den
+  const x2r = (y2r * detr + y2i * deti) / den
+  const x2i = (y2i * detr - y2r * deti) / den
+
+  const Hr = C1 * x1r + C2 * x2r + D
+  const Hi = C1 * x1i + C2 * x2i
+  const mag = Math.sqrt(Hr * Hr + Hi * Hi)
+  return 20 * Math.log10(Math.max(1e-12, mag))
+}
+
+function filterMagDb(type: string, freqHz: number, cutHz: number, q: number, gainDb: number,
+  sampleRate: number): number
+{
+  // SVF filters
+  if (type === 'slp' || type === 'shp' || type === 'sbp' || type === 'sbs' || type === 'speak' || type === 'sap') {
+    return svfMagDb(type, freqHz, cutHz, q, sampleRate)
+  }
+  return biquadMagDb(type, freqHz, cutHz, q, gainDb, sampleRate)
+}
+
 function biquadMagDb(type: string, freqHz: number, cutHz: number, q: number, gainDb: number,
   sampleRate: number): number
 {
@@ -335,8 +451,15 @@ export function useFilterWidget({
     const maxHz = Math.min(20000, nyquist)
 
     const st = stRef.current[ref.filterIndex | 0]
-    const cutoff = clamp(st?.cutoff ?? ref.params.cut, minHz, maxHz)
-    const q = clamp(st?.q ?? ref.params.q, 0.01, 20)
+    const isSvf = ref.filterType === 'slp'
+      || ref.filterType === 'shp'
+      || ref.filterType === 'sbp'
+      || ref.filterType === 'sbs'
+      || ref.filterType === 'speak'
+      || ref.filterType === 'sap'
+
+    const cutoff = clamp(st?.cutoff ?? ref.params.cut, isSvf ? 50 : minHz, maxHz)
+    const q = clamp(st?.q ?? ref.params.q, 0.01, isSvf ? 0.985 : 20)
     const gain = st?.gain ?? ref.params.gain ?? 0
 
     const minDb = -60
@@ -352,7 +475,7 @@ export function useFilterWidget({
 
     c.strokeStyle = 'rgba(150,150,150,0.25)'
     c.lineWidth = 1
-    c.strokeRect(0.5, chartY + 0.5, chartW - 1, chartH - 1)
+    c.strokeRect(0, chartY + 0.5, chartW, chartH)
 
     c.font = '9px "Outfit"'
     c.textBaseline = 'middle'
@@ -392,7 +515,9 @@ export function useFilterWidget({
 
     const freqMarks = w < 250
       ? w < 200
-        ? [50, 300, 1000, 3000, 10000]
+        ? w < 100
+          ? [50, 1000, 10000]
+          : [50, 300, 1000, 3000, 10000]
         : [50, 100, 300, 1000, 3000, 10000]
       : [50, 100, 200, 500, 1000, 2000, 5000, 10000]
     c.textAlign = 'center'
@@ -424,7 +549,7 @@ export function useFilterWidget({
     for (let i = 0; i <= steps; i++) {
       const t = i / steps
       const hz = minHz * Math.exp(Math.log(maxHz / minHz) * t)
-      const db = biquadMagDb(ref.filterType, hz, cutoff, q, gain, sr)
+      const db = filterMagDb(ref.filterType, hz, cutoff, q, gain, sr)
       const px = t * chartW
       const py = dbToY(db)
       if (i === 0) c.moveTo(px, py)

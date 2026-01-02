@@ -72,6 +72,12 @@ export enum Op {
   Fdn,
   Velvet,
   Dc,
+  Slp,
+  Shp,
+  Sbp,
+  Sbs,
+  Speak,
+  Sap,
 }
 
 export enum SeqOp {
