@@ -1,5 +1,6 @@
 // dprint-ignore-file
-import { sampleRate } from '../globals'
+import { sampleRate, baseSampleRate } from '../globals'
+import { cubic } from '../util'
 import { Gen } from './gen'
 
 const NUM_DELAYS: i32 = 12
@@ -11,26 +12,10 @@ const WET_GAIN: f32 = 0.18
 const EXC_2PI_1: f64 = 6.28
 const EXC_2PI_2: f64 = 6.2847
 
-const SR_REF: f64 = 48000.0
-
 // @ts-ignore
 @inline
 function clamp01(x: f32): f32 {
   return x < 0.0 ? 0.0 : x > 1.0 ? 1.0 : x
-}
-
-// Convert a per-sample 0..1 one-pole coefficient tuned for SR_REF
-// into a coefficient that preserves the same time constant at `sr`.
-// (Why: avoid bandwidth/damping shifting when sampleRate changes.)
-// @ts-ignore
-@inline
-function coeffForSampleRate(cRef: f32, sr: i32): f32 {
-  if (cRef <= 0.0) return 0.0
-  if (cRef >= 1.0) return 1.0
-  const aRef: f64 = 1.0 - (cRef as f64)
-  const k: f64 = SR_REF / (sr as f64)
-  const a: f64 = Math.pow(aRef, k)
-  return f32(1.0 - a)
 }
 
 // @ts-ignore
@@ -75,6 +60,8 @@ export class Dattorro extends Gen {
   private lp3: f32 = 0.0 as f32
 
   private excPhase: f64 = 0.0
+  private excStep: f64 = 0.0
+  private excDepthSamples: f64 = 0.0
 
   private dBufs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(NUM_DELAYS)
   private dMask: StaticArray<i32> = new StaticArray<i32>(NUM_DELAYS)
@@ -139,6 +126,10 @@ export class Dattorro extends Gen {
     this.preDelay = new StaticArray<f32>(pLen)
     for (let i: i32 = 0; i < pLen; i++) unchecked(this.preDelay[i] = 0.0 as f32)
 
+    // Excursion parameters in samples (will be updated per-sample in processStereo).
+    this.excStep = 0.5 / (sr as f64) // Default excursionRate
+    this.excDepthSamples = 0.7 * (sr as f64) / 1000.0 // Default excursionDepth
+
     // Delay lines (power-of-two backing buffers with mask).
     for (let i: i32 = 0; i < NUM_DELAYS; i++) {
       const baseSec: f64 = this.delaySecs[i]
@@ -183,7 +174,6 @@ export class Dattorro extends Gen {
     return unchecked(this.dBufs[i][(r + off) & m])
   }
 
-  // Cubic interpolation (O. Niemitalo).
   @inline
   private readDelayCAt(i: i32, off: f32): f32 {
     const ip: i32 = i32(off)
@@ -192,19 +182,15 @@ export class Dattorro extends Gen {
     const m: i32 = this.dMask[i]
     const b = this.dBufs[i]
 
+    const xm1: f32 = unchecked(b[idx & m])
+    idx++
     const x0: f32 = unchecked(b[idx & m])
     idx++
     const x1: f32 = unchecked(b[idx & m])
     idx++
     const x2: f32 = unchecked(b[idx & m])
-    idx++
-    const x3: f32 = unchecked(b[idx & m])
 
-    const a: f32 = ((3.0 as f32) * (x1 - x2) - x0 + x3) * (0.5 as f32)
-    const b2: f32 = ((2.0 as f32) * x2 + x0 - ((5.0 as f32) * x1 + x3) * (0.5 as f32)) as f32
-    const c: f32 = ((x2 - x0) * (0.5 as f32)) as f32
-
-    return (((a * frac + b2) * frac + c) * frac + x1) as f32
+    return cubic(xm1, x0, x1, x2, frac)
   }
 
   @inline
@@ -247,6 +233,8 @@ export class Dattorro extends Gen {
     this.lp2 = src.lp2
     this.lp3 = src.lp3
     this.excPhase = src.excPhase
+    this.excStep = src.excStep
+    this.excDepthSamples = src.excDepthSamples
 
     for (let i: i32 = 0; i < NUM_TAPS; i++) {
       this.tapSecs[i] = src.tapSecs[i]
@@ -294,7 +282,6 @@ export class Dattorro extends Gen {
     let oR$: usize = outR$
 
     let phase: f64 = this.excPhase
-    const sr: i32 = i32(sampleRate)
 
     for (let s: i32 = 0; s < length; s++) {
       const inL: f32 = load<f32>(iL$)
@@ -308,9 +295,9 @@ export class Dattorro extends Gen {
       const preIdx: i32 = (this.preDelayLength + this.preDelayWrite - pd + s) % this.preDelayLength
       const preIn: f32 = unchecked(this.preDelay[preIdx])
 
-      const bwRef: f32 = clamp01(load<f32>(bandwidth$))
-      const bw: f32 = coeffForSampleRate(bwRef, sr)
-      this.lp1 = (this.lp1 + bw * (preIn - this.lp1)) as f32
+      const bw: f32 = clamp01(load<f32>(bandwidth$))
+      const bwScaled: f32 = (bw * baseSampleRate / sampleRate) as f32
+      this.lp1 = (this.lp1 + bwScaled * (preIn - this.lp1)) as f32
 
       const fi: f32 = clamp01(load<f32>(inputDiffusion1$))
       const si: f32 = clamp01(load<f32>(inputDiffusion2$))
@@ -328,6 +315,7 @@ export class Dattorro extends Gen {
       // Update excursion parameters for this sample
       const excursionRate: f64 = clamp01(load<f32>(excursionRate$)) as f64 * 2.0
       const excursionDepth: f64 = clamp01(load<f32>(excursionDepth$)) as f64 * 2.0
+      const sr: i32 = i32(sampleRate)
       const phaseStep: f64 = excursionRate / (sr as f64)
       const depth: f64 = excursionDepth * (sr as f64) / 1000.0
 
@@ -337,21 +325,21 @@ export class Dattorro extends Gen {
       const ft: f32 = clamp01(load<f32>(decayDiffusion1$))
       const st: f32 = clamp01(load<f32>(decayDiffusion2$))
       const damping: f32 = clamp01(load<f32>(damping$))
-      const dpRef: f32 = (1.0 - damping) as f32
-      const dp: f32 = coeffForSampleRate(dpRef, sr)
+      const dp: f32 = (1.0 - damping) as f32
+      const dpScaled: f32 = (dp * baseSampleRate / sampleRate) as f32
 
       // Left loop
       let temp: f32 = 0.0 as f32
       temp = this.writeDelay(4, (split + roomSize * this.readDelay(11) + ft * this.readDelayCAt(4, exc)) as f32)
       this.writeDelay(5, (this.readDelayCAt(4, exc) - ft * temp) as f32)
-      this.lp2 = (this.lp2 + dp * (this.readDelay(5) - this.lp2)) as f32
+      this.lp2 = (this.lp2 + dpScaled * (this.readDelay(5) - this.lp2)) as f32
       temp = this.writeDelay(6, (roomSize * this.lp2 - st * this.readDelay(6)) as f32)
       this.writeDelay(7, (this.readDelay(6) + st * temp) as f32)
 
       // Right loop
       temp = this.writeDelay(8, (split + roomSize * this.readDelay(7) + ft * this.readDelayCAt(8, exc2)) as f32)
       this.writeDelay(9, (this.readDelayCAt(8, exc2) - ft * temp) as f32)
-      this.lp3 = (this.lp3 + dp * (this.readDelay(9) - this.lp3)) as f32
+      this.lp3 = (this.lp3 + dpScaled * (this.readDelay(9) - this.lp3)) as f32
       temp = this.writeDelay(10, (roomSize * this.lp3 - st * this.readDelay(10)) as f32)
       this.writeDelay(11, (this.readDelay(10) + st * temp) as f32)
 

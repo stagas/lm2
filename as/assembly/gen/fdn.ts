@@ -1,5 +1,6 @@
 // dprint-ignore-file
-import { lagrange3, nextPowerOfTwo } from '../util'
+import { baseSampleRate } from '../globals'
+import { cubic, nextPowerOfTwo } from '../util'
 import { Gen } from './gen'
 
 const NUM_DELAYS: i32 = 8
@@ -126,12 +127,12 @@ export class Fdn extends Gen {
 
     // 1-pole LPF (Damping): cutoff 12 kHz → 1.5 kHz (0=bright, 1=dark).
     const cutoffHz: f32 = ((12000.0 as f32) - damping * ((12000.0 as f32) - (1500.0 as f32))) as f32
-    const lpA: f32 = Mathf.exp((-(2.0 as f32) * Mathf.PI * cutoffHz / (48000.0 as f32)) as f32)
+    const lpA: f32 = Mathf.exp((-(2.0 as f32) * Mathf.PI * cutoffHz / baseSampleRate) as f32)
     const lpY: f32 = ((((1.0 as f32) - lpA) * dcOut) + (lpA * this.lpY1[i])) as f32
     this.lpY1[i] = lpY
 
     // 1-pole HPF fixed at 120 Hz.
-    const hpA: f32 = Mathf.exp((-(2.0 as f32) * Mathf.PI * (120.0 as f32) / (48000.0 as f32)) as f32)
+    const hpA: f32 = Mathf.exp((-(2.0 as f32) * Mathf.PI * (120.0 as f32) / baseSampleRate) as f32)
     const hpY: f32 = (hpA * (this.hpY1[i] + lpY - this.hpX1[i])) as f32
     this.hpX1[i] = lpY
     this.hpY1[i] = hpY
@@ -201,11 +202,11 @@ export class Fdn extends Gen {
 
       // Read current delay outputs
       for (let i: i32 = 0; i < NUM_DELAYS; i++) {
-        // Fractional delay (3rd-order Lagrange), with modulation applied before interpolation.
+        // Fractional delay (4-point cubic interpolation), with modulation applied before interpolation.
         const baseDelay: f32 = (BASE_DELAYS[i] as f32) * roomSize
         const phase: f32 = this.modPhases[i]
         const mod: f32 = Mathf.sin(phase)
-        const depthSamples: f32 = (MOD_DEPTH_MS * (48.0 as f32)) as f32 // 0.35 ms @ 48 kHz ≈ 16.8 samples
+        const depthSamples: f32 = (MOD_DEPTH_MS * baseSampleRate / (1000.0 as f32)) as f32
         const modOffset: f32 = (depthSamples * modulationDepth * mod) as f32
         const totalDelay: f32 = (baseDelay + modOffset) as f32
 
@@ -219,10 +220,10 @@ export class Fdn extends Gen {
         const x0: f32 = unchecked(buf[idx])
         const x1: f32 = unchecked(buf[(idx + 1) & mask])
         const x2: f32 = unchecked(buf[(idx + 2) & mask])
-        delayOuts[i] = lagrange3(xm1, x0, x1, x2, frac)
+        delayOuts[i] = cubic(xm1, x0, x1, x2, frac)
 
-        // Modulation phase update (rate 0.15 Hz @ 48 kHz).
-        let p: f32 = (phase + ((2.0 as f32) * Mathf.PI * MOD_RATE_HZ / (48000.0 as f32))) as f32
+        // Modulation phase update (rate 0.15 Hz).
+        let p: f32 = (phase + ((2.0 as f32) * Mathf.PI * MOD_RATE_HZ / baseSampleRate)) as f32
         const twoPi: f32 = ((2.0 as f32) * Mathf.PI) as f32
         if (p >= twoPi) p = (p - twoPi) as f32
         this.modPhases[i] = p

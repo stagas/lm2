@@ -86,6 +86,7 @@ export function generateMiniHistoryWindow(
   if (bpmValue <= 0.0 || sampleRateValue <= 0.0) return
 
   sampleRate = sampleRateValue
+  baseSampleRate = sampleRateValue
   nyquist = sampleRateValue * 0.5 - sampleRate * 0.1
   bpm = bpmValue
 

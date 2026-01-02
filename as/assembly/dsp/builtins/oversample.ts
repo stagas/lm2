@@ -6,24 +6,24 @@ import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 import { VmSym } from '../vm-sym'
 
-class Downsample {
-  process(
-    input$: usize,
-    output$: usize,
-    outputSize: i32,
-    factor: i32,
-  ): void {
-    // Simple boxcar (moving average) filter - naturally acts as low-pass
-    // This preserves low frequencies perfectly (DC gain = 1.0)
-    // The averaging itself provides anti-aliasing
-    for (let i: i32 = 0; i < outputSize; i++) {
-      let sum: f32 = 0.0
-      const startIdx: i32 = i * factor
-      for (let j: i32 = 0; j < factor; j++) {
-        sum += load<f32>(input$ + ((startIdx + j) << 2))
-      }
-      store<f32>(output$ + (i << 2), sum / f32(factor))
+// @ts-ignore
+@inline
+function downsample(
+  input$: usize,
+  output$: usize,
+  outputSize: i32,
+  factor: i32,
+): void {
+  // Simple boxcar (moving average) filter - naturally acts as low-pass
+  // This preserves low frequencies perfectly (DC gain = 1.0)
+  // The averaging itself provides anti-aliasing
+  for (let i: i32 = 0; i < outputSize; i++) {
+    let sum: f32 = 0.0
+    const startIdx: i32 = i * factor
+    for (let j: i32 = 0; j < factor; j++) {
+      sum += load<f32>(input$ + ((startIdx + j) << 2))
     }
+    store<f32>(output$ + (i << 2), sum / f32(factor))
   }
 }
 
@@ -43,6 +43,8 @@ function nyquistFromSampleRate(sr: f32): f32 {
 
 // Upsample a base-rate block buffer into an oversampled tick buffer.
 // Uses linear interpolation for better continuity when the source came from the outer scope.
+// @ts-ignore
+@inline
 function upsampleTickLinear(
   src$: usize,
   dst$: usize,
@@ -130,6 +132,7 @@ export function callOversample(
   if (times > 16) times = 16
 
   const sr0: f32 = sampleRate
+  const bsr0: f32 = baseSampleRate
   const ny0: f32 = nyquist
   const sc0: i32 = globalSampleCount
 
@@ -321,10 +324,9 @@ export function callOversample(
   }
 
   // Now downsample the collected oversampled data
-  const downsample = new Downsample()
-  downsample.process(tempL$, outL$, length, times)
+  downsample(tempL$, outL$, length, times)
   if (stereo) {
-    downsample.process(tempR$, outR$, length, times)
+    downsample(tempR$, outR$, length, times)
   }
 
   // Clear smoothed buffers created during the final oversample tick.
@@ -345,6 +347,7 @@ export function callOversample(
   audio.smoothedCount = restoreCount
 
   sampleRate = sr0
+  baseSampleRate = bsr0
   nyquist = ny0
   globalSampleCount = sc0
   audio.tHas = savedTHas

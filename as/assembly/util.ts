@@ -105,14 +105,13 @@ export function nextPowerOfTwo(n: i32): i32 {
   return x + 1
 }
 
-// 3rd-order Lagrange interpolation
+// 4-point, 3rd-order cubic interpolation (Niemitalo optimal form)
+// Samples at [-1, 0, 1, 2] relative to fractional position, frac in [0..1]
 // @ts-ignore
 @inline
-export function lagrange3(xm1: f32, x0: f32, x1: f32, x2: f32, frac: f32): f32 {
-  // 4-point, 3rd-order Lagrange, with samples at [-1, 0, 1, 2] and frac in [0..1].
-  const c0: f32 = (-frac * (frac - (1.0 as f32)) * (frac - (2.0 as f32))) * ((1.0 as f32) / (6.0 as f32))
-  const c1: f32 = ((frac + (1.0 as f32)) * (frac - (1.0 as f32)) * (frac - (2.0 as f32))) * ((1.0 as f32) / (2.0 as f32))
-  const c2: f32 = (-(frac + (1.0 as f32)) * frac * (frac - (2.0 as f32))) * ((1.0 as f32) / (2.0 as f32))
-  const c3: f32 = ((frac + (1.0 as f32)) * frac * (frac - (1.0 as f32))) * ((1.0 as f32) / (6.0 as f32))
-  return xm1 * c0 + x0 * c1 + x1 * c2 + x2 * c3
+export function cubic(xm1: f32, x0: f32, x1: f32, x2: f32, frac: f32): f32 {
+  const a: f32 = ((3.0 as f32) * (x0 - x1) - xm1 + x2) * (0.5 as f32)
+  const b: f32 = ((2.0 as f32) * x1 + xm1 - ((5.0 as f32) * x0 + x2) * (0.5 as f32)) as f32
+  const c: f32 = ((x1 - xm1) * (0.5 as f32)) as f32
+  return (((a * frac + b) * frac + c) * frac + x0) as f32
 }
