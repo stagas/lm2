@@ -81,6 +81,8 @@ export enum Op {
   Mlp,
   Mhp,
   DiodeLadder,
+  Olp,
+  Ohp,
 }
 
 export enum SeqOp {

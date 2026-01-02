@@ -120,6 +120,8 @@ export enum VmBuiltin {
   Mlp = VmSym.Mlp,
   Mhp = VmSym.Mhp,
   DiodeLadder = VmSym.DiodeLadder,
+  Olp = VmSym.Olp,
+  Ohp = VmSym.Ohp,
   Euclid = VmSym.Euclid,
   LfoSine = VmSym.LfoSine,
   LfoTri = VmSym.LfoTri,

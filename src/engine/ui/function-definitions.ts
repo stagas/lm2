@@ -1150,6 +1150,30 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'saw(hz) |> diodeladder($, cutoff:1000, q:0.5, k:0.2) |> out($)',
     ],
   },
+  olp: {
+    name: 'olp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be low-passed' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+    ],
+    returnType: 'number',
+    description: 'Applies a simple one-pole low-pass filter.',
+    examples: [
+      'saw(hz) |> olp($, cutoff:1000) |> out($)',
+    ],
+  },
+  ohp: {
+    name: 'ohp',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be high-passed' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+    ],
+    returnType: 'number',
+    description: 'Applies a simple one-pole high-pass filter.',
+    examples: [
+      'saw(hz) |> ohp($, cutoff:1000) |> out($)',
+    ],
+  },
   mlp: {
     name: 'mlp',
     parameters: [
