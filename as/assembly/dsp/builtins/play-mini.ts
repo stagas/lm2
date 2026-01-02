@@ -69,6 +69,9 @@ export function playMini(
 
   mini.process(0, length)
 
+  const numActiveVoices = mini.numActiveVoices
+  const activeVoices = mini.activeVoices
+
   // Apply runtime directive globals to pitch output (works for numeric and audio-rate directives).
   const tuneTag = dsp.tuneTag as VmTag
   const tuneNum = dsp.tuneNum as f32
@@ -97,10 +100,11 @@ export function playMini(
     const semis = transpose0 + octave0 * 12.0
     const mul = tune0 * pow2(semis / 12.0)
     if (mul !== 1.0) {
-      for (let v = 0; v < SEQ_VOICES; v++) {
+      for (let i = 0; i < numActiveVoices; i++) {
+        const v = activeVoices[i]
         const val$ = program.getOutBuffer(valOuts[v])
         let p$ = val$
-        for (let i = 0; i < length; i++) {
+        for (let j = 0; j < length; j++) {
           store<f32>(p$, (load<f32>(p$) as f64 * mul) as f32)
           p$ += 4
         }
@@ -108,14 +112,15 @@ export function playMini(
     }
   }
   else {
-    for (let v = 0; v < SEQ_VOICES; v++) {
+    for (let i = 0; i < numActiveVoices; i++) {
+      const v = activeVoices[i]
       const val$ = program.getOutBuffer(valOuts[v])
       let p$ = val$
-      for (let i = 0; i < length; i++) {
+      for (let j = 0; j < length; j++) {
         const baseHz = load<f32>(p$) as f64
-        const tune = tuneAudio ? (load<f32>(tune$ + (i << 2))) : tune0
-        const oct = octaveAudio ? (load<f32>(octave$ + (i << 2))) : octave0
-        const tr = transposeAudio ? (load<f32>(transpose$ + (i << 2))) : transpose0
+        const tune = tuneAudio ? (load<f32>(tune$ + (j << 2))) : tune0
+        const oct = octaveAudio ? (load<f32>(octave$ + (j << 2))) : octave0
+        const tr = transposeAudio ? (load<f32>(transpose$ + (j << 2))) : transpose0
         const semis: f32 = tr + oct * 12.0
         const mul = tune * pow2(semis / 12.0)
         store<f32>(p$, (baseHz * mul) as f32)
@@ -148,7 +153,8 @@ export function playMini(
   argNums[2] = 0.0
   argAux[2] = scopeValIndex
 
-  for (let v = 0; v < SEQ_VOICES; v++) {
+  for (let i = 0; i < numActiveVoices; i++) {
+    const v = activeVoices[i]
     const remapBase = CALLBACK_SCOPE_BASE + v * CALLBACK_SCOPE_BUFFERS_PER_VOICE
     program.pushCallbackScope(bodyBufBase, remapBase)
     program.bindScope(scopeTrigIndex, program.getOutBuffer(trigOuts[v]))
@@ -163,8 +169,10 @@ export function playMini(
     const savedTHas = audio.tHas
     const savedTOutIndex = audio.tOutIndex
     audio.tHas = 0
-
+    const allowHistory: i32 = i === 0 ? 1 : 0
+    program.pushHistoryWriteEnabled(program.historyWriteEnabled !== 0 && allowHistory !== 0 ? 1 : 0)
     dsp.vmInvokeFunc(cbAux, 3, argTags, argNums, argAux, length, left$, right$)
+    program.popHistoryWriteEnabled()
 
     if (vmErrorCode !== 0) {
       audio.tHas = savedTHas

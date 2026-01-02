@@ -11,12 +11,6 @@ import { publishReverbRoomSize } from '../reverb-history'
 
 // @ts-ignore
 @inline
-function clampIndex(v: i32): i32 {
-  return v < 0 ? 0 : v > 63 ? 63 : v
-}
-
-// @ts-ignore
-@inline
 export function callVelvet(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -84,7 +78,7 @@ export function callVelvet(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      velvetIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      velvetIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -167,7 +161,9 @@ export function callVelvet(
   gen.decay$ = decay$
   gen.processStereo(outL$, outR$, length)
 
-  publishReverbRoomSize(program.reverbHistory, velvetIndex, load<f32>(roomSize$))
+  if (program.historyWriteEnabled !== 0) {
+    publishReverbRoomSize(program.reverbHistory, velvetIndex, load<f32>(roomSize$))
+  }
 
   stack.push(VmTag.Audio, 0.0, outLIndex)
   stack.push(VmTag.Audio, 0.0, outRIndex)

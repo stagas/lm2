@@ -135,7 +135,9 @@ export function callDelay(
   cbArgTags[0] = VmTag.Audio
   cbArgNums[0] = 0.0
   cbArgAux[0] = rawIndex
+  program.pushHistoryWriteEnabled(program.historyWriteEnabled !== 0 ? 1 : 0)
   dsp.vmInvokeFunc(cbAux, 1, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
+  program.popHistoryWriteEnabled()
   const resIdx: i32 = stack.pop()
   const resTag: VmTag = stack.tag[resIdx] as VmTag
   if (resTag !== VmTag.Audio) {

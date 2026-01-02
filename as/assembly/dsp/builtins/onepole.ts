@@ -59,7 +59,7 @@ export function callOlp(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      olpIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      olpIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -85,7 +85,7 @@ export function callOlp(
   olp.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -150,7 +150,7 @@ export function callOhp(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      ohpIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      ohpIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -176,7 +176,7 @@ export function callOhp(
   ohp.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE

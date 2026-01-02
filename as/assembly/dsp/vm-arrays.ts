@@ -21,6 +21,7 @@ export class VmArrays {
   @inline
   recordAccess(program: Program, createPc: i32, index: i32): void {
     if (this.uiRecord === 0) return
+    if (program.historyWriteEnabled === 0) return
     // Best-effort ring buffer for UI widgets (no atomics needed).
     // entry: createPc, index, sampleCountLo16, sampleCountHi16, (unused), (unused)
     const hist = program.arrayAccessHistory

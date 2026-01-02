@@ -1,6 +1,5 @@
 import { AnalyserOutsPool } from './analyser-outs-pool'
 import { CompressorOutsPool } from './compressor-outs-pool'
-import { LimiterOutsPool } from './limiter-outs-pool'
 import {
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
@@ -15,14 +14,14 @@ import {
   FILTER_DATA_OFFSET,
   FILTER_ENTRY_SIZE,
   FILTER_HISTORY_SIZE,
-  REVERB_DATA_OFFSET,
-  REVERB_ENTRY_SIZE,
-  REVERB_HISTORY_SIZE,
   HISTORIES_COUNT,
   LFO_DATA_OFFSET,
   LFO_ENTRY_SIZE,
   LFO_HISTORY_SIZE,
   LITERALS_COUNT,
+  REVERB_DATA_OFFSET,
+  REVERB_ENTRY_SIZE,
+  REVERB_HISTORY_SIZE,
   RING_BUFFER_SIZE,
   SAMPLE_NEEDLE_DATA_OFFSET,
   SAMPLE_NEEDLE_ENTRY_SIZE,
@@ -33,6 +32,7 @@ import {
 } from './constants'
 import { GensPool } from './gens-pool'
 import { Smoothed } from './lib/smoothed'
+import { LimiterOutsPool } from './limiter-outs-pool'
 import { OutsPool } from './outs-pool'
 import { ProgramData } from './program-data'
 
@@ -64,6 +64,11 @@ export class Program {
     ENVELOPE_DATA_OFFSET + ENVELOPE_HISTORY_SIZE * ENVELOPE_ENTRY_SIZE,
   )
 
+  // UI history writes can be temporarily disabled (e.g. for repeated callback invocations).
+  historyWriteEnabled: i32 = 1
+  private historyWriteDepth: i32 = 0
+  private historyWriteStack: StaticArray<i32> = new StaticArray<i32>(CALLBACK_SCOPE_MAX_DEPTH)
+
   gensPool: GensPool = new GensPool()
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
   outsPool: OutsPool = new OutsPool()
@@ -92,6 +97,26 @@ export class Program {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
       this.literalsSmoothed[i] = new Smoothed()
     }
+  }
+
+  @inline
+  pushHistoryWriteEnabled(enabled: i32): void {
+    const depth: i32 = this.historyWriteDepth
+    if (depth < this.historyWriteStack.length) {
+      this.historyWriteStack[depth] = this.historyWriteEnabled
+    }
+    this.historyWriteEnabled = enabled !== 0 ? 1 : 0
+    this.historyWriteDepth = depth + 1
+  }
+
+  @inline
+  popHistoryWriteEnabled(): void {
+    const depth: i32 = this.historyWriteDepth - 1
+    if (depth < 0) return
+    if (depth < this.historyWriteStack.length) {
+      this.historyWriteEnabled = this.historyWriteStack[depth]
+    }
+    this.historyWriteDepth = depth
   }
 
   @inline

@@ -69,7 +69,7 @@ export function callMlp(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      mlpIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      mlpIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -102,7 +102,7 @@ export function callMlp(
   mlp.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -177,7 +177,7 @@ export function callMhp(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      mhpIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      mhpIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -210,7 +210,7 @@ export function callMhp(
   mhp.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE

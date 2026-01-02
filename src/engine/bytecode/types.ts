@@ -307,12 +307,15 @@ export type AdRef = {
   attackArgLoc: Loc | null
   /** Location of the decay arg (positional or `decay:`). */
   decayArgLoc: Loc | null
+  /** Location of the exponent arg (positional or `exponent:`). */
+  exponentArgLoc: Loc | null
   /** Location of the trig arg (positional or `trig:`). */
   trigArgLoc: Loc | null
   /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
     attack: number
     decay: number
+    exponent: number
   }
 }
 
@@ -332,6 +335,8 @@ export type AdsrRef = {
   sustainArgLoc: Loc | null
   /** Location of the release arg (positional or `release:`). */
   releaseArgLoc: Loc | null
+  /** Location of the exponent arg (positional or `exponent:`). */
+  exponentArgLoc: Loc | null
   /** Location of the trig arg (positional or `trig:`). */
   trigArgLoc: Loc | null
   /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
@@ -340,6 +345,7 @@ export type AdsrRef = {
     decay: number
     sustain: number
     release: number
+    exponent: number
   }
 }
 

@@ -1,3 +1,4 @@
+// dprint-ignore-file
 import { clampNyquist, fract } from '../util'
 import { Gen } from './gen'
 
@@ -9,6 +10,8 @@ const SINE_TABLE_SIZE_F64: f64 = SINE_TABLE_SIZE as f64
 const sineTable: StaticArray<f32> = new StaticArray<f32>(SINE_TABLE_SIZE + 1)
 let sineTableReady: bool = false
 
+// @ts-ignore
+@inline
 function initSineTable(): void {
   if (sineTableReady) return
   sineTableReady = true
@@ -45,6 +48,7 @@ export class Sine extends Gen {
     this.phase = src.phase
   }
 
+  @inline
   private static wavetable(phase: f64): f32 {
     const t: f64 = phase * SINE_TABLE_SIZE_F64
     const i: i32 = t as i32
@@ -64,29 +68,31 @@ export class Sine extends Gen {
     let phase: f64 = this.phase
     let lastTrig: f32 = this.lastTrig
 
-    for (let i = 0; i < length; i++) {
-      const trig = load<f32>(trig$)
-      if (trig > 0 && lastTrig <= 0) {
-        const hz = clampNyquist(load<f32>(hz$))
-        const offsetSeconds = load<f32>(offset$)
-        phase = fract((offsetSeconds as f64) * (hz as f64))
-      }
-      lastTrig = trig
+    for (let i = 0, trig: f32, hz: f32, offsetSeconds: f32, sample: f32; i < length; i += 16) {
+      unroll(16, () => {
+        trig = load<f32>(trig$)
+        if (trig > 0 && lastTrig <= 0) {
+          hz = clampNyquist(load<f32>(hz$))
+          offsetSeconds = load<f32>(offset$)
+          phase = fract((offsetSeconds as f64) * (hz as f64))
+        }
+        lastTrig = trig
 
-      const hz = clampNyquist(load<f32>(hz$))
-      const sample = Sine.wavetable(phase)
+        hz = clampNyquist(load<f32>(hz$))
+        sample = Sine.wavetable(phase)
 
-      phase += (hz as f64) / (sampleRate as f64)
-      if (phase >= 1.0) {
-        phase = fract(phase)
-      }
+        phase += (hz as f64) / (sampleRate as f64)
+        if (phase >= 1.0) {
+          phase = fract(phase)
+        }
 
-      store<f32>(out$, sample)
+        store<f32>(out$, sample)
 
-      out$ += 4
-      hz$ += 4
-      trig$ += 4
-      offset$ += 4
+        out$ += 4
+        hz$ += 4
+        trig$ += 4
+        offset$ += 4
+      })
     }
 
     this.phase = phase

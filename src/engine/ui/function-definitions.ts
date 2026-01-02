@@ -322,6 +322,13 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'attack', type: 'number', description: 'Time in seconds to ramp from 0 up to 1' },
       { name: 'decay', type: 'number', description: 'Time in seconds to fall back from 1 to 0' },
       {
+        name: 'exponent',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic',
+      },
+      {
         name: 'trig',
         type: 'number',
         optional: true,
@@ -333,6 +340,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'env = ad(.005, .2, trig)',
       'sine(440, trig) * ad(.01, .3, trig) |> out($)',
+      'env = ad(.1, .5, exponent:2, trig)',
     ],
   },
   adsr: {
@@ -342,6 +350,13 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'decay', type: 'number', description: 'Time to fall from 1 to the sustain level' },
       { name: 'sustain', type: 'number', description: 'Level (0–1) held while the trigger is high' },
       { name: 'release', type: 'number', description: 'Time to fall from sustain back to 0 once the trigger drops' },
+      {
+        name: 'exponent',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic',
+      },
       {
         name: 'trig',
         type: 'number',
@@ -355,6 +370,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'env = adsr(attack:.01, decay:.1, sustain:.3, release:.7, trig)',
       'adsr(attack:.01, decay:.05, sustain:.5, release:.2, trig) * sine(hz, trig) |> out($)',
+      'env = adsr(attack:.1, decay:.2, sustain:.8, release:.3, exponent:0.5, trig)',
     ],
   },
   analyser: {

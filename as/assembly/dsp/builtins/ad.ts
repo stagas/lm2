@@ -37,6 +37,11 @@ export function callAd(
   let decayNum: f64 = 0.0
   let decayAux: i32 = 0
 
+  // exponent (optional, default 1)
+  let exponentTag: VmTag = VmTag.Num
+  let exponentNum: f64 = 1.0
+  let exponentAux: i32 = 0
+
   // trig (optional, default 0)
   let trigTag: VmTag = VmTag.Num
   let trigNum: f64 = 0.0
@@ -55,17 +60,21 @@ export function callAd(
   }
 
   if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
-    trigTag = posTags[2] as VmTag
-    trigNum = posNums[2]
-    trigAux = posAux[2]
+    exponentTag = posTags[2] as VmTag
+    exponentNum = posNums[2]
+    exponentAux = posAux[2]
+  }
+
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    trigTag = posTags[3] as VmTag
+    trigNum = posNums[3]
+    trigAux = posAux[3]
   }
 
   // Check for named parameters
   for (let i = 0; i < namedCount; i++) {
     if (nameSyms[i] === VmSym.Index) {
       adIndex = i32(Math.floor(nameNums[i]))
-      if (adIndex < 0) adIndex = 0
-      else if (adIndex > 63) adIndex = 63
     }
     else if (nameSyms[i] === VmSym.Attack) {
       attackTag = nameTags[i] as VmTag
@@ -77,6 +86,11 @@ export function callAd(
       decayNum = nameNums[i]
       decayAux = nameAux[i]
     }
+    else if (nameSyms[i] === VmSym.Exponent) {
+      exponentTag = nameTags[i] as VmTag
+      exponentNum = nameNums[i]
+      exponentAux = nameAux[i]
+    }
     else if (nameSyms[i] === VmSym.Trig) {
       trigTag = nameTags[i] as VmTag
       trigNum = nameNums[i]
@@ -86,6 +100,7 @@ export function callAd(
 
   const attack$ = audio.toAudioPtr(attackTag, attackNum, attackAux, length, program)
   const decay$ = audio.toAudioPtr(decayTag, decayNum, decayAux, length, program)
+  const exponent$ = audio.toAudioPtr(exponentTag, exponentNum, exponentAux, length, program)
   const trig$ = audio.toAudioPtr(trigTag, trigNum, trigAux, length, program)
 
   const outIndex = audio.allocOut(program)
@@ -94,9 +109,10 @@ export function callAd(
   const ad = program.gensPool.get(Op.Ad) as Ad
   ad.attack$ = attack$
   ad.decay$ = decay$
+  ad.exponent$ = exponent$
   ad.trig$ = trig$
   ad.process(out$, length)
 
-  writeEnvelopeHistory(program, adIndex, 0, attack$, decay$, 0, 0, length)
+  writeEnvelopeHistory(program, adIndex, 0, attack$, decay$, 0, 0, exponent$, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }

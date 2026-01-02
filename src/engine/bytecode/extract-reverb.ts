@@ -6,23 +6,35 @@ import {
   getNumberOrDefault,
   getPosArg,
 } from './extract-call-utils.ts'
+import { tryEvalConstNumber } from './helpers.ts'
 import type { ReverbKind, ReverbRef } from './types.ts'
 
-const MAX_REVERB_INDEX = 63
+const MAX_REVERB_INDEX = 255
 
 const isReverbKind = (name: string): name is ReverbKind => name === 'freeverb' || name === 'dattorro' || name === 'fdn' || name === 'velvet'
 
+function clampReverbIndex(n: any): number {
+  const v = Math.floor(Number(n ?? 0))
+  if (!Number.isFinite(v)) return 0
+  if (v < 0) return 0
+  if (v > MAX_REVERB_INDEX) return MAX_REVERB_INDEX
+  return v
+}
+
+function getReverbIndexFromCall(call: any): number {
+  const namedIdx = findNamedArg(call, 'index')
+  if (namedIdx?.value) return clampReverbIndex(tryEvalConstNumber(namedIdx.value))
+  return 0
+}
+
 export function createReverbVisitor(src: string, refs: ReverbRef[]) {
   const lineStarts = buildLineStartsForLocs(src)
-  let nextReverbIndex = 0
 
   return {
     visitCall(expr: Expr): void {
       const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
       if (!calleeName || !isReverbKind(calleeName)) return
-
-      const reverbIndex = Math.min(MAX_REVERB_INDEX, nextReverbIndex)
-      nextReverbIndex++
+      const reverbIndex = getReverbIndexFromCall(expr)
 
       const pos0 = getPosArg(expr, 0)
       const namedIn = findNamedArg(expr, 'in')

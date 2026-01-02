@@ -4,7 +4,7 @@ import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefau
 import { tryEvalConstNumber } from './helpers.ts'
 import type { LfoRef } from './types.ts'
 
-const MAX_LFO_INDEX = 63
+const MAX_LFO_INDEX = 255
 
 function clampLfoIndex(n: any): number {
   const v = Math.floor(Number(n ?? 0))

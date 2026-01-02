@@ -46,6 +46,10 @@ export default ({ mode }: ConfigEnv): UserConfig => {
         srcMatch: 'as/assembly',
         srcEntryFile: 'as/assembly/index.ts',
         mapFile: './as/build/index.wasm.map',
+        extra: [
+          '--transform',
+          './vendor/as-transform-unroll.js',
+        ],
       }),
       {
         name: 'exclude-as-build-from-hmr',

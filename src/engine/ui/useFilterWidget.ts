@@ -820,7 +820,7 @@ export function useFilterWidget({
         const gate = Math.floor(raw[base + 3] ?? 0)
         const tsMod = (Math.floor(raw[base + 4] ?? 0) >>> 0) & (MOD - 1)
         const p5 = raw[base + 5] ?? 0
-        if (idx < 0 || idx > 63) continue
+        if (idx < 0 || idx > 255) continue
 
         // entry layout: idx, cutHz, qOrGain, gate, sampleCountMod, extraParam
         // gate: 1..8 => lp,hp,bp,bs,ls,hs,peak,ap

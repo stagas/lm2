@@ -1,4 +1,5 @@
 import { Gen } from './gen'
+import { applyCurve } from '../util'
 
 enum Phase {
   Idle,
@@ -9,6 +10,7 @@ enum Phase {
 export class Ad extends Gen {
   attack$: usize = 0
   decay$: usize = 0
+  exponent$: usize = 0
   trig$: usize = 0
 
   private phase: Phase = Phase.Idle
@@ -29,7 +31,7 @@ export class Ad extends Gen {
   }
 
   @inline
-  generate(attack: f32, decay: f32, trig: f32): f32 {
+  generate(attack: f32, decay: f32, exponent: f32, trig: f32): f32 {
     const isTrigger = trig > 0 && this.lastTrig <= 0
     this.lastTrig = trig
 
@@ -55,7 +57,7 @@ export class Ad extends Gen {
           this.phase = Phase.Decay
         }
       }
-      return this.position
+      return f32(applyCurve(this.position, exponent))
     }
 
     if (this.phase === Phase.Decay) {
@@ -72,7 +74,7 @@ export class Ad extends Gen {
           this.phase = Phase.Idle
         }
       }
-      return this.position
+      return f32(applyCurve(this.position, exponent))
     }
 
     return 0
@@ -81,12 +83,14 @@ export class Ad extends Gen {
   process(out$: usize, length: i32): void {
     let attack$ = this.attack$
     let decay$ = this.decay$
+    let exponent$ = this.exponent$
     let trig$ = this.trig$
 
     for (let i = 0; i < length; i++) {
       const sample = this.generate(
         load<f32>(attack$),
         load<f32>(decay$),
+        load<f32>(exponent$),
         load<f32>(trig$),
       )
 
@@ -95,6 +99,7 @@ export class Ad extends Gen {
       out$ += 4
       attack$ += 4
       decay$ += 4
+      exponent$ += 4
       trig$ += 4
     }
   }

@@ -9,7 +9,7 @@ import {
 import { tryEvalConstNumber } from './helpers.ts'
 import type { FilterRef, FilterType, NumberWithParamsInfo } from './types.ts'
 
-const MAX_FILTER_INDEX = 63
+const MAX_FILTER_INDEX = 255
 
 function clampFilterIndex(n: any): number {
   const v = Math.floor(Number(n ?? 0))
