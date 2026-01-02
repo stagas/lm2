@@ -78,6 +78,8 @@ export enum Op {
   Sbs,
   Speak,
   Sap,
+  Mlp,
+  Mhp,
 }
 
 export enum SeqOp {

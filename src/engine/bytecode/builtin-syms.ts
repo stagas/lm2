@@ -47,6 +47,8 @@ export const builtinSyms: Record<string, number> = {
   sbs: VmSym.Sbs,
   speak: VmSym.Speak,
   sap: VmSym.Sap,
+  mlp: VmSym.Mlp,
+  mhp: VmSym.Mhp,
   euclid: VmSym.Euclid,
   lfosine: VmSym.LfoSine,
   lfotri: VmSym.LfoTri,

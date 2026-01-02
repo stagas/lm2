@@ -247,12 +247,229 @@ function svfMagDb(type: string, freqHz: number, cutHz: number, q: number, sample
   return 20 * Math.log10(Math.max(1e-12, mag))
 }
 
+function moogMagDb(type: string, freqHz: number, cutHz: number, q: number, sampleRate: number): number {
+  const nyquist = Math.max(1, sampleRate / 2)
+  const freq = clamp(cutHz, 50, nyquist)
+  const Q = clamp(q, 0.01, 0.985)
+
+  // Linearized frequency response derived from the exact per-sample ladder update in `as/assembly/gen/moog.ts`,
+  // using tanha'(0)=1 (small-signal approximation). This matches the coefficient math in updateCoeffs().
+  const kVt = 1.2
+  const v2 = 2.0 + kVt
+  const kfc = freq / sampleRate
+  const kfcr = 1.873 * (kfc * kfc * kfc) + 0.4955 * (kfc * kfc) - 0.649 * kfc + 0.9988
+  const expOut = Math.exp(-2.0 * Math.PI * kfcr * kfc)
+  const k2vg = v2 * (1.0 - expOut)
+  const kacr = Q * (-3.9364 * (kfc * kfc) + 1.8409 * kfc + 0.9968)
+  const postGain = 1.0001784074555027 + 0.9331585678097162 * Q
+
+  const g = k2vg / v2
+  const oneMinusG = 1 - g
+  if (Math.abs(oneMinusG) < 1e-9) return -240
+
+  // x = [s1,s2,s3,s4] where si correspond to m_azt1..m_azt4.
+  // x[n+1] = A x[n] + B u[n]
+  const A11 = oneMinusG
+  const A12 = 0
+  const A13 = 0
+  const A14 = -g * kacr
+
+  const A21 = g * oneMinusG
+  const A22 = oneMinusG
+  const A23 = 0
+  const A24 = -(g * g) * kacr
+
+  const A31 = (g * g) * oneMinusG
+  const A32 = g * oneMinusG
+  const A33 = oneMinusG
+  const A34 = -(g * g * g) * kacr
+
+  const A41 = (g * g * g) * oneMinusG
+  const A42 = (g * g) * oneMinusG
+  const A43 = g * oneMinusG
+  const A44 = oneMinusG - (g * g * g * g) * kacr
+
+  const B1 = g * oneMinusG
+  const B2 = (g * g) * oneMinusG
+  const B3 = (g * g * g) * oneMinusG
+  const B4 = (g * g * g * g) * oneMinusG
+
+  // y[n] = C x[n] + D u[n]
+  let C1 = 0
+  let C2 = 0
+  let C3 = 0
+  let C4 = 0
+  let D = 0
+
+  {
+    const g2 = g * g
+    const g3 = g2 * g
+    const g4 = g2 * g2
+
+    if (type === 'mlp') {
+      // az4 = g^3*s1 + g^2*s2 + g*s3 + (1 - g^4*kacr/(1-g))*s4 + g^4*u
+      C1 = postGain * g3
+      C2 = postGain * g2
+      C3 = postGain * g
+      C4 = postGain * (1 - (g4 * kacr) / oneMinusG)
+      D = postGain * g4
+    }
+    else {
+      // (x1 - 3*az3 + 2*az4) * postGain
+      C1 = postGain * (g2 * (-3 + 2 * g))
+      C2 = postGain * (g * (-3 + 2 * g))
+      C3 = postGain * (-3 + 2 * g)
+      C4 = postGain * (2 + (kacr * (-1 + 3 * g3 - 2 * g4)) / oneMinusG)
+      D = postGain * (1 - 3 * g3 + 2 * g4)
+    }
+  }
+
+  const w = (Math.PI * 2 * clamp(freqHz, 1e-6, nyquist)) / sampleRate
+  const zr = Math.cos(w)
+  const zi = Math.sin(w)
+
+  // Solve (zI - A) x = B (complex 4x4 elimination).
+  const mr = new Float64Array(16)
+  const mi = new Float64Array(16)
+  const br = new Float64Array(4)
+  const bi = new Float64Array(4)
+
+  // zI - A
+  mr[0] = zr - A11
+  mi[0] = zi
+  mr[1] = -A12
+  mi[1] = 0
+  mr[2] = -A13
+  mi[2] = 0
+  mr[3] = -A14
+  mi[3] = 0
+
+  mr[4] = -A21
+  mi[4] = 0
+  mr[5] = zr - A22
+  mi[5] = zi
+  mr[6] = -A23
+  mi[6] = 0
+  mr[7] = -A24
+  mi[7] = 0
+
+  mr[8] = -A31
+  mi[8] = 0
+  mr[9] = -A32
+  mi[9] = 0
+  mr[10] = zr - A33
+  mi[10] = zi
+  mr[11] = -A34
+  mi[11] = 0
+
+  mr[12] = -A41
+  mi[12] = 0
+  mr[13] = -A42
+  mi[13] = 0
+  mr[14] = -A43
+  mi[14] = 0
+  mr[15] = zr - A44
+  mi[15] = zi
+
+  br[0] = B1
+  bi[0] = 0
+  br[1] = B2
+  bi[1] = 0
+  br[2] = B3
+  bi[2] = 0
+  br[3] = B4
+  bi[3] = 0
+
+  const n = 4
+  for (let k = 0; k < n; k++) {
+    let piv = k
+    let best = 0
+    for (let r = k; r < n; r++) {
+      const idx = r * 4 + k
+      const mag2 = mr[idx] * mr[idx] + mi[idx] * mi[idx]
+      if (mag2 > best) {
+        best = mag2
+        piv = r
+      }
+    }
+    if (best < 1e-18) return -240
+
+    if (piv !== k) {
+      for (let c = k; c < n; c++) {
+        const a = k * 4 + c
+        const b = piv * 4 + c
+        const tr = mr[a]
+        mr[a] = mr[b]
+        mr[b] = tr
+        const ti = mi[a]
+        mi[a] = mi[b]
+        mi[b] = ti
+      }
+      const trb = br[k]
+      br[k] = br[piv]
+      br[piv] = trb
+      const tib = bi[k]
+      bi[k] = bi[piv]
+      bi[piv] = tib
+    }
+
+    const kk = k * 4 + k
+    const pr = mr[kk]
+    const pi = mi[kk]
+    const inv = 1 / (pr * pr + pi * pi)
+    const invr = pr * inv
+    const invi = -pi * inv
+
+    for (let c = k; c < n; c++) {
+      const idx = k * 4 + c
+      const ar = mr[idx]
+      const ai = mi[idx]
+      mr[idx] = ar * invr - ai * invi
+      mi[idx] = ar * invi + ai * invr
+    }
+    {
+      const ar = br[k]
+      const ai = bi[k]
+      br[k] = ar * invr - ai * invi
+      bi[k] = ar * invi + ai * invr
+    }
+
+    for (let r = 0; r < n; r++) {
+      if (r === k) continue
+      const rk = r * 4 + k
+      const fr = mr[rk]
+      const fi = mi[rk]
+      if (fr === 0 && fi === 0) continue
+
+      for (let c = k; c < n; c++) {
+        const rc = r * 4 + c
+        const kc = k * 4 + c
+        const ar = mr[kc]
+        const ai = mi[kc]
+        mr[rc] -= fr * ar - fi * ai
+        mi[rc] -= fr * ai + fi * ar
+      }
+      br[r] -= fr * br[k] - fi * bi[k]
+      bi[r] -= fr * bi[k] + fi * br[k]
+    }
+  }
+
+  const Hr = C1 * br[0] + C2 * br[1] + C3 * br[2] + C4 * br[3] + D
+  const Hi = C1 * bi[0] + C2 * bi[1] + C3 * bi[2] + C4 * bi[3]
+  const mag = Math.sqrt(Hr * Hr + Hi * Hi)
+  return 20 * Math.log10(Math.max(1e-12, mag))
+}
+
 function filterMagDb(type: string, freqHz: number, cutHz: number, q: number, gainDb: number,
   sampleRate: number): number
 {
   // SVF filters
   if (type === 'slp' || type === 'shp' || type === 'sbp' || type === 'sbs' || type === 'speak' || type === 'sap') {
     return svfMagDb(type, freqHz, cutHz, q, sampleRate)
+  }
+  // Moog filters
+  if (type === 'mlp' || type === 'mhp') {
+    return moogMagDb(type, freqHz, cutHz, q, sampleRate)
   }
   return biquadMagDb(type, freqHz, cutHz, q, gainDb, sampleRate)
 }
@@ -458,8 +675,10 @@ export function useFilterWidget({
       || ref.filterType === 'speak'
       || ref.filterType === 'sap'
 
-    const cutoff = clamp(st?.cutoff ?? ref.params.cut, isSvf ? 50 : minHz, maxHz)
-    const q = clamp(st?.q ?? ref.params.q, 0.01, isSvf ? 0.985 : 20)
+    const isMoog = ref.filterType === 'mlp' || ref.filterType === 'mhp'
+
+    const cutoff = clamp(st?.cutoff ?? ref.params.cut, (isSvf || isMoog) ? 50 : minHz, maxHz)
+    const q = clamp(st?.q ?? ref.params.q, 0.01, (isSvf || isMoog) ? 0.985 : 20)
     const gain = st?.gain ?? ref.params.gain ?? 0
 
     const minDb = -60

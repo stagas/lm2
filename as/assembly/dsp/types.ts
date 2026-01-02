@@ -117,6 +117,8 @@ export enum VmBuiltin {
   Sbs = VmSym.Sbs,
   Speak = VmSym.Speak,
   Sap = VmSym.Sap,
+  Mlp = VmSym.Mlp,
+  Mhp = VmSym.Mhp,
   Euclid = VmSym.Euclid,
   LfoSine = VmSym.LfoSine,
   LfoTri = VmSym.LfoTri,
