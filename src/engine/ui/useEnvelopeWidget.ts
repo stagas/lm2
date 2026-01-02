@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import { ENVELOPE_DATA_OFFSET, ENVELOPE_ENTRY_SIZE, ENVELOPE_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { AdRef, AdsrRef } from '../bytecode/types.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
+import { applyCurve } from '../util.ts'
 import { getCurrentTheme } from './theme.ts'
 
 type UseEnvelopeVisualizationParams = {
@@ -26,15 +27,15 @@ export function useEnvelopeWidget({
 }: UseEnvelopeVisualizationParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const refs = [...(adRefs ?? []), ...(adsrRefs ?? [])]
 
-  type EnvParams = { attack: number; decay: number; sustain: number; release: number }
+  type EnvParams = { attack: number; decay: number; sustain: number; release: number; exponent: number }
 
   const lastWritePosRef = useRef<number>(0)
   const stRef = useRef<{ ad: Array<EnvParams | undefined>; adsr: Array<EnvParams | undefined> }>({ ad: [], adsr: [] })
 
   useEffect(() => {
     lastWritePosRef.current = 0
-    stRef.current.ad.length = 0
-    stRef.current.adsr.length = 0
+    stRef.current.ad = []
+    stRef.current.adsr = []
   }, [dspSource])
 
   const onBeforeDraw = useCallback(() => {
@@ -71,24 +72,27 @@ export function useEnvelopeWidget({
 
       const idx = Math.floor(idxRaw)
       const kind = Math.floor(kindRaw)
-      if (idx < 0 || idx > 63) continue
+      if (idx < 0 || idx > 255) continue
       if (kind !== 0 && kind !== 1) continue
 
       const attackRaw = raw[base + 2]
       const decayRaw = raw[base + 3]
       const sustainRaw = raw[base + 4]
       const releaseRaw = raw[base + 5]
+      const exponentRaw = raw[base + 6]
 
       if (!Number.isFinite(attackRaw) || !Number.isFinite(decayRaw)) continue
       if (kind === 1 && (!Number.isFinite(sustainRaw) || !Number.isFinite(releaseRaw))) continue
+      if (!Number.isFinite(exponentRaw)) continue
 
       const attack = Math.max(0, attackRaw)
       const decay = Math.max(0, decayRaw)
       const sustain = kind === 1 ? Math.max(0, Math.min(1, sustainRaw)) : 0
       const release = kind === 1 ? Math.max(0, releaseRaw) : 0
+      const exponent = Math.max(-10, Math.min(10, exponentRaw)) // allow negative values for mirrored curves
 
-      if (kind === 1) stRef.current.adsr[idx] = { attack, decay, sustain, release }
-      else stRef.current.ad[idx] = { attack, decay, sustain: 0, release: 0 }
+      if (kind === 1) stRef.current.adsr[idx] = { attack, decay, sustain, release, exponent }
+      else stRef.current.ad[idx] = { attack, decay, sustain: 0, release: 0, exponent }
     }
   }, [showWidgets, refs.length, isLive, playbackState, program1?.program.envelopeHistory])
 
@@ -108,6 +112,10 @@ export function useEnvelopeWidget({
         render: (c, x, y, w, h, _vx, _vw) => {
           c.save()
           c.translate(x, y)
+
+          // Enable smooth curves
+          c.lineCap = 'round'
+          c.lineJoin = 'round'
 
           const theme = getCurrentTheme()
           c.fillStyle = theme.background
@@ -132,6 +140,7 @@ export function useEnvelopeWidget({
             const decay = Math.max(0, rt?.decay ?? adsrRef.params.decay)
             const sustain = rt?.sustain ?? adsrRef.params.sustain
             const release = Math.max(0, rt?.release ?? adsrRef.params.release)
+            const exponent = rt?.exponent ?? adsrRef.params.exponent ?? 1
             const adrTotal = attack + decay + release
 
             if (adrTotal > 0) {
@@ -141,22 +150,41 @@ export function useEnvelopeWidget({
               const decayW = (decay / adrTotal) * adrW
               const releaseW = (release / adrTotal) * adrW
 
-              // Attack phase
+              // Attack phase (curved)
               const attackX = attackW
               c.moveTo(plotX, plotY + plotH)
-              c.lineTo(plotX + attackX, plotY)
+              const attackPoints = Math.max(2, Math.ceil(attackW))
+              for (let i = 0; i <= attackPoints; i++) {
+                const t = i / attackPoints
+                const x = plotX + t * attackX
+                const y = plotY + plotH - applyCurve(t, exponent) * plotH
+                if (i === 0) c.moveTo(x, y)
+                else c.lineTo(x, y)
+              }
 
-              // Decay phase
+              // Decay phase (curved)
               const decayX = attackW + decayW
               const sustainY = plotY + plotH - (sustain * plotH)
-              c.lineTo(plotX + decayX, sustainY)
+              const decayPoints = Math.max(2, Math.ceil(decayW))
+              for (let i = 0; i <= decayPoints; i++) {
+                const t = i / decayPoints
+                const x = plotX + attackX + t * decayW
+                const y = plotY + plotH - (applyCurve(1 - t, exponent) * (1 - sustain) + sustain) * plotH
+                c.lineTo(x, y)
+              }
 
               // Sustain phase (horizontal line)
               const sustainEndX = decayX + sustainW
               c.lineTo(plotX + sustainEndX, sustainY)
 
-              // Release phase
-              c.lineTo(plotX + (sustainEndX + releaseW), plotY + plotH)
+              // Release phase (curved)
+              const releasePoints = Math.max(2, Math.ceil(releaseW))
+              for (let i = 0; i <= releasePoints; i++) {
+                const t = i / releasePoints
+                const x = plotX + sustainEndX + t * releaseW
+                const y = plotY + plotH - (applyCurve(1 - t, exponent) * sustain) * plotH
+                c.lineTo(x, y)
+              }
             }
           }
           else {
@@ -165,16 +193,31 @@ export function useEnvelopeWidget({
             const rt = (isLive || playbackState !== 'running') ? stRef.current.ad[adRef.adIndex] : undefined
             const attack = rt?.attack ?? adRef.params.attack
             const decay = rt?.decay ?? adRef.params.decay
+            const exponent = rt?.exponent ?? adRef.params.exponent ?? 1
             const total = attack + decay
 
             if (total > 0) {
-              // Attack phase
+              // Attack phase (curved)
               const attackX = (attack / total) * plotW
               c.moveTo(plotX, plotY + plotH)
-              c.lineTo(plotX + attackX, plotY)
+              const attackPoints = Math.max(2, Math.ceil(attackX))
+              for (let i = 0; i <= attackPoints; i++) {
+                const t = i / attackPoints
+                const x = plotX + t * attackX
+                const y = plotY + plotH - applyCurve(t, exponent) * plotH
+                if (i === 0) c.moveTo(x, y)
+                else c.lineTo(x, y)
+              }
 
-              // Decay phase
-              c.lineTo(plotX + plotW, plotY + plotH)
+              // Decay phase (curved)
+              const decayW = plotW - attackX
+              const decayPoints = Math.max(2, Math.ceil(decayW))
+              for (let i = 1; i <= decayPoints; i++) {
+                const t = i / decayPoints
+                const x = plotX + attackX + t * decayW
+                const y = plotY + plotH - applyCurve(1 - t, exponent) * plotH
+                c.lineTo(x, y)
+              }
             }
           }
 

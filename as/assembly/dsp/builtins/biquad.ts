@@ -69,7 +69,7 @@ export function callLp(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      lpIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      lpIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -102,7 +102,7 @@ export function callLp(
   lp.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -165,7 +165,7 @@ export function callBp(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      bpIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      bpIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -198,7 +198,7 @@ export function callBp(
   bp.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -273,7 +273,7 @@ export function callHp(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      hpIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      hpIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -306,7 +306,7 @@ export function callHp(
   hp.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -369,7 +369,7 @@ export function callLs(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      lsIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      lsIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -402,7 +402,7 @@ export function callLs(
   ls.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -465,7 +465,7 @@ export function callHs(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      hsIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      hsIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -498,7 +498,7 @@ export function callHs(
   hs.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -561,7 +561,7 @@ export function callAp(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      apIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      apIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -594,7 +594,7 @@ export function callAp(
   ap.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -657,7 +657,7 @@ export function callBs(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      bsIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      bsIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -690,7 +690,7 @@ export function callBs(
   bs.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE
@@ -757,7 +757,7 @@ export function callPeak(
     const k = nameSyms[i]
     if (k === VmSym.Index) {
       const v = i32(Math.floor(nameNums[i]))
-      peakIndex = v < 0 ? 0 : v > 63 ? 63 : v
+      peakIndex = v < 0 ? 0 : v > 255 ? 255 : v
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -797,7 +797,7 @@ export function callPeak(
   peak.process(out$, length)
 
   // Best-effort history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.filterHistory
     const writePos = i32(hist[FILTER_WRITE_POS_OFFSET])
     const slot = writePos % FILTER_HISTORY_SIZE

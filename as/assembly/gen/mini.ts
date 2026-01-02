@@ -80,6 +80,9 @@ export class Mini extends Gen {
   outTrig$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
   outVelocity$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
   outValue$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
+  numVoices: i32 = 0
+  activeVoices: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
+  numActiveVoices: i32 = 0
 
   private voices: StaticArray<MiniVoice> = new StaticArray<MiniVoice>(SEQ_VOICES)
   // Map (opIndex, chordVoiceIndex) -> voiceIndex. This must cover all op offsets in the mini bytecode
@@ -93,6 +96,7 @@ export class Mini extends Gen {
   private lastVersion: i32 = -1
   // Cycle number up to which the history has been generated (inclusive).
   private historyGeneratedUntilCycle: i32 = -1
+  private lastVersionForVoiceCount: i32 = -1
   private eventEmitter: MiniEvents = new MiniEvents()
   private eventBuffer: MiniEventBuffer = new MiniEventBuffer()
   private scratchHistory: StaticArray<f32> = new StaticArray<f32>(
@@ -117,7 +121,9 @@ export class Mini extends Gen {
     this.lastHistory$ = 0
     this.lastVersion = -1
     this.historyGeneratedUntilCycle = -1
+    this.lastVersionForVoiceCount = -1
     this.voiceCursor = 0
+    this.numVoices = 0
     this.resetVoiceMaps()
     for (let i = 0; i < SEQ_VOICES; i++) {
       const voice = this.voices[i]
@@ -140,10 +146,13 @@ export class Mini extends Gen {
     this.history$ = src.history$
     this.outVoiceCount$ = src.outVoiceCount$
     this.voiceCursor = src.voiceCursor
+    this.numVoices = src.numVoices
+    this.numActiveVoices = src.numActiveVoices
     this.lastBytecode$ = src.lastBytecode$
     this.lastHistory$ = src.lastHistory$
     this.lastVersion = src.lastVersion
     this.historyGeneratedUntilCycle = src.historyGeneratedUntilCycle
+    this.lastVersionForVoiceCount = src.lastVersionForVoiceCount
 
     for (let i = 0; i < SEQ_VOICES; i++) {
       this.outTrig$[i] = src.outTrig$[i]
@@ -151,6 +160,7 @@ export class Mini extends Gen {
       this.outValue$[i] = src.outValue$[i]
       this.voices[i].copyFrom(src.voices[i])
       this.voiceEventIndex[i] = src.voiceEventIndex[i]
+      this.activeVoices[i] = src.activeVoices[i]
     }
 
     for (let i = 0; i < ARRAY_SIZE * MAX_EVENT_VALUES; i++) {
@@ -173,13 +183,14 @@ export class Mini extends Gen {
 
   @inline
   private allocateVoice(windowStart: i32): i32 {
+    const maxVoices = this.numVoices > 0 ? this.numVoices : SEQ_VOICES
     const start = this.voiceCursor
     let endedCandidate: i32 = -1
-    for (let i = 0; i < SEQ_VOICES; i++) {
-      const v = (start + i) % SEQ_VOICES
+    for (let i = 0; i < maxVoices; i++) {
+      const v = (start + i) % maxVoices
       const voice = this.voices[v]
       if (!voice.active) {
-        this.voiceCursor = (v + 1) % SEQ_VOICES
+        this.voiceCursor = (v + 1) % maxVoices
         return v
       }
 
@@ -190,12 +201,12 @@ export class Mini extends Gen {
     }
 
     if (endedCandidate >= 0) {
-      this.voiceCursor = (endedCandidate + 1) % SEQ_VOICES
+      this.voiceCursor = (endedCandidate + 1) % maxVoices
       return endedCandidate
     }
 
     const v = this.voiceCursor
-    this.voiceCursor = (this.voiceCursor + 1) % SEQ_VOICES
+    this.voiceCursor = (this.voiceCursor + 1) % maxVoices
     return v
   }
 
@@ -482,6 +493,29 @@ export class Mini extends Gen {
     }
 
     historyArray[HISTORY_WRITE_POS_OFFSET] = historyWritePos as f32
+
+    // Calculate max overlapping voices only when bytecode version changes
+    if (currentVersion !== this.lastVersionForVoiceCount) {
+      this.lastVersionForVoiceCount = currentVersion
+      let maxOverlap: i32 = 0
+      const sampleStep: i32 = i32(cycleSamples / 32.0)
+      if (sampleStep > 0) {
+        for (let sample: i32 = windowStart; sample < targetEndSample; sample += sampleStep) {
+          let overlap: i32 = 0
+          for (let n: i32 = 0; n < historyWritePos; n++) {
+            const historyIdx: i32 = HISTORY_DATA_OFFSET + (n & HISTORY_SIZE_MINUS_ONE) * HISTORY_ENTRY_SIZE
+            const startSample: i32 = i32(historyArray[historyIdx + 4])
+            const endSample: i32 = i32(historyArray[historyIdx + 5])
+            if (startSample === 0 && endSample === 0) continue
+            if (sample >= startSample && sample < endSample) {
+              overlap++
+            }
+          }
+          if (overlap > maxOverlap) maxOverlap = overlap
+        }
+      }
+      this.numVoices = maxOverlap > SEQ_VOICES ? SEQ_VOICES : maxOverlap
+    }
   }
 
   @inline
@@ -496,11 +530,18 @@ export class Mini extends Gen {
 
     const windowStart = globalSampleCount
     const windowEnd = windowStart + length
+    const maxVoices = this.numVoices > 0 ? this.numVoices : SEQ_VOICES
 
     // Zero trig outputs (vel/val are written for active voices below; inactive voices get zeroed there).
     const bytes: usize = (length << 2) as usize
-    for (let v: i32 = 0; v < SEQ_VOICES; v++) {
+    for (let v: i32 = 0; v < maxVoices; v++) {
       memory.fill(this.outTrig$[v], 0, bytes)
+    }
+    // Zero unused voice outputs beyond maxVoices
+    for (let v: i32 = maxVoices; v < SEQ_VOICES; v++) {
+      memory.fill(this.outTrig$[v], 0, bytes)
+      memory.fill(this.outVelocity$[v], 0, bytes)
+      memory.fill(this.outValue$[v], 0, bytes)
     }
     const opStart = bytecodeBase + MINI_HEADER_SIZE
 
@@ -619,11 +660,16 @@ export class Mini extends Gen {
     }
 
     let activeCount: i32 = 0
-    for (let v: i32 = 0; v < SEQ_VOICES; v++) {
-      if (this.voices[v].active) activeCount++
+    this.numActiveVoices = 0
+    for (let v: i32 = 0; v < maxVoices; v++) {
+      if (this.voices[v].active) {
+        this.activeVoices[this.numActiveVoices] = v
+        this.numActiveVoices++
+        activeCount++
+      }
     }
 
-    for (let v: i32 = 0; v < SEQ_VOICES; v++) {
+    for (let v: i32 = 0; v < maxVoices; v++) {
       const voice = this.voices[v]
       const trig$ = this.outTrig$[v]
       const vel$ = this.outVelocity$[v]

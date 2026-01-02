@@ -8,6 +8,8 @@ declare global {
   export let bpm: f64
   export let globalSampleCount: i32
   export let vmErrorCode: i32
+
+  export function unroll(times: number, fn: () => void): void
 }
 
 // Seeded RNG for mini probability

@@ -46,6 +46,7 @@ export class Osc extends Gen {
     return 0.0
   }
 
+  @inline
   sin(out$: usize, length: i32): void {
     let hz$ = this.hz$
     let offset$ = this.offset$
@@ -84,6 +85,7 @@ export class Osc extends Gen {
     this.lastOutput = lastOutput
   }
 
+  @inline
   tri(out$: usize, length: i32): void {
     let hz$ = this.hz$
     let offset$ = this.offset$
@@ -93,37 +95,41 @@ export class Osc extends Gen {
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
 
-    for (let i = 0; i < length; i++) {
-      const hz: f32 = clampNyquist(load<f32>(hz$))
-      const trig: f32 = load<f32>(trig$)
+    for (let i = 0, hz: f32, trig: f32, offsetSeconds: f32, phaseOffset: f32, phaseInc: f32, saw: f32, integrated: f32,
+      out: f32; i < length; i += 16)
+    {
+      unroll(16, () => {
+        hz = clampNyquist(load<f32>(hz$))
+        trig = load<f32>(trig$)
 
-      if (trig > 0.0 && lastTrig <= 0.0) {
-        const offsetSeconds: f32 = load<f32>(offset$)
-        let phaseOffset: f32 = (offsetSeconds * hz) % 1.0
-        if (phaseOffset < 0.0) phaseOffset += 1.0
-        phase = phaseOffset
-        lastOutput = 0.0
-      }
-      lastTrig = trig
+        if (trig > 0.0 && lastTrig <= 0.0) {
+          offsetSeconds = load<f32>(offset$)
+          phaseOffset = (offsetSeconds * hz) % 1.0
+          if (phaseOffset < 0.0) phaseOffset += 1.0
+          phase = phaseOffset
+          lastOutput = 0.0
+        }
+        lastTrig = trig
 
-      const phaseInc: f32 = hz / sampleRate
+        phaseInc = hz / sampleRate
 
-      let saw: f32 = 2.0 * phase - 1.0
-      saw -= this.polyBlep(phase, phaseInc)
+        saw = 2.0 * phase - 1.0
+        saw -= this.polyBlep(phase, phaseInc)
 
-      const integrated: f32 = phaseInc * saw + (1.0 - phaseInc) * lastOutput
-      const out: f32 = integrated * 6.0
-      lastOutput = integrated
+        integrated = phaseInc * saw + (1.0 - phaseInc) * lastOutput
+        out = integrated * 6.0
+        lastOutput = integrated
 
-      store<f32>(out$, out)
+        store<f32>(out$, out)
 
-      phase += phaseInc
-      if (phase >= 1.0) phase -= 1.0
+        phase += phaseInc
+        if (phase >= 1.0) phase -= 1.0
 
-      out$ += 4
-      hz$ += 4
-      trig$ += 4
-      offset$ += 4
+        out$ += 4
+        hz$ += 4
+        trig$ += 4
+        offset$ += 4
+      })
     }
 
     this.phase = phase
@@ -131,6 +137,7 @@ export class Osc extends Gen {
     this.lastOutput = lastOutput
   }
 
+  @inline
   saw(out$: usize, length: i32): void {
     let hz$ = this.hz$
     let offset$ = this.offset$
@@ -140,32 +147,36 @@ export class Osc extends Gen {
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
 
-    for (let i = 0; i < length; i++) {
-      const hz: f32 = clampNyquist(load<f32>(hz$))
-      const trig: f32 = load<f32>(trig$)
+    for (let i = 0, hz: f32, trig: f32, offsetSeconds: f32, phaseOffset: f32, phaseInc: f32, value: f32; i < length;
+      i += 16)
+    {
+      unroll(16, () => {
+        hz = clampNyquist(load<f32>(hz$))
+        trig = load<f32>(trig$)
 
-      if (trig > 0.0 && lastTrig <= 0.0) {
-        const offsetSeconds: f32 = load<f32>(offset$)
-        let phaseOffset: f32 = (offsetSeconds * hz) % 1.0
-        if (phaseOffset < 0.0) phaseOffset += 1.0
-        phase = phaseOffset
-        lastOutput = 0.0
-      }
-      lastTrig = trig
+        if (trig > 0.0 && lastTrig <= 0.0) {
+          offsetSeconds = load<f32>(offset$)
+          phaseOffset = (offsetSeconds * hz) % 1.0
+          if (phaseOffset < 0.0) phaseOffset += 1.0
+          phase = phaseOffset
+          lastOutput = 0.0
+        }
+        lastTrig = trig
 
-      const phaseInc: f32 = hz / sampleRate
+        phaseInc = hz / sampleRate
 
-      let value: f32 = 2.0 * phase - 1.0
-      value -= this.polyBlep(phase, phaseInc)
-      store<f32>(out$, value)
+        value = 2.0 * phase - 1.0
+        value -= this.polyBlep(phase, phaseInc)
+        store<f32>(out$, value)
 
-      phase += phaseInc
-      if (phase >= 1.0) phase -= 1.0
+        phase += phaseInc
+        if (phase >= 1.0) phase -= 1.0
 
-      out$ += 4
-      hz$ += 4
-      trig$ += 4
-      offset$ += 4
+        out$ += 4
+        hz$ += 4
+        trig$ += 4
+        offset$ += 4
+      })
     }
 
     this.phase = phase
@@ -173,16 +184,20 @@ export class Osc extends Gen {
     this.lastOutput = lastOutput
   }
 
+  @inline
   ramp(out$: usize, length: i32): void {
     this.saw(out$, length)
 
     let p$ = out$
-    for (let i = 0; i < length; i++) {
-      store<f32>(p$, -load<f32>(p$))
-      p$ += 4
+    for (let i = 0; i < length; i += 16) {
+      unroll(16, () => {
+        store<f32>(p$, -load<f32>(p$))
+        p$ += 4
+      })
     }
   }
 
+  @inline
   sqr(out$: usize, length: i32): void {
     let hz$ = this.hz$
     let offset$ = this.offset$
@@ -192,33 +207,37 @@ export class Osc extends Gen {
     let lastTrig: f32 = this.lastTrig
     let lastOutput: f32 = this.lastOutput
 
-    for (let i = 0; i < length; i++) {
-      const hz: f32 = clampNyquist(load<f32>(hz$))
-      const trig: f32 = load<f32>(trig$)
+    for (let i = 0, hz: f32, trig: f32, offsetSeconds: f32, phaseOffset: f32, phaseInc: f32, value: f32; i < length;
+      i += 16)
+    {
+      unroll(16, () => {
+        hz = clampNyquist(load<f32>(hz$))
+        trig = load<f32>(trig$)
 
-      if (trig > 0.0 && lastTrig <= 0.0) {
-        const offsetSeconds: f32 = load<f32>(offset$)
-        let phaseOffset: f32 = (offsetSeconds * hz) % 1.0
-        if (phaseOffset < 0.0) phaseOffset += 1.0
-        phase = phaseOffset
-        lastOutput = 0.0
-      }
-      lastTrig = trig
+        if (trig > 0.0 && lastTrig <= 0.0) {
+          offsetSeconds = load<f32>(offset$)
+          phaseOffset = (offsetSeconds * hz) % 1.0
+          if (phaseOffset < 0.0) phaseOffset += 1.0
+          phase = phaseOffset
+          lastOutput = 0.0
+        }
+        lastTrig = trig
 
-      const phaseInc: f32 = hz / sampleRate
+        phaseInc = hz / sampleRate
 
-      let value: f32 = phase < 0.5 ? 1.0 : -1.0
-      value += this.polyBlep(phase, phaseInc)
-      value -= this.polyBlep((phase + 0.5) % 1.0, phaseInc)
-      store<f32>(out$, value)
+        value = phase < 0.5 ? 1.0 : -1.0
+        value += this.polyBlep(phase, phaseInc)
+        value -= this.polyBlep((phase + 0.5) % 1.0, phaseInc)
+        store<f32>(out$, value)
 
-      phase += phaseInc
-      if (phase >= 1.0) phase -= 1.0
+        phase += phaseInc
+        if (phase >= 1.0) phase -= 1.0
 
-      out$ += 4
-      hz$ += 4
-      trig$ += 4
-      offset$ += 4
+        out$ += 4
+        hz$ += 4
+        trig$ += 4
+        offset$ += 4
+      })
     }
 
     this.phase = phase
@@ -226,6 +245,7 @@ export class Osc extends Gen {
     this.lastOutput = lastOutput
   }
 
+  @inline
   pwm(out$: usize, length: i32): void {
     let hz$ = this.hz$
     let width$ = this.width$
@@ -293,6 +313,7 @@ export class Osc extends Gen {
     this.lastOutput = lastOutput
   }
 
+  @inline
   phasor(out$: usize, length: i32): void {
     let hz$ = this.hz$
     let offset$ = this.offset$

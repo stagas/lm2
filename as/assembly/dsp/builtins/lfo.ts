@@ -11,14 +11,9 @@ import { VmStack } from '../vm-stack'
 
 // @ts-ignore
 @inline
-function clampIndex(v: i32): i32 {
-  return v < 0 ? 0 : v > 63 ? 63 : v
-}
-
-// @ts-ignore
-@inline
 function writeHistory(program: Program, lfoIndex: i32, lfoType: i32, bar$: usize, offset$: usize, phase01: f32, out$: usize,
   length: i32): void {
+  if (program.historyWriteEnabled === 0) return
   const hist = program.lfoHistory
   const writePos = i32(hist[LFO_WRITE_POS_OFFSET])
   const slot = writePos % LFO_HISTORY_SIZE
@@ -78,7 +73,7 @@ export function callLfoSine(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      lfoIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      lfoIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.Bar) {
       barTag = nameTags[i] as VmTag
@@ -157,7 +152,7 @@ export function callLfoTri(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      lfoIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      lfoIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.Bar) {
       barTag = nameTags[i] as VmTag
@@ -236,7 +231,7 @@ export function callLfoSaw(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      lfoIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      lfoIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.Bar) {
       barTag = nameTags[i] as VmTag
@@ -315,7 +310,7 @@ export function callLfoRamp(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      lfoIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      lfoIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.Bar) {
       barTag = nameTags[i] as VmTag
@@ -394,7 +389,7 @@ export function callLfoSqr(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      lfoIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      lfoIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.Bar) {
       barTag = nameTags[i] as VmTag
@@ -478,7 +473,7 @@ export function callLfoSah(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      lfoIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      lfoIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.Bar) {
       barTag = nameTags[i] as VmTag

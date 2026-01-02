@@ -144,7 +144,7 @@ export function callSlicer(
   gen.threshold$ = threshold$
   gen.trig$ = trig$
   gen.repeat$ = repeat$
-  gen.needleHistory$ = changetype<usize>(program.sampleNeedleHistory)
+  gen.needleHistory$ = program.historyWriteEnabled !== 0 ? changetype<usize>(program.sampleNeedleHistory) : 0
   gen.process(out$, length)
 
   stack.push(VmTag.Audio, 0.0, outIndex)

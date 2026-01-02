@@ -9,8 +9,8 @@ import {
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
 import type { TimelineSequenceRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
-import { curveValue } from '../dsp/timeline-history.ts'
 import { useEngineRuntimeStore } from '../store.ts'
+import { applyCurve } from '../util.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
 
 type UseTimelineSequenceParams = {
@@ -188,7 +188,7 @@ export function useTimelineSequenceWidget({
 
                 const tt = active.tt
                 const curve = segments[si]?.exp ?? 1
-                const p = Math.max(0, Math.min(1, curveValue(tt, curve)))
+                const p = Math.max(0, Math.min(1, applyCurve(tt, curve)))
                 const a = role === 'from'
                   ? 0.25 + 0.75 * (1 - p)
                   : 0.25 + 0.75 * p

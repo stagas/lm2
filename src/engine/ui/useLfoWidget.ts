@@ -109,7 +109,7 @@ export function useLfoWidget({
         const phase01 = raw[base + 4] ?? 0
         const value = raw[base + 5] ?? 0
         const tsMod = (Math.floor(raw[base + 6] ?? 0) >>> 0) & (MOD - 1)
-        if (idx < 0 || idx > 63) continue
+        if (idx < 0 || idx > 255) continue
 
         let st = stRef.current[idx]
         if (!st) {
@@ -158,7 +158,7 @@ export function useLfoWidget({
   ) => {
     const x = viewX
     const w = viewWidth
-    const h = Math.max(56, widgetHeight)
+    const h = widgetHeight
 
     c.save()
     c.translate(x, widgetY)

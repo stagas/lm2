@@ -16,12 +16,6 @@ import { VmStack } from '../vm-stack'
 
 // @ts-ignore
 @inline
-function clampIndex(v: i32): i32 {
-  return v < 0 ? 0 : v > 255 ? 255 : v
-}
-
-// @ts-ignore
-@inline
 export function callEvery(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -73,7 +67,7 @@ export function callEvery(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      trigIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      trigIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.Bar) {
       barTag = nameTags[i] as VmTag
@@ -120,7 +114,7 @@ export function callEvery(
   gen.process(out$, length)
 
   // Best-effort impulse history for UI widgets (no atomics needed).
-  {
+  if (program.historyWriteEnabled !== 0) {
     const hist = program.trigHistory
     let writePos = i32(hist[TRIG_WRITE_POS_OFFSET])
     for (let i: i32 = 0; i < length; i++) {

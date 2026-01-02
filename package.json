@@ -24,6 +24,7 @@
     "assemblyscript": "^0.28.9",
     "concurrently": "^9.2.1",
     "typescript": "^5.9.3",
+    "visitor-as": "^0.11.4",
     "vite": "^7.3.0"
   },
   "dependencies": {

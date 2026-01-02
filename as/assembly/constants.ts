@@ -60,7 +60,7 @@ export const TRIG_DATA_OFFSET = 1
 // Best-effort envelope history for UI widgets (ad/adsr).
 // entry: envIndex, envKind, attack, decay, sustain, release, sampleCountMod
 export const ENVELOPE_HISTORY_SIZE = 2048
-export const ENVELOPE_ENTRY_SIZE = 7
+export const ENVELOPE_ENTRY_SIZE = 8
 export const ENVELOPE_WRITE_POS_OFFSET = 0
 export const ENVELOPE_DATA_OFFSET = 1
 

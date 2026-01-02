@@ -1,4 +1,5 @@
 import { Gen } from './gen'
+import { applyCurve } from '../util'
 
 enum Phase {
   Idle,
@@ -13,6 +14,7 @@ export class Adsr extends Gen {
   decay$: usize = 0
   sustain$: usize = 0
   release$: usize = 0
+  exponent$: usize = 0
   trig$: usize = 0
 
   private phase: Phase = Phase.Idle
@@ -36,7 +38,7 @@ export class Adsr extends Gen {
   }
 
   @inline
-  generate(attack: f32, decay: f32, sustain: f32, release: f32, trig: f32): f32 {
+  generate(attack: f32, decay: f32, sustain: f32, release: f32, exponent: f32, trig: f32): f32 {
     const isTrigger = trig > 0 && this.lastTrig <= 0
     this.lastTrig = trig
 
@@ -64,7 +66,7 @@ export class Adsr extends Gen {
           this.phase = Phase.Decay
         }
       }
-      return this.position
+      return f32(applyCurve(this.position, exponent))
     }
 
     // Decay always completes to sustain level, regardless of trigger state
@@ -85,7 +87,7 @@ export class Adsr extends Gen {
           this.phase = Phase.Sustain
         }
       }
-      return this.position
+      return f32(applyCurve(this.position, exponent))
     }
 
     // Sustain holds while trigger is high, transitions to Release when trigger goes low
@@ -95,7 +97,7 @@ export class Adsr extends Gen {
         this.sustainLevel = this.position
       }
       else {
-        return this.position
+        return f32(applyCurve(this.position, exponent))
       }
     }
 
@@ -115,7 +117,7 @@ export class Adsr extends Gen {
           return 0
         }
       }
-      return this.position
+      return f32(applyCurve(this.position, exponent))
     }
 
     return 0
@@ -126,6 +128,7 @@ export class Adsr extends Gen {
     let decay$ = this.decay$
     let sustain$ = this.sustain$
     let release$ = this.release$
+    let exponent$ = this.exponent$
     let trig$ = this.trig$
 
     for (let i = 0; i < length; i++) {
@@ -134,6 +137,7 @@ export class Adsr extends Gen {
         load<f32>(decay$),
         load<f32>(sustain$),
         load<f32>(release$),
+        load<f32>(exponent$),
         load<f32>(trig$),
       )
 
@@ -144,6 +148,7 @@ export class Adsr extends Gen {
       decay$ += 4
       sustain$ += 4
       release$ += 4
+      exponent$ += 4
       trig$ += 4
     }
   }

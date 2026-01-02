@@ -11,12 +11,6 @@ import { VmStack } from '../vm-stack'
 
 // @ts-ignore
 @inline
-function clampIndex(v: i32): i32 {
-  return v < 0 ? 0 : v > 63 ? 63 : v
-}
-
-// @ts-ignore
-@inline
 export function callFdn(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -96,7 +90,7 @@ export function callFdn(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      fdnIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      fdnIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -186,7 +180,9 @@ export function callFdn(
   gen.modulationDepth$ = modulationDepth$
   gen.processStereo(outL$, outR$, length)
 
-  publishReverbRoomSize(program.reverbHistory, fdnIndex, load<f32>(roomSize$))
+  if (program.historyWriteEnabled !== 0) {
+    publishReverbRoomSize(program.reverbHistory, fdnIndex, load<f32>(roomSize$))
+  }
 
   stack.push(VmTag.Audio, 0.0, outLIndex)
   stack.push(VmTag.Audio, 0.0, outRIndex)

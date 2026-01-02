@@ -131,6 +131,14 @@ export function callOversample(
   if (times < 1) times = 1
   if (times > 16) times = 16
 
+  // Fast path: if times=1, just run the callback without oversampling
+  if (times === 1) {
+    program.pushHistoryWriteEnabled(program.historyWriteEnabled !== 0 ? 1 : 0)
+    dsp.vmInvokeFunc(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
+    program.popHistoryWriteEnabled()
+    return
+  }
+
   const sr0: f32 = sampleRate
   const bsr0: f32 = baseSampleRate
   const ny0: f32 = nyquist
@@ -261,7 +269,10 @@ export function callOversample(
       dsp.vmEnvSetAt(capEnvIdx[i], VmTag.Audio, 0.0, outIndex)
     }
 
+    const allowHistory: i32 = c === 0 ? 1 : 0
+    program.pushHistoryWriteEnabled(program.historyWriteEnabled !== 0 && allowHistory !== 0 ? 1 : 0)
     dsp.vmInvokeFunc(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
+    program.popHistoryWriteEnabled()
 
     // Restore captured env bindings (even if the callback errored).
     for (let i: i32 = 0; i < capCount; i++) {

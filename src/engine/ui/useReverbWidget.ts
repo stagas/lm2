@@ -59,7 +59,7 @@ export function useReverbWidget({
       const idx = Math.floor(raw[base] ?? 0)
       const roomSize = raw[base + 1] ?? 0
 
-      if (idx < 0 || idx > 63) continue
+      if (idx < 0 || idx > 255) continue
 
       let st = stRef.current[idx]
       if (!st) {

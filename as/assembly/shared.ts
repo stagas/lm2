@@ -95,3 +95,6 @@ export enum SeqOp {
 // Diode Ladder constants
 export const DIODELADDER_Q_COMP = 2.5
 export const DIODELADDER_K_COMP = 1.0
+
+// Shared maximum index for all generators (envelopes, LFOs, filters, reverbs)
+export const MAX_GEN_INDEX = 255

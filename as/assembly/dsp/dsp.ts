@@ -123,6 +123,7 @@ export class Dsp {
   @inline
   private recordBranch(ifPc: i32, branchPc: i32): void {
     if (ifPc <= 0 || branchPc <= 0) return
+    if (this.program.historyWriteEnabled === 0) return
     // Best-effort ring buffer for UI widgets (no atomics needed).
     const hist: StaticArray<f32> = this.program.branchHistory
     const writePos: i32 = i32(hist[0])
@@ -712,7 +713,9 @@ export class Dsp {
 
         const postPc: i32 = this.postPcs[i]
         this.stack.reset()
+        this.program.pushHistoryWriteEnabled(this.program.historyWriteEnabled !== 0 ? 1 : 0)
         this.vmInvokeFunc(postPc, 1, argTags, argNums, argAux, block, targetL$, targetR$)
+        this.program.popHistoryWriteEnabled()
 
         if (vmErrorCode !== 0) return
 

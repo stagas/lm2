@@ -11,12 +11,6 @@ import { publishReverbRoomSize } from '../reverb-history'
 
 // @ts-ignore
 @inline
-function clampIndex(v: i32): i32 {
-  return v < 0 ? 0 : v > 63 ? 63 : v
-}
-
-// @ts-ignore
-@inline
 export function callFreeverb(
   posCount: i32,
   nameSyms: StaticArray<i32>,
@@ -74,7 +68,7 @@ export function callFreeverb(
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      freeverbIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      freeverbIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
@@ -150,7 +144,9 @@ export function callFreeverb(
   gen.damping$ = damping$
   gen.processStereo(outL$, outR$, length)
 
-  publishReverbRoomSize(program.reverbHistory, freeverbIndex, load<f32>(roomSize$))
+  if (program.historyWriteEnabled !== 0) {
+    publishReverbRoomSize(program.reverbHistory, freeverbIndex, load<f32>(roomSize$))
+  }
 
   stack.push(VmTag.Audio, 0.0, outLIndex)
   stack.push(VmTag.Audio, 0.0, outRIndex)

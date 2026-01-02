@@ -55,7 +55,7 @@ export function callTimeline(
   const arrayIndex: i32 = i32(arrayNum)
   const timeline: Timeline = program.gensPool.get(Op.Timeline) as Timeline
   timeline.bytecode$ = changetype<usize>(program.data.arrays[arrayIndex])
-  timeline.history$ = changetype<usize>(program.histories[arrayIndex])
+  timeline.history$ = program.historyWriteEnabled !== 0 ? changetype<usize>(program.histories[arrayIndex]) : 0
   timeline.beatDiv = 0.0
   timeline.process(out$, length)
 

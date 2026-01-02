@@ -8,6 +8,7 @@ import {
   TIMELINE_MAGIC,
   TIMELINE_SEGMENT_SIZE,
 } from '../../../as/assembly/constants.ts'
+import { applyCurve } from '../util.ts'
 
 export type TimelineSeg = {
   startSample: number
@@ -16,19 +17,6 @@ export type TimelineSeg = {
   b: number
   kind: number
   exp: number
-}
-
-export function curveValue(t: number, curve: number): number {
-  if (curve > 0.0) return Math.pow(t, curve)
-  if (curve < 0.0) {
-    const base = -curve
-    // mirrored complement: make e-<n> be the exact opposite of e< n >
-    // so e-10(t) == 1 - (1 - t)^10
-    if (base > 0.0) {
-      return 1.0 - Math.pow(1.0 - t, base)
-    }
-  }
-  return t
 }
 
 export function readTimelineSegsFromHistory(
@@ -257,7 +245,7 @@ export function getTimelineValue(
   }
   if (s.kind !== TIMELINE_KIND_GLIDE || s.endSample <= s.startSample) return { v: s.a, si }
   const tt = (sample - s.startSample) / (s.endSample - s.startSample)
-  const p = curveValue(tt, s.exp)
+  const p = applyCurve(tt, s.exp)
   return { v: s.a + (s.b - s.a) * p, si }
 }
 
@@ -268,7 +256,7 @@ export function getTimelineValueAtSample(segs: TimelineSeg[], sample: number): n
     if (sample >= ss.startSample && sample < ss.endSample) {
       if (ss.kind !== TIMELINE_KIND_GLIDE || ss.endSample <= ss.startSample) return ss.a
       const tt = (sample - ss.startSample) / (ss.endSample - ss.startSample)
-      const p = curveValue(tt, ss.exp)
+      const p = applyCurve(tt, ss.exp)
       return ss.a + (ss.b - ss.a) * p
     }
   }
@@ -277,7 +265,7 @@ export function getTimelineValueAtSample(segs: TimelineSeg[], sample: number): n
     const ss = segs[k]!
     if (ss.startSample === sample) {
       if (ss.kind !== TIMELINE_KIND_GLIDE || ss.endSample <= ss.startSample) return ss.a
-      const p = curveValue(0, ss.exp)
+      const p = applyCurve(0, ss.exp)
       return ss.a + (ss.b - ss.a) * p
     }
   }
@@ -374,7 +362,7 @@ export function evalCompiledTimelineAtBeat(tl: CompiledTimeline, beatAbs: number
     if (localBar < endBars) {
       const tt = s.durBars > 0 ? (localBar - accBars) / s.durBars : 0
       if (s.kind !== TIMELINE_KIND_GLIDE || s.endValue === s.startValue) return s.startValue
-      const p = curveValue(Math.max(0, Math.min(1, tt)), s.exp)
+      const p = applyCurve(Math.max(0, Math.min(1, tt)), s.exp)
       return s.startValue + (s.endValue - s.startValue) * p
     }
     accBars = endBars

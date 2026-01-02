@@ -11,12 +11,6 @@ import { VmStack } from '../vm-stack'
 
 // @ts-ignore
 @inline
-function clampIndex(v: i32): i32 {
-  return v < 0 ? 0 : v > 63 ? 63 : v
-}
-
-// @ts-ignore
-@inline
 export function writeEnvelopeHistory(
   program: Program,
   envIndex: i32,
@@ -25,8 +19,10 @@ export function writeEnvelopeHistory(
   decay$: usize,
   sustain$: usize,
   release$: usize,
+  exponent$: usize,
   length: i32,
 ): void {
+  if (program.historyWriteEnabled === 0) return
   const hist = program.envelopeHistory
   const writePos = i32(hist[ENVELOPE_WRITE_POS_OFFSET])
   const slot = writePos % ENVELOPE_HISTORY_SIZE
@@ -38,7 +34,8 @@ export function writeEnvelopeHistory(
   hist[base + 3] = load<f32>(decay$)
   hist[base + 4] = sustain$ !== 0 ? load<f32>(sustain$) : 0
   hist[base + 5] = release$ !== 0 ? load<f32>(release$) : 0
-  hist[base + 6] = f32((globalSampleCount + length) & 0xfffff)
+  hist[base + 6] = exponent$ !== 0 ? load<f32>(exponent$) : 1
+  hist[base + 7] = f32((globalSampleCount + length) & 0xfffff)
   hist[ENVELOPE_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
 }
 
@@ -78,6 +75,10 @@ export function callAdsr(
   let releaseNum: f64 = 0.0
   let releaseAux: i32 = 0
 
+  let exponentTag: VmTag = VmTag.Num
+  let exponentNum: f64 = 1.0
+  let exponentAux: i32 = 0
+
   let trigTag: VmTag = VmTag.Num
   let trigNum: f64 = 0.0
   let trigAux: i32 = 0
@@ -107,16 +108,22 @@ export function callAdsr(
   }
 
   if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
-    trigTag = posTags[4] as VmTag
-    trigNum = posNums[4]
-    trigAux = posAux[4]
+    exponentTag = posTags[4] as VmTag
+    exponentNum = posNums[4]
+    exponentAux = posAux[4]
+  }
+
+  if (posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null) {
+    trigTag = posTags[5] as VmTag
+    trigNum = posNums[5]
+    trigAux = posAux[5]
   }
 
   // Named overrides (attack/decay/sustain/release/trig)
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
     if (k === VmSym.Index) {
-      adsrIndex = clampIndex(i32(Math.floor(nameNums[i])))
+      adsrIndex = i32(Math.floor(nameNums[i]))
     }
     else if (k === VmSym.Attack) {
       attackTag = nameTags[i] as VmTag
@@ -138,6 +145,11 @@ export function callAdsr(
       releaseNum = nameNums[i]
       releaseAux = nameAux[i]
     }
+    else if (k === VmSym.Exponent) {
+      exponentTag = nameTags[i] as VmTag
+      exponentNum = nameNums[i]
+      exponentAux = nameAux[i]
+    }
     else if (k === VmSym.Trig) {
       trigTag = nameTags[i] as VmTag
       trigNum = nameNums[i]
@@ -149,6 +161,7 @@ export function callAdsr(
   const decay$ = audio.toAudioPtr(decayTag, decayNum, decayAux, length, program)
   const sustain$ = audio.toAudioPtr(sustainTag, sustainNum, sustainAux, length, program)
   const release$ = audio.toAudioPtr(releaseTag, releaseNum, releaseAux, length, program)
+  const exponent$ = audio.toAudioPtr(exponentTag, exponentNum, exponentAux, length, program)
   const trig$ = audio.toAudioPtr(trigTag, trigNum, trigAux, length, program)
 
   const outIndex = audio.allocOut(program)
@@ -159,10 +172,11 @@ export function callAdsr(
   adsr.decay$ = decay$
   adsr.sustain$ = sustain$
   adsr.release$ = release$
+  adsr.exponent$ = exponent$
   adsr.trig$ = trig$
   adsr.process(out$, length)
 
-  writeEnvelopeHistory(program, adsrIndex, 1, attack$, decay$, sustain$, release$, length)
+  writeEnvelopeHistory(program, adsrIndex, 1, attack$, decay$, sustain$, release$, exponent$, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 
