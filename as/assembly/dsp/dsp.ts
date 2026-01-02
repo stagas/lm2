@@ -91,6 +91,35 @@ export class Dsp {
     this.program.reset()
   }
 
+  // Builtins may need to temporarily substitute captured outer-scope values (e.g. oversample lifting)
+  // without exposing the whole env object.
+  @inline
+  vmEnvFind(sym: i32): i32 {
+    return this.env.find(sym)
+  }
+
+  @inline
+  vmEnvTagAt(idx: i32): VmTag {
+    return this.env.tag[idx] as VmTag
+  }
+
+  @inline
+  vmEnvNumAt(idx: i32): f64 {
+    return this.env.num[idx]
+  }
+
+  @inline
+  vmEnvAuxAt(idx: i32): i32 {
+    return this.env.aux[idx]
+  }
+
+  @inline
+  vmEnvSetAt(idx: i32, tag: VmTag, num: f64, aux: i32): void {
+    this.env.tag[idx] = tag
+    this.env.num[idx] = num
+    this.env.aux[idx] = aux
+  }
+
   @inline
   private recordBranch(ifPc: i32, branchPc: i32): void {
     if (ifPc <= 0 || branchPc <= 0) return

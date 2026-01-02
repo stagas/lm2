@@ -665,8 +665,9 @@ function diodeLadderMagDb(freqHz: number, cutHz: number, q: number, k: number, s
 
 function onePoleMagDb(type: string, freqHz: number, cutHz: number, sampleRate: number): number {
   const nyquist = sampleRate / 2
-  const cutNorm = cutHz / nyquist
-  const alpha = cutNorm / (cutNorm + 1.0 / (2.0 * Math.PI))
+  const cut = clamp(cutHz, 20, nyquist)
+  const a = Math.exp((-2.0 * Math.PI * cut) / sampleRate)
+  const b = 1.0 - a
 
   const w = (Math.PI * 2 * clamp(freqHz, 1e-6, nyquist)) / sampleRate
   const cos1 = Math.cos(w)
@@ -674,18 +675,20 @@ function onePoleMagDb(type: string, freqHz: number, cutHz: number, sampleRate: n
 
   let nr: number, ni: number, dr: number, di: number
   if (type === 'olp') {
-    // Low-pass: H(z) = alpha / (1 - (1 - alpha) * z^-1)
-    // Transfer function: H(z) = alpha / (1 - (1 - alpha) * z^-1)
-    nr = alpha
+    // Matches `as/assembly/gen/onepole.ts`:
+    // y[n] = y[n-1] + b * (x[n] - y[n-1])
+    // H_lp(z) = b / (1 - (1 - b) z^-1)
+    nr = b
     ni = 0
-    dr = 1 - (1 - alpha) * cos1
-    di = (1 - alpha) * sin1
+    dr = 1 - (1 - b) * cos1
+    di = (1 - b) * sin1
   } else {
-    // High-pass: H(z) = (1 - alpha) / (1 - (1 - alpha) * z^-1)
-    nr = 1 - alpha
-    ni = 0
-    dr = 1 - (1 - alpha) * cos1
-    di = (1 - alpha) * sin1
+    // High-pass output is computed as x[n] - y_lp[n]
+    // H_hp(z) = 1 - H_lp(z) = (1 - b)(1 - z^-1) / (1 - (1 - b) z^-1)
+    nr = (1 - b) * (1 - cos1)
+    ni = (1 - b) * (0 + sin1)
+    dr = 1 - (1 - b) * cos1
+    di = (1 - b) * sin1
   }
 
   const n2 = nr * nr + ni * ni

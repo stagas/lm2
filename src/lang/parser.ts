@@ -676,6 +676,12 @@ class Parser {
                 }
               }
             }
+
+            // Validate that we don't exceed the maximum number of arguments
+            if (args.length > funcDef.parameters.length) {
+              this.error(expr.loc,
+                `Too many arguments for function '${expr.callee.name}'. Expected at most ${funcDef.parameters.length} arguments, got ${args.length}`)
+            }
           }
         }
 
