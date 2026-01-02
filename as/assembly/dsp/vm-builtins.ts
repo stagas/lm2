@@ -1,4 +1,5 @@
 import { CHUNK_SIZE, SEQ_VOICES } from '../constants'
+import { GensPool } from '../gens-pool'
 import { Program } from '../program'
 import { addAudio, clearAudio, mulAudioScalar } from './audio-ops'
 import { callAd } from './builtins/ad'
@@ -7,15 +8,12 @@ import { callAnalyser } from './builtins/analyser'
 import { callAt } from './builtins/at'
 import { callAvg } from './builtins/avg'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
-import { callSap, callSbp, callSbs, callShp, callSlp, callSpeak } from './builtins/svf'
-import { callMlp, callMhp } from './builtins/moog'
-import { callDiodeLadder } from './builtins/diodeladder'
-import { callOlp, callOhp } from './builtins/onepole'
 import { callCompressor } from './builtins/compressor'
 import { callDattorro } from './builtins/dattorro'
 import { callDc } from './builtins/dc'
 import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
+import { callDiodeLadder } from './builtins/diodeladder'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
 import { callFdn } from './builtins/fdn'
@@ -24,7 +22,6 @@ import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLimiter } from './builtins/limiter'
 import { callMap } from './builtins/map'
-import { callOversample } from './builtins/oversample'
 import {
   callAbs,
   callAcos,
@@ -68,9 +65,12 @@ import {
   callWrap,
 } from './builtins/math'
 import { callMini } from './builtins/mini'
+import { callMhp, callMlp } from './builtins/moog'
 import { callBrown, callFractal, callGauss, callPink, callSmooth, callWhite } from './builtins/noise'
 import { callNote } from './builtins/note'
+import { callOhp, callOlp } from './builtins/onepole'
 import { callOut } from './builtins/out'
+import { callOversample } from './builtins/oversample'
 import { callPhasor } from './builtins/phasor'
 import { callPlay } from './builtins/play'
 import { callPlayPick } from './builtins/play-pick'
@@ -85,10 +85,10 @@ import { callSlicer } from './builtins/slicer'
 import { callSolo } from './builtins/solo'
 import { callSqr } from './builtins/sqr'
 import { callSum } from './builtins/sum'
+import { callSap, callSbp, callSbs, callShp, callSlp, callSpeak } from './builtins/svf'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { callVelvet } from './builtins/velvet'
-import { GensPool } from '../gens-pool'
 import { Dsp } from './dsp'
 import { VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
@@ -151,8 +151,6 @@ export class VmBuiltins {
     this.autoLift[VmBuiltin.Mlp] = 1
     this.autoLift[VmBuiltin.Mhp] = 1
     this.autoLift[VmBuiltin.DiodeLadder] = 1
-    this.autoLift[VmBuiltin.Olp] = 1
-    this.autoLift[VmBuiltin.Ohp] = 1
     this.autoLift[VmBuiltin.Slew] = 1
     this.autoLift[VmBuiltin.Dc] = 1
   }
@@ -428,25 +426,13 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.DiodeLadder) {
-      callDiodeLadder(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length)
+      callDiodeLadder(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length)
       return
     }
 
     if (calleeAux === VmBuiltin.Slew) {
       callSlew(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length)
-      return
-    }
-
-    if (calleeAux === VmBuiltin.Olp) {
-      callOlp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length)
-      return
-    }
-
-    if (calleeAux === VmBuiltin.Ohp) {
-      callOhp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
@@ -734,6 +720,18 @@ export class VmBuiltins {
       return
     }
 
+    if (calleeAux === VmBuiltin.Olp) {
+      callOlp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Ohp) {
+      callOhp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
     if (calleeAux === VmBuiltin.Note) {
       callNote(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
@@ -765,8 +763,8 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.Oversample) {
-      callOversample(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux, this.oversampleGens0,
+      callOversample(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux, this.oversampleGens0,
         this.oversampleGens1, changetype<usize>(this.oversampleTempL), changetype<usize>(this.oversampleTempR),
         CHUNK_SIZE * 16)
       return
@@ -1001,20 +999,8 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.DiodeLadder) {
-      callDiodeLadder(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length)
-      return
-    }
-
-    if (calleeAux === VmBuiltin.Olp) {
-      callOlp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length)
-      return
-    }
-
-    if (calleeAux === VmBuiltin.Ohp) {
-      callOhp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length)
+      callDiodeLadder(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length)
       return
     }
 

@@ -1,7 +1,7 @@
 // dprint-ignore-file
 import { Program } from '../../program'
 import { Dsp } from '../dsp'
-import { VmTag } from '../types'
+import { VM_FUNC_HEADER, VmOp, VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 import { VmSym } from '../vm-sym'
@@ -39,6 +39,29 @@ function numToInt(tag: VmTag, num: f64): i32 {
 @inline
 function nyquistFromSampleRate(sr: f32): f32 {
   return sr * 0.5 - sr * 0.1
+}
+
+// Upsample a base-rate block buffer into an oversampled tick buffer.
+// Uses linear interpolation for better continuity when the source came from the outer scope.
+function upsampleTickLinear(
+  src$: usize,
+  dst$: usize,
+  length: i32,
+  factor: i32,
+  tick: i32,
+): void {
+  const inv: f32 = 1.0 / f32(factor)
+  const baseOs: i32 = tick * length
+  const last: i32 = length - 1
+  for (let i: i32 = 0; i < length; i++) {
+    const os: i32 = baseOs + i
+    const b: i32 = os / factor
+    const frac: f32 = f32(os - b * factor) * inv
+    const b1: i32 = b < last ? (b + 1) : last
+    const x0: f32 = load<f32>(src$ + (b << 2))
+    const x1: f32 = load<f32>(src$ + (b1 << 2))
+    store<f32>(dst$ + (i << 2), x0 + (x1 - x0) * frac)
+  }
 }
 
 // @ts-ignore
@@ -105,6 +128,85 @@ export function callOversample(
   const savedTHas: i32 = audio.tHas
   const savedTOutIndex: i32 = audio.tOutIndex
 
+  // Detect which outer-scope symbols the callback loads (captures).
+  // If any of those are audio buffers, we need to "lift" them to the oversampled timeline
+  // (otherwise the callback replays the same base-rate block each tick).
+  const capMax: i32 = 16
+  const capSyms = new StaticArray<i32>(capMax)
+  const capEnvIdx = new StaticArray<i32>(capMax)
+  const capTag0 = new StaticArray<i32>(capMax)
+  const capNum0 = new StaticArray<f64>(capMax)
+  const capAux0 = new StaticArray<i32>(capMax)
+  let capCount: i32 = 0
+
+  const ops = program.data.ops
+  if (cbAux >= 0 && cbAux < ops.length && ops[cbAux] === VM_FUNC_HEADER) {
+    const paramCount: i32 = ops[cbAux + 1]
+    let pc: i32 = cbAux + 2 + paramCount
+    while (pc >= 0 && pc < ops.length) {
+      const op = ops[pc++] as VmOp
+      if (op === VmOp.Load) {
+        const sym: i32 = ops[pc++]
+        let seen: bool = false
+        for (let i: i32 = 0; i < capCount; i++) {
+          if (capSyms[i] === sym) {
+            seen = true
+            break
+          }
+        }
+        if (!seen && capCount < capMax) {
+          const envIdx: i32 = dsp.vmEnvFind(sym)
+          if (envIdx >= 0) {
+            capSyms[capCount] = sym
+            capEnvIdx[capCount] = envIdx
+            capTag0[capCount] = dsp.vmEnvTagAt(envIdx) as i32
+            capNum0[capCount] = dsp.vmEnvNumAt(envIdx)
+            capAux0[capCount] = dsp.vmEnvAuxAt(envIdx)
+            capCount++
+          }
+        }
+        continue
+      }
+      if (op === VmOp.Store) {
+        pc++
+        continue
+      }
+      if (op === VmOp.PushNum || op === VmOp.PushNumSmoothed || op === VmOp.PushBool || op === VmOp.PushSym) {
+        pc++
+        continue
+      }
+      if (op === VmOp.Unary || op === VmOp.Binary) {
+        pc++
+        continue
+      }
+      if (op === VmOp.Call) {
+        pc += 2
+        continue
+      }
+      if (op === VmOp.Jump || op === VmOp.JumpIfFalse || op === VmOp.Func || op === VmOp.Array) {
+        pc++
+        continue
+      }
+      if (op === VmOp.Return || op === VmOp.Throw || op === VmOp.End) break
+      // Other ops have no immediates.
+    }
+  }
+
+  // Oversampling changes sampleRate/globalSampleCount within the callback. If the callback pulls
+  // smoothed (aux<0) values from the surrounding scope, VmAudio caches those as out-buffers per
+  // block. We temporarily clear that cache so scoped smoothed values are re-materialized at the
+  // oversampled rate, then restore the outer cache afterwards.
+  const savedSmoothedCount: i32 = audio.smoothedCount
+  const savedSmoothedKeys = new StaticArray<i32>(savedSmoothedCount)
+  const savedSmoothedOutIndex = new StaticArray<i32>(savedSmoothedCount)
+  for (let i: i32 = 0; i < savedSmoothedCount; i++) {
+    const k: i32 = audio.smoothedKeys[i]
+    savedSmoothedKeys[i] = k
+    savedSmoothedOutIndex[i] = audio.smoothedOutIndex[k]
+    audio.smoothedHas[k] = 0
+  }
+  audio.smoothedCount = 0
+
   const outLIndex = audio.allocOut(program)
   const outRIndex = audio.allocOut(program)
   const outL$ = program.getOutBuffer(outLIndex)
@@ -124,6 +226,15 @@ export function callOversample(
   let stereo: bool = false
 
   for (let c: i32 = 0; c < times; c++) {
+    // Clear smoothed buffers created during the previous oversample tick so values are
+    // re-materialized with the updated (oversampled) timebase.
+    const nSmoothed: i32 = audio.smoothedCount
+    for (let i: i32 = 0; i < nSmoothed; i++) {
+      const k: i32 = audio.smoothedKeys[i]
+      audio.smoothedHas[k] = 0
+    }
+    audio.smoothedCount = 0
+
     audio.outCursor = bodyBufBase
     stack.reset()
     audio.tHas = 0
@@ -133,7 +244,25 @@ export function callOversample(
     nyquist = nyquistFromSampleRate(srOs)
     globalSampleCount = i32((sc0 as i64) * (times as i64) + (c as i64) * (length as i64))
 
+    // Lift captured outer-scope audio buffers to the oversampled tick timeline.
+    for (let i: i32 = 0; i < capCount; i++) {
+      const tag0: VmTag = capTag0[i] as VmTag
+      if (tag0 !== VmTag.Audio) continue
+      const srcIndex: i32 = capAux0[i]
+      const src$ = program.getOutBuffer(srcIndex)
+      const outIndex: i32 = audio.allocOut(program)
+      const out$ = program.getOutBuffer(outIndex)
+      upsampleTickLinear(src$, out$, length, times, c)
+      dsp.vmEnvSetAt(capEnvIdx[i], VmTag.Audio, 0.0, outIndex)
+    }
+
     dsp.vmInvokeFunc(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
+
+    // Restore captured env bindings (even if the callback errored).
+    for (let i: i32 = 0; i < capCount; i++) {
+      dsp.vmEnvSetAt(capEnvIdx[i], capTag0[i] as VmTag, capNum0[i], capAux0[i])
+    }
+
     if (vmErrorCode !== 0) break
 
     const resIdx = stack.pop()
@@ -195,6 +324,23 @@ export function callOversample(
   if (stereo) {
     downsample.process(tempR$, outR$, length, times)
   }
+
+  // Clear smoothed buffers created during the final oversample tick.
+  const nSmoothedFinal: i32 = audio.smoothedCount
+  for (let i: i32 = 0; i < nSmoothedFinal; i++) {
+    const k: i32 = audio.smoothedKeys[i]
+    audio.smoothedHas[k] = 0
+  }
+
+  // Restore caller smoothed cache.
+  const restoreCount: i32 = savedSmoothedCount < audio.smoothedKeys.length ? savedSmoothedCount : audio.smoothedKeys.length
+  for (let i: i32 = 0; i < restoreCount; i++) {
+    const k: i32 = savedSmoothedKeys[i]
+    audio.smoothedKeys[i] = k
+    audio.smoothedOutIndex[k] = savedSmoothedOutIndex[i]
+    audio.smoothedHas[k] = 1
+  }
+  audio.smoothedCount = restoreCount
 
   sampleRate = sr0
   nyquist = ny0
