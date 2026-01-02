@@ -88,6 +88,13 @@ export function callOversample(
   cbArgAux: StaticArray<i32>,
   gens0: StaticArray<i32>,
   gens1: StaticArray<i32>,
+  capSyms: StaticArray<i32>,
+  capEnvIdx: StaticArray<i32>,
+  capTag0: StaticArray<i32>,
+  capNum0: StaticArray<f64>,
+  capAux0: StaticArray<i32>,
+  savedSmoothedKeys: StaticArray<i32>,
+  savedSmoothedOutIndex: StaticArray<i32>,
   tempL$: usize,
   tempR$: usize,
   tempCap: i32,
@@ -132,12 +139,7 @@ export function callOversample(
   // Detect which outer-scope symbols the callback loads (captures).
   // If any of those are audio buffers, we need to "lift" them to the oversampled timeline
   // (otherwise the callback replays the same base-rate block each tick).
-  const capMax: i32 = 16
-  const capSyms = new StaticArray<i32>(capMax)
-  const capEnvIdx = new StaticArray<i32>(capMax)
-  const capTag0 = new StaticArray<i32>(capMax)
-  const capNum0 = new StaticArray<f64>(capMax)
-  const capAux0 = new StaticArray<i32>(capMax)
+  const capMax: i32 = capSyms.length
   let capCount: i32 = 0
 
   const ops = program.data.ops
@@ -197,9 +199,8 @@ export function callOversample(
   // smoothed (aux<0) values from the surrounding scope, VmAudio caches those as out-buffers per
   // block. We temporarily clear that cache so scoped smoothed values are re-materialized at the
   // oversampled rate, then restore the outer cache afterwards.
-  const savedSmoothedCount: i32 = audio.smoothedCount
-  const savedSmoothedKeys = new StaticArray<i32>(savedSmoothedCount)
-  const savedSmoothedOutIndex = new StaticArray<i32>(savedSmoothedCount)
+  let savedSmoothedCount: i32 = audio.smoothedCount
+  if (savedSmoothedCount > savedSmoothedKeys.length) savedSmoothedCount = savedSmoothedKeys.length
   for (let i: i32 = 0; i < savedSmoothedCount; i++) {
     const k: i32 = audio.smoothedKeys[i]
     savedSmoothedKeys[i] = k

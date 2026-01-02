@@ -1,4 +1,4 @@
-import { CHUNK_SIZE, SEQ_VOICES } from '../constants'
+import { CHUNK_SIZE, LITERALS_COUNT, SEQ_VOICES } from '../constants'
 import { GensPool } from '../gens-pool'
 import { Program } from '../program'
 import { addAudio, clearAudio, mulAudioScalar } from './audio-ops'
@@ -116,6 +116,13 @@ export class VmBuiltins {
   oversampleGens1: StaticArray<i32> = new StaticArray<i32>(GensPool.INDICES_COUNT)
   oversampleTempL: StaticArray<f32> = new StaticArray<f32>(CHUNK_SIZE * 16)
   oversampleTempR: StaticArray<f32> = new StaticArray<f32>(CHUNK_SIZE * 16)
+  oversampleCapSyms: StaticArray<i32> = new StaticArray<i32>(16)
+  oversampleCapEnvIdx: StaticArray<i32> = new StaticArray<i32>(16)
+  oversampleCapTag0: StaticArray<i32> = new StaticArray<i32>(16)
+  oversampleCapNum0: StaticArray<f64> = new StaticArray<f64>(16)
+  oversampleCapAux0: StaticArray<i32> = new StaticArray<i32>(16)
+  oversampleSavedSmoothedKeys: StaticArray<i32> = new StaticArray<i32>(LITERALS_COUNT)
+  oversampleSavedSmoothedOutIndex: StaticArray<i32> = new StaticArray<i32>(LITERALS_COUNT)
 
   mapArgTags: StaticArray<i32> = new StaticArray<i32>(3)
   mapArgNums: StaticArray<f64> = new StaticArray<f64>(3)
@@ -765,8 +772,10 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Oversample) {
       callOversample(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
         audio, program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux, this.oversampleGens0,
-        this.oversampleGens1, changetype<usize>(this.oversampleTempL), changetype<usize>(this.oversampleTempR),
-        CHUNK_SIZE * 16)
+        this.oversampleGens1, this.oversampleCapSyms, this.oversampleCapEnvIdx, this.oversampleCapTag0,
+        this.oversampleCapNum0, this.oversampleCapAux0, this.oversampleSavedSmoothedKeys,
+        this.oversampleSavedSmoothedOutIndex, changetype<usize>(this.oversampleTempL),
+        changetype<usize>(this.oversampleTempR), CHUNK_SIZE * 16)
       return
     }
 
