@@ -119,6 +119,7 @@ export enum VmBuiltin {
   Sap = VmSym.Sap,
   Mlp = VmSym.Mlp,
   Mhp = VmSym.Mhp,
+  DiodeLadder = VmSym.DiodeLadder,
   Euclid = VmSym.Euclid,
   LfoSine = VmSym.LfoSine,
   LfoTri = VmSym.LfoTri,

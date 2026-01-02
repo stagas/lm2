@@ -184,4 +184,7 @@ export enum VmSym {
   Sap,
   Mlp,
   Mhp,
+  K,
+  Saturation,
+  DiodeLadder,
 }

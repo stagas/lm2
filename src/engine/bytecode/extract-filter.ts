@@ -59,13 +59,20 @@ function getFilterType(calleeName: string): FilterType | null {
       return 'mlp'
     case 'mhp':
       return 'mhp'
+    case 'diodeladder':
+      return 'diodeladder'
     default:
       return null
   }
 }
 
-function getDefaultParams(filterType: FilterType): { cutoff: number; q: number; gain?: number } {
-  // SVF filters use different default Q
+function getDefaultParams(filterType: FilterType): { cutoff: number; q: number; gain?: number; k?: number } {
+  // Diode ladder has different parameters
+  if (filterType === 'diodeladder') {
+    return { cutoff: 1000, q: 0.5, k: 0.0 }
+  }
+
+  // SVF/Moog filters use different default Q
   if (filterType.startsWith('s') || filterType.startsWith('m')) {
     const baseParams = { cutoff: 1000, q: 0.333 }
     return baseParams
@@ -98,30 +105,60 @@ export function createFiltersVisitor(src: string, refs: FilterRef[]) {
         const namedQ = findNamedArg(expr, 'q')
         const namedGain = findNamedArg(expr, 'gain')
 
-        const cutExpr = namedCutoff?.value ?? getPosArg(expr, 1)?.value
-        const qExpr = namedQ?.value ?? getPosArg(expr, 2)?.value
-        const gainExpr = namedGain?.value ?? getPosArg(expr, 3)?.value
-
         const calleeLoc = (expr.callee?.loc ?? expr.loc) as Loc
         const aboveLoc = computeAboveLoc(src, lineStarts, calleeLoc)
         const defaultParams = getDefaultParams(filterType)
 
-        refs.push({
-          filterType,
-          filterIndex: getFilterIndexFromCall(expr),
-          loc: calleeLoc,
-          aboveLoc,
-          callLoc: expr.loc,
-          inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
-          cutArgLoc: (namedCutoff?.loc ?? getPosArg(expr, 1)?.loc ?? null),
-          qArgLoc: (namedQ?.loc ?? getPosArg(expr, 2)?.loc ?? null),
-          gainArgLoc: (namedGain?.loc ?? getPosArg(expr, 3)?.loc ?? null),
-          params: {
-            cut: getNumberOrDefault(cutExpr, defaultParams.cutoff),
-            q: getNumberOrDefault(qExpr, defaultParams.q),
-            ...(defaultParams.gain !== undefined ? { gain: getNumberOrDefault(gainExpr, defaultParams.gain) } : {}),
-          },
-        })
+        // Handle diodeladder with different parameters
+        if (filterType === 'diodeladder') {
+          const namedQ = findNamedArg(expr, 'q')
+          const namedK = findNamedArg(expr, 'k')
+          const namedSaturation = findNamedArg(expr, 'saturation')
+
+          const qExpr = namedQ?.value ?? getPosArg(expr, 2)?.value
+          const kExpr = namedK?.value ?? getPosArg(expr, 3)?.value
+          const satExpr = namedSaturation?.value ?? getPosArg(expr, 4)?.value
+
+          refs.push({
+            filterType,
+            filterIndex: getFilterIndexFromCall(expr),
+            loc: calleeLoc,
+            aboveLoc,
+            callLoc: expr.loc,
+            inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
+            cutArgLoc: (namedCutoff?.loc ?? getPosArg(expr, 1)?.loc ?? null),
+            qArgLoc: (namedQ?.loc ?? getPosArg(expr, 2)?.loc ?? null),
+            gainArgLoc: (namedK?.loc ?? getPosArg(expr, 3)?.loc ?? null),
+            params: {
+              cut: getNumberOrDefault(namedCutoff?.value ?? getPosArg(expr, 1)?.value, defaultParams.cutoff),
+              q: getNumberOrDefault(qExpr, (defaultParams as any).q ?? 0.5),
+              gain: getNumberOrDefault(kExpr, (defaultParams as any).k ?? 0.0),
+              // Store saturation in an extended params object if needed
+            },
+          } as any)
+        } else {
+          // Standard filter handling
+          const cutExpr = namedCutoff?.value ?? getPosArg(expr, 1)?.value
+          const qExpr = namedQ?.value ?? getPosArg(expr, 2)?.value
+          const gainExpr = namedGain?.value ?? getPosArg(expr, 3)?.value
+
+          refs.push({
+            filterType,
+            filterIndex: getFilterIndexFromCall(expr),
+            loc: calleeLoc,
+            aboveLoc,
+            callLoc: expr.loc,
+            inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
+            cutArgLoc: (namedCutoff?.loc ?? getPosArg(expr, 1)?.loc ?? null),
+            qArgLoc: (namedQ?.loc ?? getPosArg(expr, 2)?.loc ?? null),
+            gainArgLoc: (namedGain?.loc ?? getPosArg(expr, 3)?.loc ?? null),
+            params: {
+              cut: getNumberOrDefault(cutExpr, defaultParams.cutoff),
+              q: getNumberOrDefault(qExpr, defaultParams.q),
+              ...(defaultParams.gain !== undefined ? { gain: getNumberOrDefault(gainExpr, defaultParams.gain) } : {}),
+            },
+          })
+        }
       }
     }
   }

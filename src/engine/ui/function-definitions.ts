@@ -1122,6 +1122,21 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'saw(hz) |> sap($, cutoff:1000, q:1) |> out($)',
     ],
   },
+  diodeladder: {
+    name: 'diodeladder',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to be filtered' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'q', type: 'number', description: 'Resonance amount (0-1)' },
+      { name: 'k', type: 'number', description: 'Special coefficient (0-1)' },
+      { name: 'saturation', type: 'number', description: 'Input saturation amount' },
+    ],
+    returnType: 'number',
+    description: 'Applies a diode ladder filter.',
+    examples: [
+      'saw(hz) |> diodeladder($, cutoff:1000, q:0.5, k:0.2) |> out($)',
+    ],
+  },
   mlp: {
     name: 'mlp',
     parameters: [

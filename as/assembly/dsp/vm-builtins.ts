@@ -9,6 +9,7 @@ import { callAvg } from './builtins/avg'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
 import { callSap, callSbp, callSbs, callShp, callSlp, callSpeak } from './builtins/svf'
 import { callMlp, callMhp } from './builtins/moog'
+import { callDiodeLadder } from './builtins/diodeladder'
 import { callCompressor } from './builtins/compressor'
 import { callDattorro } from './builtins/dattorro'
 import { callDc } from './builtins/dc'
@@ -141,6 +142,7 @@ export class VmBuiltins {
     this.autoLift[VmBuiltin.Sap] = 1
     this.autoLift[VmBuiltin.Mlp] = 1
     this.autoLift[VmBuiltin.Mhp] = 1
+    this.autoLift[VmBuiltin.DiodeLadder] = 1
     this.autoLift[VmBuiltin.Slew] = 1
     this.autoLift[VmBuiltin.Dc] = 1
   }
@@ -411,6 +413,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Mhp) {
       callMhp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.DiodeLadder) {
+      callDiodeLadder(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
@@ -958,6 +966,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Mhp) {
       callMhp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.DiodeLadder) {
+      callDiodeLadder(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

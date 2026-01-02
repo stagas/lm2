@@ -112,6 +112,7 @@ export function callMlp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(15) // gate enabled for MLP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for moog)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -219,6 +220,7 @@ export function callMhp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(16) // gate enabled for MHP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for moog)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 

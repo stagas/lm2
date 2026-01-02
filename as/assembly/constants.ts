@@ -30,9 +30,9 @@ export const SAMPLE_NEEDLE_WRITE_POS_OFFSET = 0
 export const SAMPLE_NEEDLE_DATA_OFFSET = 1
 
 // Best-effort filter history for UI widgets.
-// entry: lpIndex, cutHz, q, gate, sampleCountMod
+// entry: lpIndex, cutHz, q, gate, sampleCountMod, hpfHz
 export const FILTER_HISTORY_SIZE = 2048
-export const FILTER_ENTRY_SIZE = 5
+export const FILTER_ENTRY_SIZE = 6
 export const FILTER_WRITE_POS_OFFSET = 0
 export const FILTER_DATA_OFFSET = 1
 

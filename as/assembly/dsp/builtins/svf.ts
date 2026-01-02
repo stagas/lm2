@@ -112,6 +112,7 @@ export function callSlp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(9) // gate enabled for SLP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for svf)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -219,6 +220,7 @@ export function callShp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(10) // gate enabled for SHP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for svf)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -326,6 +328,7 @@ export function callSbp(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(11) // gate enabled for SBP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for svf)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -433,6 +436,7 @@ export function callSbs(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(12) // gate enabled for SBS filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for svf)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -540,6 +544,7 @@ export function callSpeak(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(13) // gate enabled for SPEAK filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for svf)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
@@ -647,6 +652,7 @@ export function callSap(
     hist[base + 2] = load<f32>(q$)
     hist[base + 3] = f32(14) // gate enabled for SAP filter
     hist[base + 4] = f32((globalSampleCount + length) & 0xfffff)
+    hist[base + 5] = f32(0) // hpf cutoff (unused for svf)
     hist[FILTER_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
   }
 
