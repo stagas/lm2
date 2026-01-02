@@ -53,6 +53,19 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'array.avg() |> out($)',
     ],
   },
+  oversample: {
+    name: 'oversample',
+    parameters: [
+      { name: 'times', type: 'number', description: 'Oversampling factor (1..16)' },
+      { name: 'callback', type: '() -> number | [L:number, R:number]', description: 'Signal generator callback' },
+    ],
+    returnType: 'number | [L:number, R:number]',
+    description: 'Evaluates a signal at a higher internal sample rate and downsamples back to reduce aliasing (CPU heavy).',
+    examples: [
+      'oversample(8, () -> saw(440)) |> out($)',
+      'oversample(8, cb: () -> [saw(220), saw(221)]) |> out($)',
+    ],
+  },
   out: {
     name: 'out',
     parameters: [

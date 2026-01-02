@@ -183,7 +183,7 @@ export class DiodeLadderFilterBlock extends Gen {
     // Compensate by lowering the internal cutoff, but make it nonlinear in `q` so we don't
     // over-compensate at moderate resonance (which would put the peak *below* the playhead).
     const qq: f32 = qClamped * qClamped
-    const comp: f32 = 1.0 + DIODELADDER_Q_COMP * qq + DIODELADDER_K_COMP * (kClamped * qClamped)
+    const comp: f32 = 1.0 + f32(DIODELADDER_Q_COMP) * qq + f32(DIODELADDER_K_COMP) * (kClamped * qClamped)
     const cutComp: f32 = f32(Mathf.max(20.0, Mathf.min((cutNorm / comp) * nyquist, nyquist)))
 
     let a: f32 = Mathf.PI * (cutComp / nyquist)

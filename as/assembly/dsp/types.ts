@@ -179,6 +179,7 @@ export enum VmBuiltin {
   Isnan = VmSym.Isnan,
   Isinf = VmSym.Isinf,
   Safediv = VmSym.Safediv,
+  Oversample = VmSym.Oversample,
 }
 
 export const VM_FUNC_HEADER: i32 = -2
