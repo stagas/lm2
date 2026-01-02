@@ -1,4 +1,4 @@
-import { SEQ_VOICES } from '../constants'
+import { CHUNK_SIZE, SEQ_VOICES } from '../constants'
 import { Program } from '../program'
 import { addAudio, clearAudio, mulAudioScalar } from './audio-ops'
 import { callAd } from './builtins/ad'
@@ -113,6 +113,8 @@ export class VmBuiltins {
 
   oversampleGens0: StaticArray<i32> = new StaticArray<i32>(GensPool.INDICES_COUNT)
   oversampleGens1: StaticArray<i32> = new StaticArray<i32>(GensPool.INDICES_COUNT)
+  oversampleTempL: StaticArray<f32> = new StaticArray<f32>(CHUNK_SIZE * 16)
+  oversampleTempR: StaticArray<f32> = new StaticArray<f32>(CHUNK_SIZE * 16)
 
   mapArgTags: StaticArray<i32> = new StaticArray<i32>(3)
   mapArgNums: StaticArray<f64> = new StaticArray<f64>(3)
@@ -750,7 +752,8 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Oversample) {
       callOversample(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux, this.oversampleGens0,
-        this.oversampleGens1)
+        this.oversampleGens1, changetype<usize>(this.oversampleTempL), changetype<usize>(this.oversampleTempR),
+        CHUNK_SIZE * 16)
       return
     }
 
