@@ -42,6 +42,15 @@ export function setVmError(code: i32, pc: i32): void {
   vmErrorPc = pc
 }
 
+export function setSampleRateAndNyquist(sr: f32): void {
+  sampleRate = sr
+  nyquist = sr * 0.5 - sr * 0.1
+}
+
+export function setGlobalSampleCountValue(v: i32): void {
+  globalSampleCount = v
+}
+
 export function getVmErrorCode(): i32 {
   return vmErrorCode
 }

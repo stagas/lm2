@@ -1,5 +1,4 @@
 // dprint-ignore-file
-import { vmErrorCode } from '../../globals'
 import { Program } from '../../program'
 import { Dsp } from '../dsp'
 import { VmTag } from '../types'
@@ -66,6 +65,9 @@ export function callOversample(
   cbArgAux: StaticArray<i32>,
   gens0: StaticArray<i32>,
   gens1: StaticArray<i32>,
+  tempL$: usize,
+  tempR$: usize,
+  tempCap: i32,
 ): void {
   // oversample(times, cb)
   if (posCount < 2) {
@@ -113,11 +115,11 @@ export function callOversample(
 
   program.gensPool.saveIndices(gens0)
 
-  // Allocate temporary buffers for oversampled data
-  const tempLIndex = audio.allocOut(program)
-  const tempRIndex = audio.allocOut(program)
-  const tempL$ = program.getOutBuffer(tempLIndex)
-  const tempR$ = program.getOutBuffer(tempRIndex)
+  const tempSize: i32 = length * times
+  if (tempSize > tempCap) {
+    stack.push(VmTag.Undef)
+    return
+  }
 
   let stereo: bool = false
 
@@ -175,7 +177,7 @@ export function callOversample(
     const rConst: f32 = stereo ? (rIsAudio ? 0.0 : (rTag === VmTag.Bool ? (rNum != 0.0 ? 1.0 : 0.0) : rTag === VmTag.Num ? (rNum as f32) : 0.0)) : 0.0
 
     // Store this callback's output in the temp buffer
-    const offset = c * length
+    const offset: i32 = c * length
     for (let i: i32 = 0; i < length; i++) {
       const xL: f32 = lIsAudio ? load<f32>(l$ + (i << 2)) : lConst
       store<f32>(tempL$ + ((offset + i) << 2), xL)

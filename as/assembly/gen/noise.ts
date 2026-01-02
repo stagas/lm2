@@ -1,10 +1,7 @@
 // dprint-ignore-file
 
-import { sampleRate } from '../globals'
 import { clamp01, clamp11 } from '../util'
 import { Gen } from './gen'
-
-const BASE_SAMPLE_RATE: f32 = 48000.0
 
 const NOISE_TABLE_BITS: i32 = 16
 const NOISE_TABLE_SIZE: i32 = 1 << NOISE_TABLE_BITS
@@ -95,20 +92,23 @@ export class WhiteNoise extends Gen {
 
   private lastSeedBits: u32 = 0xffffffff
   private lastTrig: f32 = 0
-  private phase: f32 = 0.0
+  private baseSampleRate: f32 = 0.0
+  private idx: f64 = 0.0
   private table: StaticArray<f32> = new StaticArray<f32>(NOISE_TABLE_SIZE)
 
   reset(): void {
     this.lastSeedBits = 0xffffffff
     this.lastTrig = 0
-    this.phase = 0.0
+    this.baseSampleRate = 0.0
+    this.idx = 0.0
   }
 
   copyFrom(other: Gen): void {
     const src = other as WhiteNoise
     this.lastSeedBits = src.lastSeedBits
     this.lastTrig = src.lastTrig
-    this.phase = src.phase
+    this.idx = src.idx
+    this.baseSampleRate = src.baseSampleRate
     copyF32Static(this.table, src.table)
   }
 
@@ -117,7 +117,8 @@ export class WhiteNoise extends Gen {
     const seedBits = seedToBits(load<f32>(this.seed$))
     if (seedBits !== this.lastSeedBits) {
       this.lastSeedBits = seedBits
-      this.phase = 0.0
+      this.baseSampleRate = sampleRate
+      this.idx = 0.0
       let s: u32 = (seedBits | 1) as u32
       for (let i: i32 = 0; i < NOISE_TABLE_SIZE; i++) {
         s = xorshift32(s)
@@ -127,31 +128,27 @@ export class WhiteNoise extends Gen {
 
     let trig$ = this.trig$
     let lastTrig: f32 = this.lastTrig
-    let phase: f32 = this.phase
+    let idx: f64 = this.idx
+    const baseSr: f64 = (this.baseSampleRate > 0.0 ? this.baseSampleRate : sampleRate) as f64
+    const step: f64 = baseSr / (sampleRate as f64)
 
     for (let i: i32 = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        phase = 0.0
+        idx = 0.0
       }
       lastTrig = trig
 
-      // Use phase-based indexing like oscillators do
-      const idx = i32(phase * f32(NOISE_TABLE_SIZE)) & NOISE_TABLE_MASK
-      store<f32>(out$, unchecked(this.table[idx]))
-
-      // Advance phase scaled by sample rate ratio (maintain spectral properties)
-      // When oversampling, sampleRate is higher, so advance phase faster to maintain
-      // the same effective playback rate relative to the base sample rate
-      phase += (BASE_SAMPLE_RATE / sampleRate) / f32(NOISE_TABLE_SIZE)
-      if (phase >= 1.0) phase -= 1.0
+      store<f32>(out$, unchecked(this.table[(i32(idx) & NOISE_TABLE_MASK) as i32]))
+      idx += step
+      if (idx >= (NOISE_TABLE_SIZE as f64)) idx -= (NOISE_TABLE_SIZE as f64)
 
       out$ += 4
       trig$ += 4
     }
 
     this.lastTrig = lastTrig
-    this.phase = phase
+    this.idx = idx
   }
 }
 
@@ -161,20 +158,23 @@ export class GaussNoise extends Gen {
 
   private lastSeedBits: u32 = 0xffffffff
   private lastTrig: f32 = 0
-  private phase: f32 = 0.0
+  private baseSampleRate: f32 = 0.0
+  private idx: f64 = 0.0
   private table: StaticArray<f32> = new StaticArray<f32>(NOISE_TABLE_SIZE)
 
   reset(): void {
     this.lastSeedBits = 0xffffffff
     this.lastTrig = 0
-    this.phase = 0.0
+    this.baseSampleRate = 0.0
+    this.idx = 0.0
   }
 
   copyFrom(other: Gen): void {
     const src = other as GaussNoise
     this.lastSeedBits = src.lastSeedBits
     this.lastTrig = src.lastTrig
-    this.phase = src.phase
+    this.idx = src.idx
+    this.baseSampleRate = src.baseSampleRate
     copyF32Static(this.table, src.table)
   }
 
@@ -183,7 +183,8 @@ export class GaussNoise extends Gen {
     const seedBits = seedToBits(load<f32>(this.seed$))
     if (seedBits !== this.lastSeedBits) {
       this.lastSeedBits = seedBits
-      this.phase = 0.0
+      this.baseSampleRate = sampleRate
+      this.idx = 0.0
       let s: u32 = (seedBits | 1) as u32
       for (let i: i32 = 0; i < NOISE_TABLE_SIZE; i++) {
         // CLT-ish: average of 6 uniforms => normal-ish; map to [-1,1] by (sum-3)/3.
@@ -206,31 +207,27 @@ export class GaussNoise extends Gen {
 
     let trig$ = this.trig$
     let lastTrig: f32 = this.lastTrig
-    let phase: f32 = this.phase
+    let idx: f64 = this.idx
+    const baseSr: f64 = (this.baseSampleRate > 0.0 ? this.baseSampleRate : sampleRate) as f64
+    const step: f64 = baseSr / (sampleRate as f64)
 
     for (let i: i32 = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        phase = 0.0
+        idx = 0.0
       }
       lastTrig = trig
 
-      // Use phase-based indexing like oscillators do
-      const idx = i32(phase * f32(NOISE_TABLE_SIZE)) & NOISE_TABLE_MASK
-      store<f32>(out$, unchecked(this.table[idx]))
-
-      // Advance phase scaled by sample rate ratio (maintain spectral properties)
-      // When oversampling, sampleRate is higher, so advance phase faster to maintain
-      // the same effective playback rate relative to the base sample rate
-      phase += (BASE_SAMPLE_RATE / sampleRate) / f32(NOISE_TABLE_SIZE)
-      if (phase >= 1.0) phase -= 1.0
+      store<f32>(out$, unchecked(this.table[(i32(idx) & NOISE_TABLE_MASK) as i32]))
+      idx += step
+      if (idx >= (NOISE_TABLE_SIZE as f64)) idx -= (NOISE_TABLE_SIZE as f64)
 
       out$ += 4
       trig$ += 4
     }
 
     this.lastTrig = lastTrig
-    this.phase = phase
+    this.idx = idx
   }
 }
 
@@ -251,21 +248,24 @@ export class PinkNoise extends Gen {
 
   private lastSeedBits: u32 = 0xffffffff
   private lastTrig: f32 = 0
-  private phase: f32 = 0.0
+  private baseSampleRate: f32 = 0.0
+  private idx: f64 = 0.0
   private table: StaticArray<f32> = new StaticArray<f32>(NOISE_TABLE_SIZE)
   private rows: StaticArray<f32> = new StaticArray<f32>(8)
 
   reset(): void {
     this.lastSeedBits = 0xffffffff
     this.lastTrig = 0
-    this.phase = 0.0
+    this.baseSampleRate = 0.0
+    this.idx = 0.0
   }
 
   copyFrom(other: Gen): void {
     const src = other as PinkNoise
     this.lastSeedBits = src.lastSeedBits
     this.lastTrig = src.lastTrig
-    this.phase = src.phase
+    this.idx = src.idx
+    this.baseSampleRate = src.baseSampleRate
     copyF32Static(this.table, src.table)
     copyF32Static(this.rows, src.rows)
   }
@@ -275,7 +275,8 @@ export class PinkNoise extends Gen {
     const seedBits = seedToBits(load<f32>(this.seed$))
     if (seedBits !== this.lastSeedBits) {
       this.lastSeedBits = seedBits
-      this.phase = 0.0
+      this.baseSampleRate = sampleRate
+      this.idx = 0.0
 
       let s: u32 = (hashU32(seedBits ^ 0x70696e6b) | 1) as u32
       let c: u32 = 0
@@ -310,31 +311,27 @@ export class PinkNoise extends Gen {
 
     let trig$ = this.trig$
     let lastTrig: f32 = this.lastTrig
-    let phase: f32 = this.phase
+    let idx: f64 = this.idx
+    const baseSr: f64 = (this.baseSampleRate > 0.0 ? this.baseSampleRate : sampleRate) as f64
+    const step: f64 = baseSr / (sampleRate as f64)
 
     for (let i: i32 = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        phase = 0.0
+        idx = 0.0
       }
       lastTrig = trig
 
-      // Use phase-based indexing like oscillators do
-      const idx = i32(phase * f32(NOISE_TABLE_SIZE)) & NOISE_TABLE_MASK
-      store<f32>(out$, unchecked(this.table[idx]))
-
-      // Advance phase scaled by sample rate ratio (maintain spectral properties)
-      // When oversampling, sampleRate is higher, so advance phase faster to maintain
-      // the same effective playback rate relative to the base sample rate
-      phase += (BASE_SAMPLE_RATE / sampleRate) / f32(NOISE_TABLE_SIZE)
-      if (phase >= 1.0) phase -= 1.0
+      store<f32>(out$, unchecked(this.table[(i32(idx) & NOISE_TABLE_MASK) as i32]))
+      idx += step
+      if (idx >= (NOISE_TABLE_SIZE as f64)) idx -= (NOISE_TABLE_SIZE as f64)
 
       out$ += 4
       trig$ += 4
     }
 
     this.lastTrig = lastTrig
-    this.phase = phase
+    this.idx = idx
   }
 }
 
@@ -344,20 +341,23 @@ export class BrownNoise extends Gen {
 
   private lastSeedBits: u32 = 0xffffffff
   private lastTrig: f32 = 0
-  private phase: f32 = 0.0
+  private baseSampleRate: f32 = 0.0
+  private idx: f64 = 0.0
   private table: StaticArray<f32> = new StaticArray<f32>(NOISE_TABLE_SIZE)
 
   reset(): void {
     this.lastSeedBits = 0xffffffff
     this.lastTrig = 0
-    this.phase = 0.0
+    this.baseSampleRate = 0.0
+    this.idx = 0.0
   }
 
   copyFrom(other: Gen): void {
     const src = other as BrownNoise
     this.lastSeedBits = src.lastSeedBits
     this.lastTrig = src.lastTrig
-    this.phase = src.phase
+    this.idx = src.idx
+    this.baseSampleRate = src.baseSampleRate
     copyF32Static(this.table, src.table)
   }
 
@@ -366,7 +366,8 @@ export class BrownNoise extends Gen {
     const seedBits = seedToBits(load<f32>(this.seed$))
     if (seedBits !== this.lastSeedBits) {
       this.lastSeedBits = seedBits
-      this.phase = 0.0
+      this.baseSampleRate = sampleRate
+      this.idx = 0.0
 
       let s: u32 = (hashU32(seedBits ^ 0x62726f77) | 1) as u32
       let y: f32 = 0.0
@@ -384,31 +385,27 @@ export class BrownNoise extends Gen {
 
     let trig$ = this.trig$
     let lastTrig: f32 = this.lastTrig
-    let phase: f32 = this.phase
+    let idx: f64 = this.idx
+    const baseSr: f64 = (this.baseSampleRate > 0.0 ? this.baseSampleRate : sampleRate) as f64
+    const step: f64 = baseSr / (sampleRate as f64)
 
     for (let i: i32 = 0; i < length; i++) {
       const trig = load<f32>(trig$)
       if (trig > 0 && lastTrig <= 0) {
-        phase = 0.0
+        idx = 0.0
       }
       lastTrig = trig
 
-      // Use phase-based indexing like oscillators do
-      const idx = i32(phase * f32(NOISE_TABLE_SIZE)) & NOISE_TABLE_MASK
-      store<f32>(out$, unchecked(this.table[idx]))
-
-      // Advance phase scaled by sample rate ratio (maintain spectral properties)
-      // When oversampling, sampleRate is higher, so advance phase faster to maintain
-      // the same effective playback rate relative to the base sample rate
-      phase += (BASE_SAMPLE_RATE / sampleRate) / f32(NOISE_TABLE_SIZE)
-      if (phase >= 1.0) phase -= 1.0
+      store<f32>(out$, unchecked(this.table[(i32(idx) & NOISE_TABLE_MASK) as i32]))
+      idx += step
+      if (idx >= (NOISE_TABLE_SIZE as f64)) idx -= (NOISE_TABLE_SIZE as f64)
 
       out$ += 4
       trig$ += 4
     }
 
     this.lastTrig = lastTrig
-    this.phase = phase
+    this.idx = idx
   }
 }
 
