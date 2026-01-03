@@ -17,10 +17,16 @@ export class Ad extends Gen {
   private position: f32 = 0
   private lastTrig: f32 = 0
 
+  // Best-effort UI/debug state (read by UI history writers).
+  visPhase: i32 = Phase.Idle
+  visPhase01: f32 = 0.0
+
   reset(): void {
     this.phase = Phase.Idle
     this.position = 0
     this.lastTrig = 0
+    this.visPhase = Phase.Idle
+    this.visPhase01 = 0.0
   }
 
   copyFrom(other: Gen): void {
@@ -28,6 +34,8 @@ export class Ad extends Gen {
     this.phase = src.phase
     this.position = src.position
     this.lastTrig = src.lastTrig
+    this.visPhase = src.visPhase
+    this.visPhase01 = src.visPhase01
   }
 
   @inline
@@ -41,6 +49,8 @@ export class Ad extends Gen {
     }
 
     if (this.phase === Phase.Idle) {
+      this.visPhase = Phase.Idle
+      this.visPhase01 = 0.0
       return 0
     }
 
@@ -57,6 +67,8 @@ export class Ad extends Gen {
           this.phase = Phase.Decay
         }
       }
+      this.visPhase = Phase.Attack
+      this.visPhase01 = Mathf.max(0.0, Mathf.min(this.position, 1.0))
       return f32(applyCurve(this.position, exponent))
     }
 
@@ -74,6 +86,9 @@ export class Ad extends Gen {
           this.phase = Phase.Idle
         }
       }
+      this.visPhase = this.phase === Phase.Idle ? Phase.Idle : Phase.Decay
+      const t: f32 = 1.0 - this.position
+      this.visPhase01 = Mathf.max(0.0, Mathf.min(t, 1.0))
       return f32(applyCurve(this.position, exponent))
     }
 

@@ -17,9 +17,6 @@ import {
   FILTER_DATA_OFFSET,
   FILTER_ENTRY_SIZE,
   FILTER_HISTORY_SIZE,
-  REVERB_DATA_OFFSET,
-  REVERB_ENTRY_SIZE,
-  REVERB_HISTORY_SIZE,
   HISTORIES_COUNT,
   HISTORY_ENTRY_SIZE,
   HISTORY_HEADER_SIZE,
@@ -30,6 +27,9 @@ import {
   LFO_HISTORY_SIZE,
   LITERALS_COUNT,
   OPS_COUNT,
+  REVERB_DATA_OFFSET,
+  REVERB_ENTRY_SIZE,
+  REVERB_HISTORY_SIZE,
   RING_BUFFER_SIZE,
   SAMPLE_NEEDLE_DATA_OFFSET,
   SAMPLE_NEEDLE_ENTRY_SIZE,
@@ -51,6 +51,7 @@ import {
   type BranchMarkRef,
   type CompressorRef,
   encodeLangToVmOps,
+  type EnvfollowRef,
   type EuclidRef,
   type EveryRef,
   type FilterRef,
@@ -61,6 +62,7 @@ import {
   type NumberWithParamsInfo,
   type ReverbRef,
   type SampleDef,
+  type SlewRef,
   type SlicerRef,
   type TimelineLabel,
   type TimelineSequenceDef,
@@ -200,6 +202,8 @@ function buildProgram(
   timelineLabels: TimelineLabel[]
   adRefs: AdRef[]
   adsrRefs: AdsrRef[]
+  envfollowRefs: EnvfollowRef[]
+  slewRefs: SlewRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
@@ -223,9 +227,10 @@ function buildProgram(
     ? (data.ops.set(vm.ops), data.literals.set(vm.literals), vm.result)
     : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
 
-  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, analyserRefs,
-    compressorRefs, limiterRefs, filterRefs, reverbRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals,
-    branchMarks, numberParams, numberLiterals, bpm, bars, scale, sampleDefs } = compiled
+  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs,
+    envfollowRefs, slewRefs, analyserRefs, compressorRefs, limiterRefs, filterRefs, reverbRefs, lfoRefs, slicerRefs,
+    everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, scale,
+    sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
@@ -238,6 +243,8 @@ function buildProgram(
     timelineLabels: timelineLabels ?? [],
     adRefs: adRefs ?? [],
     adsrRefs: adsrRefs ?? [],
+    envfollowRefs: envfollowRefs ?? [],
+    slewRefs: slewRefs ?? [],
     analyserRefs: analyserRefs ?? [],
     compressorRefs: compressorRefs ?? [],
     limiterRefs: limiterRefs ?? [],
@@ -281,6 +288,8 @@ export type ProgramBuildResult = {
   timelineLabels: TimelineLabel[]
   adRefs: AdRef[]
   adsrRefs: AdsrRef[]
+  envfollowRefs: EnvfollowRef[]
+  slewRefs: SlewRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
@@ -586,9 +595,10 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, analyserRefs, compressorRefs,
-          limiterRefs, filterRefs, reverbRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
-          numberParams, numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
+        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, envfollowRefs,
+          slewRefs, analyserRefs, compressorRefs, limiterRefs, filterRefs, reverbRefs, slicerRefs, lfoRefs, everyRefs,
+          atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars, scale } =
+            buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -638,6 +648,8 @@ async function createProgram(
           timelineLabels,
           adRefs,
           adsrRefs,
+          envfollowRefs,
+          slewRefs,
           analyserRefs,
           compressorRefs,
           limiterRefs,

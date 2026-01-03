@@ -84,6 +84,7 @@ export enum VmBuiltin {
   Phasor = VmSym.Phasor,
   Ad = VmSym.Ad,
   Adsr = VmSym.Adsr,
+  Envfollow = VmSym.Envfollow,
   Mini = VmSym.Mini,
   Analyser = VmSym.Analyser,
   Compressor = VmSym.Compressor,

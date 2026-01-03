@@ -349,6 +349,49 @@ export type AdsrRef = {
   }
 }
 
+export type SlewRef = {
+  slewIndex: number
+  /** Location of the `slew` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the up arg (positional or `up:`). */
+  upArgLoc: Loc | null
+  /** Location of the down arg (positional or `down:`). */
+  downArgLoc: Loc | null
+  /** Location of the exponent arg (positional or `exp:` or `exponent:`). */
+  exponentArgLoc: Loc | null
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: {
+    up: number
+    down: number
+    exponent: number
+  }
+}
+
+export type EnvfollowRef = {
+  envfollowIndex: number
+  /** Location of the `envfollow` identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the input arg (positional or `input:`). */
+  inputArgLoc: Loc | null
+  /** Location of the attack arg (positional or `attack:`). */
+  attackArgLoc: Loc | null
+  /** Location of the release arg (positional or `release:`). */
+  releaseArgLoc: Loc | null
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: {
+    attack: number
+    release: number
+  }
+}
+
 export type SampleDef = {
   sampleIndex: number
   url: string

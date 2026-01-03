@@ -60,7 +60,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'callback', type: '() -> number | [L:number, R:number]', description: 'Signal generator callback' },
     ],
     returnType: 'number | [L:number, R:number]',
-    description: 'Evaluates a signal at a higher internal sample rate and downsamples back to reduce aliasing (CPU heavy).',
+    description:
+      'Evaluates a signal at a higher internal sample rate and downsamples back to reduce aliasing (CPU heavy).',
     examples: [
       'oversample(8, () -> saw(440)) |> out($)',
       'oversample(8, cb: () -> [saw(220), saw(221)]) |> out($)',
@@ -371,6 +372,34 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'env = adsr(attack:.01, decay:.1, sustain:.3, release:.7, trig)',
       'adsr(attack:.01, decay:.05, sustain:.5, release:.2, trig) * sine(hz, trig) |> out($)',
       'env = adsr(attack:.1, decay:.2, sustain:.8, release:.3, exponent:0.5, trig)',
+    ],
+  },
+  envfollow: {
+    name: 'envfollow',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Signal to envelope-follow' },
+      {
+        name: 'attack',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.01,
+        description: 'Attack time in seconds (how quickly it responds to signal increases)',
+      },
+      {
+        name: 'release',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.1,
+        description: 'Release time in seconds (how quickly it responds to signal decreases)',
+      },
+    ],
+    returnType: 'number',
+    description:
+      'Envelope follower that tracks the amplitude of an input signal with separate attack and release times.',
+    examples: [
+      'sine(440) |> envfollow($) |> out($)',
+      'envfollow(saw(hz), attack: 0.005, release: 0.2) |> out($)',
+      'sine(220) * envfollow($, attack: 0.01, release: 0.05) |> out($)',
     ],
   },
   analyser: {

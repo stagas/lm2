@@ -1,3 +1,4 @@
+import { applyCurve, clamp01 } from '../util'
 import { Gen } from './gen'
 
 export class Slew extends Gen {
@@ -8,13 +9,22 @@ export class Slew extends Gen {
 
   private current: f32 = 0.0
 
+  // Best-effort UI/debug state (read by UI history writers).
+  // 0 = down, 1 = up, 2 = steady
+  visPhase: i32 = 2
+  visPhase01: f32 = 0.5
+
   reset(): void {
     this.current = 0.0
+    this.visPhase = 2
+    this.visPhase01 = 0.5
   }
 
   copyFrom(other: Gen): void {
     const src = other as Slew
     this.current = src.current
+    this.visPhase = src.visPhase
+    this.visPhase01 = src.visPhase01
   }
 
   process(out$: usize, length: i32): void {
@@ -33,57 +43,19 @@ export class Slew extends Gen {
 
       if (Mathf.abs(diff) < 0.000001) {
         this.current = target
+        this.visPhase = 2
+        this.visPhase01 = 0.5
       }
       else {
-        const actualRate: f32 = diff > 0.0 ? upVal : downVal
+        const a: f32 = clamp01(diff > 0.0 ? upVal : downVal)
+        const coeff: f32 = f32(applyCurve(a as f64, exp as f64))
+        const step: f32 = diff * coeff
 
-        if (Mathf.abs(exp - 1.0) < 0.000001) {
-          // Linear slew (exponent = 1.0)
-          const sign: f32 = diff > 0.0 ? 1.0 : -1.0
-          const step: f32 = sign * actualRate
+        if (Mathf.abs(step) >= Mathf.abs(diff)) this.current = target
+        else this.current += step
 
-          if (Mathf.abs(step) >= Mathf.abs(diff)) {
-            this.current = target
-          }
-          else {
-            this.current += step
-          }
-        }
-        else {
-          // Exponential/logarithmic slew
-          const absDiff: f32 = Mathf.abs(diff)
-
-          // Use exponential interpolation: current = current + (target - current) * coeff
-          // The coefficient is calculated based on the exponent to create different curve shapes
-          let coeff: f32 = 0.0
-
-          if (exp > 1.0) {
-            // Exponential curve: faster approach at start, slower near target
-            // Scale the rate to make it more exponential (higher exponent = more exponential)
-            const scaledRate: f32 = actualRate * Mathf.pow(2.0, (exp - 1.0) * 0.5)
-            coeff = 1.0 - Mathf.exp(-scaledRate)
-          }
-          else {
-            // Logarithmic curve: slower approach at start, faster near target
-            // Scale the rate inversely for logarithmic behavior
-            const scaledRate: f32 = actualRate * Mathf.pow(2.0, (1.0 - exp) * 0.5)
-            coeff = 1.0 - Mathf.exp(-scaledRate)
-            // Apply additional scaling for logarithmic to make the start even slower
-            coeff = coeff * Mathf.pow(exp, 0.3)
-          }
-
-          // Clamp coefficient to prevent overshoot and ensure stability
-          coeff = Mathf.min(1.0, Mathf.max(0.0, coeff))
-
-          const step: f32 = diff * coeff
-
-          if (Mathf.abs(step) >= absDiff) {
-            this.current = target
-          }
-          else {
-            this.current += step
-          }
-        }
+        this.visPhase = diff > 0.0 ? 1 : 0
+        this.visPhase01 = 0.5
       }
 
       store<f32>(out$, this.current)

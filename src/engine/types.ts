@@ -8,6 +8,7 @@ import {
   type AtRef,
   type BranchMarkRef,
   type CompressorRef,
+  type EnvfollowRef,
   type EuclidRef,
   type EveryRef,
   type FilterRef,
@@ -18,6 +19,7 @@ import {
   type NumberWithParamsInfo,
   type ReverbRef,
   type SampleDef,
+  type SlewRef,
   type SlicerRef,
   type TimelineSequenceRef,
 } from './bytecode/bytecode.ts'
@@ -36,6 +38,8 @@ export type WidgetCompileResult = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   adRefs: AdRef[]
   adsrRefs: AdsrRef[]
+  envfollowRefs: EnvfollowRef[]
+  slewRefs: SlewRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]

@@ -17,6 +17,7 @@ import {
   type BranchMarkRef,
   type CompressorRef,
   encodeLangToVmOps,
+  type EnvfollowRef,
   type EuclidRef,
   type EveryRef,
   extractEarlyDataFromSource,
@@ -29,6 +30,7 @@ import {
   type NumberWithParamsInfo,
   type ReverbRef,
   type SampleDef,
+  type SlewRef,
   type SlicerRef,
   type TimelineLabel,
   type TimelineSequenceRef,
@@ -67,6 +69,8 @@ export type EngineDspState = {
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   adRefs: AdRef[]
   adsrRefs: AdsrRef[]
+  envfollowRefs: EnvfollowRef[]
+  slewRefs: SlewRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
   limiterRefs: LimiterRef[]
@@ -92,6 +96,8 @@ export type EngineDspState = {
   uiMiniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   uiAdRefs: AdRef[]
   uiAdsrRefs: AdsrRef[]
+  uiEnvfollowRefs: EnvfollowRef[]
+  uiSlewRefs: SlewRef[]
   uiAnalyserRefs: AnalyserRef[]
   uiCompressorRefs: CompressorRef[]
   uiLimiterRefs: LimiterRef[]
@@ -403,6 +409,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const miniSourceMaps = primaryResult.miniSourceMaps
       const adRefs = primaryResult.adRefs
       const adsrRefs = primaryResult.adsrRefs
+      const envfollowRefs = primaryResult.envfollowRefs
+      const slewRefs = primaryResult.slewRefs
       const analyserRefs = primaryResult.analyserRefs
       const compressorRefs = primaryResult.compressorRefs
       const limiterRefs = primaryResult.limiterRefs
@@ -459,6 +467,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiMiniSourceMaps: miniSourceMaps,
           uiAdRefs: adRefs,
           uiAdsrRefs: adsrRefs,
+          uiEnvfollowRefs: envfollowRefs,
+          uiSlewRefs: slewRefs,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
           uiLimiterRefs: limiterRefs,
@@ -510,6 +520,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAdRefs: stagingResult.adRefs,
         uiAdsrRefs: stagingResult.adsrRefs,
+        uiEnvfollowRefs: stagingResult.envfollowRefs,
+        uiSlewRefs: stagingResult.slewRefs,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
         uiLimiterRefs: stagingResult.limiterRefs,
@@ -570,6 +582,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiMiniSourceMaps: current.miniSourceMaps,
           uiAdRefs: current.adRefs,
           uiAdsrRefs: current.adsrRefs,
+          uiEnvfollowRefs: current.envfollowRefs,
+          uiSlewRefs: current.slewRefs,
           uiAnalyserRefs: current.analyserRefs,
           uiCompressorRefs: current.compressorRefs,
           uiLimiterRefs: current.limiterRefs,
@@ -604,6 +618,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         miniSourceMaps: stagingResult.miniSourceMaps,
         adRefs: stagingResult.adRefs,
         adsrRefs: stagingResult.adsrRefs,
+        envfollowRefs: stagingResult.envfollowRefs,
+        slewRefs: stagingResult.slewRefs,
         analyserRefs: stagingResult.analyserRefs,
         compressorRefs: stagingResult.compressorRefs,
         limiterRefs: stagingResult.limiterRefs,
@@ -628,6 +644,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiMiniSourceMaps: stagingResult.miniSourceMaps,
         uiAdRefs: stagingResult.adRefs,
         uiAdsrRefs: stagingResult.adsrRefs,
+        uiEnvfollowRefs: stagingResult.envfollowRefs,
+        uiSlewRefs: stagingResult.slewRefs,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
         uiLimiterRefs: stagingResult.limiterRefs,
@@ -776,6 +794,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     miniSourceMaps: [],
     adRefs: [],
     adsrRefs: [],
+    envfollowRefs: [],
+    slewRefs: [],
     analyserRefs: [],
     compressorRefs: [],
     limiterRefs: [],
@@ -801,6 +821,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiMiniSourceMaps: [],
     uiAdRefs: [],
     uiAdsrRefs: [],
+    uiEnvfollowRefs: [],
+    uiSlewRefs: [],
     uiAnalyserRefs: [],
     uiCompressorRefs: [],
     uiLimiterRefs: [],
@@ -884,6 +906,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         miniSourceMaps: [],
         adRefs: [],
         adsrRefs: [],
+        envfollowRefs: [],
+        slewRefs: [],
         analyserRefs: [],
         compressorRefs: [],
         limiterRefs: [],
@@ -1064,6 +1088,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const miniSourceMaps = stagingResult.miniSourceMaps
         const adRefs = stagingResult.adRefs
         const adsrRefs = stagingResult.adsrRefs
+        const envfollowRefs = stagingResult.envfollowRefs
+        const slewRefs = stagingResult.slewRefs
         const analyserRefs = stagingResult.analyserRefs
         const compressorRefs = stagingResult.compressorRefs
         const limiterRefs = stagingResult.limiterRefs
@@ -1127,6 +1153,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiMiniSourceMaps: miniSourceMaps,
           uiAdRefs: adRefs,
           uiAdsrRefs: adsrRefs,
+          uiEnvfollowRefs: envfollowRefs,
+          uiSlewRefs: slewRefs,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
           uiLimiterRefs: limiterRefs,

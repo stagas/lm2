@@ -13,6 +13,7 @@ export const builtinSyms: Record<string, number> = {
   phasor: VmSym.Phasor,
   ad: VmSym.Ad,
   adsr: VmSym.Adsr,
+  envfollow: VmSym.Envfollow,
   mini: VmSym.Mini,
   analyser: VmSym.Analyser,
   compressor: VmSym.Compressor,
