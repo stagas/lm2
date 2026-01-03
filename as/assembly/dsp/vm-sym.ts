@@ -190,4 +190,5 @@ export enum VmSym {
   Oversample,
   Olp,
   Ohp,
+  Voices,
 }

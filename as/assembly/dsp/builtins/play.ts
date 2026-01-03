@@ -43,6 +43,16 @@ export function callPlay(
   let seqAux = posAux[0]
   let cbTag = posTags[1] as VmTag
   let cbAux = posAux[1]
+  let voicesTag = VmTag.Undef
+  let voicesNum: f64 = 0.0
+  let voicesAux: i32 = 0
+
+  // Check for positional voices parameter (3rd positional arg)
+  if (posCount >= 3) {
+    voicesTag = posTags[2] as VmTag
+    voicesNum = posNums[2]
+    voicesAux = posAux[2]
+  }
 
   // Check for named parameters
   for (let i = 0; i < namedCount; i++) {
@@ -55,6 +65,11 @@ export function callPlay(
       cbTag = nameTags[i] as VmTag
       cbAux = nameAux[i]
     }
+    else if (nameSyms[i] === VmSym.Voices) {
+      voicesTag = nameTags[i] as VmTag
+      voicesNum = nameNums[i]
+      voicesAux = nameAux[i]
+    }
   }
 
   if ((seqTag !== VmTag.Num && seqTag !== VmTag.Audio) || cbTag !== VmTag.Func) {
@@ -65,7 +80,7 @@ export function callPlay(
   const baseSp = stack.sp
 
   if (seqTag === VmTag.Num) {
-    playMini(i32(seqNum), cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
+    playMini(i32(seqNum), cbAux, voicesTag, voicesNum, voicesAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
       miniValOuts, cbArgTags, cbArgNums, cbArgAux)
     return
   }
@@ -75,7 +90,7 @@ export function callPlay(
   const picked: i32 = i32(load<f32>(seq$))
   audio.tHas = 0
   stack.sp = baseSp
-  playMini(picked, cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
+  playMini(picked, cbAux, voicesTag, voicesNum, voicesAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
     miniValOuts, cbArgTags, cbArgNums, cbArgAux)
 }
 

@@ -132,6 +132,7 @@ export const builtinSyms: Record<string, number> = {
   // Named args for mini/play
   hz: VmSym.Hz,
   seq: VmSym.Seq,
+  voices: VmSym.Voices,
   // Named args for smooth()/fractal()
   rate: VmSym.Rate,
   curve: VmSym.Curve,

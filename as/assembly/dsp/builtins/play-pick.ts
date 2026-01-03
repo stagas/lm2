@@ -3,6 +3,7 @@ import { Program } from '../../program'
 import { playMini } from './play-mini'
 import { Dsp } from '../dsp'
 import { VmTag } from '../types'
+import { VmSym } from '../vm-sym'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 
@@ -44,6 +45,25 @@ export function callPlayPick(
   const idxAux = posAux[1]
   const cbTag = posTags[2] as VmTag
   const cbAux = posAux[2]
+  let voicesTag = VmTag.Undef
+  let voicesNum: f64 = 0.0
+  let voicesAux: i32 = 0
+
+  // Check for positional voices parameter (4th positional arg)
+  if (posCount >= 4) {
+    voicesTag = posTags[3] as VmTag
+    voicesNum = posNums[3]
+    voicesAux = posAux[3]
+  }
+
+  // Check for named parameters
+  for (let i = 0; i < namedCount; i++) {
+    if (nameSyms[i] === VmSym.Voices) {
+      voicesTag = nameTags[i] as VmTag
+      voicesNum = nameNums[i]
+      voicesAux = nameAux[i]
+    }
+  }
 
   if (seqsTag !== VmTag.Arr || cbTag !== VmTag.Func) {
     stack.push(VmTag.Undef)
@@ -78,7 +98,7 @@ export function callPlayPick(
   const seqIndex = i32(dsp.arrays.elemNum[seqStart + i])
 
   audio.tHas = 0
-  playMini(seqIndex, cbAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts, miniValOuts,
+  playMini(seqIndex, cbAux, voicesTag, voicesNum, voicesAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts, miniValOuts,
     cbArgTags, cbArgNums, cbArgAux)
 }
 

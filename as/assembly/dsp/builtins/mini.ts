@@ -82,7 +82,7 @@ export function callMini(
 
   // Delegate to play() implementation so `seq` can be a per-sample buffer (audio-rate selection).
   callPlay(
-    2,
+    posCount,
     nameSyms,
     nameTags,
     nameNums,
