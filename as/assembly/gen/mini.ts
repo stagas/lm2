@@ -76,6 +76,7 @@ class MiniRng {
 export class Mini extends Gen {
   bytecode$: usize = 0
   history$: usize = 0
+  bar$: usize = 0
   outVoiceCount$: usize = 0
   outTrig$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
   outVelocity$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
@@ -149,6 +150,7 @@ export class Mini extends Gen {
     const src = other as Mini
     this.bytecode$ = src.bytecode$
     this.history$ = src.history$
+    this.bar$ = src.bar$
     this.outVoiceCount$ = src.outVoiceCount$
     this.voiceCursor = src.voiceCursor
     this.numVoices = src.numVoices
@@ -498,10 +500,11 @@ export class Mini extends Gen {
 
     const cycleLength = 1.0 as f32
     const secondsPerBeat = 60.0 / bpm
-    const cycleSeconds = 4.0 * secondsPerBeat
+    const barBars: f32 = (this.bar$ !== 0 ? Mathf.max(0.001, load<f32>(this.bar$) as f32) : 1.0) * 4.0
+    const cycleSeconds = barBars * secondsPerBeat
     const cycleSamples = (cycleSeconds * sampleRate) as f32
     if (cycleSamples <= 0.0) return
-    const barLengthSeconds = 60.0 * 4.0 / bpm
+    const barLengthSeconds = barBars * secondsPerBeat
     const lookAheadSamples = i32(<f32> FUTURE_BARS * barLengthSeconds * sampleRate)
 
     const currentVersion = i32(bytecodeArray[3])

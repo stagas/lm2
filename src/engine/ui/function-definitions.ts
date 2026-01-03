@@ -480,12 +480,20 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         optional: true,
         description: 'Override automatic voice allocation with a fixed number of voices (1..16)',
       },
+      {
+        name: 'bar',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Duration in bars for a full cycle of the pattern',
+      },
     ],
     returnType: 'number',
     description: 'Plays a sequence reference with the provided callback.',
     examples: [
       'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity) |> out($)',
       'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity, voices:4) |> out($)',
+      'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity, bar:2) |> out($)',
     ],
   },
   timeline: {

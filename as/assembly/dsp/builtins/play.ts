@@ -46,12 +46,22 @@ export function callPlay(
   let voicesTag = VmTag.Undef
   let voicesNum: f64 = 0.0
   let voicesAux: i32 = 0
+  let barTag = VmTag.Num
+  let barNum: f64 = 1.0
+  let barAux: i32 = 0
 
   // Check for positional voices parameter (3rd positional arg)
-  if (posCount >= 3) {
+  if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
     voicesTag = posTags[2] as VmTag
     voicesNum = posNums[2]
     voicesAux = posAux[2]
+  }
+
+  // Check for positional bar parameter (4th positional arg)
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
+    barTag = posTags[3] as VmTag
+    barNum = posNums[3]
+    barAux = posAux[3]
   }
 
   // Check for named parameters
@@ -70,6 +80,11 @@ export function callPlay(
       voicesNum = nameNums[i]
       voicesAux = nameAux[i]
     }
+    else if (nameSyms[i] === VmSym.Bar) {
+      barTag = nameTags[i] as VmTag
+      barNum = nameNums[i]
+      barAux = nameAux[i]
+    }
   }
 
   if ((seqTag !== VmTag.Num && seqTag !== VmTag.Audio) || cbTag !== VmTag.Func) {
@@ -80,7 +95,7 @@ export function callPlay(
   const baseSp = stack.sp
 
   if (seqTag === VmTag.Num) {
-    playMini(i32(seqNum), cbAux, voicesTag, voicesNum, voicesAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
+    playMini(i32(seqNum), cbAux, voicesTag, voicesNum, voicesAux, barTag, barNum, barAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
       miniValOuts, cbArgTags, cbArgNums, cbArgAux)
     return
   }
@@ -90,7 +105,7 @@ export function callPlay(
   const picked: i32 = i32(load<f32>(seq$))
   audio.tHas = 0
   stack.sp = baseSp
-  playMini(picked, cbAux, voicesTag, voicesNum, voicesAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
+  playMini(picked, cbAux, voicesTag, voicesNum, voicesAux, barTag, barNum, barAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts,
     miniValOuts, cbArgTags, cbArgNums, cbArgAux)
 }
 
