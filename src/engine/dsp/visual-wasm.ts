@@ -86,8 +86,10 @@ export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string
     bpm: number
     sampleRate: number
     scaleIndex: number | undefined
+    bar?: number
   }): Float32Array => {
     const { seqIndex, seq, windowStartSample, windowEndSample, bpm, sampleRate, scaleIndex } = args
+    const bar = args.bar ?? 1
     const st = setMiniSequence(seqIndex, seq, scaleIndex)
     ;(wasm.generateMiniHistoryWindow as any)(
       st.array$,
@@ -96,6 +98,7 @@ export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string
       Math.floor(windowEndSample),
       bpm,
       sampleRate,
+      bar,
     )
 
     return st.history

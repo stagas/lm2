@@ -157,6 +157,7 @@ function extractEarlyDataFromProgram(src: string, program: Program, errors: Lang
   // Initialize result collections
   const sequences: string[] = []
   const miniRefs: MiniSequenceRef[] = []
+  const miniPlayBars: Array<number | undefined> = []
   const timelineSequences: TimelineSequenceDef[] = []
   const timelineRefs: TimelineSequenceRef[] = []
   const timelineLabels: TimelineLabel[] = []
@@ -172,7 +173,7 @@ function extractEarlyDataFromProgram(src: string, program: Program, errors: Lang
     createBpmVisitor(src, errors, result),
     createBarsVisitor(src, errors, result),
     createScaleVisitor(src, errors, result),
-    createMiniSequencesVisitor(src, sequences, miniRefs),
+    createMiniSequencesVisitor(src, sequences, miniRefs, miniPlayBars),
     createTimelineSequencesVisitor(src, timelineSequences, timelineRefs),
     createTimelineLabelsVisitor(timelineLabels),
     createSamplesVisitor(src, samples, errors),
@@ -190,6 +191,7 @@ function extractEarlyDataFromProgram(src: string, program: Program, errors: Lang
     scale: result.scale,
     sequences,
     miniRefs,
+    miniPlayBars,
     timelineSequences,
     timelineRefs,
     timelineLabels,
@@ -262,6 +264,7 @@ export function extractEarlyDataFromSource(src: string): {
   scale?: number
   sequences: string[]
   miniRefs: MiniSequenceRef[]
+  miniPlayBars: Array<number | undefined>
   timelineSequences: TimelineSequenceDef[]
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
@@ -292,6 +295,7 @@ export function encodeLangToVmOps(
   scale?: number
   miniSequences?: string[]
   miniRefs?: MiniSequenceRef[]
+  miniPlayBars?: Array<number | undefined>
   timelineSequences?: TimelineSequenceDef[]
   timelineRefs?: TimelineSequenceRef[]
   timelineLabels?: TimelineLabel[]
@@ -415,6 +419,7 @@ export function encodeLangToVmOps(
       scale,
       sequences,
       miniRefs,
+      miniPlayBars,
       timelineSequences,
       timelineRefs,
       timelineLabels,
@@ -1430,6 +1435,7 @@ export function encodeLangToVmOps(
         scale,
         miniSequences: sequences,
         miniRefs: miniRefs,
+        miniPlayBars,
         timelineSequences,
         timelineRefs: timelineRefsMapped,
         timelineLabels,
@@ -1462,6 +1468,7 @@ export function encodeLangToVmOps(
         scale,
         miniSequences: sequences,
         miniRefs: miniRefs,
+        miniPlayBars,
         timelineSequences,
         timelineRefs: timelineRefsMapped,
         timelineLabels,

@@ -60,6 +60,7 @@ type UsePianorollParams = {
   sequences: string[]
   miniSourceMaps: (Map<number, SourceLocation> | undefined)[]
   miniRefs: MiniSequenceRef[]
+  miniPlayBars?: Array<number | undefined>
   timelineLabels: TimelineLabel[]
   dspSource: string
   showWidgets: boolean
@@ -69,12 +70,14 @@ type UsePianorollParams = {
 }
 
 export function usePianorollWidget({
+  program1,
   audioContext,
   bpmValue,
   globalSampleCount,
   sequences,
   miniSourceMaps,
   miniRefs,
+  miniPlayBars,
   timelineLabels,
   dspSource,
   showWidgets,
@@ -98,8 +101,10 @@ export function usePianorollWidget({
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
+    const playbackState = useEngineRuntimeStore.getState().playbackState
+    if (playbackState === 'paused') return
     const visualWasm = useEngineRuntimeStore.getState().visualWasm
-    if (!visualWasm) return
+    // visualWasm is required only when we're generating a static window (non-live).
 
     const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
@@ -145,15 +150,21 @@ export function usePianorollWidget({
       const windowStartSample = Math.max(0, Math.floor(windowStartTime * sampleRate))
       const windowEndSample = Math.max(windowStartSample + 1, Math.floor(windowEndTime * sampleRate))
 
-      const historyRaw = visualWasm.generateMiniHistoryWindow({
-        seqIndex,
-        seq,
-        windowStartSample,
-        windowEndSample,
-        bpm,
-        sampleRate,
-        scaleIndex: defaultScaleIndex,
-      })
+      const historyRaw = (playbackState === 'running' && isPlaying && program1?.program?.histories?.[seqIndex])
+        ? program1.program.histories[seqIndex]!.raw
+        : (visualWasm
+          ? visualWasm.generateMiniHistoryWindow({
+            seqIndex,
+            seq,
+            windowStartSample,
+            windowEndSample,
+            bpm,
+            sampleRate,
+            scaleIndex: defaultScaleIndex,
+            bar: miniPlayBars?.[seqIndex] ?? 1,
+          })
+          : null)
+      if (!historyRaw) continue
 
       const activeMask = st.activeMask
       activeMask.fill(0)
@@ -212,7 +223,8 @@ export function usePianorollWidget({
 
       pianorollStateRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, audioContext, bpmValue, globalSampleCount, isPlaying, sequences, miniRefs, miniSourceMaps])
+  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, isPlaying, sequences, miniRefs, miniSourceMaps,
+    miniPlayBars])
 
   const drawPianoroll = useCallback((
     c: CanvasRenderingContext2D,
@@ -515,7 +527,7 @@ export function usePianorollWidget({
     c.restore()
     // restore the initial context saved before translating by x
     c.restore()
-  }, [audioContext, bpmValue, timelineLabels, theme.colors.argument])
+  }, [audioContext, bpmValue, timelineLabels, theme.colors.argument, miniPlayBars])
 
   const widgets = useMemo(() => {
     if (!showWidgets) return []

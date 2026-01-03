@@ -124,6 +124,7 @@ function DspSourceEditorReady(
   const updateDspSource = useEngineDspStore(state => state.updateDspSource)
   const sequences = useEngineDspStore(state => state.sequences)
   const miniRefs = useEngineDspStore(state => state.miniRefs)
+  const miniPlayBars = useEngineDspStore(state => state.miniPlayBars)
   const timelineRefs = useEngineDspStore(state => state.timelineRefs)
   const timelineLabels = useEngineDspStore(state => state.timelineLabels)
   const bars = useEngineDspStore(state => state.bars)
@@ -367,6 +368,7 @@ function DspSourceEditorReady(
         dspSource,
         sequences,
         miniRefs,
+        miniPlayBars,
         timelineRefs,
         miniSourceMaps,
         adRefs,
@@ -398,6 +400,7 @@ function DspSourceEditorReady(
         dspSource,
         sequences,
         miniRefs,
+        miniPlayBars,
         timelineRefs,
         miniSourceMaps,
         adRefs,
@@ -433,6 +436,7 @@ function DspSourceEditorReady(
       dspSource: code,
       sequences: previewSequences,
       miniRefs: previewCompile.miniRefs ?? [],
+      miniPlayBars: previewCompile.miniPlayBars ?? [],
       timelineRefs: previewCompile.timelineRefs ?? [],
       miniSourceMaps: previewMiniSourceMaps,
       adRefs: previewCompile.adRefs ?? adRefs,
@@ -512,6 +516,7 @@ function DspSourceEditorReady(
       source: widgetCompileState.dspSource,
       sequences: widgetCompileState.sequences,
       miniRefs: widgetCompileState.miniRefs,
+      miniPlayBars: widgetCompileState.miniPlayBars,
       timelineRefs: widgetCompileState.timelineRefs,
       timelineLabels: timelineLabelsForView,
       bars: barsForView,
@@ -653,6 +658,7 @@ function DspSourceEditorReady(
     sequences: widgetCompileState.sequences,
     miniSourceMaps: widgetCompileState.miniSourceMaps,
     miniRefs: widgetCompileState.miniRefs,
+    miniPlayBars: widgetCompileState.miniPlayBars,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
@@ -670,6 +676,7 @@ function DspSourceEditorReady(
     sequences: widgetCompileState.sequences,
     miniSourceMaps: widgetCompileState.miniSourceMaps,
     miniRefs: widgetCompileState.miniRefs,
+    miniPlayBars: widgetCompileState.miniPlayBars,
     timelineLabels: timelineLabelsForView,
     dspSource: widgetCompileState.dspSource,
     showWidgets,

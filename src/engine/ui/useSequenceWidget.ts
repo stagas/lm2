@@ -54,6 +54,7 @@ type UseSequenceParams = {
   sequences: string[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   miniRefs: Array<{ seqIndex: number; loc: { line: number }; start: number }>
+  miniPlayBars?: Array<number | undefined>
   dspSource: string
   showWidgets: boolean
   isPlaying: boolean
@@ -184,12 +185,14 @@ function applyFadeToControls(
 }
 
 export function useSequenceWidget({
+  program1,
   audioContext,
   bpmValue,
   globalSampleCount,
   sequences,
   miniSourceMaps,
   miniRefs,
+  miniPlayBars,
   dspSource,
   showWidgets,
   isPlaying,
@@ -212,8 +215,9 @@ export function useSequenceWidget({
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
+    const playbackState = useEngineRuntimeStore.getState().playbackState
+    if (playbackState === 'paused') return
     const visualWasm = useEngineRuntimeStore.getState().visualWasm
-    if (!visualWasm) return
     const FADEOUT_SECONDS = 0.3
     const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
     if (!pred) return
@@ -276,7 +280,6 @@ export function useSequenceWidget({
         st.fadingSwing = undefined
       }
       else if (didPause) {
-        const playbackState = useEngineRuntimeStore.getState().playbackState
         if (playbackState === 'stopped') {
           // Only clear fades immediately when user pressed stop.
           st.fadingOctave = undefined
@@ -287,15 +290,21 @@ export function useSequenceWidget({
       }
 
       const eventData = new Map<number, { startSample: number; endSample: number; velocity: number }>()
-      const historyRaw = visualWasm.generateMiniHistoryWindow({
-        seqIndex,
-        seq,
-        windowStartSample,
-        windowEndSample,
-        bpm,
-        sampleRate,
-        scaleIndex: defaultScaleIndex,
-      })
+      const historyRaw = (playbackState === 'running' && isPlaying && program1?.program?.histories?.[seqIndex])
+        ? program1.program.histories[seqIndex]!.raw
+        : (visualWasm
+          ? visualWasm.generateMiniHistoryWindow({
+            seqIndex,
+            seq,
+            windowStartSample,
+            windowEndSample,
+            bpm,
+            sampleRate,
+            scaleIndex: defaultScaleIndex,
+            bar: miniPlayBars?.[seqIndex] ?? 1,
+          })
+          : null)
+      if (!historyRaw) continue
 
       for (let idx = HISTORY_DATA_OFFSET; idx < historyRaw.length; idx += HISTORY_ENTRY_SIZE) {
         const opIndex = Math.floor(historyRaw[idx])
@@ -384,6 +393,7 @@ export function useSequenceWidget({
     frameRef.current = nextFrame
   }, [
     showWidgets,
+    program1,
     audioContext,
     bpmValue,
     globalSampleCount,
@@ -391,6 +401,7 @@ export function useSequenceWidget({
     sequences,
     miniSourceMaps,
     miniRefs,
+    miniPlayBars,
     controlStateRef,
     frameRef,
   ])

@@ -64,6 +64,7 @@ type PendingDspUpdate = {
 export type EngineDspState = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
+  miniPlayBars: Array<number | undefined>
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
@@ -91,6 +92,7 @@ export type EngineDspState = {
 
   uiSequences: string[]
   uiMiniRefs: MiniSequenceRef[]
+  uiMiniPlayBars: Array<number | undefined>
   uiTimelineRefs: TimelineSequenceRef[]
   uiTimelineLabels: TimelineLabel[]
   uiMiniSourceMaps: Array<Map<number, SourceLocation> | undefined>
@@ -132,6 +134,7 @@ export type EngineDspState = {
     source: string
     sequences: string[]
     miniRefs: MiniSequenceRef[]
+    miniPlayBars: Array<number | undefined>
     timelineRefs: TimelineSequenceRef[]
     timelineLabels: TimelineLabel[]
     bars: number | undefined
@@ -576,6 +579,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiDspSource: current.dspSource,
           uiSequences: current.sequences,
           uiMiniRefs: current.miniRefs,
+          uiMiniPlayBars: current.miniPlayBars,
           uiTimelineRefs: current.timelineRefs,
           uiTimelineLabels: current.timelineLabels,
           uiBars: current.bars,
@@ -612,6 +616,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         dspSource: source,
         sequences,
         miniRefs: stagingResult.miniRefs,
+        miniPlayBars: stagingResult.miniPlayBars,
         timelineRefs: stagingResult.timelineRefs,
         timelineLabels: committedLabels,
         bars: committedBars,
@@ -638,6 +643,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiDspSource: source,
         uiSequences: sequences,
         uiMiniRefs: stagingResult.miniRefs,
+        uiMiniPlayBars: stagingResult.miniPlayBars,
         uiTimelineRefs: stagingResult.timelineRefs,
         uiTimelineLabels: committedLabels,
         uiBars: committedBars,
@@ -789,6 +795,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
   return {
     sequences: [...DEFAULT_SEQUENCES],
     miniRefs: [],
+    miniPlayBars: [],
     timelineRefs: [],
     timelineLabels: [],
     miniSourceMaps: [],
@@ -816,6 +823,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
 
     uiSequences: [...DEFAULT_SEQUENCES],
     uiMiniRefs: [],
+    uiMiniPlayBars: [],
     uiTimelineRefs: [],
     uiTimelineLabels: [],
     uiMiniSourceMaps: [],
@@ -899,6 +907,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       set({
         lastSuccessfulProgramData: undefined,
         miniRefs: [],
+        miniPlayBars: [],
         timelineRefs: [],
         timelineLabels: [],
         bars: undefined,
@@ -922,6 +931,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         numberParams: [],
         numberLiterals: [],
         uiMiniRefs: [],
+        uiMiniPlayBars: [],
         uiTimelineRefs: [],
         uiTimelineLabels: [],
         uiMiniSourceMaps: [],
@@ -1206,6 +1216,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiDspSource: next.source,
         uiSequences: next.sequences,
         uiMiniRefs: next.miniRefs,
+        uiMiniPlayBars: next.miniPlayBars,
         uiTimelineRefs: next.timelineRefs,
         uiTimelineLabels: next.timelineLabels,
         uiBars: next.bars,
