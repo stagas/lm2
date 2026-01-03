@@ -72,6 +72,7 @@ export function generateMiniHistoryWindow(
   windowEndSample: i32,
   bpmValue: f32,
   sampleRateValue: f32,
+  barValue: f32,
 ): void {
   if (history$ === 0) return
   const history = changetype<StaticArray<f32>>(history$)
@@ -114,6 +115,7 @@ export function generateMiniHistoryWindow(
       cycleSamples,
       windowStartSample,
       windowEndSample,
+      barValue,
     )
 
     for (let i: i32 = 0; i < miniHistoryBuffer.writePos; i++) {

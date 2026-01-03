@@ -96,6 +96,7 @@ export class Mini extends Gen {
   private lastBytecode$: usize = 0
   private lastHistory$: usize = 0
   private lastVersion: i32 = -1
+  private lastBar: f32 = -1.0
   // Cycle number up to which the history has been generated (inclusive).
   private historyGeneratedUntilCycle: i32 = -1
   private lastVersionForVoiceCount: i32 = -1
@@ -125,6 +126,7 @@ export class Mini extends Gen {
     this.lastBytecode$ = 0
     this.lastHistory$ = 0
     this.lastVersion = -1
+    this.lastBar = -1.0
     this.historyGeneratedUntilCycle = -1
     this.lastVersionForVoiceCount = -1
     this.voiceCursor = 0
@@ -159,6 +161,7 @@ export class Mini extends Gen {
     this.lastBytecode$ = src.lastBytecode$
     this.lastHistory$ = src.lastHistory$
     this.lastVersion = src.lastVersion
+    this.lastBar = src.lastBar
     this.historyGeneratedUntilCycle = src.historyGeneratedUntilCycle
     this.lastVersionForVoiceCount = src.lastVersionForVoiceCount
 
@@ -351,6 +354,7 @@ export class Mini extends Gen {
     for (let n = 0; n < HISTORY_SIZE; n++) {
       const historyIdx = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const historyEntry = HistoryEntry.at(changetype<usize>(historyArray), historyIdx)
+      const startSample = i32(historyEntry.startSample)
       const endSample = i32(historyEntry.endSample)
 
       // Skip invalid entries
@@ -358,7 +362,9 @@ export class Mini extends Gen {
 
       // We keep fully past events for the visualizer, even if their opIndex no longer matches the
       // current bytecode. But we must clear anything that could still affect playback.
-      if (endSample > windowEnd || endSample < windowStart) continue
+      // Preserve any event that overlaps the window. This keeps long holds that started in the past
+      // but are still active at the playhead, so the past portion doesn't disappear.
+      if (endSample <= windowStart || startSample >= windowEnd) continue
 
       // Move this event to the new position at newWritePos
       const newIdx = HISTORY_DATA_OFFSET + newWritePos * HISTORY_ENTRY_SIZE
@@ -500,21 +506,37 @@ export class Mini extends Gen {
 
     const cycleLength = 1.0 as f32
     const secondsPerBeat = 60.0 / bpm
-    const barBars: f32 = (this.bar$ !== 0 ? Mathf.max(0.001, load<f32>(this.bar$) as f32) : 1.0) * 4.0
-    const cycleSeconds = barBars * secondsPerBeat
-    const cycleSamples = (cycleSeconds * sampleRate) as f32
+    const bar: f32 = this.bar$ !== 0 ? Mathf.max(0.001, load<f32>(this.bar$) as f32) : 1.0
+    const cycleSeconds = 4.0 * secondsPerBeat
+    const cycleSamplesF: f64 = (cycleSeconds as f64) * (sampleRate as f64)
+    const cycleSamples: f32 = cycleSamplesF as f32
     if (cycleSamples <= 0.0) return
-    const barLengthSeconds = barBars * secondsPerBeat
-    const lookAheadSamples = i32(<f32> FUTURE_BARS * barLengthSeconds * sampleRate)
+    const lookAheadSamples = i32(<f32> FUTURE_BARS * cycleSeconds * sampleRate)
 
     const currentVersion = i32(bytecodeArray[3])
     // If the history buffer pointer changes, reset our generation cursor.
     if (this.history$ !== this.lastHistory$) {
       this.lastHistory$ = this.history$
       this.lastVersion = -1
+      this.lastBar = -1.0
       this.historyGeneratedUntilCycle = -1
       // memory.fill(changetype<usize>(historyArray), 0, (HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE) * 4)
     }
+
+    // Bar changes: rewrite forward from "now" (keep fully past entries for the visualizer, clear overlap).
+    // if (this.lastBar < 0.0) {
+    //   this.lastBar = bar
+    // }
+    // else if (Mathf.abs(bar - this.lastBar) > 0.000001) {
+    //   this.lastBar = bar
+    //   this.defragmentHistory(
+    //     historyArray,
+    //     windowStart - i32(<f32> PAST_BARS * cycleSeconds * sampleRate),
+    //     windowStart,
+    //   )
+    //   const nowCycle = i32(Math.floor((windowStart as f64) / cycleSamplesF))
+    //   this.historyGeneratedUntilCycle = i32(Math.min(this.historyGeneratedUntilCycle as f32, (nowCycle - 1) as f32))
+    // }
 
     // Version changes: rewrite forward from "now" (keep fully past entries for the visualizer, clear overlap).
     if (currentVersion !== this.lastVersion) {
@@ -522,20 +544,20 @@ export class Mini extends Gen {
       this.resetVoiceMaps()
       this.defragmentHistory(
         historyArray,
-        windowStart - i32(<f32> PAST_BARS * barLengthSeconds * sampleRate),
+        windowStart - i32(<f32> PAST_BARS * cycleSeconds * sampleRate),
         windowStart,
       )
       // Start generating from a couple cycles before "now" to catch strum/jitter events that start
       // in earlier cycles but land in the visible window.
-      const nowCycle = i32(Mathf.floor(f32((windowStart as f32) / cycleSamples)))
+      const nowCycle = i32(Math.floor((windowStart as f64) / cycleSamplesF))
       this.historyGeneratedUntilCycle = i32(Math.min(this.historyGeneratedUntilCycle as f32, (nowCycle - 1) as f32))
     }
 
     // First fill: generate from the visible past (for visualizer).
     if (this.historyGeneratedUntilCycle < 0) {
-      const visualizerStart = windowStart - i32(<f32> PAST_BARS * barLengthSeconds * sampleRate)
+      const visualizerStart = windowStart - i32(<f32> PAST_BARS * cycleSeconds * sampleRate)
       const startSample = visualizerStart > 0 ? visualizerStart : 0
-      const startCycle0 = i32(Mathf.floor(f32((startSample as f32) / cycleSamples))) - 2
+      const startCycle0 = i32(Math.floor((startSample as f64) / cycleSamplesF)) - 2
       this.historyGeneratedUntilCycle = startCycle0 > 0 ? startCycle0 - 1 : -1
     }
 
@@ -543,7 +565,7 @@ export class Mini extends Gen {
     const desiredEndSample = windowStart + lookAheadSamples
     const chunkSamples = i32(cycleSamples)
     const targetEndSample = desiredEndSample + (chunkSamples > 0 ? chunkSamples : 0)
-    const targetEndCycle = i32(Mathf.ceil(f32((targetEndSample as f32) / cycleSamples)))
+    const targetEndCycle = i32(Math.ceil((targetEndSample as f64) / cycleSamplesF))
 
     if (this.historyGeneratedUntilCycle >= targetEndCycle) return
 
@@ -553,8 +575,8 @@ export class Mini extends Gen {
 
     this.defragmentHistory(
       historyArray,
-      windowStart - i32(<f32> PAST_BARS * barLengthSeconds * sampleRate),
-      i32(cycleSamples * ((endCycle + 1) as f32)),
+      windowStart - i32(<f32> (PAST_BARS + 0.5) * cycleSeconds * sampleRate),
+      i32(cycleSamplesF * ((endCycle + 1) as f64)),
     )
 
     let historyWritePos = i32(historyArray[HISTORY_WRITE_POS_OFFSET])
@@ -567,7 +589,7 @@ export class Mini extends Gen {
     for (let cycle = startCycle; cycle <= endCycle; cycle++) {
       if (eventsWritten >= maxEventsToWrite) break
 
-      const cycleStartSample = i32(cycleSamples * (cycle as f32))
+      const cycleStartSample = i32((cycle as f64) * cycleSamplesF)
       this.eventBuffer.clear()
       // Pass a very wide window to emitEvents so it doesn't filter anything - we want all events
       // from this cycle regardless of where strum/jitter shifts them.
@@ -579,6 +601,7 @@ export class Mini extends Gen {
         cycleSamples,
         i32.MIN_VALUE,
         i32.MAX_VALUE,
+        bar,
       )
 
       for (let i = 0; i < this.eventBuffer.writePos; i++) {

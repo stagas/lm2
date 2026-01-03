@@ -198,6 +198,7 @@ function buildProgram(
   sequences: string[]
   timelineSequences: TimelineSequenceDef[]
   miniRefs: MiniSequenceRef[]
+  miniPlayBars: Array<number | undefined>
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
   adRefs: AdRef[]
@@ -227,10 +228,10 @@ function buildProgram(
     ? (data.ops.set(vm.ops), data.literals.set(vm.literals), vm.result)
     : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
 
-  const { errors, miniSequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs,
-    envfollowRefs, slewRefs, analyserRefs, compressorRefs, limiterRefs, filterRefs, reverbRefs, lfoRefs, slicerRefs,
-    everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars, scale,
-    sampleDefs } = compiled
+  const { errors, miniSequences, timelineSequences, miniRefs, miniPlayBars, timelineRefs, timelineLabels, adRefs,
+    adsrRefs, envfollowRefs, slewRefs, analyserRefs, compressorRefs, limiterRefs, filterRefs, reverbRefs, lfoRefs,
+    slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars,
+    scale, sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
@@ -239,6 +240,7 @@ function buildProgram(
     sequences: miniSequences ?? [],
     timelineSequences: timelineSequences ?? [],
     miniRefs: miniRefs ?? [],
+    miniPlayBars: miniPlayBars ?? [],
     timelineRefs: timelineRefs ?? [],
     timelineLabels: timelineLabels ?? [],
     adRefs: adRefs ?? [],

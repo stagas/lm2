@@ -34,6 +34,7 @@ export type WidgetCompileResult = {
   dspSource: string
   sequences: string[]
   miniRefs: MiniSequenceRef[]
+  miniPlayBars: Array<number | undefined>
   timelineRefs: TimelineSequenceRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   adRefs: AdRef[]

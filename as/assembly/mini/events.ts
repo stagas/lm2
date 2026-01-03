@@ -58,6 +58,7 @@ export class MiniEvents {
     cycleSamples: f32,
     windowStart: i32,
     windowEnd: i32,
+    bar: f32,
   ): void {
     if (bytecode$ === 0) return
 
@@ -98,6 +99,10 @@ export class MiniEvents {
     this.reader.update(bytecode$, opEnd)
     this.emitter.update(eventBuffer, cycleStartSample, cycleLength, cycleSamples, windowStart, windowEnd)
 
+    let bar0: f64 = bar as f64
+    if (bar0 <= 0.001) bar0 = 0.001
+    const densityMul: f64 = 1.0 / bar0
+
     // `cycleStartSample` is often produced via float math then truncated to i32 in callers.
     // Using floor(cycleStartSample / cycleSamples) can undercount by 1 at boundaries (e.g. 0.99999..),
     // which makes angle-groups (<...>) repeat the first choice for one extra cycle.
@@ -120,7 +125,7 @@ export class MiniEvents {
       0.0,
       this.emitter,
       0,
-      1.0,
+      densityMul,
     )
   }
 
