@@ -1,24 +1,14 @@
-import type { Loc, Program } from '../../lang/ast.ts'
-import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault,
-  getPosArg } from './extract-call-utils.ts'
+import type { Loc } from '../../lang/ast.ts'
+import {
+  buildLineStartsForLocs,
+  computeAboveLoc,
+  findNamedArg,
+  getIndexFromCall,
+  getNumberOrDefault,
+  getPosArg,
+} from './extract-call-utils.ts'
 import { tryEvalConstNumber } from './helpers.ts'
 import type { LimiterRef } from './types.ts'
-
-const MAX_LIMITER_INDEX = 63
-
-function clampLimiterIndex(n: any): number {
-  const v = Math.floor(Number(n ?? 0))
-  if (!Number.isFinite(v)) return 0
-  if (v < 0) return 0
-  if (v > MAX_LIMITER_INDEX) return MAX_LIMITER_INDEX
-  return v
-}
-
-function getLimiterIndexFromCall(call: any): number {
-  const namedIdx = findNamedArg(call, 'index')
-  if (namedIdx?.value) return clampLimiterIndex(tryEvalConstNumber(namedIdx.value))
-  return 0
-}
 
 function isKnobParamName(name: string): name is 'release' | 'threshold' {
   return name === 'release' || name === 'threshold'
@@ -74,7 +64,7 @@ export function createLimiterVisitor(src: string, refs: LimiterRef[]) {
         const aboveLoc = computeAboveLoc(src, lineStarts, calleeLoc)
 
         refs.push({
-          limiterIndex: getLimiterIndexFromCall(expr),
+          limiterIndex: getIndexFromCall(expr),
           loc: calleeLoc,
           aboveLoc,
           callLoc: expr.loc,
@@ -86,7 +76,6 @@ export function createLimiterVisitor(src: string, refs: LimiterRef[]) {
           },
         })
       }
-    }
+    },
   }
 }
-

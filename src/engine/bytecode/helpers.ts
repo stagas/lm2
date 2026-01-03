@@ -1,5 +1,6 @@
 import type { Loc } from '../../lang/ast.ts'
 import { type LangError, lineText } from '../../lang/errors.ts'
+import { findNamedArg } from './extract-call-utils.ts'
 import { VmBinary, VmUnary } from './types.ts'
 
 export function encoderError(src: string, message: string): LangError {

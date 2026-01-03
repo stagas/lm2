@@ -17,9 +17,80 @@ export function getPosArg(call: any, posIndex: number): any | null {
   return posArgs[posIndex] ?? null
 }
 
+export function getPosArgValue(call: any, posIndex: number): any | null {
+  return getPosArg(call, posIndex)?.value ?? null
+}
+
 export function getNumberOrDefault(expr: any, fallback: number): number {
   const v = tryEvalConstNumber(expr)
   return v == null || !Number.isFinite(v) ? fallback : v
+}
+
+function shorthandToIdentExpr(arg: any): any {
+  return { kind: 'ident', name: String(arg?.name ?? ''), loc: arg?.loc }
+}
+
+export function slotCallArgsBySig(call: any, sigNames: string[]): {
+  slots: Array<any | undefined>
+  argLocs: Array<Loc | null>
+} {
+  const idxOf = new Map<string, number>()
+  for (let i = 0; i < sigNames.length; i++) idxOf.set(sigNames[i]!, i)
+
+  const reserved: boolean[] = []
+  const slots: Array<any | undefined> = []
+  const argLocs: Array<Loc | null> = []
+
+  for (const a of call.args ?? []) {
+    if (a?.kind === 'named' || a?.kind === 'shorthand') {
+      const idx = idxOf.get(a.name)
+      if (idx !== undefined) reserved[idx] = true
+      continue
+    }
+    if (a?.kind === 'pos' && a.value?.kind === 'ident') {
+      const idx = idxOf.get(a.value.name)
+      if (idx !== undefined) reserved[idx] = true
+    }
+  }
+
+  for (const a of call.args ?? []) {
+    if (a?.kind === 'named') {
+      const idx = idxOf.get(a.name)
+      if (idx !== undefined) {
+        slots[idx] = a.value
+        argLocs[idx] = a.loc ?? null
+      }
+      continue
+    }
+    if (a?.kind === 'shorthand') {
+      const idx = idxOf.get(a.name)
+      if (idx !== undefined) {
+        slots[idx] = shorthandToIdentExpr(a)
+        argLocs[idx] = a.loc ?? null
+      }
+      continue
+    }
+    if (a?.kind === 'pos' && a.value?.kind === 'ident') {
+      const idx = idxOf.get(a.value.name)
+      if (idx !== undefined) {
+        slots[idx] = a.value
+        argLocs[idx] = a.loc ?? null
+      }
+    }
+  }
+
+  let next = 0
+  for (const a of call.args ?? []) {
+    if (a?.kind !== 'pos') continue
+    if (a.value?.kind === 'ident' && idxOf.has(a.value.name)) continue
+    while (reserved[next] === true || slots[next] !== undefined) next++
+    if (next >= sigNames.length) break
+    slots[next] = a.value
+    argLocs[next] = a.loc ?? null
+    next++
+  }
+
+  return { slots, argLocs }
 }
 
 function indexFromLoc(src: string, lineStarts: number[], loc: Loc): number {
@@ -100,4 +171,8 @@ export function buildLineStartsForLocs(src: string): number[] {
   return buildLineStarts(src)
 }
 
-
+export function getIndexFromCall(call: any): number {
+  const namedIdx = findNamedArg(call, 'index')
+  if (namedIdx?.value) return tryEvalConstNumber(namedIdx.value) ?? 0
+  return 0
+}

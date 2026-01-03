@@ -108,6 +108,9 @@ export class Mini extends Gen {
   private glideKeys: StaticArray<i64> = new StaticArray<i64>(HISTORY_SIZE)
   private glideNextStartBySlot: StaticArray<i32> = new StaticArray<i32>(HISTORY_SIZE)
   private glideNextValueBySlot: StaticArray<f32> = new StaticArray<f32>(HISTORY_SIZE)
+  // Scratch space for voice count calculation (max distinct active event indices).
+  private voiceCountKeys: StaticArray<i64> = new StaticArray<i64>(HISTORY_SIZE * 2)
+  private voiceCountEventCounts: StaticArray<i32> = new StaticArray<i32>(ARRAY_SIZE * MAX_EVENT_VALUES)
 
   constructor() {
     super()
@@ -378,6 +381,110 @@ export class Mini extends Gen {
   }
 
   @inline
+  private getHistoryCount(historyArray: StaticArray<f32>): i32 {
+    let count: i32 = i32(historyArray[HISTORY_WRITE_POS_OFFSET]) & HISTORY_SIZE_MINUS_ONE
+    if (count === 0) {
+      // Disambiguate empty vs full buffer: a full buffer can legitimately have writePos === 0.
+      const end0: i32 = i32(historyArray[HISTORY_DATA_OFFSET + 5])
+      if (end0 !== 0) count = HISTORY_SIZE
+    }
+    return count
+  }
+
+  private sortVoiceCountKeys(lo: i32, hi: i32): void {
+    let i: i32 = lo
+    let j: i32 = hi
+    const pivotIndex: i32 = (lo + hi) >> 1
+    const pivot: i64 = this.voiceCountKeys[pivotIndex]
+
+    while (i <= j) {
+      while (this.voiceCountKeys[i] < pivot) i++
+      while (this.voiceCountKeys[j] > pivot) j--
+      if (i <= j) {
+        const k: i64 = this.voiceCountKeys[i]
+        this.voiceCountKeys[i] = this.voiceCountKeys[j]
+        this.voiceCountKeys[j] = k
+        i++
+        j--
+      }
+    }
+
+    if (lo < j) this.sortVoiceCountKeys(lo, j)
+    if (i < hi) this.sortVoiceCountKeys(i, hi)
+  }
+
+  @inline
+  private maxDistinctOverlappingEvents(
+    historyArray: StaticArray<f32>,
+    windowStart: i32,
+    windowEnd: i32,
+  ): i32 {
+    // `eventIndex` space matches the stable voice map key: (opIndex * MAX_EVENT_VALUES + chordVoiceIndex).
+    const size: i32 = ARRAY_SIZE * MAX_EVENT_VALUES
+    for (let i: i32 = 0; i < size; i++) {
+      this.voiceCountEventCounts[i] = 0
+    }
+
+    const historyCount: i32 = this.getHistoryCount(historyArray)
+
+    // Pack endpoints as: (time << 33) | (kind << 32) | eventIndex
+    // kind: 0 = end, 1 = start (ends sort before starts at the same time for half-open [start, end) holds).
+    let keyCount: i32 = 0
+    for (let n: i32 = 0; n < historyCount; n++) {
+      const historyIdx: i32 = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
+      const start0: i32 = i32(historyArray[historyIdx + 4])
+      let end0: i32 = i32(historyArray[historyIdx + 5])
+      if (start0 === 0 && end0 === 0) continue
+
+      // History stores sample positions as f32; at higher sample counts, 1-sample triggers can collapse.
+      if (end0 <= start0) end0 = start0 + 1
+
+      let startSample: i32 = start0
+      if (startSample < windowStart) startSample = windowStart
+      let endSample: i32 = end0
+      if (endSample > windowEnd) endSample = windowEnd
+      if (endSample <= startSample) continue
+
+      const opIndex: i32 = i32(historyArray[historyIdx + 0])
+      const voiceIndexHist: i32 = i32(historyArray[historyIdx + 1])
+      if (voiceIndexHist < 0 || voiceIndexHist >= MAX_EVENT_VALUES) continue
+      const eventIndex: i32 = opIndex * MAX_EVENT_VALUES + voiceIndexHist
+      if (eventIndex < 0 || eventIndex >= size) continue
+
+      this.voiceCountKeys[keyCount] = (i64(startSample) << 33) | (i64(1) << 32) | i64(u32(eventIndex))
+      keyCount++
+      this.voiceCountKeys[keyCount] = (i64(endSample) << 33) | i64(u32(eventIndex))
+      keyCount++
+    }
+
+    if (keyCount <= 0) return 1
+    if (keyCount > 1) this.sortVoiceCountKeys(0, keyCount - 1)
+
+    let active: i32 = 0
+    let maxActive: i32 = 1
+    for (let i: i32 = 0; i < keyCount; i++) {
+      const key: i64 = this.voiceCountKeys[i]
+      const kind: i32 = i32((key >> 32) & 1)
+      const eventIndex: i32 = i32(u32(key))
+      if (kind === 0) {
+        const c: i32 = this.voiceCountEventCounts[eventIndex] - 1
+        this.voiceCountEventCounts[eventIndex] = c
+        if (c === 0) active--
+      }
+      else {
+        const prev: i32 = this.voiceCountEventCounts[eventIndex]
+        if (prev === 0) {
+          active++
+          if (active > maxActive) maxActive = active
+        }
+        this.voiceCountEventCounts[eventIndex] = prev + 1
+      }
+    }
+
+    return maxActive
+  }
+
+  @inline
   generateHistory(): void {
     if (this.bytecode$ === 0 || this.history$ === 0) return
 
@@ -503,24 +610,9 @@ export class Mini extends Gen {
     }
     else if (currentVersion !== this.lastVersionForVoiceCount) {
       this.lastVersionForVoiceCount = currentVersion
-      let maxOverlap: i32 = 0
-      const sampleStep: i32 = i32(cycleSamples / 32.0)
-      if (sampleStep > 0) {
-        for (let sample: i32 = windowStart; sample < targetEndSample; sample += sampleStep) {
-          let overlap: i32 = 0
-          for (let n: i32 = 0; n < historyWritePos; n++) {
-            const historyIdx: i32 = HISTORY_DATA_OFFSET + (n & HISTORY_SIZE_MINUS_ONE) * HISTORY_ENTRY_SIZE
-            const startSample: i32 = i32(historyArray[historyIdx + 4])
-            const endSample: i32 = i32(historyArray[historyIdx + 5])
-            if (startSample === 0 && endSample === 0) continue
-            if (sample >= startSample && sample < endSample) {
-              overlap++
-            }
-          }
-          if (overlap > maxOverlap) maxOverlap = overlap
-        }
-      }
+      const maxOverlap: i32 = this.maxDistinctOverlappingEvents(historyArray, windowStart, targetEndSample)
       this.numVoices = maxOverlap > SEQ_VOICES ? SEQ_VOICES : maxOverlap
+      console.log(`${this.numVoices} voices`)
     }
   }
 
@@ -554,12 +646,7 @@ export class Mini extends Gen {
     // Read events from history buffer that intersect with current window and schedule voices
     // After defragmentation, events are sequential from 0 to writePos-1, so read all slots
     let glidePrepared: bool = false
-    let historyCount: i32 = i32(historyArray[HISTORY_WRITE_POS_OFFSET]) & HISTORY_SIZE_MINUS_ONE
-    if (historyCount === 0) {
-      // Disambiguate empty vs full buffer: a full buffer can legitimately have writePos === 0.
-      const end0: i32 = i32(historyArray[HISTORY_DATA_OFFSET + 5])
-      if (end0 !== 0) historyCount = HISTORY_SIZE
-    }
+    const historyCount: i32 = this.getHistoryCount(historyArray)
     for (let n: i32 = 0; n < historyCount; n++) {
       const historyIdx: i32 = HISTORY_DATA_OFFSET + n * HISTORY_ENTRY_SIZE
       const opIndex: i32 = i32(historyArray[historyIdx + 0])
