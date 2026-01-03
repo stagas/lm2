@@ -34,9 +34,15 @@ import {
   createEnvfollowVisitor,
 } from './extract-envfollow.ts'
 import {
+  createExpanderVisitor,
+} from './extract-expanders.ts'
+import {
   createFilterNumberLiteralsVisitor,
   createFiltersVisitor,
 } from './extract-filter.ts'
+import {
+  createGateVisitor,
+} from './extract-gates.ts'
 import {
   createLfoVisitor,
 } from './extract-lfo.ts'
@@ -89,7 +95,9 @@ import {
   type EnvfollowRef,
   type EuclidRef,
   EveryRef,
+  type ExpanderRef,
   type FilterRef,
+  type GateRef,
   LfoRef,
   type LimiterRef,
   type MiniSequenceRef,
@@ -206,6 +214,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   // Initialize result collections
   const analyserRefs: AnalyserRef[] = []
   const compressorRefs: CompressorRef[] = []
+  const expanderRefs: ExpanderRef[] = []
+  const gateRefs: GateRef[] = []
   const limiterRefs: LimiterRef[] = []
   const filterRefs: FilterRef[] = []
   const adRefs: AdRef[] = []
@@ -227,6 +237,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
     createSlewVisitor(src, slewRefs),
     createAnalyserVisitor(analyserRefs),
     createCompressorVisitor(src, compressorRefs),
+    createExpanderVisitor(src, expanderRefs),
+    createGateVisitor(src, gateRefs),
     createLimiterVisitor(src, limiterRefs),
     createFiltersVisitor(src, filterRefs),
     createReverbVisitor(src, reverbRefs),
@@ -247,6 +259,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
     slewRefs,
     analyserRefs,
     compressorRefs,
+    expanderRefs,
+    gateRefs,
     limiterRefs,
     filterRefs,
     reverbRefs,
@@ -305,6 +319,8 @@ export function encodeLangToVmOps(
   slewRefs?: SlewRef[]
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
+  expanderRefs?: ExpanderRef[]
+  gateRefs?: GateRef[]
   limiterRefs?: LimiterRef[]
   filterRefs?: FilterRef[]
   reverbRefs?: ReverbRef[]
@@ -446,6 +462,8 @@ export function encodeLangToVmOps(
     let slewRefs: SlewRef[] = []
     let analyserRefs: AnalyserRef[] = []
     let compressorRefs: CompressorRef[] = []
+    let expanderRefs: ExpanderRef[] = []
+    let gateRefs: GateRef[] = []
     let limiterRefs: LimiterRef[] = []
     let filterRefs: FilterRef[] = []
     let reverbRefs: ReverbRef[] = []
@@ -1046,6 +1064,8 @@ export function encodeLangToVmOps(
     slewRefs = extractionResults.slewRefs
     analyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs]
     compressorRefs = extractionResults.compressorRefs
+    expanderRefs = extractionResults.expanderRefs
+    gateRefs = extractionResults.gateRefs
     limiterRefs = extractionResults.limiterRefs
     filterRefs = extractionResults.filterRefs
     reverbRefs = extractionResults.reverbRefs
@@ -1445,6 +1465,8 @@ export function encodeLangToVmOps(
         slewRefs,
         analyserRefs,
         compressorRefs,
+        expanderRefs,
+        gateRefs,
         limiterRefs,
         filterRefs,
         reverbRefs,
@@ -1478,6 +1500,8 @@ export function encodeLangToVmOps(
         slewRefs,
         analyserRefs,
         compressorRefs,
+        expanderRefs,
+        gateRefs,
         limiterRefs,
         filterRefs,
         reverbRefs,

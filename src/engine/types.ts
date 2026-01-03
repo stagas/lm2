@@ -11,7 +11,9 @@ import {
   type EnvfollowRef,
   type EuclidRef,
   type EveryRef,
+  type ExpanderRef,
   type FilterRef,
+  type GateRef,
   type LfoRef,
   type LimiterRef,
   type LpRef,
@@ -43,6 +45,8 @@ export type WidgetCompileResult = {
   slewRefs: SlewRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  expanderRefs: ExpanderRef[]
+  gateRefs: GateRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
   reverbRefs: ReverbRef[]

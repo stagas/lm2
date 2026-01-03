@@ -21,6 +21,18 @@ export const CompressorOutsPoolStruct = Struct({
 })
 export type CompressorOutsPool = typeof CompressorOutsPoolStruct.type
 
+export const ExpanderOutsPoolStruct = Struct({
+  levelDbOuts: 'usize',
+  grDbOuts: 'usize',
+})
+export type ExpanderOutsPool = typeof ExpanderOutsPoolStruct.type
+
+export const GateOutsPoolStruct = Struct({
+  levelDbOuts: 'usize',
+  grDbOuts: 'usize',
+})
+export type GateOutsPool = typeof GateOutsPoolStruct.type
+
 export const LimiterOutsPoolStruct = Struct({
   levelDbOuts: 'usize',
   grDbOuts: 'usize',
@@ -40,6 +52,8 @@ export const ProgramStruct = Struct({
   histories: 'usize',
   analyserOutsPool: 'usize',
   compressorOutsPool: 'usize',
+  expanderOutsPool: 'usize',
+  gateOutsPool: 'usize',
   limiterOutsPool: 'usize',
   arrayAccessHistory: 'usize',
   branchHistory: 'usize',

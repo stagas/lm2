@@ -54,7 +54,9 @@ import {
   type EnvfollowRef,
   type EuclidRef,
   type EveryRef,
+  type ExpanderRef,
   type FilterRef,
+  type GateRef,
   type LfoRef,
   type LimiterRef,
   type MiniSequenceRef,
@@ -72,6 +74,8 @@ import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import {
   AnalyserOutsPoolStruct,
   CompressorOutsPoolStruct,
+  ExpanderOutsPoolStruct,
+  GateOutsPoolStruct,
   LimiterOutsPoolStruct,
   ProgramDataStruct,
   ProgramStruct,
@@ -207,6 +211,8 @@ function buildProgram(
   slewRefs: SlewRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  expanderRefs: ExpanderRef[]
+  gateRefs: GateRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
   reverbRefs: ReverbRef[]
@@ -229,9 +235,9 @@ function buildProgram(
     : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
 
   const { errors, miniSequences, timelineSequences, miniRefs, miniPlayBars, timelineRefs, timelineLabels, adRefs,
-    adsrRefs, envfollowRefs, slewRefs, analyserRefs, compressorRefs, limiterRefs, filterRefs, reverbRefs, lfoRefs,
-    slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, bpm, bars,
-    scale, sampleDefs } = compiled
+    adsrRefs, envfollowRefs, slewRefs, analyserRefs, compressorRefs, expanderRefs, gateRefs, limiterRefs, filterRefs,
+    reverbRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
+    numberLiterals, bpm, bars, scale, sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
@@ -249,6 +255,8 @@ function buildProgram(
     slewRefs: slewRefs ?? [],
     analyserRefs: analyserRefs ?? [],
     compressorRefs: compressorRefs ?? [],
+    expanderRefs: expanderRefs ?? [],
+    gateRefs: gateRefs ?? [],
     limiterRefs: limiterRefs ?? [],
     filterRefs: filterRefs ?? [],
     reverbRefs: reverbRefs ?? [],
@@ -294,6 +302,8 @@ export type ProgramBuildResult = {
   slewRefs: SlewRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  expanderRefs: ExpanderRef[]
+  gateRefs: GateRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
   reverbRefs: ReverbRef[]
@@ -557,6 +567,30 @@ async function createProgram(
     grDb: [...grDbOuts$].map(out$ => toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)),
   }
 
+  const expanderOutsPool = ExpanderOutsPoolStruct(wasmMemory.buffer, program.expanderOutsPool)
+  const expanderLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, expanderOutsPool.levelDbOuts, 64)
+  const expanderGrDbOuts$ = new Uint32Array(wasmMemory.buffer, expanderOutsPool.grDbOuts, 64)
+  const expanderOuts = {
+    levelDb: [...expanderLevelDbOuts$].map(out$ =>
+      toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+    grDb: [...expanderGrDbOuts$].map(out$ =>
+      toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+  }
+
+  const gateOutsPool = GateOutsPoolStruct(wasmMemory.buffer, program.gateOutsPool)
+  const gateLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, gateOutsPool.levelDbOuts, 64)
+  const gateGrDbOuts$ = new Uint32Array(wasmMemory.buffer, gateOutsPool.grDbOuts, 64)
+  const gateOuts = {
+    levelDb: [...gateLevelDbOuts$].map(out$ =>
+      toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+    grDb: [...gateGrDbOuts$].map(out$ =>
+      toRing(new Float32Array(wasmMemory!.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+  }
+
   const limiterOutsPool = LimiterOutsPoolStruct(wasmMemory.buffer, program.limiterOutsPool)
   const limiterLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, limiterOutsPool.levelDbOuts, 64)
   const limiterGrDbOuts$ = new Uint32Array(wasmMemory.buffer, limiterOutsPool.grDbOuts, 64)
@@ -576,6 +610,8 @@ async function createProgram(
     lock,
     analyserOuts,
     compressorOuts,
+    expanderOuts,
+    gateOuts,
     limiterOuts,
     histories,
     arrayAccessHistory,
@@ -598,9 +634,9 @@ async function createProgram(
 
       try {
         const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, envfollowRefs,
-          slewRefs, analyserRefs, compressorRefs, limiterRefs, filterRefs, reverbRefs, slicerRefs, lfoRefs, everyRefs,
-          atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars, scale } =
-            buildProgram(newData, source, options.vm)
+          slewRefs, analyserRefs, compressorRefs, expanderRefs, gateRefs, limiterRefs, filterRefs, reverbRefs,
+          slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams, numberLiterals,
+          sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -654,6 +690,8 @@ async function createProgram(
           slewRefs,
           analyserRefs,
           compressorRefs,
+          expanderRefs,
+          gateRefs,
           limiterRefs,
           filterRefs,
           reverbRefs,

@@ -20,8 +20,10 @@ import {
   type EnvfollowRef,
   type EuclidRef,
   type EveryRef,
+  type ExpanderRef,
   extractEarlyDataFromSource,
   type FilterRef,
+  type GateRef,
   type LfoRef,
   type LimiterRef,
   type LpRef,
@@ -74,6 +76,8 @@ export type EngineDspState = {
   slewRefs: SlewRef[]
   analyserRefs: AnalyserRef[]
   compressorRefs: CompressorRef[]
+  expanderRefs: ExpanderRef[]
+  gateRefs: GateRef[]
   limiterRefs: LimiterRef[]
   filterRefs: FilterRef[]
   reverbRefs: ReverbRef[]
@@ -102,6 +106,8 @@ export type EngineDspState = {
   uiSlewRefs: SlewRef[]
   uiAnalyserRefs: AnalyserRef[]
   uiCompressorRefs: CompressorRef[]
+  uiExpanderRefs: ExpanderRef[]
+  uiGateRefs: GateRef[]
   uiLimiterRefs: LimiterRef[]
   uiLpRefs: LpRef[]
   uiReverbRefs: ReverbRef[]
@@ -141,6 +147,8 @@ export type EngineDspState = {
     miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
     analyserRefs: AnalyserRef[]
     compressorRefs: CompressorRef[]
+    expanderRefs: ExpanderRef[]
+    gateRefs: GateRef[]
     filterRefs: FilterRef[]
     reverbRefs: ReverbRef[]
     slicerRefs: SlicerRef[]
@@ -416,6 +424,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const slewRefs = primaryResult.slewRefs
       const analyserRefs = primaryResult.analyserRefs
       const compressorRefs = primaryResult.compressorRefs
+      const expanderRefs = primaryResult.expanderRefs
+      const gateRefs = primaryResult.gateRefs
       const limiterRefs = primaryResult.limiterRefs
       const filterRefs = primaryResult.filterRefs
       const reverbRefs = primaryResult.reverbRefs
@@ -447,6 +457,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           miniSourceMaps,
           analyserRefs,
           compressorRefs,
+          expanderRefs,
+          gateRefs,
           limiterRefs,
           filterRefs,
           reverbRefs,
@@ -474,6 +486,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiSlewRefs: slewRefs,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
+          uiExpanderRefs: expanderRefs,
+          uiGateRefs: gateRefs,
           uiLimiterRefs: limiterRefs,
           uiLpRefs: filterRefs,
           uiReverbRefs: reverbRefs,
@@ -527,6 +541,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiSlewRefs: stagingResult.slewRefs,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
+        uiExpanderRefs: stagingResult.expanderRefs,
+        uiGateRefs: stagingResult.gateRefs,
         uiLimiterRefs: stagingResult.limiterRefs,
         uiLpRefs: stagingResult.filterRefs,
         uiReverbRefs: stagingResult.reverbRefs,
@@ -590,6 +606,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiSlewRefs: current.slewRefs,
           uiAnalyserRefs: current.analyserRefs,
           uiCompressorRefs: current.compressorRefs,
+          uiExpanderRefs: current.expanderRefs,
+          uiGateRefs: current.gateRefs,
           uiLimiterRefs: current.limiterRefs,
           uiLpRefs: current.filterRefs,
           uiReverbRefs: current.reverbRefs,
@@ -627,6 +645,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         slewRefs: stagingResult.slewRefs,
         analyserRefs: stagingResult.analyserRefs,
         compressorRefs: stagingResult.compressorRefs,
+        expanderRefs: stagingResult.expanderRefs,
+        gateRefs: stagingResult.gateRefs,
         limiterRefs: stagingResult.limiterRefs,
         filterRefs: stagingResult.filterRefs,
         reverbRefs: stagingResult.reverbRefs,
@@ -654,6 +674,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiSlewRefs: stagingResult.slewRefs,
         uiAnalyserRefs: stagingResult.analyserRefs,
         uiCompressorRefs: stagingResult.compressorRefs,
+        uiExpanderRefs: stagingResult.expanderRefs,
+        uiGateRefs: stagingResult.gateRefs,
         uiLimiterRefs: stagingResult.limiterRefs,
         uiLpRefs: stagingResult.filterRefs,
         uiReverbRefs: stagingResult.reverbRefs,
@@ -805,6 +827,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     slewRefs: [],
     analyserRefs: [],
     compressorRefs: [],
+    expanderRefs: [],
+    gateRefs: [],
     limiterRefs: [],
     filterRefs: [],
     reverbRefs: [],
@@ -833,6 +857,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     uiSlewRefs: [],
     uiAnalyserRefs: [],
     uiCompressorRefs: [],
+    uiExpanderRefs: [],
+    uiGateRefs: [],
     uiLimiterRefs: [],
     uiLpRefs: [],
     uiReverbRefs: [],
@@ -919,6 +945,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         slewRefs: [],
         analyserRefs: [],
         compressorRefs: [],
+        expanderRefs: [],
+        gateRefs: [],
         limiterRefs: [],
         filterRefs: [],
         reverbRefs: [],
@@ -1102,6 +1130,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         const slewRefs = stagingResult.slewRefs
         const analyserRefs = stagingResult.analyserRefs
         const compressorRefs = stagingResult.compressorRefs
+        const expanderRefs = stagingResult.expanderRefs
+        const gateRefs = stagingResult.gateRefs
         const limiterRefs = stagingResult.limiterRefs
         const filterRefs = stagingResult.filterRefs
         const reverbRefs = stagingResult.reverbRefs
@@ -1140,6 +1170,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           miniSourceMaps,
           analyserRefs,
           compressorRefs,
+          expanderRefs,
+          gateRefs,
           limiterRefs,
           filterRefs,
           reverbRefs,
@@ -1167,6 +1199,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           uiSlewRefs: slewRefs,
           uiAnalyserRefs: analyserRefs,
           uiCompressorRefs: compressorRefs,
+          uiExpanderRefs: expanderRefs,
+          uiGateRefs: gateRefs,
           uiLimiterRefs: limiterRefs,
           uiLpRefs: filterRefs,
           uiReverbRefs: reverbRefs,
@@ -1223,6 +1257,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         uiMiniSourceMaps: next.miniSourceMaps,
         uiAnalyserRefs: next.analyserRefs,
         uiCompressorRefs: next.compressorRefs,
+        uiExpanderRefs: next.expanderRefs,
+        uiGateRefs: next.gateRefs,
         uiLpRefs: next.filterRefs,
         uiSlicerRefs: next.slicerRefs,
         uiLfoRefs: next.lfoRefs,

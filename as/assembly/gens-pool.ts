@@ -4,6 +4,8 @@ import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
+import { Expander } from './gen/expander'
+import { Gate } from './gen/gate'
 import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
 import { Delay } from './gen/delay'
@@ -101,6 +103,8 @@ export class GensPool {
   private peaks: GenPool<Peak> = new GenPool<Peak>(() => new Peak())
   private aps: GenPool<Ap> = new GenPool<Ap>(() => new Ap())
   private compressors: GenPool<Compressor> = new GenPool<Compressor>(() => new Compressor())
+  private expanders: GenPool<Expander> = new GenPool<Expander>(() => new Expander())
+  private gates: GenPool<Gate> = new GenPool<Gate>(() => new Gate())
   private lfoSines: GenPool<LfoSine> = new GenPool<LfoSine>(() => new LfoSine())
   private lfoTris: GenPool<LfoTri> = new GenPool<LfoTri>(() => new LfoTri())
   private lfoSaws: GenPool<LfoSaw> = new GenPool<LfoSaw>(() => new LfoSaw())
@@ -439,6 +443,10 @@ export class GensPool {
         return this.aps.get()
       case Op.Compressor:
         return this.compressors.get()
+      case Op.Expander:
+        return this.expanders.get()
+      case Op.Gate:
+        return this.gates.get()
       case Op.LfoSine:
         return this.lfoSines.get()
       case Op.LfoTri:

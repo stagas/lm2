@@ -37,13 +37,16 @@ export function useTimelineHeader(currentLoopId: string | null) {
   const isFirstFrameRef = useRef(true)
   const labelsRef = useRef(useEngineDspStore.getState().uiTimelineLabels ?? [])
 
-  useEffect(() => {
+  // Reset synchronously on loop switch so we don't interpolate from the previous loop's playhead.
+  const lastLoopIdRef = useRef<string | null>(null)
+  if (lastLoopIdRef.current !== currentLoopId) {
+    lastLoopIdRef.current = currentLoopId
     timelineTimeRef.current = null
     timelineDragRef.current = null
     predictedSampleCountRef.current = null
     lastWallTimeRef.current = null
     isFirstFrameRef.current = true
-  }, [currentLoopId])
+  }
 
   useEffect(() => {
     const unsub = useEngineDspStore.subscribe(state => {

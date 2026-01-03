@@ -9,6 +9,8 @@ import { callAt } from './builtins/at'
 import { callAvg } from './builtins/avg'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
 import { callCompressor } from './builtins/compressor'
+import { callExpander } from './builtins/expander'
+import { callGate } from './builtins/gate'
 import { callDattorro } from './builtins/dattorro'
 import { callDc } from './builtins/dc'
 import { callDegree } from './builtins/degree'
@@ -131,6 +133,8 @@ export class VmBuiltins {
 
   analyserRingBase: i32 = 0
   compressorRingBase: i32 = 0
+  expanderRingBase: i32 = 0
+  gateRingBase: i32 = 0
   limiterRingBase: i32 = 0
 
   autoLift: StaticArray<i32> = new StaticArray<i32>(256)
@@ -140,6 +144,8 @@ export class VmBuiltins {
     // transparently operate on arrays-of-signals (e.g. stereo) by applying them elementwise.
     // Keep this list in sync with `dispatchAutoLiftBuiltin` so the VM knows how to run the elementwise calls.
     this.autoLift[VmBuiltin.Compressor] = 1
+    this.autoLift[VmBuiltin.Expander] = 1
+    this.autoLift[VmBuiltin.Gate] = 1
     this.autoLift[VmBuiltin.Limiter] = 1
     this.autoLift[VmBuiltin.Delay] = 1
     this.autoLift[VmBuiltin.Lp] = 1
@@ -323,6 +329,16 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Compressor) {
       callCompressor(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
         audio, program, length, this.compressorRingBase)
+      return
+    }
+    if (calleeAux === VmBuiltin.Expander) {
+      callExpander(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, this.expanderRingBase)
+      return
+    }
+    if (calleeAux === VmBuiltin.Gate) {
+      callGate(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, this.gateRingBase)
       return
     }
 
@@ -690,6 +706,16 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Compressor) {
       callCompressor(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
         audio, program, length, this.compressorRingBase)
+      return
+    }
+    if (calleeAux === VmBuiltin.Expander) {
+      callExpander(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, this.expanderRingBase)
+      return
+    }
+    if (calleeAux === VmBuiltin.Gate) {
+      callGate(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, this.gateRingBase)
       return
     }
 
