@@ -445,11 +445,18 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         type: '(trig: number, velocity: number, hz: number) -> number',
         description: 'Callback that runs for each voice',
       },
+      {
+        name: 'voices',
+        type: 'number',
+        optional: true,
+        description: 'Override automatic voice allocation with a fixed number of voices (1..16)',
+      },
     ],
     returnType: 'number',
     description: 'Plays a sequence reference with the provided callback.',
     examples: [
       'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity) |> out($)',
+      'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity, voices:4) |> out($)',
     ],
   },
   timeline: {

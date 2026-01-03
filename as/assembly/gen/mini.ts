@@ -81,6 +81,7 @@ export class Mini extends Gen {
   outVelocity$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
   outValue$: StaticArray<usize> = new StaticArray<usize>(SEQ_VOICES)
   numVoices: i32 = 0
+  numVoicesOverride: i32 = 0
   activeVoices: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
   numActiveVoices: i32 = 0
 
@@ -124,6 +125,7 @@ export class Mini extends Gen {
     this.lastVersionForVoiceCount = -1
     this.voiceCursor = 0
     this.numVoices = 0
+    this.numVoicesOverride = 0
     this.resetVoiceMaps()
     for (let i = 0; i < SEQ_VOICES; i++) {
       const voice = this.voices[i]
@@ -147,6 +149,7 @@ export class Mini extends Gen {
     this.outVoiceCount$ = src.outVoiceCount$
     this.voiceCursor = src.voiceCursor
     this.numVoices = src.numVoices
+    this.numVoicesOverride = src.numVoicesOverride
     this.numActiveVoices = src.numActiveVoices
     this.lastBytecode$ = src.lastBytecode$
     this.lastHistory$ = src.lastHistory$
@@ -494,8 +497,11 @@ export class Mini extends Gen {
 
     historyArray[HISTORY_WRITE_POS_OFFSET] = historyWritePos as f32
 
-    // Calculate max overlapping voices only when bytecode version changes
-    if (currentVersion !== this.lastVersionForVoiceCount) {
+    // Apply override if set, otherwise calculate max overlapping voices when bytecode version changes
+    if (this.numVoicesOverride > 0) {
+      this.numVoices = this.numVoicesOverride
+    }
+    else if (currentVersion !== this.lastVersionForVoiceCount) {
       this.lastVersionForVoiceCount = currentVersion
       let maxOverlap: i32 = 0
       const sampleStep: i32 = i32(cycleSamples / 32.0)
@@ -746,6 +752,9 @@ export class Mini extends Gen {
 
   process(_: usize, length: i32): void {
     this.generateHistory()
+    if (this.numVoicesOverride > 0) {
+      this.numVoices = this.numVoicesOverride
+    }
     this.processAudio(length)
   }
 }

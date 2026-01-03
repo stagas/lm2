@@ -29,6 +29,9 @@ function numFromTag(tag: VmTag, num: f32): f32 {
 export function playMini(
   arrayIndex: i32,
   cbAux: i32,
+  voicesTag: VmTag,
+  voicesNum: f64,
+  voicesAux: i32,
   stack: VmStack,
   audio: VmAudio,
   program: Program,
@@ -65,6 +68,20 @@ export function playMini(
     mini.outTrig$[v] = program.getOutBuffer(trigOuts[v])
     mini.outVelocity$[v] = program.getOutBuffer(velOuts[v])
     mini.outValue$[v] = program.getOutBuffer(valOuts[v])
+  }
+
+  // Set voice override if voices parameter is provided
+  if (voicesTag === VmTag.Num && voicesNum > 0.0) {
+    const requestedVoices = i32(voicesNum)
+    if (requestedVoices > 0 && requestedVoices <= SEQ_VOICES) {
+      mini.numVoicesOverride = requestedVoices
+    }
+    else {
+      mini.numVoicesOverride = 0
+    }
+  }
+  else {
+    mini.numVoicesOverride = 0
   }
 
   mini.process(0, length)
