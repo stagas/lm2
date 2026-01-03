@@ -32,6 +32,9 @@ export function playMini(
   voicesTag: VmTag,
   voicesNum: f64,
   voicesAux: i32,
+  barTag: VmTag,
+  barNum: f64,
+  barAux: i32,
   stack: VmStack,
   audio: VmAudio,
   program: Program,
@@ -83,6 +86,9 @@ export function playMini(
   else {
     mini.numVoicesOverride = 0
   }
+
+  // Set bar parameter
+  mini.bar$ = audio.toAudioPtr(barTag, barNum, barAux, length, program)
 
   mini.process(0, length)
 

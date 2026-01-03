@@ -48,12 +48,22 @@ export function callPlayPick(
   let voicesTag = VmTag.Undef
   let voicesNum: f64 = 0.0
   let voicesAux: i32 = 0
+  let barTag = VmTag.Num
+  let barNum: f64 = 1.0
+  let barAux: i32 = 0
 
   // Check for positional voices parameter (4th positional arg)
-  if (posCount >= 4) {
+  if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
     voicesTag = posTags[3] as VmTag
     voicesNum = posNums[3]
     voicesAux = posAux[3]
+  }
+
+  // Check for positional bar parameter (5th positional arg)
+  if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
+    barTag = posTags[4] as VmTag
+    barNum = posNums[4]
+    barAux = posAux[4]
   }
 
   // Check for named parameters
@@ -62,6 +72,11 @@ export function callPlayPick(
       voicesTag = nameTags[i] as VmTag
       voicesNum = nameNums[i]
       voicesAux = nameAux[i]
+    }
+    else if (nameSyms[i] === VmSym.Bar) {
+      barTag = nameTags[i] as VmTag
+      barNum = nameNums[i]
+      barAux = nameAux[i]
     }
   }
 
@@ -98,7 +113,7 @@ export function callPlayPick(
   const seqIndex = i32(dsp.arrays.elemNum[seqStart + i])
 
   audio.tHas = 0
-  playMini(seqIndex, cbAux, voicesTag, voicesNum, voicesAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts, miniValOuts,
+  playMini(seqIndex, cbAux, voicesTag, voicesNum, voicesAux, barTag, barNum, barAux, stack, audio, program, length, left$, right$, dsp, miniTrigOuts, miniVelOuts, miniValOuts,
     cbArgTags, cbArgNums, cbArgAux)
 }
 
