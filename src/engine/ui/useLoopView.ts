@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'preact/hooks'
 import { useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { useSeekToSample } from './useSeekToSample.ts'
 
@@ -23,27 +23,28 @@ export function useLoopView(loopId: string | null): {
   const isPlayingLoop = loopId != null && loopId === playingLoopId
   const isPlaybackRunningForView = isPlayingLoop && playbackState === 'running'
 
-  const viewGlobalSampleCountRef = useRef<Int32Array<SharedArrayBuffer> | null>(null)
-  if (!viewGlobalSampleCountRef.current) {
-    viewGlobalSampleCountRef.current = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
-  }
-
-  useEffect(() => {
-    const arr = viewGlobalSampleCountRef.current
-    if (!arr) return
+  // Important: allocate a distinct buffer per loop id. Otherwise, when switching
+  // views while another loop is playing, the previous view's RAF sync can keep
+  // writing into the same buffer and cause visible "animate there and back".
+  const viewGlobalSampleCount = useMemo(() => {
+    const arr = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
     Atomics.store(arr, 0, Math.max(0, viewSampleCount))
-  }, [viewSampleCount])
+    return arr
+  }, [loopId])
+
+  useLayoutEffect(() => {
+    Atomics.store(viewGlobalSampleCount, 0, Math.max(0, viewSampleCount))
+  }, [viewGlobalSampleCount, viewSampleCount])
 
   const seekToPlaybackSample = useSeekToSample()
 
   const seekToSample = useCallback((targetSampleCount: number) => {
     if (!loopId) return
     const next = Math.max(0, Math.floor(targetSampleCount))
-    const arr = viewGlobalSampleCountRef.current
-    if (arr) Atomics.store(arr, 0, next)
+    Atomics.store(viewGlobalSampleCount, 0, next)
     setViewSampleCount(loopId, next)
     if (isPlayingLoop) seekToPlaybackSample(next)
-  }, [isPlayingLoop, loopId, seekToPlaybackSample, setViewSampleCount])
+  }, [isPlayingLoop, loopId, seekToPlaybackSample, setViewSampleCount, viewGlobalSampleCount])
 
   const lastSyncedSampleRef = useRef(0)
 
@@ -53,8 +54,8 @@ export function useLoopView(loopId: string | null): {
     if (typeof window === 'undefined') return
 
     const src = storeGlobalSampleCount
-    const dst = viewGlobalSampleCountRef.current
-    if (!src || !dst) return
+    const dst = viewGlobalSampleCount
+    if (!src) return
 
     let raf = 0
     const tick = () => {
@@ -74,12 +75,12 @@ export function useLoopView(loopId: string | null): {
       }
       setViewSampleCount(loopId, lastSyncedSampleRef.current)
     }
-  }, [isPlaybackRunningForView, loopId, setViewSampleCount, storeGlobalSampleCount])
+  }, [isPlaybackRunningForView, loopId, setViewSampleCount, storeGlobalSampleCount, viewGlobalSampleCount])
 
   const globalSampleCount = useMemo(() => {
     if (isPlaybackRunningForView) return storeGlobalSampleCount
-    return viewGlobalSampleCountRef.current ?? undefined
-  }, [isPlaybackRunningForView, storeGlobalSampleCount])
+    return viewGlobalSampleCount
+  }, [isPlaybackRunningForView, storeGlobalSampleCount, viewGlobalSampleCount])
 
   return {
     isPlayingLoop,

@@ -46,6 +46,8 @@ export enum Op {
   Phasor,
   Lp,
   Compressor,
+  Expander,
+  Gate,
   Euclid,
   LfoSine,
   LfoTri,

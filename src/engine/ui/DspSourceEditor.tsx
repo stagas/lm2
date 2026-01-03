@@ -135,6 +135,8 @@ function DspSourceEditorReady(
   const slewRefs = useEngineDspStore(state => state.uiSlewRefs)
   const analyserRefs = useEngineDspStore(state => state.analyserRefs)
   const compressorRefs = useEngineDspStore(state => state.compressorRefs)
+  const expanderRefs = useEngineDspStore(state => state.expanderRefs)
+  const gateRefs = useEngineDspStore(state => state.gateRefs)
   const limiterRefs = useEngineDspStore(state => state.limiterRefs)
   const filterRefs = useEngineDspStore(state => state.filterRefs)
   const reverbRefs = useEngineDspStore(state => state.reverbRefs)
@@ -377,6 +379,8 @@ function DspSourceEditorReady(
         slewRefs,
         analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
         compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
+        expanderRefs: previewCompile.expanderRefs ?? expanderRefs,
+        gateRefs: previewCompile.gateRefs ?? gateRefs,
         limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
         filterRefs: previewCompile.filterRefs ?? filterRefs,
         reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
@@ -409,6 +413,8 @@ function DspSourceEditorReady(
         slewRefs,
         analyserRefs,
         compressorRefs,
+        expanderRefs,
+        gateRefs,
         limiterRefs,
         filterRefs,
         reverbRefs,
@@ -445,6 +451,8 @@ function DspSourceEditorReady(
       slewRefs: previewCompile.slewRefs ?? slewRefs,
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
+      expanderRefs: previewCompile.expanderRefs ?? [],
+      gateRefs: previewCompile.gateRefs ?? [],
       limiterRefs: previewCompile.limiterRefs ?? [],
       filterRefs: previewCompile.filterRefs ?? [],
       reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
@@ -468,6 +476,8 @@ function DspSourceEditorReady(
     miniSourceMaps,
     analyserRefs,
     compressorRefs,
+    expanderRefs,
+    gateRefs,
     filterRefs,
     slicerRefs,
     lfoRefs,
@@ -523,6 +533,8 @@ function DspSourceEditorReady(
       miniSourceMaps: widgetCompileState.miniSourceMaps,
       analyserRefs: widgetCompileState.analyserRefs ?? [],
       compressorRefs: widgetCompileState.compressorRefs ?? [],
+      expanderRefs: widgetCompileState.expanderRefs ?? [],
+      gateRefs: widgetCompileState.gateRefs ?? [],
       filterRefs: widgetCompileState.filterRefs ?? [],
       reverbRefs: widgetCompileState.reverbRefs ?? [],
       slicerRefs: widgetCompileState.slicerRefs ?? [],
@@ -728,6 +740,8 @@ function DspSourceEditorReady(
     program1: runtimeProgram,
     ringPos,
     compressorRefs: widgetCompileState.compressorRefs,
+    expanderRefs: widgetCompileState.expanderRefs,
+    gateRefs: widgetCompileState.gateRefs,
     limiterRefs: widgetCompileState.limiterRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
@@ -857,6 +871,56 @@ function DspSourceEditorReady(
       }
     }
 
+    for (const ref of widgetCompileState.expanderRefs ?? []) {
+      for (const p of ref.knobParams ?? []) {
+        if (p.name === 'attack') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0.0001, max: 1, precision: 4, mode: 'exp2' })
+        }
+        else if (p.name === 'release') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
+        }
+        else if (p.name === 'threshold') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
+        }
+        else if (p.name === 'ratio') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 1, max: 20, precision: 2, mode: 'linear', stepPerPx: 0.05 })
+        }
+        else if (p.name === 'knee') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
+        }
+      }
+    }
+
+    for (const ref of widgetCompileState.gateRefs ?? []) {
+      for (const p of ref.knobParams ?? []) {
+        if (p.name === 'attack') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0.0001, max: 1, precision: 4, mode: 'exp2' })
+        }
+        else if (p.name === 'release') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
+        }
+        else if (p.name === 'threshold') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
+        }
+        else if (p.name === 'ratio') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 1, max: 20, precision: 2, mode: 'linear', stepPerPx: 0.05 })
+        }
+        else if (p.name === 'knee') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
+        }
+      }
+    }
+
     for (const ref of widgetCompileState.limiterRefs ?? []) {
       for (const p of ref.knobParams ?? []) {
         if (p.name === 'release') {
@@ -887,7 +951,8 @@ function DspSourceEditorReady(
     }
 
     return out
-  }, [widgetCompileState.compressorRefs, widgetCompileState.filterRefs, widgetCompileState.numberParams])
+  }, [widgetCompileState.compressorRefs, widgetCompileState.expanderRefs, widgetCompileState.gateRefs,
+    widgetCompileState.limiterRefs, widgetCompileState.filterRefs, widgetCompileState.numberParams])
 
   const { widgets: knobWidgets } = useKnobWidget({
     showWidgets,
@@ -1018,6 +1083,8 @@ function DspSourceEditorReady(
     || (widgetCompileState.sampleDefs?.length ?? 0) > 0
     || (widgetCompileState.analyserRefs?.length ?? 0) > 0
     || (widgetCompileState.compressorRefs?.length ?? 0) > 0
+    || (widgetCompileState.expanderRefs?.length ?? 0) > 0
+    || (widgetCompileState.gateRefs?.length ?? 0) > 0
     || (widgetCompileState.limiterRefs?.length ?? 0) > 0
     || (widgetCompileState.filterRefs?.length ?? 0) > 0
     || (widgetCompileState.slicerRefs?.length ?? 0) > 0

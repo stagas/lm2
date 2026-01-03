@@ -80,6 +80,8 @@ export enum VmSym {
   Seq,
   // --- Added at end to keep stable ids for existing symbols ---
   Compressor,
+  Expander,
+  Gate,
   Ratio,
   Knee,
   Key,

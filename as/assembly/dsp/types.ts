@@ -88,6 +88,8 @@ export enum VmBuiltin {
   Mini = VmSym.Mini,
   Analyser = VmSym.Analyser,
   Compressor = VmSym.Compressor,
+  Expander = VmSym.Expander,
+  Gate = VmSym.Gate,
   Limiter = VmSym.Limiter,
   T = VmSym.T,
   Play = VmSym.Play,

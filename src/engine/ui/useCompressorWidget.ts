@@ -2,7 +2,7 @@ import type { EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import type { Ring } from 'utils/ring'
 import { WaveformBuffer } from '../../lib/waveform-buffer.ts'
-import type { CompressorRef, LimiterRef } from '../bytecode/bytecode.ts'
+import type { CompressorRef, ExpanderRef, GateRef, LimiterRef } from '../bytecode/bytecode.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { getCurrentTheme } from './theme.ts'
 
@@ -10,6 +10,8 @@ type UseCompressorWidgetParams = {
   program1: ProgramInstance | undefined
   ringPos: Uint8Array<SharedArrayBuffer> | undefined
   compressorRefs: CompressorRef[] | undefined
+  expanderRefs: ExpanderRef[] | undefined
+  gateRefs: GateRef[] | undefined
   limiterRefs: LimiterRef[] | undefined
   dspSource: string
   showWidgets: boolean
@@ -53,6 +55,8 @@ export function useCompressorWidget({
   program1,
   ringPos,
   compressorRefs,
+  expanderRefs,
+  gateRefs,
   limiterRefs,
   dspSource,
   showWidgets,
@@ -61,10 +65,14 @@ export function useCompressorWidget({
   sampleRate,
 }: UseCompressorWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const compressorRefs_ = compressorRefs ?? []
+  const expanderRefs_ = expanderRefs ?? []
+  const gateRefs_ = gateRefs ?? []
   const limiterRefs_ = limiterRefs ?? []
   // Create unified refs with type information
   const refs = [
     ...compressorRefs_.map(ref => ({ type: 'compressor' as const, ref })),
+    ...expanderRefs_.map(ref => ({ type: 'expander' as const, ref })),
+    ...gateRefs_.map(ref => ({ type: 'gate' as const, ref })),
     ...limiterRefs_.map(ref => ({ type: 'limiter' as const, ref })),
   ]
   const stRef = useRef<Array<CompressorState | undefined>>([])
@@ -89,9 +97,17 @@ export function useCompressorWidget({
     seen.clear()
 
     for (const { type, ref } of refs) {
-      const baseIdx = (type === 'compressor' ? ref.compressorIndex : ref.limiterIndex) | 0
+      const baseIdx = (type === 'compressor'
+        ? ref.compressorIndex
+        : type === 'expander'
+        ? ref.expanderIndex
+        : type === 'gate'
+        ? ref.gateIndex
+        : ref.limiterIndex) | 0
       const idx = type === 'compressor' ? baseIdx : baseIdx + 64 // Use different ranges
-      if (seen.has(idx)) continue
+      if (seen.has(idx)) {
+        continue
+      }
       seen.add(idx)
 
       let st = stRef.current[idx]
@@ -155,8 +171,8 @@ export function useCompressorWidget({
 
   const drawCompressor = useCallback((
     c: CanvasRenderingContext2D,
-    type: 'compressor' | 'limiter',
-    ref: CompressorRef | LimiterRef,
+    type: 'compressor' | 'expander' | 'gate' | 'limiter',
+    ref: CompressorRef | ExpanderRef | GateRef | LimiterRef,
     widgetY: number,
     widgetHeight: number,
     viewX: number,
