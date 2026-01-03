@@ -16,9 +16,6 @@ export function clamp01(value: number): number {
   return clamp(value, 0, 1)
 }
 
-// Shared maximum index for all generators (envelopes, LFOs, filters, reverbs)
-export const MAX_GEN_INDEX = 255
-
 export function applyCurve(t: number, curve: number): number {
   if (curve > 0.0) return Math.pow(t, curve)
   if (curve < 0.0) {

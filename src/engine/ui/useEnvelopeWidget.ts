@@ -143,8 +143,8 @@ export function useEnvelopeWidget({
         // Slew: up, down, exponent
         if (!Number.isFinite(attackRaw) || !Number.isFinite(decayRaw) || !Number.isFinite(exponentRaw)) continue
         const up = Math.max(0, attackRaw)
-        const down = Math.max(0, decayRaw)
-        const exponent = Math.max(-10, Math.min(10, exponentRaw))
+        const down = Math.max(0, decayRaw) || up
+        const exponent = exponentRaw
         stRef.current.slew[idx] = { attack: up, decay: down, sustain: 0, release: 0, exponent }
         pushPt(stRef.current.slewPlay)
       }
@@ -166,7 +166,7 @@ export function useEnvelopeWidget({
         const decay = Math.max(0, decayRaw)
         const sustain = kind === 1 ? Math.max(0, Math.min(1, sustainRaw)) : 0
         const release = kind === 1 ? Math.max(0, releaseRaw) : 0
-        const exponent = Math.max(-10, Math.min(10, exponentRaw)) // allow negative values for mirrored curves
+        const exponent = exponentRaw
 
         if (kind === 1) stRef.current.adsr[idx] = { attack, decay, sustain, release, exponent }
         else stRef.current.ad[idx] = { attack, decay, sustain: 0, release: 0, exponent }
@@ -259,24 +259,27 @@ export function useEnvelopeWidget({
             // ADSR envelope: Attack -> Decay -> Sustain -> Release
             const adsrRef = ref as AdsrRef
             const rt = (isLive || playbackState !== 'running') ? stRef.current.adsr[adsrRef.adsrIndex] : undefined
-            const pl = isLive ? stRef.current.adsrPlay[adsrRef.adsrIndex] : undefined
+            const pl = stRef.current.adsrPlay[adsrRef.adsrIndex]
             const attack = Math.max(0, rt?.attack ?? adsrRef.params.attack)
             const decay = Math.max(0, rt?.decay ?? adsrRef.params.decay)
             const sustain = rt?.sustain ?? adsrRef.params.sustain
             const release = Math.max(0, rt?.release ?? adsrRef.params.release)
             const exponent = rt?.exponent ?? adsrRef.params.exponent ?? 1
-            const adrTotal = attack + decay + release
-            let sustainW = 0
+            const adTotal = attack + decay
+            let sustainW = plotW * 0.25
             let attackW = 0
             let decayW = 0
             let releaseW = 0
 
-            if (adrTotal > 0) {
-              sustainW = plotW * 0.28
-              const adrW = Math.max(1e-6, plotW - sustainW)
-              attackW = (attack / adrTotal) * adrW
-              decayW = (decay / adrTotal) * adrW
-              releaseW = (release / adrTotal) * adrW
+            if (adTotal > 0) {
+              // Release width: scales with release value
+              const remainingW = plotW - sustainW
+              const releaseRatio = release * 0.5
+              releaseW = releaseRatio * remainingW
+              const adW = remainingW - releaseW
+
+              attackW = (attack / adTotal) * adW
+              decayW = (decay / adTotal) * adW
 
               // Attack phase (curved)
               const attackX = attackW
@@ -375,7 +378,7 @@ export function useEnvelopeWidget({
             const rt = (isLive || playbackState !== 'running')
               ? stRef.current.envfollow[envfollowRef.envfollowIndex]
               : undefined
-            const pl = isLive ? stRef.current.envfollowPlay[envfollowRef.envfollowIndex] : undefined
+            const pl = stRef.current.envfollowPlay[envfollowRef.envfollowIndex]
             const attack = rt?.attack ?? envfollowRef.params.attack
             const release = rt?.release ?? envfollowRef.params.release
 
@@ -455,7 +458,7 @@ export function useEnvelopeWidget({
             // Slew envelope: shows the slew rate curve
             const slewRef = ref as SlewRef
             const rt = (isLive || playbackState !== 'running') ? stRef.current.slew[slewRef.slewIndex] : undefined
-            const pl = isLive ? stRef.current.slewPlay[slewRef.slewIndex] : undefined
+            const pl = stRef.current.slewPlay[slewRef.slewIndex]
             const up = rt?.attack ?? slewRef.params.up
             const down = rt?.decay ?? slewRef.params.down
             const exponent = rt?.exponent ?? slewRef.params.exponent ?? 1
@@ -527,7 +530,7 @@ export function useEnvelopeWidget({
             // AD envelope: Attack -> Decay
             const adRef = ref as AdRef
             const rt = (isLive || playbackState !== 'running') ? stRef.current.ad[adRef.adIndex] : undefined
-            const pl = isLive ? stRef.current.adPlay[adRef.adIndex] : undefined
+            const pl = stRef.current.adPlay[adRef.adIndex]
             const attack = rt?.attack ?? adRef.params.attack
             const decay = rt?.decay ?? adRef.params.decay
             const exponent = rt?.exponent ?? adRef.params.exponent ?? 1

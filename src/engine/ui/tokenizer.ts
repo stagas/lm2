@@ -7,6 +7,7 @@ let inMultilineString: string | null = null // Tracks the quote type we're insid
 let inMiniString: { quote: string; depth: number; callName?: string | null } | null = null // Tracks if we're inside mini('...')
 let inMiniCall: number = -1 // Tracks the paren depth when we entered a mini() call
 let inMiniCallName: string | null = null // Tracks the function name ('mini' or 'timeline')
+let inBlockComment: boolean = false // Tracks if we're inside a block comment
 let persistedParenDepth: number = 0 // Tracks paren depth across lines
 
 // Check if text looks like mini notation (contains notes, octaves, scales, etc)
@@ -427,6 +428,7 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
     inMultilineString = null
     inMiniString = null
     inMiniCall = -1
+    inBlockComment = false
     persistedParenDepth = 0
     parenDepth = 0
   }
@@ -460,6 +462,22 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
     tokens.push({ type: 'string', content: inMultilineString, length: 1 })
     i = end + 1
     inMultilineString = null
+  }
+
+  // If we're continuing a block comment from a previous line
+  if (inBlockComment) {
+    const end = line.indexOf('*/', i)
+    if (end === -1) {
+      // Block comment continues to next line
+      tokens.push({ type: 'comment', content: line.slice(i), length: line.length - i })
+      return tokens
+    }
+
+    // Found the end of the block comment
+    const comment = line.slice(i, end + 2)
+    tokens.push({ type: 'comment', content: comment, length: comment.length })
+    i = end + 2
+    inBlockComment = false
   }
 
   while (i < line.length) {
@@ -591,7 +609,27 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
       continue
     }
 
-    // Comments
+    // Block comments
+    if (char === '/' && i + 1 < line.length && line[i + 1] === '*') {
+      const start = i
+      const end = line.indexOf('*/', i + 2)
+      if (end === -1) {
+        // Block comment spans multiple lines
+        const comment = line.slice(start)
+        tokens.push({ type: 'comment', content: comment, length: comment.length })
+        inBlockComment = true
+        break
+      }
+      else {
+        // Block comment ends on this line
+        const comment = line.slice(start, end + 2)
+        tokens.push({ type: 'comment', content: comment, length: comment.length })
+        i = end + 2
+        continue
+      }
+    }
+
+    // Line comments
     if (char === '/' && i + 1 < line.length && line[i + 1] === '/') {
       const comment = line.substring(i)
       tokens.push({ type: 'comment', content: comment, length: comment.length })

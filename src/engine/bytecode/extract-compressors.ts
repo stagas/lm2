@@ -1,24 +1,14 @@
-import type { Loc, Program } from '../../lang/ast.ts'
-import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault,
-  getPosArg } from './extract-call-utils.ts'
+import type { Loc } from '../../lang/ast.ts'
+import {
+  buildLineStartsForLocs,
+  computeAboveLoc,
+  findNamedArg,
+  getIndexFromCall,
+  getNumberOrDefault,
+  getPosArg,
+} from './extract-call-utils.ts'
 import { tryEvalConstNumber } from './helpers.ts'
 import type { CompressorRef } from './types.ts'
-
-const MAX_COMPRESSOR_INDEX = 63
-
-function clampCompressorIndex(n: any): number {
-  const v = Math.floor(Number(n ?? 0))
-  if (!Number.isFinite(v)) return 0
-  if (v < 0) return 0
-  if (v > MAX_COMPRESSOR_INDEX) return MAX_COMPRESSOR_INDEX
-  return v
-}
-
-function getCompressorIndexFromCall(call: any): number {
-  const namedIdx = findNamedArg(call, 'index')
-  if (namedIdx?.value) return clampCompressorIndex(tryEvalConstNumber(namedIdx.value))
-  return 0
-}
 
 function isKnobParamName(name: string): name is 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' {
   return name === 'attack' || name === 'release' || name === 'threshold' || name === 'ratio' || name === 'knee'
@@ -83,7 +73,7 @@ export function createCompressorVisitor(src: string, refs: CompressorRef[]) {
         const aboveLoc = computeAboveLoc(src, lineStarts, calleeLoc)
 
         refs.push({
-          compressorIndex: getCompressorIndexFromCall(expr),
+          compressorIndex: getIndexFromCall(expr),
           loc: calleeLoc,
           aboveLoc,
           callLoc: expr.loc,
@@ -99,7 +89,6 @@ export function createCompressorVisitor(src: string, refs: CompressorRef[]) {
           },
         })
       }
-    }
+    },
   }
 }
-

@@ -1,29 +1,13 @@
-import type { Expr, Loc, Program } from '../../lang/ast.ts'
+import type { CallExpr, Expr, Loc } from '../../lang/ast.ts'
 import {
   buildLineStartsForLocs,
   computeAboveLoc,
   findNamedArg,
+  getIndexFromCall,
   getNumberOrDefault,
   getPosArg,
 } from './extract-call-utils.ts'
-import { tryEvalConstNumber } from './helpers.ts'
 import type { FilterRef, FilterType, NumberWithParamsInfo } from './types.ts'
-
-const MAX_FILTER_INDEX = 255
-
-function clampFilterIndex(n: any): number {
-  const v = Math.floor(Number(n ?? 0))
-  if (!Number.isFinite(v)) return 0
-  if (v < 0) return 0
-  if (v > MAX_FILTER_INDEX) return MAX_FILTER_INDEX
-  return v
-}
-
-function getFilterIndexFromCall(call: any): number {
-  const namedIdx = findNamedArg(call, 'index')
-  if (namedIdx?.value) return clampFilterIndex(tryEvalConstNumber(namedIdx.value))
-  return 0
-}
 
 function getFilterType(calleeName: string): FilterType | null {
   switch (calleeName) {
@@ -93,13 +77,11 @@ function getDefaultParams(filterType: FilterType): { cutoff: number; q: number; 
   }
 }
 
-
-
 export function createFiltersVisitor(src: string, refs: FilterRef[]) {
   const lineStarts = buildLineStartsForLocs(src)
 
   return {
-    visitCall(expr: Expr): void {
+    visitCall(expr: CallExpr): void {
       const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
       const filterType = getFilterType(calleeName ?? '')
       if (filterType) {
@@ -125,7 +107,7 @@ export function createFiltersVisitor(src: string, refs: FilterRef[]) {
 
           refs.push({
             filterType,
-            filterIndex: getFilterIndexFromCall(expr),
+            filterIndex: getIndexFromCall(expr),
             loc: calleeLoc,
             aboveLoc,
             callLoc: expr.loc,
@@ -140,11 +122,12 @@ export function createFiltersVisitor(src: string, refs: FilterRef[]) {
               // Store saturation in an extended params object if needed
             },
           } as any)
-        } else if (filterType === 'olp' || filterType === 'ohp') {
+        }
+        else if (filterType === 'olp' || filterType === 'ohp') {
           // Handle one pole filters with only cutoff parameter
           refs.push({
             filterType,
-            filterIndex: getFilterIndexFromCall(expr),
+            filterIndex: getIndexFromCall(expr),
             loc: calleeLoc,
             aboveLoc,
             callLoc: expr.loc,
@@ -155,31 +138,32 @@ export function createFiltersVisitor(src: string, refs: FilterRef[]) {
               q: 0, // Not used for one pole filters
             },
           } as any)
-        } else {
+        }
+        else {
           // Standard filter handling
           const cutExpr = namedCutoff?.value ?? getPosArg(expr, 1)?.value
           const qExpr = namedQ?.value ?? getPosArg(expr, 2)?.value
           const gainExpr = namedGain?.value ?? getPosArg(expr, 3)?.value
 
-        refs.push({
-          filterType,
-          filterIndex: getFilterIndexFromCall(expr),
-          loc: calleeLoc,
-          aboveLoc,
-          callLoc: expr.loc,
-          inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
-          cutArgLoc: (namedCutoff?.loc ?? getPosArg(expr, 1)?.loc ?? null),
-          qArgLoc: (namedQ?.loc ?? getPosArg(expr, 2)?.loc ?? null),
-          gainArgLoc: (namedGain?.loc ?? getPosArg(expr, 3)?.loc ?? null),
-          params: {
-            cut: getNumberOrDefault(cutExpr, defaultParams.cutoff),
-            q: getNumberOrDefault(qExpr, defaultParams.q),
-            ...(defaultParams.gain !== undefined ? { gain: getNumberOrDefault(gainExpr, defaultParams.gain) } : {}),
-          },
-        })
+          refs.push({
+            filterType,
+            filterIndex: getIndexFromCall(expr),
+            loc: calleeLoc,
+            aboveLoc,
+            callLoc: expr.loc,
+            inArgLoc: (namedIn?.loc ?? pos0?.loc ?? null),
+            cutArgLoc: (namedCutoff?.loc ?? getPosArg(expr, 1)?.loc ?? null),
+            qArgLoc: (namedQ?.loc ?? getPosArg(expr, 2)?.loc ?? null),
+            gainArgLoc: (namedGain?.loc ?? getPosArg(expr, 3)?.loc ?? null),
+            params: {
+              cut: getNumberOrDefault(cutExpr, defaultParams.cutoff),
+              q: getNumberOrDefault(qExpr, defaultParams.q),
+              ...(defaultParams.gain !== undefined ? { gain: getNumberOrDefault(gainExpr, defaultParams.gain) } : {}),
+            },
+          })
         }
       }
-    }
+    },
   }
 }
 
@@ -235,7 +219,7 @@ export function createFilterNumberLiteralsVisitor(refs: NumberWithParamsInfo[]) 
   }
 
   return {
-    visitCall(expr: Expr): void {
+    visitCall(expr: CallExpr): void {
       const calleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
       const filterType = getFilterType(calleeName ?? '')
       if (filterType) {
@@ -245,7 +229,6 @@ export function createFilterNumberLiteralsVisitor(refs: NumberWithParamsInfo[]) 
           collectNumbersFromExpr(secondArg.value)
         }
       }
-    }
+    },
   }
 }
-

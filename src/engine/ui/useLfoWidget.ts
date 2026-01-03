@@ -186,10 +186,35 @@ export function useLfoWidget({
       smoothedPlayheadRef.current[ref.lfoIndex | 0] = smoothed
     }
 
-    // Smooth towards target with exponential smoothing
-    const smoothing = playbackState === 'running' ? 0.5 : 1.0
-    smoothed.phase01 += (rawPhase01 - smoothed.phase01) * smoothing
-    smoothed.value += (rawValue - smoothed.value) * smoothing
+    // Determine LFO type for smoothing logic
+    const isSah = ref.lfoType === 'sah'
+    const isSmooth = ref.lfoType === 'smooth'
+    const isFractal = ref.lfoType === 'fractal'
+
+    if (isSah) {
+      // No smoothing for sah
+      smoothed.phase01 = rawPhase01
+      smoothed.value = rawValue
+    } else {
+      const smoothing = playbackState === 'running' ? 0.5 : 1.0
+      const prevPhase01 = smoothed.phase01
+
+      // For smooth and fractal, smooth both ways
+      if (isSmooth || isFractal) {
+        smoothed.phase01 += (rawPhase01 - smoothed.phase01) * smoothing
+        smoothed.value += (rawValue - smoothed.value) * smoothing
+      } else {
+        // For other types, only smooth when phase is increasing (forward motion)
+        if (rawPhase01 >= prevPhase01) {
+          smoothed.phase01 += (rawPhase01 - smoothed.phase01) * smoothing
+          smoothed.value += (rawValue - smoothed.value) * smoothing
+        } else {
+          // Instant update when wrapping around
+          smoothed.phase01 = rawPhase01
+          smoothed.value = rawValue
+        }
+      }
+    }
 
     const phase01 = smoothed.phase01
     const value = smoothed.value
@@ -209,9 +234,6 @@ export function useLfoWidget({
     const steps = 96 * 4
     const isSaw = ref.lfoType === 'saw'
     const isRamp = ref.lfoType === 'ramp'
-    const isSah = ref.lfoType === 'sah'
-    const isSmooth = ref.lfoType === 'smooth'
-    const isFractal = ref.lfoType === 'fractal'
     const xWrap = chartW
     for (let i = 0; i <= steps; i++) {
       const t = i / steps

@@ -1,18 +1,13 @@
-import type { Loc, Program } from '../../lang/ast.ts'
-import { buildLineStartsForLocs, computeAboveLoc, findNamedArg, getNumberOrDefault,
-  getPosArg } from './extract-call-utils.ts'
-import { tryEvalConstNumber } from './helpers.ts'
+import type { Loc } from '../../lang/ast.ts'
+import {
+  buildLineStartsForLocs,
+  computeAboveLoc,
+  findNamedArg,
+  getIndexFromCall,
+  getNumberOrDefault,
+  getPosArg,
+} from './extract-call-utils.ts'
 import type { LfoRef } from './types.ts'
-
-const MAX_LFO_INDEX = 255
-
-function clampLfoIndex(n: any): number {
-  const v = Math.floor(Number(n ?? 0))
-  if (!Number.isFinite(v)) return 0
-  if (v < 0) return 0
-  if (v > MAX_LFO_INDEX) return MAX_LFO_INDEX
-  return v
-}
 
 function lfoTypeFromCallee(calleeName: string): LfoRef['lfoType'] | null {
   if (calleeName === 'lfosine') return 'sine'
@@ -24,12 +19,6 @@ function lfoTypeFromCallee(calleeName: string): LfoRef['lfoType'] | null {
   if (calleeName === 'smooth') return 'smooth'
   if (calleeName === 'fractal') return 'fractal'
   return null
-}
-
-function getLfoIndexFromCall(call: any): number {
-  const namedIdx = findNamedArg(call, 'index')
-  if (namedIdx?.value) return clampLfoIndex(tryEvalConstNumber(namedIdx.value))
-  return 0
 }
 
 export function createLfoVisitor(src: string, refs: LfoRef[]) {
@@ -95,7 +84,7 @@ export function createLfoVisitor(src: string, refs: LfoRef[]) {
         const aboveLoc = computeAboveLoc(src, lineStarts, calleeLoc)
 
         refs.push({
-          lfoIndex: getLfoIndexFromCall(expr),
+          lfoIndex: getIndexFromCall(expr),
           lfoType,
           loc: calleeLoc,
           aboveLoc,
@@ -117,7 +106,6 @@ export function createLfoVisitor(src: string, refs: LfoRef[]) {
           },
         })
       }
-    }
+    },
   }
 }
-
