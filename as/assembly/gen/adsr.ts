@@ -22,11 +22,17 @@ export class Adsr extends Gen {
   private lastTrig: f32 = 0
   private sustainLevel: f32 = 0
 
+  // Best-effort UI/debug state (read by UI history writers).
+  visPhase: i32 = Phase.Idle
+  visPhase01: f32 = 0.0
+
   reset(): void {
     this.phase = Phase.Idle
     this.position = 0
     this.lastTrig = 0
     this.sustainLevel = 0
+    this.visPhase = Phase.Idle
+    this.visPhase01 = 0.0
   }
 
   copyFrom(other: Gen): void {
@@ -35,6 +41,8 @@ export class Adsr extends Gen {
     this.position = src.position
     this.lastTrig = src.lastTrig
     this.sustainLevel = src.sustainLevel
+    this.visPhase = src.visPhase
+    this.visPhase01 = src.visPhase01
   }
 
   @inline
@@ -49,6 +57,8 @@ export class Adsr extends Gen {
     }
 
     if (this.phase === Phase.Idle) {
+      this.visPhase = Phase.Idle
+      this.visPhase01 = 0.0
       return 0
     }
 
@@ -66,6 +76,8 @@ export class Adsr extends Gen {
           this.phase = Phase.Decay
         }
       }
+      this.visPhase = Phase.Attack
+      this.visPhase01 = Mathf.max(0.0, Mathf.min(this.position, 1.0))
       return f32(applyCurve(this.position, exponent))
     }
 
@@ -87,6 +99,10 @@ export class Adsr extends Gen {
           this.phase = Phase.Sustain
         }
       }
+      this.visPhase = Phase.Decay
+      const den: f32 = Mathf.max(0.000001, 1.0 - sustain)
+      const t: f32 = (1.0 - this.position) / den
+      this.visPhase01 = Mathf.max(0.0, Mathf.min(t, 1.0))
       return f32(applyCurve(this.position, exponent))
     }
 
@@ -97,6 +113,8 @@ export class Adsr extends Gen {
         this.sustainLevel = this.position
       }
       else {
+        this.visPhase = Phase.Sustain
+        this.visPhase01 = 0.5
         return f32(applyCurve(this.position, exponent))
       }
     }
@@ -106,6 +124,8 @@ export class Adsr extends Gen {
       if (releaseSamples <= 0) {
         this.position = 0
         this.phase = Phase.Idle
+        this.visPhase = Phase.Idle
+        this.visPhase01 = 0.0
         return 0
       }
       else {
@@ -114,9 +134,15 @@ export class Adsr extends Gen {
         if (this.position <= 0) {
           this.position = 0
           this.phase = Phase.Idle
+          this.visPhase = Phase.Idle
+          this.visPhase01 = 0.0
           return 0
         }
       }
+      this.visPhase = Phase.Release
+      const den: f32 = Mathf.max(0.000001, this.sustainLevel)
+      const t: f32 = (this.sustainLevel - this.position) / den
+      this.visPhase01 = Mathf.max(0.0, Mathf.min(t, 1.0))
       return f32(applyCurve(this.position, exponent))
     }
 

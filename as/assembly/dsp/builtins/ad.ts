@@ -113,6 +113,6 @@ export function callAd(
   ad.trig$ = trig$
   ad.process(out$, length)
 
-  writeEnvelopeHistory(program, adIndex, 0, attack$, decay$, 0, 0, exponent$, length)
+  writeEnvelopeHistory(program, adIndex, 0, attack$, decay$, 0, 0, exponent$, ad.visPhase, ad.visPhase01, out$, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }

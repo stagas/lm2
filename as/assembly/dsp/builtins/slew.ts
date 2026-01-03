@@ -6,6 +6,7 @@ import { VmSym } from '../vm-sym'
 import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
+import { writeEnvelopeHistory } from './adsr'
 
 // @ts-ignore
 @inline
@@ -24,6 +25,7 @@ export function callSlew(
   program: Program,
   length: i32,
 ): void {
+  let slewIndex: i32 = 0
   // Positional fallback: (in, up, down, exp)
   let inTag: VmTag = VmTag.Num
   let inNum: f64 = 0.0
@@ -68,7 +70,10 @@ export function callSlew(
   // Named overrides (in/up/down/exp)
   for (let i = 0; i < namedCount; i++) {
     const k = nameSyms[i]
-    if (k === VmSym.In) {
+    if (k === VmSym.Index) {
+      slewIndex = i32(Math.floor(nameNums[i]))
+    }
+    else if (k === VmSym.In) {
       inTag = nameTags[i] as VmTag
       inNum = nameNums[i]
       inAux = nameAux[i]
@@ -105,5 +110,6 @@ export function callSlew(
   slew.exp$ = exp$
   slew.process(out$, length)
 
+  writeEnvelopeHistory(program, slewIndex, 2, up$, down$, 0, 0, exp$, slew.visPhase, slew.visPhase01, out$, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }

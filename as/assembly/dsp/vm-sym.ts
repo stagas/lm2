@@ -5,6 +5,7 @@ export enum VmSym {
   // Builtins
   Ad,
   Adsr,
+  Envfollow,
   Analyser,
   At,
   Attack,

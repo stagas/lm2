@@ -14,6 +14,7 @@ import { callDc } from './builtins/dc'
 import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
 import { callDiodeLadder } from './builtins/diodeladder'
+import { callEnvfollow } from './builtins/envfollow'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
 import { callFdn } from './builtins/fdn'
@@ -159,6 +160,7 @@ export class VmBuiltins {
     this.autoLift[VmBuiltin.Mhp] = 1
     this.autoLift[VmBuiltin.DiodeLadder] = 1
     this.autoLift[VmBuiltin.Slew] = 1
+    this.autoLift[VmBuiltin.Envfollow] = 1
     this.autoLift[VmBuiltin.Dc] = 1
   }
 
@@ -435,6 +437,12 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.DiodeLadder) {
       callDiodeLadder(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
         audio, program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Envfollow) {
+      callEnvfollow(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
       return
     }
 
@@ -825,6 +833,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Adsr) {
       callAdsr(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Envfollow) {
+      callEnvfollow(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

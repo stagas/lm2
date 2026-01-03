@@ -29,6 +29,7 @@ export enum Op {
   Sine,
   Ad,
   Adsr,
+  Envfollow,
   Analyser,
   Mini,
   Timeline,

@@ -20,6 +20,9 @@ export function writeEnvelopeHistory(
   sustain$: usize,
   release$: usize,
   exponent$: usize,
+  phase: i32,
+  phase01: f32,
+  out$: usize,
   length: i32,
 ): void {
   if (program.historyWriteEnabled === 0) return
@@ -28,6 +31,7 @@ export function writeEnvelopeHistory(
   const slot = writePos % ENVELOPE_HISTORY_SIZE
   const base = ENVELOPE_DATA_OFFSET + slot * ENVELOPE_ENTRY_SIZE
 
+  const lastSample$: usize = out$ + ((length - 1) << 2)
   hist[base] = f32(envIndex)
   hist[base + 1] = f32(envKind)
   hist[base + 2] = load<f32>(attack$)
@@ -35,7 +39,10 @@ export function writeEnvelopeHistory(
   hist[base + 4] = sustain$ !== 0 ? load<f32>(sustain$) : 0
   hist[base + 5] = release$ !== 0 ? load<f32>(release$) : 0
   hist[base + 6] = exponent$ !== 0 ? load<f32>(exponent$) : 1
-  hist[base + 7] = f32((globalSampleCount + length) & 0xfffff)
+  hist[base + 7] = f32(phase)
+  hist[base + 8] = phase01
+  hist[base + 9] = load<f32>(lastSample$)
+  hist[base + 10] = f32((globalSampleCount + length) & 0xfffff)
   hist[ENVELOPE_WRITE_POS_OFFSET] = f32((writePos + 1) & 0xfffff)
 }
 
@@ -176,7 +183,8 @@ export function callAdsr(
   adsr.trig$ = trig$
   adsr.process(out$, length)
 
-  writeEnvelopeHistory(program, adsrIndex, 1, attack$, decay$, sustain$, release$, exponent$, length)
+  writeEnvelopeHistory(program, adsrIndex, 1, attack$, decay$, sustain$, release$, exponent$, adsr.visPhase, adsr.visPhase01,
+    out$, length)
   stack.push(VmTag.Audio, 0.0, outIndex)
 }
 

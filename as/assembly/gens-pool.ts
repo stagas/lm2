@@ -3,14 +3,12 @@ import { Adsr } from './gen/adsr'
 import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
-import { Sap, Sbp, Sbs, Shp, Slp, Speak } from './gen/svf'
-import { Mlp, Mhp } from './gen/moog'
-import { DiodeLadder } from './gen/diodeladder'
-import { Olp, Ohp } from './gen/onepole'
 import { Compressor } from './gen/compressor'
 import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
 import { Delay } from './gen/delay'
+import { DiodeLadder } from './gen/diodeladder'
+import { Envfollow } from './gen/envfollow'
 import { Euclid } from './gen/euclid'
 import { Every } from './gen/every'
 import { Fdn } from './gen/fdn'
@@ -19,12 +17,15 @@ import { Gen } from './gen/gen'
 import { LfoRamp, LfoSah, LfoSaw, LfoSine, LfoSqr, LfoTri } from './gen/lfo'
 import { Limiter } from './gen/limiter'
 import { Mini } from './gen/mini'
+import { Mhp, Mlp } from './gen/moog'
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from './gen/noise'
+import { Ohp, Olp } from './gen/onepole'
 import { Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
 import { Slew } from './gen/slew'
 import { Slicer } from './gen/slicer'
+import { Sap, Sbp, Sbs, Shp, Slp, Speak } from './gen/svf'
 import { Timeline } from './gen/timeline'
 import { Velvet } from './gen/velvet'
 import { Op } from './shared'
@@ -81,6 +82,7 @@ export class GensPool {
   private phasors: GenPool<Phasor> = new GenPool<Phasor>(() => new Phasor())
   private ads: GenPool<Ad> = new GenPool<Ad>(() => new Ad())
   private adsrs: GenPool<Adsr> = new GenPool<Adsr>(() => new Adsr())
+  private envfollows: GenPool<Envfollow> = new GenPool<Envfollow>(() => new Envfollow())
   private minis: GenPool<Mini> = new GenPool<Mini>(() => new Mini())
   private timelines: GenPool<Timeline> = new GenPool<Timeline>(() => new Timeline())
   private analysers: GenPool<Analyser> = new GenPool<Analyser>(() => new Analyser())
@@ -131,7 +133,7 @@ export class GensPool {
   private ohps: GenPool<Ohp> = new GenPool<Ohp>(() => new Ohp())
 
   // Keep in sync with `saveIndices()`/`restoreIndices()`.
-  static readonly INDICES_COUNT: i32 = 57
+  static readonly INDICES_COUNT: i32 = 58
 
   @inline
   saveIndices(out: StaticArray<i32>): void {
@@ -145,6 +147,7 @@ export class GensPool {
     out[i++] = this.phasors.getIndex()
     out[i++] = this.ads.getIndex()
     out[i++] = this.adsrs.getIndex()
+    out[i++] = this.envfollows.getIndex()
     out[i++] = this.minis.getIndex()
     out[i++] = this.timelines.getIndex()
     out[i++] = this.analysers.getIndex()
@@ -207,6 +210,7 @@ export class GensPool {
     this.phasors.setIndex(src[i++])
     this.ads.setIndex(src[i++])
     this.adsrs.setIndex(src[i++])
+    this.envfollows.setIndex(src[i++])
     this.minis.setIndex(src[i++])
     this.timelines.setIndex(src[i++])
     this.analysers.setIndex(src[i++])
@@ -266,6 +270,7 @@ export class GensPool {
     this.phasors.resetIndex()
     this.ads.resetIndex()
     this.adsrs.resetIndex()
+    this.envfollows.resetIndex()
     this.minis.resetIndex()
     this.timelines.resetIndex()
     this.analysers.resetIndex()
@@ -325,6 +330,7 @@ export class GensPool {
     this.phasors.reset()
     this.ads.reset()
     this.adsrs.reset()
+    this.envfollows.reset()
     this.minis.reset()
     this.timelines.reset()
     this.analysers.reset()
@@ -395,6 +401,8 @@ export class GensPool {
         return this.ads.get()
       case Op.Adsr:
         return this.adsrs.get()
+      case Op.Envfollow:
+        return this.envfollows.get()
       case Op.Mini:
         return this.minis.get()
       case Op.Timeline:
@@ -505,6 +513,7 @@ export class GensPool {
     this.phasors.copyFrom(source.phasors)
     this.ads.copyFrom(source.ads)
     this.adsrs.copyFrom(source.adsrs)
+    this.envfollows.copyFrom(source.envfollows)
     this.minis.copyFrom(source.minis)
     this.timelines.copyFrom(source.timelines)
     this.analysers.copyFrom(source.analysers)

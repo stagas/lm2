@@ -130,6 +130,8 @@ function DspSourceEditorReady(
   const miniSourceMaps = useEngineDspStore(state => state.miniSourceMaps)
   const adRefs = useEngineDspStore(state => state.uiAdRefs)
   const adsrRefs = useEngineDspStore(state => state.uiAdsrRefs)
+  const envfollowRefs = useEngineDspStore(state => state.uiEnvfollowRefs)
+  const slewRefs = useEngineDspStore(state => state.uiSlewRefs)
   const analyserRefs = useEngineDspStore(state => state.analyserRefs)
   const compressorRefs = useEngineDspStore(state => state.compressorRefs)
   const limiterRefs = useEngineDspStore(state => state.limiterRefs)
@@ -369,6 +371,8 @@ function DspSourceEditorReady(
         miniSourceMaps,
         adRefs,
         adsrRefs,
+        envfollowRefs,
+        slewRefs,
         analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
         compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
         limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
@@ -398,6 +402,8 @@ function DspSourceEditorReady(
         miniSourceMaps,
         adRefs,
         adsrRefs,
+        envfollowRefs,
+        slewRefs,
         analyserRefs,
         compressorRefs,
         limiterRefs,
@@ -431,6 +437,8 @@ function DspSourceEditorReady(
       miniSourceMaps: previewMiniSourceMaps,
       adRefs: previewCompile.adRefs ?? adRefs,
       adsrRefs: previewCompile.adsrRefs ?? adsrRefs,
+      envfollowRefs: previewCompile.envfollowRefs ?? envfollowRefs,
+      slewRefs: previewCompile.slewRefs ?? slewRefs,
       analyserRefs: previewCompile.analyserRefs ?? [],
       compressorRefs: previewCompile.compressorRefs ?? [],
       limiterRefs: previewCompile.limiterRefs ?? [],
@@ -799,6 +807,8 @@ function DspSourceEditorReady(
     program1: runtimeProgram,
     adRefs: widgetCompileState.adRefs,
     adsrRefs: widgetCompileState.adsrRefs,
+    envfollowRefs: widgetCompileState.envfollowRefs,
+    slewRefs: widgetCompileState.slewRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isLive,
@@ -996,6 +1006,8 @@ function DspSourceEditorReady(
   const expectsWidgets = showWidgets && (
     (widgetCompileState.adRefs?.length ?? 0) > 0
     || (widgetCompileState.adsrRefs?.length ?? 0) > 0
+    || (widgetCompileState.envfollowRefs?.length ?? 0) > 0
+    || (widgetCompileState.slewRefs?.length ?? 0) > 0
     || (widgetCompileState.sampleDefs?.length ?? 0) > 0
     || (widgetCompileState.analyserRefs?.length ?? 0) > 0
     || (widgetCompileState.compressorRefs?.length ?? 0) > 0

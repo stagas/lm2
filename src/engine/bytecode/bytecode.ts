@@ -31,6 +31,9 @@ import {
   createCompressorVisitor,
 } from './extract-compressors.ts'
 import {
+  createEnvfollowVisitor,
+} from './extract-envfollow.ts'
+import {
   createFilterNumberLiteralsVisitor,
   createFiltersVisitor,
 } from './extract-filter.ts'
@@ -57,6 +60,9 @@ import {
   createScaleVisitor,
 } from './extract-scale.ts'
 import {
+  createSlewVisitor,
+} from './extract-slew.ts'
+import {
   createSlicersVisitor,
 } from './extract-slicers.ts'
 import {
@@ -80,6 +86,7 @@ import {
   AtRef,
   BranchMarkRef,
   CompressorRef,
+  type EnvfollowRef,
   type EuclidRef,
   EveryRef,
   type FilterRef,
@@ -90,6 +97,7 @@ import {
   type NumberWithParamsInfo,
   type ReverbRef,
   type SampleDef,
+  type SlewRef,
   SlicerRef,
   type TimelineLabel,
   type TimelineSequenceDef,
@@ -103,12 +111,14 @@ export * from './builtin-syms.ts'
 export * from './extract-analysers.ts'
 export * from './extract-bpm-bars.ts'
 export * from './extract-compressors.ts'
+export * from './extract-envfollow.ts'
 export * from './extract-filter.ts'
 export * from './extract-lfo.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
 export * from './extract-samples.ts'
 export * from './extract-scale.ts'
+export * from './extract-slew.ts'
 export * from './extract-slicers.ts'
 export * from './extract-timeline-labels.ts'
 export * from './extract-timeline-sequences.ts'
@@ -198,6 +208,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   const filterRefs: FilterRef[] = []
   const adRefs: AdRef[] = []
   const adsrRefs: AdsrRef[] = []
+  const envfollowRefs: EnvfollowRef[] = []
+  const slewRefs: SlewRef[] = []
   const reverbRefs: ReverbRef[] = []
   const slicerRefs: SlicerRef[] = []
   const lfoRefs: LfoRef[] = []
@@ -209,6 +221,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   const visitors = [
     createAdVisitor(src, adRefs),
     createAdsrVisitor(src, adsrRefs),
+    createEnvfollowVisitor(src, envfollowRefs),
+    createSlewVisitor(src, slewRefs),
     createAnalyserVisitor(analyserRefs),
     createCompressorVisitor(src, compressorRefs),
     createLimiterVisitor(src, limiterRefs),
@@ -227,6 +241,8 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   return {
     adRefs,
     adsrRefs,
+    envfollowRefs,
+    slewRefs,
     analyserRefs,
     compressorRefs,
     limiterRefs,
@@ -258,26 +274,8 @@ export function extractEarlyDataFromSource(src: string): {
   const lexed = lex(src)
   const parsed = parse(src, lexed.tokens)
   const errors: LangError[] = [...lexed.errors, ...parsed.errors]
-  if (errors.length) {
-    return {
-      bpm: undefined,
-      bars: undefined,
-      scale: undefined,
-      sequences: [],
-      miniRefs: [],
-      timelineSequences: [],
-      timelineRefs: [],
-      timelineLabels: [],
-      samples: [],
-      numberParams: [],
-      filterNumberLiterals: [],
-      numberLiterals: [],
-      errors,
-    }
-  }
-
   const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
-  return { ...earlyData, errors: [] }
+  return { ...earlyData, errors }
 }
 
 export function encodeLangToVmOps(
@@ -299,6 +297,8 @@ export function encodeLangToVmOps(
   timelineLabels?: TimelineLabel[]
   adRefs?: AdRef[]
   adsrRefs?: AdsrRef[]
+  envfollowRefs?: EnvfollowRef[]
+  slewRefs?: SlewRef[]
   analyserRefs?: AnalyserRef[]
   compressorRefs?: CompressorRef[]
   limiterRefs?: LimiterRef[]
@@ -437,6 +437,8 @@ export function encodeLangToVmOps(
     // Initialize ref collections for late extraction
     let adRefs: AdRef[] = []
     let adsrRefs: AdsrRef[] = []
+    let envfollowRefs: EnvfollowRef[] = []
+    let slewRefs: SlewRef[] = []
     let analyserRefs: AnalyserRef[] = []
     let compressorRefs: CompressorRef[] = []
     let limiterRefs: LimiterRef[] = []
@@ -497,6 +499,8 @@ export function encodeLangToVmOps(
     const allocAdIndex = createIndexAllocator()
 
     const allocAdsrIndex = createIndexAllocator()
+
+    const allocEnvfollowIndex = createIndexAllocator()
 
     const allocTrigIndex = createIndexAllocator()
 
@@ -606,6 +610,7 @@ export function encodeLangToVmOps(
         const isTimeline = calleeName === 'timeline'
         const isAd = calleeName === 'ad'
         const isAdsr = calleeName === 'adsr'
+        const isEnvfollow = calleeName === 'envfollow'
         const isAnalyser = calleeName === 'analyser'
         const isCompressor = calleeName === 'compressor'
         const isLimiter = calleeName === 'limiter'
@@ -667,6 +672,13 @@ export function encodeLangToVmOps(
 
         if (isAdsr) {
           const idx = allocAdsrIndex()
+
+          return { ...expr, callee,
+            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+        }
+
+        if (isEnvfollow) {
+          const idx = allocEnvfollowIndex()
 
           return { ...expr, callee,
             args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
@@ -1025,6 +1037,8 @@ export function encodeLangToVmOps(
     const extractionResults = extractAllRefsFromProgram(src, transformedProgram)
     adRefs = extractionResults.adRefs
     adsrRefs = extractionResults.adsrRefs
+    envfollowRefs = extractionResults.envfollowRefs
+    slewRefs = extractionResults.slewRefs
     analyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs]
     compressorRefs = extractionResults.compressorRefs
     limiterRefs = extractionResults.limiterRefs
@@ -1421,6 +1435,8 @@ export function encodeLangToVmOps(
         timelineLabels,
         adRefs,
         adsrRefs,
+        envfollowRefs,
+        slewRefs,
         analyserRefs,
         compressorRefs,
         limiterRefs,
@@ -1451,6 +1467,8 @@ export function encodeLangToVmOps(
         timelineLabels,
         adRefs,
         adsrRefs,
+        envfollowRefs,
+        slewRefs,
         analyserRefs,
         compressorRefs,
         limiterRefs,
