@@ -4,6 +4,7 @@ import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
+import { PitchShift } from './gen/pitch-shift'
 import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
 import { Delay } from './gen/delay'
@@ -134,9 +135,10 @@ export class GensPool {
   private diodeLadders: GenPool<DiodeLadder> = new GenPool<DiodeLadder>(() => new DiodeLadder())
   private olps: GenPool<Olp> = new GenPool<Olp>(() => new Olp())
   private ohps: GenPool<Ohp> = new GenPool<Ohp>(() => new Ohp())
+  private pitchShifts: GenPool<PitchShift> = new GenPool<PitchShift>(() => new PitchShift())
 
   // Keep in sync with `saveIndices()`/`restoreIndices()`.
-  static readonly INDICES_COUNT: i32 = 58
+  static readonly INDICES_COUNT: i32 = 59
 
   @inline
   saveIndices(out: StaticArray<i32>): void {
@@ -199,6 +201,7 @@ export class GensPool {
     out[i++] = this.diodeLadders.getIndex()
     out[i++] = this.olps.getIndex()
     out[i++] = this.ohps.getIndex()
+    out[i++] = this.pitchShifts.getIndex()
   }
 
   @inline
@@ -262,6 +265,7 @@ export class GensPool {
     this.diodeLadders.setIndex(src[i++])
     this.olps.setIndex(src[i++])
     this.ohps.setIndex(src[i++])
+    this.pitchShifts.setIndex(src[i++])
   }
   resetIndices(): void {
     this.sines.resetIndex()
@@ -322,6 +326,7 @@ export class GensPool {
     this.diodeLadders.resetIndex()
     this.olps.resetIndex()
     this.ohps.resetIndex()
+    this.pitchShifts.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -382,6 +387,7 @@ export class GensPool {
     this.diodeLadders.reset()
     this.olps.reset()
     this.ohps.reset()
+    this.pitchShifts.reset()
   }
 
   get(op: Op): Gen {
@@ -506,6 +512,8 @@ export class GensPool {
         return this.olps.get()
       case Op.Ohp:
         return this.ohps.get()
+      case Op.PitchShift:
+        return this.pitchShifts.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -567,5 +575,6 @@ export class GensPool {
     this.diodeLadders.copyFrom(source.diodeLadders)
     this.olps.copyFrom(source.olps)
     this.ohps.copyFrom(source.ohps)
+    this.pitchShifts.copyFrom(source.pitchShifts)
   }
 }
