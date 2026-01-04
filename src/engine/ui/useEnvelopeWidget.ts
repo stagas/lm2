@@ -262,9 +262,9 @@ export function useEnvelopeWidget({
             const pl = stRef.current.adsrPlay[adsrRef.adsrIndex]
             const attack = Math.max(0, rt?.attack ?? adsrRef.params.attack)
             const decay = Math.max(0, rt?.decay ?? adsrRef.params.decay)
-            const sustain = rt?.sustain ?? adsrRef.params.sustain
-            const release = Math.max(0, rt?.release ?? adsrRef.params.release)
             const exponent = rt?.exponent ?? adsrRef.params.exponent ?? 1
+            const sustain = applyCurve(rt?.sustain ?? adsrRef.params.sustain, exponent)
+            const release = Math.max(0, rt?.release ?? adsrRef.params.release)
             const adTotal = attack + decay
             let sustainW = plotW * 0.25
             let attackW = 0

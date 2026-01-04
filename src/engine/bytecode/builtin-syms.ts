@@ -17,6 +17,8 @@ export const builtinSyms: Record<string, number> = {
   mini: VmSym.Mini,
   analyser: VmSym.Analyser,
   compressor: VmSym.Compressor,
+  expander: VmSym.Expander,
+  gate: VmSym.Gate,
   limiter: VmSym.Limiter,
   t: VmSym.T,
   co: VmSym.Co,
@@ -117,6 +119,7 @@ export const builtinSyms: Record<string, number> = {
   threshold: VmSym.Threshold,
   ratio: VmSym.Ratio,
   knee: VmSym.Knee,
+  hold: VmSym.Hold,
   gain: VmSym.Gain,
   // Named args for analyser()
   index: VmSym.Index,

@@ -51,6 +51,45 @@ function compReductionDb(inputDb: number, th: number, ratio: number, knee: numbe
   return inputDb > t ? (inputDb - t) * ratioFactor : 0
 }
 
+function expReductionDb(inputDb: number, th: number, ratio: number, knee: number): number {
+  const k = clamp(knee, 0, 40)
+  const t = clamp(th, -80, 0)
+  const r = clamp(ratio, 1, 100)
+  const expansionFactor = r - 1
+  if (inputDb >= t) return 0
+  const d = t - inputDb
+  if (k > 0) {
+    const x = clamp(d / k, 0, 1)
+    const s = x * x * (3 - 2 * x)
+    return d * expansionFactor * s
+  }
+  return d * expansionFactor
+}
+
+function gateReductionDb(inputDb: number, th: number, ratio: number, knee: number): number {
+  const t = clamp(th, -80, 0)
+  const k = clamp(knee, 0, 40)
+  const r = clamp(ratio, 1, 100)
+  const rangeDb = Math.min(120, (r - 1) * 20)
+  const h = k > 0 ? k / 2 : 0.5
+  const openTh = t + h
+  const closeTh = t - h
+  if (inputDb >= openTh) return 0
+  if (inputDb <= closeTh) return rangeDb
+  // Inside hysteresis band (visual-only): fade between states.
+  const x = clamp((inputDb - closeTh) / Math.max(1e-6, openTh - closeTh), 0, 1)
+  return (1 - x) * rangeDb
+}
+
+function reducerFor(
+  type: 'compressor' | 'expander' | 'gate' | 'limiter',
+): (inputDb: number, th: number, ratio: number, knee: number) => number {
+  if (type === 'compressor') return compReductionDb
+  if (type === 'expander') return expReductionDb
+  if (type === 'gate') return gateReductionDb
+  return compReductionDb
+}
+
 export function useCompressorWidget({
   program1,
   ringPos,
@@ -104,7 +143,7 @@ export function useCompressorWidget({
         : type === 'gate'
         ? ref.gateIndex
         : ref.limiterIndex) | 0
-      const idx = type === 'compressor' ? baseIdx : baseIdx + 64 // Use different ranges
+      const idx = baseIdx + (type === 'compressor' ? 0 : type === 'expander' ? 64 : type === 'gate' ? 128 : 192)
       if (seen.has(idx)) {
         continue
       }
@@ -116,7 +155,14 @@ export function useCompressorWidget({
         stRef.current[idx] = st
       }
 
-      const outs = type === 'compressor' ? program1!.program!.compressorOuts : program1!.program!.limiterOuts
+      const outs =
+        type === 'compressor'
+          ? program1!.program!.compressorOuts
+          : type === 'expander'
+          ? program1!.program!.expanderOuts
+          : type === 'gate'
+          ? program1!.program!.gateOuts
+          : program1!.program!.limiterOuts
       const levelRing = outs.levelDb[baseIdx] as Ring | undefined
       const grRing = outs.grDb[baseIdx] as Ring | undefined
       if (!levelRing || !grRing) {
@@ -178,9 +224,14 @@ export function useCompressorWidget({
     viewX: number,
     viewWidth: number,
   ) => {
-    const baseIdx = (type === 'compressor' ? (ref as CompressorRef).compressorIndex : (ref as LimiterRef).limiterIndex)
-      | 0
-    const idx = type === 'compressor' ? baseIdx : baseIdx + 64
+    const baseIdx = (type === 'compressor'
+      ? (ref as CompressorRef).compressorIndex
+      : type === 'expander'
+      ? (ref as ExpanderRef).expanderIndex
+      : type === 'gate'
+      ? (ref as GateRef).gateIndex
+      : (ref as LimiterRef).limiterIndex) | 0
+    const idx = baseIdx + (type === 'compressor' ? 0 : type === 'expander' ? 64 : type === 'gate' ? 128 : 192)
     const st = stRef.current[idx]
     const level = isLive ? st?.levelFloats : null
     const gr = isLive ? st?.grFloats : null
@@ -211,6 +262,7 @@ export function useCompressorWidget({
     const th = ref.params.threshold
     const ratio = type === 'limiter' ? Infinity : (ref.params as { ratio: number }).ratio
     const knee = type === 'limiter' ? 0 : (ref.params as { knee: number }).knee
+    const reduce = reducerFor(type)
 
     const curLevel = level && level.length > 0 ? Math.max(...level) : -80
     const curGr = gr && gr.length > 0 ? Math.max(...gr) : 0
@@ -325,7 +377,7 @@ export function useCompressorWidget({
     for (let i = 0; i <= steps; i++) {
       const t = i / steps
       const inDb = minDb + (maxDb - minDb) * t
-      const red = compReductionDb(inDb, th, ratio, knee)
+      const red = reduce(inDb, th, ratio, knee)
       const outDb = inDb - red
       const px = toX(inDb, chartW)
       const py = toY(outDb, chartY, chartH)
@@ -341,15 +393,17 @@ export function useCompressorWidget({
     if (knee > 0) {
       const kneeStart = th - knee / 2
       const kneeEnd = th + knee / 2
+      const startIn = type === 'expander' || type === 'gate' ? kneeEnd : kneeStart
+      const endIn = type === 'expander' || type === 'gate' ? kneeStart : kneeEnd
 
       c.beginPath()
-      c.arc(toX(kneeStart, chartW), toY(kneeStart, chartY, chartH), 2.75, 0, Math.PI * 2)
+      c.arc(toX(startIn, chartW), toY(startIn, chartY, chartH), 2.75, 0, Math.PI * 2)
       c.fill()
 
-      const endRed = compReductionDb(kneeEnd, th, ratio, knee)
-      const endOut = kneeEnd - endRed
+      const endRed = reduce(endIn, th, ratio, knee)
+      const endOut = endIn - endRed
       c.beginPath()
-      c.arc(toX(kneeEnd, chartW), toY(endOut, chartY, chartH), 2.75, 0, Math.PI * 2)
+      c.arc(toX(endIn, chartW), toY(endOut, chartY, chartH), 2.75, 0, Math.PI * 2)
       c.fill()
     }
     else {

@@ -4,7 +4,7 @@ import { KEYWORDS } from '../constants.ts'
 
 // State for multiline strings and context
 let inMultilineString: string | null = null // Tracks the quote type we're inside
-let inMiniString: { quote: string; depth: number; callName?: string | null } | null = null // Tracks if we're inside mini('...')
+let inMiniString: { quote: string; depth: number; callName?: string | null; text: string } | null = null // Tracks if we're inside mini('...') across lines
 let inMiniCall: number = -1 // Tracks the paren depth when we entered a mini() call
 let inMiniCallName: string | null = null // Tracks the function name ('mini' or 'timeline')
 let inBlockComment: boolean = false // Tracks if we're inside a block comment
@@ -190,6 +190,32 @@ function tokenizeMiniMods(mods: string): Token[] {
   return tokens
 }
 
+function cloneTokenWithContent(t: Token, content: string): Token {
+  const next: Token = { type: t.type, content, length: content.length }
+  if (t.color) next.color = t.color
+  return next
+}
+
+function takeLastLineTokens(tokens: Token[]): Token[] {
+  let lineTokens: Token[] = []
+  for (const t of tokens) {
+    let rest = t.content
+    while (true) {
+      const nl = rest.indexOf('\n')
+      if (nl === -1) {
+        if (rest) lineTokens.push(cloneTokenWithContent(t, rest))
+        break
+      }
+      const before = rest.slice(0, nl)
+      if (before) lineTokens.push(cloneTokenWithContent(t, before))
+      // New line boundary: reset to start collecting tokens for the next line.
+      lineTokens = []
+      rest = rest.slice(nl + 1)
+    }
+  }
+  return lineTokens
+}
+
 function tokenizeTimelineEntry(entry: string): Token[] {
   const tokens: Token[] = []
   let i = 0
@@ -248,22 +274,11 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
   const tokens: Token[] = []
   const miniTokens = miniTokenize(text)
   let cursor = 0
-  // Precompute first comment position (single-line comment marker)
-  // We'll update this inside the loop if necessary.
-  let firstCommentPos = text.indexOf('//')
 
   let isScaleOperator = false
 
   for (let ti = 0; ti < miniTokens.length; ti++) {
     const t = miniTokens[ti]!
-
-    if (firstCommentPos !== -1 && firstCommentPos >= cursor && firstCommentPos < t.start) {
-      const beforeComment = text.slice(cursor, firstCommentPos)
-      if (beforeComment) tokens.push({ type: 'default', content: beforeComment, length: beforeComment.length })
-      const commentText = text.slice(firstCommentPos)
-      tokens.push({ type: 'comment', content: commentText, length: commentText.length })
-      return tokens
-    }
 
     if (t.start > cursor) {
       const between = text.slice(cursor, t.start)
@@ -285,67 +300,16 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
     }
 
     const raw = t.text
+    if (raw.startsWith('//')) {
+      tokens.push({ type: 'comment', content: raw, length: raw.length })
+      cursor = t.end
+      continue
+    }
     const first = raw[0]
     if (raw === '.' || raw === ':') {
       tokens.push({ type: 'punctuation', content: raw, length: raw.length })
       cursor = t.end
       continue
-    }
-    // If '//' falls inside this mini token, split and emit a comment token.
-    if (firstCommentPos !== -1 && firstCommentPos >= t.start && firstCommentPos < t.end) {
-      const offsetInRaw = firstCommentPos - t.start
-      const before = raw.slice(0, offsetInRaw)
-      const commentPart = raw.slice(offsetInRaw)
-      if (before) {
-        // Process the prefix of this token as if it's the original raw token.
-        const pf = before
-        const pfirst = pf[0]
-        if (pfirst === '[' || pfirst === '<' || pfirst === '(') {
-          const closeIndex = findGroupClose(pf, pfirst)
-          if (closeIndex !== -1) {
-            const open = pfirst as '[' | '<' | '('
-            const close = open === '[' ? ']' : open === '<' ? '>' : ')'
-            const inner = pf.slice(1, closeIndex)
-            const after = pf.slice(closeIndex + 1)
-
-            tokens.push({ type: 'punctuation', content: open, length: 1 })
-            if (inner) tokens.push(...tokenizeMiniText(inner, isTimeline))
-            tokens.push({ type: 'punctuation', content: close, length: 1 })
-            if (after) tokens.push(...tokenizeMiniMods(after))
-          }
-          else {
-            tokens.push({ type: 'punctuation', content: pf, length: pf.length })
-          }
-        }
-        else {
-          let { value, mods } = splitValueAndModifiers(pf)
-          // Special-case timeline notation: numeric value may have trailing alpha
-          // suffixes (e.g. "2,1l6"). If this is a timeline string, split alpha
-          // suffix from the numeric value and treat it as mods so the numeric
-          // portion is tokenized as a number.
-          if (isTimeline && value) {
-            const m = value.match(/^([0-9]+(?:,[0-9]+)*)([a-z].*)$/i)
-            if (m) {
-              value = m[1] ?? ''
-              mods = (m[2] ?? '') + mods
-            }
-          }
-          if (value) {
-            if (isTimeline && /^\d+,/.test(value)) {
-              tokens.push(...tokenizeTimelineEntry(value + mods))
-              mods = ''
-            }
-            else {
-              tokens.push(createToken(getMiniValueTokenType(value), value))
-            }
-          }
-          if (mods) tokens.push(...tokenizeMiniMods(mods))
-        }
-      }
-
-      // Now emit the comment for the rest and finish
-      tokens.push({ type: 'comment', content: commentPart, length: commentPart.length })
-      return tokens
     }
     if (first === '[' || first === '<' || first === '(') {
       const closeIndex = findGroupClose(raw, first)
@@ -361,7 +325,10 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
         if (after) tokens.push(...tokenizeMiniMods(after))
       }
       else {
-        tokens.push({ type: 'punctuation', content: raw, length: raw.length })
+        const open = first as '[' | '<' | '('
+        const inner = raw.slice(1)
+        tokens.push({ type: 'punctuation', content: open, length: 1 })
+        if (inner) tokens.push(...tokenizeMiniText(inner, isTimeline))
       }
     }
     else {
@@ -386,25 +353,11 @@ function tokenizeMiniText(text: string, isTimeline: boolean = false): Token[] {
     }
 
     cursor = t.end
-    // Update firstCommentPos in case there are later comments not found earlier
-    if (firstCommentPos !== -1 && firstCommentPos < cursor) {
-      // Already passed the comment; no further comment in this string
-      firstCommentPos = -1
-    }
   }
 
   if (cursor < text.length) {
     const rest = text.slice(cursor)
-    const idx = rest.indexOf('//')
-    if (idx !== -1) {
-      const before = rest.slice(0, idx)
-      const commentPart = rest.slice(idx)
-      if (before) tokens.push({ type: 'default', content: before, length: before.length })
-      tokens.push({ type: 'comment', content: commentPart, length: commentPart.length })
-    }
-    else {
-      tokens.push({ type: 'default', content: rest, length: rest.length })
-    }
+    tokens.push({ type: 'default', content: rest, length: rest.length })
   }
 
   const result = tokens
@@ -437,13 +390,16 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
   if (inMiniString) {
     const quote = inMiniString.quote
     const end = findUnescapedChar(line, quote, i)
-    if (end === -1) {
-      tokens.push(...tokenizeMiniContent(line, Boolean(inMiniString.callName === 'timeline')))
-      return tokens
-    }
+    const isTimeline = Boolean(inMiniString.callName === 'timeline')
+    const foundClosing = end !== -1
+    const chunk = foundClosing ? line.slice(0, end) : line
 
-    const chunk = line.slice(0, end)
-    tokens.push(...tokenizeMiniContent(chunk, Boolean(inMiniString.callName === 'timeline')))
+    const fullText = inMiniString.text + '\n' + chunk
+    inMiniString.text = fullText
+    tokens.push(...takeLastLineTokens(tokenizeMiniContent(fullText, isTimeline)))
+
+    if (!foundClosing) return tokens
+
     tokens.push({ type: 'string', content: quote, length: 1 })
     i = end + 1
     inMiniString = null
@@ -540,7 +496,7 @@ export const tokenizer: Tokenizer = (line, isBeginOfCode): Token[] => {
 
         // If we didn't find the closing quote, we're starting a multiline mini string
         if (!foundClosing) {
-          inMiniString = { quote: quoteChar, depth: parenDepth, callName: inMiniCallName }
+          inMiniString = { quote: quoteChar, depth: parenDepth, callName: inMiniCallName, text: stringContent }
         }
       }
       else {

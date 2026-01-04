@@ -33,7 +33,8 @@ export class Limiter extends Gen {
     const rel: f32 = Mathf.max(0.0001, Mathf.min(rel0, 5.0))
 
     const sr: f32 = sampleRate
-    const releaseCoeff: f32 = Mathf.exp(-1.0 / (rel * sr))
+    // Use 3x multiplier so time = time to ~95% completion
+    const releaseCoeff: f32 = Mathf.exp(-3.0 / (rel * sr))
 
     const thresholdLinear: f32 = Mathf.pow(10.0, th / 20.0)
 

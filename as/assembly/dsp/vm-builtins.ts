@@ -9,8 +9,6 @@ import { callAt } from './builtins/at'
 import { callAvg } from './builtins/avg'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
 import { callCompressor } from './builtins/compressor'
-import { callExpander } from './builtins/expander'
-import { callGate } from './builtins/gate'
 import { callDattorro } from './builtins/dattorro'
 import { callDc } from './builtins/dc'
 import { callDegree } from './builtins/degree'
@@ -19,8 +17,10 @@ import { callDiodeLadder } from './builtins/diodeladder'
 import { callEnvfollow } from './builtins/envfollow'
 import { callEuclid } from './builtins/euclid'
 import { callEvery } from './builtins/every'
+import { callExpander } from './builtins/expander'
 import { callFdn } from './builtins/fdn'
 import { callFreeverb } from './builtins/freeverb'
+import { callGate } from './builtins/gate'
 import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLimiter } from './builtins/limiter'
@@ -332,13 +332,13 @@ export class VmBuiltins {
       return
     }
     if (calleeAux === VmBuiltin.Expander) {
-      callExpander(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
-        audio, program, length, this.expanderRingBase)
+      callExpander(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, this.expanderRingBase)
       return
     }
     if (calleeAux === VmBuiltin.Gate) {
-      callGate(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
-        audio, program, length, this.gateRingBase)
+      callGate(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, this.gateRingBase)
       return
     }
 
@@ -709,13 +709,13 @@ export class VmBuiltins {
       return
     }
     if (calleeAux === VmBuiltin.Expander) {
-      callExpander(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
-        audio, program, length, this.expanderRingBase)
+      callExpander(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, this.expanderRingBase)
       return
     }
     if (calleeAux === VmBuiltin.Gate) {
-      callGate(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
-        audio, program, length, this.gateRingBase)
+      callGate(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, this.gateRingBase)
       return
     }
 
