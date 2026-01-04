@@ -65,9 +65,14 @@ export function callDelay(
   }
 
   if (posCount >= 3 && posTags[2] !== VmTag.Undef && posTags[2] !== VmTag.Null) {
-    fbTag = posTags[2] as VmTag
-    fbNum = posNums[2]
-    fbAux = posAux[2]
+    if (posTags[2] === VmTag.Func) {
+      cbTag = posTags[2] as VmTag
+      cbAux = posAux[2]
+    } else {
+      fbTag = posTags[2] as VmTag
+      fbNum = posNums[2]
+      fbAux = posAux[2]
+    }
   }
 
   if (posCount >= 4 && posTags[3] !== VmTag.Undef && posTags[3] !== VmTag.Null) {
