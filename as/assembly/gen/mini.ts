@@ -638,7 +638,6 @@ export class Mini extends Gen {
       this.lastVersionForVoiceCount = currentVersion
       const maxOverlap: i32 = this.maxDistinctOverlappingEvents(historyArray, windowStart, targetEndSample)
       this.numVoices = maxOverlap > SEQ_VOICES ? SEQ_VOICES : maxOverlap
-      console.log(`${this.numVoices} voices`)
     }
   }
 

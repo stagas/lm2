@@ -6,7 +6,7 @@ import { PIANOROLL_KEY_WIDTH } from '../constants.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import type { TimelineWindow } from '../types.ts'
 import { applySmoothing } from '../util.ts'
-import { useLoopView } from './useLoopView.ts'
+import { usePlayingState } from './usePlayingState.ts'
 
 export function useTimelineHeader(currentLoopId: string | null) {
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
@@ -21,7 +21,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
     seekToSample,
     canControlPlayback,
     isPlaybackRunningForView,
-  } = useLoopView(currentLoopId)
+  } = usePlayingState(currentLoopId)
 
   const timelineTimeRef = useRef<number | null>(null)
   const timelineLayoutRef = useRef({ viewX: 0, viewWidth: 0 })
@@ -37,13 +37,16 @@ export function useTimelineHeader(currentLoopId: string | null) {
   const isFirstFrameRef = useRef(true)
   const labelsRef = useRef(useEngineDspStore.getState().uiTimelineLabels ?? [])
 
-  useEffect(() => {
+  // Reset synchronously on loop switch so we don't interpolate from the previous loop's playhead.
+  const lastLoopIdRef = useRef<string | null>(null)
+  if (lastLoopIdRef.current !== currentLoopId) {
+    lastLoopIdRef.current = currentLoopId
     timelineTimeRef.current = null
     timelineDragRef.current = null
     predictedSampleCountRef.current = null
     lastWallTimeRef.current = null
     isFirstFrameRef.current = true
-  }, [currentLoopId])
+  }
 
   useEffect(() => {
     const unsub = useEngineDspStore.subscribe(state => {

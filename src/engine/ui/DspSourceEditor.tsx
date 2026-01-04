@@ -44,6 +44,7 @@ import { type KnobInfo, useKnobWidget } from './useKnobWidget.ts'
 import { useLfoWidget } from './useLfoWidget.ts'
 import { useLoopView } from './useLoopView.ts'
 import { usePianorollWidget } from './usePianorollWidget.ts'
+import { usePlayingState } from './usePlayingState.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
 import { useReverbWidget } from './useReverbWidget.ts'
 import { useSampleWidget } from './useSampleWidget.ts'
@@ -213,7 +214,42 @@ function DspSourceEditorReady(
   const addLocalLoop = useAppStore(state => state.addLocalLoop)
   const moveBuffer = useAppStore(state => state.moveBuffer)
   const setSelectedLoopId = useAppStore(state => state.setSelectedLoopId)
-  const { globalSampleCount, isPlayingLoop, isPlaybackRunningForView, viewSampleCount } = useLoopView(loopId)
+  const { globalSampleCount, isPlayingLoop, isPlaybackRunningForView } = usePlayingState(loopId)
+
+  // Prevent loop switching while another loop is playing from temporarily "driving" the entire UI
+  // using the previous loop's predicted sample count.
+  const predictedResetRef = useRef<{ key: string }>({ key: '' })
+  const predictedResetKey = `${loopId ?? ''}:${isPlaybackRunningForView ? 'live' : 'view'}`
+  if (predictedResetRef.current.key !== predictedResetKey) {
+    predictedResetRef.current.key = predictedResetKey
+    predictedSampleCountResultRef.current = null
+    predictedSampleCountRef.current = null
+    lastWallTimeRef.current = null
+    isFirstFrameRef.current = true
+  }
+
+  useLayoutEffect(() => {
+    predictedSampleCountResultRef.current = null
+    predictedSampleCountRef.current = null
+    lastWallTimeRef.current = null
+    isFirstFrameRef.current = true
+
+    if (!audioContext || !globalSampleCount) {
+      setPredictedSampleCountResult(null)
+      return
+    }
+
+    const sampleRate = audioContext.sampleRate
+    const sampleCount = (Atomics.load(globalSampleCount, 0) >>> 0) as number
+    setPredictedSampleCountResult({
+      latencySamples: 0,
+      latencySeconds: 0,
+      deltaTime: 0,
+      sampleRate,
+      sampleCount,
+      timeSeconds: sampleRate > 0 ? (sampleCount / sampleRate) : 0,
+    })
+  }, [audioContext, globalSampleCount, loopId, setPredictedSampleCountResult])
 
   const remixBaselineRef = useRef<{ loopId: string; base: string } | null>(null)
   const remixPrevCodeRef = useRef<{ loopId: string; code: string } | null>(null)
@@ -854,11 +890,11 @@ function DspSourceEditorReady(
         }
         else if (p.name === 'release') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
+            min: 0.0001, max: 5, precision: 4, mode: 'exp2' })
         }
         else if (p.name === 'threshold') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
+            min: -60, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
         }
         else if (p.name === 'ratio') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
@@ -879,15 +915,15 @@ function DspSourceEditorReady(
         }
         else if (p.name === 'release') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
+            min: 0.0001, max: 5, precision: 4, mode: 'exp2' })
         }
         else if (p.name === 'threshold') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
+            min: -60, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
         }
         else if (p.name === 'ratio') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 1, max: 20, precision: 2, mode: 'linear', stepPerPx: 0.05 })
+            min: 1, max: 100, precision: 2, mode: 'linear', stepPerPx: 0.05 })
         }
         else if (p.name === 'knee') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
@@ -904,19 +940,23 @@ function DspSourceEditorReady(
         }
         else if (p.name === 'release') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
+            min: 0.0001, max: 5, precision: 4, mode: 'exp2' })
         }
         else if (p.name === 'threshold') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
+            min: -60, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
         }
         else if (p.name === 'ratio') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 1, max: 20, precision: 2, mode: 'linear', stepPerPx: 0.05 })
+            min: 1, max: 100, precision: 2, mode: 'linear', stepPerPx: 0.05 })
         }
         else if (p.name === 'knee') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
             min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
+        }
+        else if (p.name === 'hold') {
+          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
+            min: 0, max: 1, precision: 2, mode: 'linear' })
         }
       }
     }
@@ -925,7 +965,7 @@ function DspSourceEditorReady(
       for (const p of ref.knobParams ?? []) {
         if (p.name === 'release') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 5, precision: 3, mode: 'exp2' })
+            min: 0.0001, max: 5, precision: 4, mode: 'exp2' })
         }
         else if (p.name === 'threshold') {
           out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
@@ -972,6 +1012,9 @@ function DspSourceEditorReady(
   })
 
   const onBeforeDrawCombined = useCallback(() => {
+    const runtimeLoopId = useEngineRuntimeStore.getState().currentLoopId
+    if (runtimeLoopId !== loopId) return
+
     // Update predicted sample count once for all widgets to use
     const result = updatePredictedSampleCount(
       audioContext,
@@ -983,6 +1026,8 @@ function DspSourceEditorReady(
       },
       { isPlaying: isPlaybackRunningForView },
     )
+    const runtimeLoopIdAfter = useEngineRuntimeStore.getState().currentLoopId
+    if (runtimeLoopIdAfter !== loopId) return
     predictedSampleCountResultRef.current = result
     setPredictedSampleCountResult(result)
 
@@ -1048,7 +1093,7 @@ function DspSourceEditorReady(
     ]
   }, [showWidgets, envelopeWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets,
     sequenceWidgets, arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, filterWidgets,
-    reverbWidgets, slicerWidgets, lfoWidgets, trigWidgets, knobWidgets, viewSampleCount])
+    reverbWidgets, slicerWidgets, lfoWidgets, trigWidgets, knobWidgets])
 
   const codeEditorKey = useMemo(() => {
     const codeFile = currentLoop?.codeFile

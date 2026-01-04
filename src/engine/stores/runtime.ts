@@ -2,13 +2,13 @@ import { rpc } from 'utils/rpc'
 import { create } from 'zustand'
 import { useAppStore } from '../../app/store.ts'
 import { AnimationManager } from '../../lib/animation-manager.ts'
-import { updatePredictedSampleCount } from '../ui/update-predicted-sample-count.ts'
 import type { Dsp } from '../dsp/assembly.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import type { VisualWasm } from '../dsp/visual-wasm.ts'
 import { ControlOp } from '../dsp/worklet-shared.ts'
 import type { DspProcessor } from '../dsp/worklet.ts'
 import type { Loop } from '../ui/loop.ts'
+import { updatePredictedSampleCount } from '../ui/update-predicted-sample-count.ts'
 import { useEngineUiStore } from './ui.ts'
 
 export type PlaybackState = 'stopped' | 'running' | 'paused'
@@ -36,6 +36,7 @@ export type EngineRuntimeState = {
   barsLoopEndSample?: number
   programSwap?: Uint32Array<SharedArrayBuffer>
   programSwapStatus?: Int32Array<SharedArrayBuffer>
+  viewGlobalSampleCountByLoopId: Map<string, Int32Array<SharedArrayBuffer>>
   isInitialized: boolean
   isProgramReady: boolean
   playbackState: PlaybackState
@@ -53,6 +54,7 @@ export type EngineRuntimeState = {
   clearLoop: () => void
   syncBarsHardLoop: (bars: number | undefined) => void
   setPredictedSampleCountResult: (result: ReturnType<typeof updatePredictedSampleCount> | null) => void
+  getViewGlobalSampleCount: (loopId: string | null) => Int32Array<SharedArrayBuffer>
 }
 
 export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
@@ -105,6 +107,7 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
     barsLoopEndSample: undefined,
     programSwap: undefined,
     programSwapStatus: undefined,
+    viewGlobalSampleCountByLoopId: new Map(),
     isInitialized: false,
     isProgramReady: false,
     playbackState: 'stopped',
@@ -198,6 +201,36 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
 
     setPredictedSampleCountResult: (result: ReturnType<typeof updatePredictedSampleCount> | null) => {
       set({ predictedSampleCountResult: result })
+    },
+
+    getViewGlobalSampleCount: (loopId: string | null) => {
+      if (!loopId) {
+        return new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
+      }
+
+      // Use set to ensure the array exists and get current state
+      let result: Int32Array<SharedArrayBuffer>
+      set(state => {
+        let arr = state.viewGlobalSampleCountByLoopId.get(loopId)
+        if (!arr) {
+          arr = new Int32Array(new SharedArrayBuffer(1 * Int32Array.BYTES_PER_ELEMENT))
+          Atomics.store(arr, 0, Math.max(0, useEngineUiStore.getState().viewSampleCountByLoopId[loopId] ?? 0))
+
+          const newMap = new Map(state.viewGlobalSampleCountByLoopId)
+          newMap.set(loopId, arr)
+          result = arr
+          return {
+            ...state,
+            viewGlobalSampleCountByLoopId: newMap,
+          }
+        }
+        else {
+          result = arr
+          return state
+        }
+      })
+
+      return result!
     },
   }
 })

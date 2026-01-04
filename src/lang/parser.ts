@@ -574,6 +574,21 @@ class Parser {
     const t = this.cur()
     if (this.match('minus')) {
       const expr = this.parseUnary()
+      // Fold `-<number>` into a single numeric literal when `-` is directly adjacent to the number token.
+      // This keeps literal-only updates and literal extraction working (they rely on a contiguous `-?\d...` span).
+      if (expr.kind === 'number' && expr.loc.line === t.line && expr.loc.column === t.column + t.length) {
+        const delta = expr.loc.column - t.column
+        const slider = expr.slider
+          ? { ...expr.slider, widgetLength: (expr.slider.widgetLength ?? expr.loc.length) + delta }
+          : undefined
+        return {
+          ...expr,
+          value: -expr.value,
+          raw: `-${expr.raw}`,
+          loc: locFrom(t, expr.loc),
+          slider,
+        }
+      }
       return { kind: 'unary', op: '-', expr, loc: locFrom(t, expr.loc) }
     }
     if (this.match('bang')) {

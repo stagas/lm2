@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
+import { useCallback, useMemo, useRef } from 'preact/hooks'
 import {
   FUTURE_BARS,
   HISTORY_DATA_OFFSET,
@@ -86,6 +86,11 @@ export function usePianorollWidget({
   resetKey,
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
+  const lastResetKeyRef = useRef<string | number | null | undefined>(undefined)
+  if (lastResetKeyRef.current !== resetKey) {
+    lastResetKeyRef.current = resetKey
+    pianorollStateRef.current.clear()
+  }
 
   const theme = useTheme()
 
@@ -95,15 +100,12 @@ export function usePianorollWidget({
     return extracted.scale
   }, [dspSource])
 
-  useEffect(() => {
-    pianorollStateRef.current.clear()
-  }, [resetKey])
-
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
-    const playbackState = useEngineRuntimeStore.getState().playbackState
-    if (playbackState === 'paused') return
+    // const playbackState = useEngineRuntimeStore.getState().playbackState
+    // if (playbackState === 'paused') return
     const visualWasm = useEngineRuntimeStore.getState().visualWasm
+    if (!visualWasm) return
     // visualWasm is required only when we're generating a static window (non-live).
 
     const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
@@ -150,21 +152,31 @@ export function usePianorollWidget({
       const windowStartSample = Math.max(0, Math.floor(windowStartTime * sampleRate))
       const windowEndSample = Math.max(windowStartSample + 1, Math.floor(windowEndTime * sampleRate))
 
-      const historyRaw = (playbackState === 'running' && isPlaying && program1?.program?.histories?.[seqIndex])
-        ? program1.program.histories[seqIndex]!.raw
-        : (visualWasm
-          ? visualWasm.generateMiniHistoryWindow({
-            seqIndex,
-            seq,
-            windowStartSample,
-            windowEndSample,
-            bpm,
-            sampleRate,
-            scaleIndex: defaultScaleIndex,
-            bar: miniPlayBars?.[seqIndex] ?? 1,
-          })
-          : null)
-      if (!historyRaw) continue
+      // const historyRaw = (playbackState === 'running' && isPlaying && program1?.program?.histories?.[seqIndex])
+      //   ? program1.program.histories[seqIndex]!.raw
+      //   : (visualWasm
+      //     ? visualWasm.generateMiniHistoryWindow({
+      //       seqIndex,
+      //       seq,
+      //       windowStartSample,
+      //       windowEndSample,
+      //       bpm,
+      //       sampleRate,
+      //       scaleIndex: defaultScaleIndex,
+      //       bar: miniPlayBars?.[seqIndex] ?? 1,
+      //     })
+      //     : null)
+
+      const historyRaw = visualWasm.generateMiniHistoryWindow({
+        seqIndex,
+        seq,
+        windowStartSample,
+        windowEndSample,
+        bpm,
+        sampleRate,
+        scaleIndex: defaultScaleIndex,
+        bar: miniPlayBars?.[seqIndex] ?? 1,
+      })
 
       const activeMask = st.activeMask
       activeMask.fill(0)

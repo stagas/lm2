@@ -1,4 +1,3 @@
-import type { Program } from '../../lang/ast.ts'
 import {
   type NumberLiteralInfo,
   type NumberWithParamsInfo,
@@ -22,7 +21,7 @@ export function createNumberParamsVisitor(out: NumberWithParamsInfo[]) {
           exp: expr.slider.exp,
         })
       }
-    }
+    },
   }
 }
 
@@ -37,7 +36,6 @@ export function createNumberLiteralsVisitor(out: NumberLiteralInfo[]) {
           value: Number(expr.value ?? 0),
         })
       }
-    }
+    },
   }
 }
-
