@@ -77,9 +77,18 @@ export class Delay extends Gen {
     for (let i: i32 = 0; i < n; i++) {
       const w: i32 = (w0 + i) % len
       const d: i32 = this.clampDelaySamples(load<f32>(s$))
-      let r: i32 = w - d
-      if (r < 0) r += len
-      store<f32>(o$, buf[r])
+
+      if (d == 0) {
+        // Zero delay: no echo
+        store<f32>(o$, 0.0)
+      }
+      else {
+        // Normal delay: read from buffer
+        let r: i32 = w - d
+        if (r < 0) r += len
+        store<f32>(o$, buf[r])
+      }
+
       o$ += 4
       s$ += 4
     }
@@ -161,15 +170,24 @@ export class Delay extends Gen {
     for (let i: i32 = 0; i < n; i++) {
       const w: i32 = (w0 + i) % len
       const d: i32 = this.clampDelaySamples(load<f32>(s$))
-      let r: i32 = w - d
-      if (r < 0) r += len
-
-      const echo: f32 = buf[r]
-      store<f32>(o$, echo)
 
       const x: f32 = load<f32>(i$)
       const fb: f32 = load<f32>(f$)
-      buf[w] = (x + echo * fb) as f32
+
+      if (d == 0) {
+        // Zero delay: output input directly
+        store<f32>(o$, x)
+        buf[w] = (x + x * fb) as f32
+      }
+      else {
+        // Normal delay: read from buffer
+        let r: i32 = w - d
+        if (r < 0) r += len
+
+        const echo: f32 = buf[r]
+        store<f32>(o$, echo)
+        buf[w] = (x + echo * fb) as f32
+      }
 
       o$ += 4
       i$ += 4
@@ -202,10 +220,18 @@ export class Delay extends Gen {
       this.cap = f32BufArena.len(nextHandle)
     }
     this.len = n
-    this.writePos = src.writePos % n
+    this.writePos = src.writePos
 
     for (let i: i32 = 0; i < n; i++) {
       this.buf[i] = src.buf[i]
     }
+
+    // Clear any extra buffer space to prevent garbage audio
+    for (let i: i32 = n; i < this.cap; i++) {
+      this.buf[i] = 0.0 as f32
+    }
+
+    // Update lastSampleRate to current to prevent ensureBuffer from resetting state
+    this.lastSampleRate = i32(sampleRate)
   }
 }

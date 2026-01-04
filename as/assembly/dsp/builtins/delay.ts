@@ -31,8 +31,8 @@ export function callDelay(
   cbArgNums: StaticArray<f64>,
   cbArgAux: StaticArray<i32>,
 ): void {
-  // delay(in, seconds, feedback=0, cb?)
-  if (posCount < 2) {
+  // delay(in, seconds=0, feedback=0, cb?)
+  if (posCount < 1) {
     stack.push(VmTag.Undef)
     return
   }
@@ -41,7 +41,7 @@ export function callDelay(
   let inNum: f64 = 0.0
   let inAux: i32 = 0
 
-  let secondsTag: VmTag = VmTag.Undef
+  let secondsTag: VmTag = VmTag.Num
   let secondsNum: f64 = 0.0
   let secondsAux: i32 = 0
 
@@ -103,10 +103,6 @@ export function callDelay(
     }
   }
 
-  if (secondsTag === VmTag.Undef || secondsTag === VmTag.Null) {
-    stack.push(VmTag.Undef)
-    return
-  }
 
   const in$ = audio.toAudioPtr(inTag, inNum, inAux, length, program)
   const seconds$ = audio.toAudioPtr(secondsTag, secondsNum, secondsAux, length, program)
