@@ -192,4 +192,5 @@ export enum VmSym {
   Wrap,
   X,
   Y,
+  PitchShift,
 }

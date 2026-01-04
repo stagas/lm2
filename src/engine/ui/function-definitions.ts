@@ -317,6 +317,23 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'phasor(1, .25, trig) |> out($)',
     ],
   },
+  pitchshift: {
+    name: 'pitchshift',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal to pitch shift' },
+      {
+        name: 'ratio',
+        type: 'number',
+        description: 'Pitch shift ratio (0.5 = octave down, 2 = octave up, 1 = same)',
+      },
+    ],
+    returnType: 'number',
+    description: 'Pitch shifts the input signal using granular synthesis.',
+    examples: [
+      'sine(440) |> pitchshift($, 2) |> out($)',
+      'sine(440) |> pitchshift($, 0.5) |> out($)',
+    ],
+  },
   ad: {
     name: 'ad',
     parameters: [

@@ -440,8 +440,6 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const numberLiterals = primaryResult.numberLiterals
       const sampleDefs: SampleDef[] = primaryResult.sampleDefs ?? []
 
-      console.log('is significant', primaryResult.diff.significantChange)
-
       if (!primaryResult.diff.significantChange) {
         if (primaryResult.bpm !== undefined && runtime.bpmValue) {
           const oldBpm = runtime.bpmValue[0]

@@ -25,6 +25,7 @@ import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLimiter } from './builtins/limiter'
 import { callMap } from './builtins/map'
+import { callPitchShift } from './builtins/pitch-shift'
 import {
   callAbs,
   callAcos,
@@ -157,6 +158,7 @@ export class VmBuiltins {
     this.autoLift[VmBuiltin.Gate] = 1
     this.autoLift[VmBuiltin.Limiter] = 1
     this.autoLift[VmBuiltin.Delay] = 1
+    this.autoLift[VmBuiltin.PitchShift] = 1
     this.autoLift[VmBuiltin.Lp] = 1
     this.autoLift[VmBuiltin.Hp] = 1
     this.autoLift[VmBuiltin.Bp] = 1
@@ -359,6 +361,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Delay) {
       callDelay(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.PitchShift) {
+      callPitchShift(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
       return
     }
@@ -1064,6 +1072,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Delay) {
       callDelay(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.PitchShift) {
+      callPitchShift(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
       return
     }

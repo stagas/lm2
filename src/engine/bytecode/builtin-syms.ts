@@ -11,6 +11,7 @@ export const builtinSyms: Record<string, number> = {
   sqr: VmSym.Sqr,
   pwm: VmSym.Pwm,
   phasor: VmSym.Phasor,
+  pitchshift: VmSym.PitchShift,
   ad: VmSym.Ad,
   adsr: VmSym.Adsr,
   envfollow: VmSym.Envfollow,

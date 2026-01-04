@@ -86,6 +86,7 @@ export enum Op {
   DiodeLadder,
   Olp,
   Ohp,
+  PitchShift,
 }
 
 export enum SeqOp {
