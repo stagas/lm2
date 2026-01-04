@@ -505,6 +505,10 @@ export class VmBuiltins {
     right$: usize,
     dsp: Dsp,
   ): bool {
+    // IMPORTANT: Don't iterate using the shared `callPos*` / `callVal*` scratch arrays directly.
+    // Auto-lifted builtins may invoke user callbacks (e.g. delay(..., cb)), which re-enters `VmBuiltins.call()`
+    // and clobbers those scratch arrays between iterations. Snapshot args into dedicated scratch arrays and
+    // restore them each iteration so arguments are preserved (only `in` changes).
     let inIsPos: bool = false
     let inIndex: i32 = -1
     let arrId: i32 = -1
@@ -530,6 +534,26 @@ export class VmBuiltins {
     if (arrId >= dsp.arrays.count) {
       stack.push(VmTag.Undef)
       return true
+    }
+
+    const savedPosTags = this.callFuncTags
+    const savedPosNums = this.callFuncNums
+    const savedPosAux = this.callFuncAux
+    for (let i: i32 = 0; i < posCount; i++) {
+      savedPosTags[i] = posTags[i]
+      savedPosNums[i] = posNums[i]
+      savedPosAux[i] = posAux[i]
+    }
+
+    const savedNameSyms = this.callFuncParamSyms
+    const savedNameTags = this.callTmpTags
+    const savedNameNums = this.callTmpNums
+    const savedNameAux = this.callTmpAux
+    for (let i: i32 = 0; i < namedCount; i++) {
+      savedNameSyms[i] = nameSyms[i]
+      savedNameTags[i] = nameTags[i]
+      savedNameNums[i] = nameNums[i]
+      savedNameAux[i] = nameAux[i]
     }
 
     const n: i32 = dsp.arrays.len[arrId]
@@ -562,6 +586,19 @@ export class VmBuiltins {
     let outType: i32 = -1
 
     for (let i: i32 = 0; i < n; i++) {
+      // Restore args (callback / nested calls can clobber shared scratch arrays).
+      for (let j: i32 = 0; j < posCount; j++) {
+        posTags[j] = savedPosTags[j]
+        posNums[j] = savedPosNums[j]
+        posAux[j] = savedPosAux[j]
+      }
+      for (let j: i32 = 0; j < namedCount; j++) {
+        nameSyms[j] = savedNameSyms[j]
+        nameTags[j] = savedNameTags[j]
+        nameNums[j] = savedNameNums[j]
+        nameAux[j] = savedNameAux[j]
+      }
+
       const at: i32 = start + i
       const eTag: i32 = dsp.arrays.elemTag[at]
       const eNum: f64 = dsp.arrays.elemNum[at]
