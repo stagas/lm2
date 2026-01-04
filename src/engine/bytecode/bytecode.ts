@@ -335,43 +335,40 @@ export function encodeLangToVmOps(
   numberLiterals?: NumberLiteralInfo[]
   sampleDefs?: SampleDef[]
 } {
+  const normalizePrelude = (s: string): string => {
+    const t = s.trimEnd()
+    if (!t) return ''
+    const last = t[t.length - 1]
+    const withSep = last === ';' || last === '}' ? t : `${t};`
+    return withSep.endsWith('\n') ? withSep : `${withSep}\n`
+  }
+
+  const countNewlines = (s: string): number => {
+    let n = 0
+    for (let i = 0; i < s.length; i++) if (s[i] === '\n') n++
+    return n
+  }
+
+  const p = normalizePrelude(prelude)
+  const pLines = countNewlines(p)
+  const po = normalizePrelude(postlude)
+  const fullSrc = `${p}${src}${po}`
+
+  const mapError = (e: LangError): LangError => {
+    const line = e.line - pLines
+    if (line <= 0) return { ...e, line: 0, column: 0, code: '' }
+    return { ...e, line, code: lineText(src, line) }
+  }
+
+  // Helper to map location line numbers (subtract prelude lines)
+  const mapLoc = (loc: any) => loc ? { ...loc, line: loc.line - pLines } : loc
+
   try {
-    const normalizePrelude = (s: string): string => {
-      const t = s.trimEnd()
-      if (!t) return ''
-      const last = t[t.length - 1]
-      const withSep = last === ';' || last === '}' ? t : `${t};`
-      return withSep.endsWith('\n') ? withSep : `${withSep}\n`
-    }
-
-    const countNewlines = (s: string): number => {
-      let n = 0
-      for (let i = 0; i < s.length; i++) if (s[i] === '\n') n++
-      return n
-    }
-
-    const p = normalizePrelude(prelude)
-    const pLines = countNewlines(p)
-    const po = normalizePrelude(postlude)
-    const fullSrc = `${p}${src}${po}`
-
-    const mapToken = (t: Token): Token => {
-      const line = t.line - pLines
-      if (line <= 0) return { ...t, line, column: 0 }
-      return { ...t, line }
-    }
-
-    const mapLexError = (e: LexError): LangError => {
-      const line = e.line - pLines
-      if (line <= 0) return { ...e, line, column: 0, code: '' }
-      return { ...e, line, code: lineText(src, line) }
-    }
-
     const lexed = lex(fullSrc)
-    const tokens = lexed.tokens.map(mapToken)
-    const lexErrors: LangError[] = lexed.errors.map(mapLexError)
-    const parsed = parse(src, tokens)
-    const errors: LangError[] = [...lexErrors, ...parsed.errors]
+    const tokens = lexed.tokens
+    const lexErrors: LangError[] = lexed.errors.map(mapError)
+    const parsed = parse(fullSrc, tokens)
+    const errors: LangError[] = [...lexErrors, ...parsed.errors.map(mapError)]
 
     let visualizerVertex: string | undefined
     let visualizerFragment: string | undefined
@@ -423,27 +420,43 @@ export function encodeLangToVmOps(
 
     for (const s of parsed.program?.body ?? []) scanVisualizer(s)
 
-    if (errors.length) return { errors, visualizerVertex, visualizerFragment }
+    if (errors.length) return { errors: errors.map(mapError), visualizerVertex, visualizerFragment }
 
     // Extract all early data in a single AST traversal
-    const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
-    if (errors.length) return { errors }
+    const earlyData = extractEarlyDataFromProgram(fullSrc, parsed.program, errors)
+    if (errors.length) return { errors: errors.map(mapError) }
 
     const {
       bpm,
       bars,
       scale,
       sequences,
-      miniRefs,
-      miniPlayBars,
-      timelineSequences,
-      timelineRefs,
-      timelineLabels,
-      samples,
-      numberParams: explicitNumberParams,
-      filterNumberLiterals: lpNumberLiterals,
-      numberLiterals,
+      miniRefs: allMiniRefs,
+      miniPlayBars: allMiniPlayBars,
+      timelineSequences: allTimelineSequences,
+      timelineRefs: allTimelineRefs,
+      timelineLabels: allTimelineLabels,
+      samples: allSamples,
+      numberParams: allExplicitNumberParams,
+      filterNumberLiterals: allLpNumberLiterals,
+      numberLiterals: allNumberLiterals,
     } = earlyData
+
+    // Filter out refs from prelude (line <= pLines) and normalize line numbers
+    const isLocFromUserCode = (item: any) => item.line > pLines
+    const mapRefLoc = (ref: any) => ({ ...ref, loc: mapLoc(ref.loc) })
+
+    const miniRefs = allMiniRefs.filter(r => r.loc?.line > pLines).map(mapRefLoc)
+    const miniPlayBars = allMiniPlayBars
+    const timelineSequences = allTimelineSequences
+    const timelineRefs = allTimelineRefs.filter(r => r.loc?.line > pLines).map(mapRefLoc)
+    const timelineLabels = allTimelineLabels.filter(l => l.loc?.line > pLines).map(mapRefLoc)
+    const samples = allSamples.filter(s => s.loc?.line > pLines).map(mapRefLoc)
+    const explicitNumberParams = allExplicitNumberParams.filter(isLocFromUserCode).map(p => ({ ...p,
+      line: p.line - pLines })
+    )
+    const lpNumberLiterals = allLpNumberLiterals.filter(isLocFromUserCode).map(p => ({ ...p, line: p.line - pLines }))
+    const numberLiterals = allNumberLiterals.filter(isLocFromUserCode).map(p => ({ ...p, line: p.line - pLines }))
 
     // Create a set of locations that already have explicit sliders
     const explicitSliderKeys = new Set(explicitNumberParams.map(p => `${p.line}:${p.column}:${p.length}`))
@@ -1054,29 +1067,49 @@ export function encodeLangToVmOps(
 
     const transformedProgram = { ...parsed.program,
       body: parsed.program.body.map(transformStmt).filter(Boolean) } as any
-    errors.push(...checkUndefinedVariableErrors(src, transformedProgram))
-    if (errors.length) return { errors }
+    errors.push(...checkUndefinedVariableErrors(fullSrc, transformedProgram))
+    if (errors.length) return { errors: errors.map(mapError) }
     // Extract all references in a single AST traversal
-    const extractionResults = extractAllRefsFromProgram(src, transformedProgram)
-    adRefs = extractionResults.adRefs
-    adsrRefs = extractionResults.adsrRefs
-    envfollowRefs = extractionResults.envfollowRefs
-    slewRefs = extractionResults.slewRefs
-    analyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs]
-    compressorRefs = extractionResults.compressorRefs
-    expanderRefs = extractionResults.expanderRefs
-    gateRefs = extractionResults.gateRefs
-    limiterRefs = extractionResults.limiterRefs
-    filterRefs = extractionResults.filterRefs
-    reverbRefs = extractionResults.reverbRefs
-    slicerRefs = extractionResults.slicerRefs
-    lfoRefs = extractionResults.lfoRefs
-    everyRefs = extractionResults.everyRefs
-    atRefs = extractionResults.atRefs
-    euclidRefs = extractionResults.euclidRefs
-    const compiled = compile(src, transformedProgram)
+    const extractionResults = extractAllRefsFromProgram(fullSrc, transformedProgram)
+
+    // Filter out refs from prelude (line <= pLines) and normalize line numbers
+    const isFromUserCode = (ref: any) => ref.loc?.line > pLines
+    const mapRefLocs = (ref: any) => {
+      const mapped: any = { ...ref }
+      if (mapped.loc) mapped.loc = mapLoc(mapped.loc)
+      if (mapped.aboveLoc) mapped.aboveLoc = mapLoc(mapped.aboveLoc)
+      if (mapped.callLoc) mapped.callLoc = mapLoc(mapped.callLoc)
+      if (mapped.attackArgLoc) mapped.attackArgLoc = mapLoc(mapped.attackArgLoc)
+      if (mapped.decayArgLoc) mapped.decayArgLoc = mapLoc(mapped.decayArgLoc)
+      if (mapped.sustainArgLoc) mapped.sustainArgLoc = mapLoc(mapped.sustainArgLoc)
+      if (mapped.releaseArgLoc) mapped.releaseArgLoc = mapLoc(mapped.releaseArgLoc)
+      if (mapped.exponentArgLoc) mapped.exponentArgLoc = mapLoc(mapped.exponentArgLoc)
+      if (mapped.trigArgLoc) mapped.trigArgLoc = mapLoc(mapped.trigArgLoc)
+      if (mapped.cutoffArgLoc) mapped.cutoffArgLoc = mapLoc(mapped.cutoffArgLoc)
+      if (mapped.qArgLoc) mapped.qArgLoc = mapLoc(mapped.qArgLoc)
+      if (mapped.gainArgLoc) mapped.gainArgLoc = mapLoc(mapped.gainArgLoc)
+      return mapped
+    }
+
+    adRefs = extractionResults.adRefs.filter(isFromUserCode).map(mapRefLocs)
+    adsrRefs = extractionResults.adsrRefs.filter(isFromUserCode).map(mapRefLocs)
+    envfollowRefs = extractionResults.envfollowRefs.filter(isFromUserCode).map(mapRefLocs)
+    slewRefs = extractionResults.slewRefs.filter(isFromUserCode).map(mapRefLocs)
+    analyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs].filter(isFromUserCode).map(mapRefLocs)
+    compressorRefs = extractionResults.compressorRefs.filter(isFromUserCode).map(mapRefLocs)
+    expanderRefs = extractionResults.expanderRefs.filter(isFromUserCode).map(mapRefLocs)
+    gateRefs = extractionResults.gateRefs.filter(isFromUserCode).map(mapRefLocs)
+    limiterRefs = extractionResults.limiterRefs.filter(isFromUserCode).map(mapRefLocs)
+    filterRefs = extractionResults.filterRefs.filter(isFromUserCode).map(mapRefLocs)
+    reverbRefs = extractionResults.reverbRefs.filter(isFromUserCode).map(mapRefLocs)
+    slicerRefs = extractionResults.slicerRefs.filter(isFromUserCode).map(mapRefLocs)
+    lfoRefs = extractionResults.lfoRefs.filter(isFromUserCode).map(mapRefLocs)
+    everyRefs = extractionResults.everyRefs.filter(isFromUserCode).map(mapRefLocs)
+    atRefs = extractionResults.atRefs.filter(isFromUserCode).map(mapRefLocs)
+    euclidRefs = extractionResults.euclidRefs.filter(isFromUserCode).map(mapRefLocs)
+    const compiled = compile(fullSrc, transformedProgram)
     errors.push(...compiled.errors)
-    if (errors.length) return { errors }
+    if (errors.length) return { errors: errors.map(mapError) }
     const chunk = compiled.chunk
     const arrayLiterals: ArrayLiteralRef[] = []
     const branchMarks: BranchMarkRef[] = []
@@ -1104,7 +1137,7 @@ export function encodeLangToVmOps(
       const prev = litIndexByValue.get(v)
       if (prev !== undefined) return prev
       if (litCount >= target.literals.length) {
-        errors.push(encoderError(src, `Too many number literals (max ${target.literals.length})`))
+        errors.push(encoderError(fullSrc, `Too many number literals (max ${target.literals.length})`))
         return 0
       }
       const idx = allocLit()
@@ -1116,7 +1149,7 @@ export function encodeLangToVmOps(
       const prev = litIndexByLocKey.get(key)
       if (prev !== undefined) return prev
       if (litCount >= target.literals.length) {
-        errors.push(encoderError(src, `Too many number literals (max ${target.literals.length})`))
+        errors.push(encoderError(fullSrc, `Too many number literals (max ${target.literals.length})`))
         return 0
       }
       const idx = allocLit()
@@ -1172,7 +1205,7 @@ export function encodeLangToVmOps(
             pc += 1
             break
           case 'DUP2':
-            errors.push(encoderError(src, 'DUP2 not supported in VM encoder yet'))
+            errors.push(encoderError(fullSrc, 'DUP2 not supported in VM encoder yet'))
             pc += 1
             break
           case 'LOAD':
@@ -1197,7 +1230,7 @@ export function encodeLangToVmOps(
             break
           case 'BREAK':
           case 'CONTINUE':
-            errors.push(encoderError(src, `${ins.op} not supported in VM encoder yet`))
+            errors.push(encoderError(fullSrc, `${ins.op} not supported in VM encoder yet`))
             pc += 1
             break
           case 'ARRAY':
@@ -1211,11 +1244,11 @@ export function encodeLangToVmOps(
           case 'OBJECT':
           case 'GET_PROP':
           case 'SET_PROP':
-            errors.push(encoderError(src, `${ins.op} not supported in VM encoder yet`))
+            errors.push(encoderError(fullSrc, `${ins.op} not supported in VM encoder yet`))
             pc += 1
             break
           default:
-            errors.push(encoderError(src, `Unsupported opcode ${(ins as any).op}`))
+            errors.push(encoderError(fullSrc, `Unsupported opcode ${(ins as any).op}`))
             pc += 1
         }
       }
@@ -1302,7 +1335,7 @@ export function encodeLangToVmOps(
           case 'UNARY': {
             const code = unaryCode(ins.opName)
             if (code === null) {
-              errors.push(encoderError(src, `Unsupported unary op ${ins.opName}`))
+              errors.push(encoderError(fullSrc, `Unsupported unary op ${ins.opName}`))
               target.ops[w++] = VmOp.Nop
               break
             }
@@ -1313,7 +1346,7 @@ export function encodeLangToVmOps(
           case 'BINARY': {
             const code = binaryCode(ins.opName)
             if (code === null) {
-              errors.push(encoderError(src, `Unsupported binary op ${ins.opName}`))
+              errors.push(encoderError(fullSrc, `Unsupported binary op ${ins.opName}`))
               target.ops[w++] = VmOp.Nop
               break
             }
@@ -1370,7 +1403,7 @@ export function encodeLangToVmOps(
           case 'FUNC': {
             const fn = chunk.funcs[ins.id]
             if (!fn) {
-              errors.push(encoderError(src, `Missing FUNC #${ins.id}`))
+              errors.push(encoderError(fullSrc, `Missing FUNC #${ins.id}`))
               target.ops[w++] = VmOp.PushUndef
               break
             }
@@ -1382,7 +1415,7 @@ export function encodeLangToVmOps(
             break
           }
           default:
-            errors.push(encoderError(src, `Unsupported opcode ${(ins as any).op}`))
+            errors.push(encoderError(fullSrc, `Unsupported opcode ${(ins as any).op}`))
             target.ops[w++] = VmOp.Nop
         }
       }
@@ -1427,7 +1460,7 @@ export function encodeLangToVmOps(
     for (const p of funcPatches) {
       const off = funcOffsets.get(p.fn)
       if (off === undefined) {
-        errors.push(encoderError(src, 'Unpatched function offset'))
+        errors.push(encoderError(fullSrc, 'Unpatched function offset'))
         target.ops[p.at] = 0
       }
       else {
@@ -1445,9 +1478,21 @@ export function encodeLangToVmOps(
       literalIndex: locKeyToLiteralIndex.get(sliderKeyOf(p)),
     }))
 
+    // Filter out arrayLiterals and branchMarks from prelude and normalize line numbers
+    const filteredArrayLiterals = arrayLiterals
+      .filter(a => a.loc?.line > pLines)
+      .map(a => ({
+        ...a,
+        loc: mapLoc(a.loc),
+        items: a.items.map(mapLoc),
+      }))
+    const filteredBranchMarks = branchMarks
+      .filter(b => b.loc?.line > pLines)
+      .map(b => ({ ...b, loc: mapLoc(b.loc) }))
+
     return errors.length
       ? {
-        errors,
+        errors: errors.map(mapError),
         visualizerVertex,
         visualizerFragment,
         bpm,
@@ -1475,8 +1520,8 @@ export function encodeLangToVmOps(
         everyRefs,
         atRefs,
         euclidRefs,
-        arrayLiterals,
-        branchMarks,
+        arrayLiterals: filteredArrayLiterals,
+        branchMarks: filteredBranchMarks,
         numberParams: numberParamsWithLiteralIndex,
         numberLiterals: numberLiteralsWithLiteralIndex,
         sampleDefs: samples,
@@ -1510,8 +1555,8 @@ export function encodeLangToVmOps(
         everyRefs,
         atRefs,
         euclidRefs,
-        arrayLiterals,
-        branchMarks,
+        arrayLiterals: filteredArrayLiterals,
+        branchMarks: filteredBranchMarks,
         numberParams: numberParamsWithLiteralIndex,
         numberLiterals: numberLiteralsWithLiteralIndex,
         sampleDefs: samples,
@@ -1519,6 +1564,6 @@ export function encodeLangToVmOps(
   }
   catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return { errors: [encoderError(src, message)] }
+    return { errors: [mapError(encoderError(fullSrc, message))] }
   }
 }

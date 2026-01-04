@@ -30,7 +30,8 @@ widen=([L,R],seconds=0.0001)->{
 
 // pan a stereo signal left or right (0=left, 0.5=center, 1=right)
 pan=([L,R],balance=0.5)->{
-  return [L*(1-balance),R*balance]
+  p=clamp(balance,0,1)
+  return [L*(1-p),R*p]
 }
 
 modDelay=(in,baseDelay,depth,rate,feedback,offset=0)->{
