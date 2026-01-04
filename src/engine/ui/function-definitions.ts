@@ -419,7 +419,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'in', type: 'number', description: 'Input signal' },
       { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
       { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
-      { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)' },
       { name: 'ratio', type: 'number', description: 'Compression ratio (1 .. 20)' },
       { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
@@ -438,7 +438,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'in', type: 'number', description: 'Input signal' },
       { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
       { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
-      { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)' },
       { name: 'ratio', type: 'number', description: 'Expansion ratio (1 .. 100)' },
       { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
@@ -457,8 +457,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'in', type: 'number', description: 'Input signal' },
       { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
       { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
-      { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
-      { name: 'ratio', type: 'number', description: 'Gate ratio (1 .. inf)' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)' },
       { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
       { name: 'hold', type: 'number', description: 'Hold time in seconds (0 .. 1)' },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
@@ -467,8 +466,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description:
       'Noise gate that heavily attenuates signals below threshold. When `key` is provided, gating is driven by the key signal (sidechain) but applied to `in`.',
     examples: [
-      'gate(saw(hz), .001, .08, -24, 20, 0, .02) |> out($)',
-      'gate(in:$, attack:.0005, release:.12, threshold:-20, ratio:30, knee:0, hold:.03) |> out($)',
+      'gate(saw(hz), .001, .08, -24, 0, .02) |> out($)',
+      'gate(in:$, attack:.0005, release:.12, threshold:-20, knee:0, hold:.03) |> out($)',
     ],
   },
   limiter: {

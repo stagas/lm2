@@ -4,8 +4,6 @@ import { Analyser } from './gen/analyser'
 import { At } from './gen/at'
 import { Ap, Bp, Bs, Hp, Hs, Lp, Ls, Peak } from './gen/biquad'
 import { Compressor } from './gen/compressor'
-import { Expander } from './gen/expander'
-import { Gate } from './gen/gate'
 import { Dattorro } from './gen/dattorro'
 import { DC } from './gen/dc'
 import { Delay } from './gen/delay'
@@ -15,6 +13,7 @@ import { Euclid } from './gen/euclid'
 import { Every } from './gen/every'
 import { Fdn } from './gen/fdn'
 import { Freeverb } from './gen/freeverb'
+import { Gate } from './gen/gate'
 import { Gen } from './gen/gen'
 import { LfoRamp, LfoSah, LfoSaw, LfoSine, LfoSqr, LfoTri } from './gen/lfo'
 import { Limiter } from './gen/limiter'
@@ -103,7 +102,7 @@ export class GensPool {
   private peaks: GenPool<Peak> = new GenPool<Peak>(() => new Peak())
   private aps: GenPool<Ap> = new GenPool<Ap>(() => new Ap())
   private compressors: GenPool<Compressor> = new GenPool<Compressor>(() => new Compressor())
-  private expanders: GenPool<Expander> = new GenPool<Expander>(() => new Expander())
+  private expanders: GenPool<Gate> = new GenPool<Gate>(() => new Gate())
   private gates: GenPool<Gate> = new GenPool<Gate>(() => new Gate())
   private lfoSines: GenPool<LfoSine> = new GenPool<LfoSine>(() => new LfoSine())
   private lfoTris: GenPool<LfoTri> = new GenPool<LfoTri>(() => new LfoTri())

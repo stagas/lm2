@@ -52,33 +52,25 @@ function compReductionDb(inputDb: number, th: number, ratio: number, knee: numbe
 }
 
 function expReductionDb(inputDb: number, th: number, ratio: number, knee: number): number {
-  const k = clamp(knee, 0, 40)
   const t = clamp(th, -80, 0)
   const r = clamp(ratio, 1, 100)
-  const expansionFactor = r - 1
-  if (inputDb >= t) return 0
-  const d = t - inputDb
-  if (k > 0) {
-    const x = clamp(d / k, 0, 1)
-    const s = x * x * (3 - 2 * x)
-    return d * expansionFactor * s
-  }
-  return d * expansionFactor
+  const w = clamp(knee, 0, 40)
+
+  const slope = r - 1
+  const halfW = w * 0.5
+  const delta = inputDb - t
+
+  if (delta >= halfW) return 0
+  if (w <= 0) return slope * (t - inputDb)
+
+  if (delta <= -halfW) return slope * (t - inputDb)
+
+  const x = clamp((halfW - delta) / w, 0, 1)
+  return slope * halfW * x * x
 }
 
 function gateReductionDb(inputDb: number, th: number, ratio: number, knee: number): number {
-  const t = clamp(th, -80, 0)
-  const k = clamp(knee, 0, 40)
-  const r = clamp(ratio, 1, 100)
-  const rangeDb = Math.min(120, (r - 1) * 20)
-  const h = k > 0 ? k / 2 : 0.5
-  const openTh = t + h
-  const closeTh = t - h
-  if (inputDb >= openTh) return 0
-  if (inputDb <= closeTh) return rangeDb
-  // Inside hysteresis band (visual-only): fade between states.
-  const x = clamp((inputDb - closeTh) / Math.max(1e-6, openTh - closeTh), 0, 1)
-  return (1 - x) * rangeDb
+  return expReductionDb(inputDb, th, ratio, knee)
 }
 
 function reducerFor(
@@ -116,6 +108,7 @@ export function useCompressorWidget({
   ]
   const stRef = useRef<Array<CompressorState | undefined>>([])
   const seenRef = useRef<Set<number>>(new Set())
+  const playheadRef = useRef(new Map<number, { db: number; ts: number }>())
 
   useEffect(() => {
     return () => {}
@@ -155,14 +148,13 @@ export function useCompressorWidget({
         stRef.current[idx] = st
       }
 
-      const outs =
-        type === 'compressor'
-          ? program1!.program!.compressorOuts
-          : type === 'expander'
-          ? program1!.program!.expanderOuts
-          : type === 'gate'
-          ? program1!.program!.gateOuts
-          : program1!.program!.limiterOuts
+      const outs = type === 'compressor'
+        ? program1!.program!.compressorOuts
+        : type === 'expander'
+        ? program1!.program!.expanderOuts
+        : type === 'gate'
+        ? program1!.program!.gateOuts
+        : program1!.program!.limiterOuts
       const levelRing = outs.levelDb[baseIdx] as Ring | undefined
       const grRing = outs.grDb[baseIdx] as Ring | undefined
       if (!levelRing || !grRing) {
@@ -210,6 +202,23 @@ export function useCompressorWidget({
     }
 
     return 0
+  }
+
+  const normToDb = (norm: number) => {
+    const u = clamp(norm, 0, 1)
+    const totalRanges = ranges.length
+    const rangeHeight = 1 / totalRanges
+    for (let i = 0; i < totalRanges; i++) {
+      const top = 1 - i * rangeHeight
+      const bot = top - rangeHeight
+      const inSeg = u <= top && (u > bot || i === totalRanges - 1)
+      if (!inSeg) continue
+      const range = ranges[i]
+      const t = clamp((top - u) / rangeHeight, 0, 1)
+      const span = range.start - range.end
+      return clamp(range.start - t * span, minDb, maxDb)
+    }
+    return minDb
   }
 
   const toX = (db: number, chartW: number) => dbToNorm(db) * chartW
@@ -260,12 +269,38 @@ export function useCompressorWidget({
     const chartH = Math.max(1, h - pad * 2)
 
     const th = ref.params.threshold
-    const ratio = type === 'limiter' ? Infinity : (ref.params as { ratio: number }).ratio
+    const ratio = type === 'limiter' ? Infinity : type === 'gate' ? 100 : (ref.params as { ratio: number }).ratio
     const knee = type === 'limiter' ? 0 : (ref.params as { knee: number }).knee
     const reduce = reducerFor(type)
 
-    const curLevel = level && level.length > 0 ? Math.max(...level) : -80
-    const curGr = gr && gr.length > 0 ? Math.max(...gr) : 0
+    let curLevel = -80
+    let curGr = 0
+    if (level && gr) {
+      const n = Math.min(level.length, gr.length)
+      for (let i = n - 1; i >= 0; i--) {
+        const l = level[i]
+        const g = gr[i]
+        if (l == null || g == null) continue
+        curLevel = l
+        curGr = g
+        break
+      }
+    }
+    const now = performance.now()
+    const ph = playheadRef.current.get(idx) ?? { db: curLevel, ts: now }
+    const dt = clamp((now - ph.ts) / 1000, 0, 0.25)
+    const attack = type === 'limiter'
+      ? 0.001
+      : Math.max(0.001, (ref.params as { attack: number }).attack ?? 0.01)
+    const release = Math.max(0.001, (ref.params as { release: number }).release ?? 0.1)
+    const tc = curLevel > ph.db ? attack : release
+    const a = 1 - Math.exp(-dt / tc)
+    const playheadLevel = ph.db + a * (curLevel - ph.db)
+    ph.db = playheadLevel
+    ph.ts = now
+    playheadRef.current.set(idx, ph)
+
+    const curGrCurve = reduce(playheadLevel, th, ratio, knee)
 
     const grMax = 24
     const grNorm = clamp(curGr / grMax, 0, 1)
@@ -336,13 +371,13 @@ export function useCompressorWidget({
     }
     c.restore()
 
-    // Threshold marker (horizontal)
+    // Threshold marker (vertical, input dB)
     c.strokeStyle = 'rgba(150,150,150,0.25)'
     c.lineWidth = 1
-    const thY = toY(th, chartY, chartH)
+    const thX = toX(th, chartW)
     c.beginPath()
-    c.moveTo(0, thY)
-    c.lineTo(chartW, thY)
+    c.moveTo(thX, chartY)
+    c.lineTo(thX, chartY + chartH)
     c.stroke()
 
     // Signal presence band (x-range of recent input levels)
@@ -372,17 +407,89 @@ export function useCompressorWidget({
 
     c.strokeStyle = '#ea580c'
     c.lineWidth = 1.35
+    c.lineJoin = 'round'
+    c.lineCap = 'round'
     c.beginPath()
-    const steps = Math.min(256, Math.max(64, chartW | 0))
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps
-      const inDb = minDb + (maxDb - minDb) * t
-      const red = reduce(inDb, th, ratio, knee)
-      const outDb = inDb - red
-      const px = toX(inDb, chartW)
-      const py = toY(outDb, chartY, chartH)
-      if (i === 0) c.moveTo(px, py)
-      else c.lineTo(px, py)
+    const isDownward = type === 'compressor' || type === 'limiter'
+    const k = clamp(knee, 0, 40)
+    const kneeStart = th - k / 2
+    const kneeEnd = th + k / 2
+
+    const diagStartIn = isDownward ? minDb : maxDb
+    const diagEndIn = isDownward ? (k > 0 ? kneeStart : th) : (k > 0 ? kneeEnd : th)
+    const lineStartIn = isDownward ? (k > 0 ? kneeEnd : th) : (k > 0 ? kneeStart : th)
+    const lineEndIn = isDownward ? maxDb : minDb
+
+    // 1) Diagonal (input == output)
+    c.moveTo(toX(diagStartIn, chartW), toY(diagStartIn, chartY, chartH))
+    c.lineTo(toX(diagEndIn, chartW), toY(diagEndIn, chartY, chartH))
+
+    // 2) Knee: arc (screen-space cubic Bezier)
+    if (k > 0) {
+      const kneeA = isDownward ? kneeStart : kneeEnd
+      const kneeB = isDownward ? kneeEnd : kneeStart
+      const outA = kneeA
+      const outB = kneeB - reduce(kneeB, th, ratio, k)
+
+      const ax = toX(kneeA, chartW)
+      const ay = toY(outA, chartY, chartH)
+      const bx = toX(kneeB, chartW)
+      const by = toY(outB, chartY, chartH)
+
+      const dir = kneeB >= kneeA ? 1 : -1
+      const eps = Math.max(1e-4, Math.abs(kneeB - kneeA) * 0.02) * dir
+
+      const outA2 = (kneeA + eps) - reduce(kneeA + eps, th, ratio, k)
+      const outB2 = (kneeB - eps) - reduce(kneeB - eps, th, ratio, k)
+
+      const a2x = toX(kneeA + eps, chartW)
+      const a2y = toY(outA2, chartY, chartH)
+      const b2x = toX(kneeB - eps, chartW)
+      const b2y = toY(outB2, chartY, chartH)
+
+      let dax = a2x - ax
+      let day = a2y - ay
+      let dbx = bx - b2x
+      let dby = by - b2y
+      const daLen = Math.hypot(dax, day) || 1
+      const dbLen = Math.hypot(dbx, dby) || 1
+      dax /= daLen
+      day /= daLen
+      dbx /= dbLen
+      dby /= dbLen
+
+      const dist = 0.35 * Math.hypot(bx - ax, by - ay)
+      c.bezierCurveTo(ax + dax * dist, ay + day * dist, bx - dbx * dist, by - dby * dist, bx, by)
+    }
+
+    // 3) Post-knee line
+    if (type === 'limiter') {
+      c.lineTo(toX(maxDb, chartW), toY(th, chartY, chartH))
+    }
+    else if (type === 'compressor') {
+      const r = clamp(ratio, 1, 20)
+      const outA = th + (lineStartIn - th) / r
+      const outB = th + (lineEndIn - th) / r
+      c.lineTo(toX(lineStartIn, chartW), toY(outA, chartY, chartH))
+      c.lineTo(toX(lineEndIn, chartW), toY(outB, chartY, chartH))
+    }
+    else {
+      if (type === 'gate' && k <= 0) {
+        const thX = toX(th, chartW)
+        const yTop = chartY + 0.5
+        const yBot = chartY + chartH - 0.5
+        const thY2 = clamp(toY(th, chartY, chartH), yTop, yBot)
+        c.lineTo(thX, thY2)
+        c.lineTo(thX, yBot)
+        c.lineTo(0, yBot)
+      }
+      else {
+        const r = clamp(ratio, 1, 100)
+        const outA = th + r * (lineStartIn - th)
+        const outB = th + r * (lineEndIn - th)
+        c.lineTo(toX(lineStartIn, chartW), toY(outA, chartY, chartH))
+        c.lineTo(toX(lineEndIn, chartW), toY(outB, chartY, chartH))
+      }
     }
     c.stroke()
 
@@ -393,17 +500,18 @@ export function useCompressorWidget({
     if (knee > 0) {
       const kneeStart = th - knee / 2
       const kneeEnd = th + knee / 2
-      const startIn = type === 'expander' || type === 'gate' ? kneeEnd : kneeStart
-      const endIn = type === 'expander' || type === 'gate' ? kneeStart : kneeEnd
+      const isDownward = type === 'compressor' || type === 'limiter'
+      const diagIn = isDownward ? kneeStart : kneeEnd
+      const lineIn = isDownward ? kneeEnd : kneeStart
 
       c.beginPath()
-      c.arc(toX(startIn, chartW), toY(startIn, chartY, chartH), 2.75, 0, Math.PI * 2)
+      c.arc(toX(diagIn, chartW), toY(diagIn, chartY, chartH), 2.75, 0, Math.PI * 2)
       c.fill()
 
-      const endRed = reduce(endIn, th, ratio, knee)
-      const endOut = endIn - endRed
+      const lineRed = reduce(lineIn, th, ratio, knee)
+      const lineOut = lineIn - lineRed
       c.beginPath()
-      c.arc(toX(endIn, chartW), toY(endOut, chartY, chartH), 2.75, 0, Math.PI * 2)
+      c.arc(toX(lineIn, chartW), toY(lineOut, chartY, chartH), 2.75, 0, Math.PI * 2)
       c.fill()
     }
     else {
@@ -413,11 +521,95 @@ export function useCompressorWidget({
     }
 
     // Current operating point (single dot)
-    if (Number.isFinite(curLevel) && Number.isFinite(curGr)) {
-      const outDb = curLevel - curGr
+    if (Number.isFinite(playheadLevel)) {
+      let dotX = toX(playheadLevel, chartW)
+      let dotY = toY(playheadLevel, chartY, chartH)
+
+      if (type === 'gate' && k <= 0 && playheadLevel < th) {
+        dotY = chartY + chartH - 0.5
+      }
+      else if (k > 0) {
+        const inA = isDownward ? kneeStart : kneeEnd
+        const inB = isDownward ? kneeEnd : kneeStart
+        const lo = Math.min(inA, inB)
+        const hi = Math.max(inA, inB)
+        if (playheadLevel >= lo && playheadLevel <= hi) {
+          const outA = inA
+          const outB = inB - reduce(inB, th, ratio, k)
+
+          const ax = toX(inA, chartW)
+          const ay = toY(outA, chartY, chartH)
+          const bx = toX(inB, chartW)
+          const by = toY(outB, chartY, chartH)
+
+          const dir = inB >= inA ? 1 : -1
+          const eps = Math.max(1e-4, Math.abs(inB - inA) * 0.02) * dir
+
+          const outA2 = (inA + eps) - reduce(inA + eps, th, ratio, k)
+          const outB2 = (inB - eps) - reduce(inB - eps, th, ratio, k)
+
+          const a2x = toX(inA + eps, chartW)
+          const a2y = toY(outA2, chartY, chartH)
+          const b2x = toX(inB - eps, chartW)
+          const b2y = toY(outB2, chartY, chartH)
+
+          let dax = a2x - ax
+          let day = a2y - ay
+          let dbx = bx - b2x
+          let dby = by - b2y
+          const daLen = Math.hypot(dax, day) || 1
+          const dbLen = Math.hypot(dbx, dby) || 1
+          dax /= daLen
+          day /= daLen
+          dbx /= dbLen
+          dby /= dbLen
+
+          const dist = 0.35 * Math.hypot(bx - ax, by - ay)
+          const c1x = ax + dax * dist
+          const c1y = ay + day * dist
+          const c2x = bx - dbx * dist
+          const c2y = by - dby * dist
+
+          const t = clamp((playheadLevel - inA) / (inB - inA), 0, 1)
+          const mt = 1 - t
+          dotX = mt * mt * mt * ax + 3 * mt * mt * t * c1x + 3 * mt * t * t * c2x + t * t * t * bx
+          dotY = mt * mt * mt * ay + 3 * mt * mt * t * c1y + 3 * mt * t * t * c2y + t * t * t * by
+        }
+        else if (isDownward ? playheadLevel > hi : playheadLevel < lo) {
+          if (type === 'limiter') {
+            dotY = toY(th, chartY, chartH)
+          }
+          else if (type === 'compressor') {
+            const r = clamp(ratio, 1, 20)
+            const outDb = th + (playheadLevel - th) / r
+            dotY = toY(outDb, chartY, chartH)
+          }
+          else {
+            const r = clamp(ratio, 1, 100)
+            const outDb = th + r * (playheadLevel - th)
+            dotY = toY(outDb, chartY, chartH)
+          }
+        }
+      }
+      else {
+        if (type === 'limiter' && playheadLevel > th) {
+          dotY = toY(th, chartY, chartH)
+        }
+        else if (type === 'compressor' && playheadLevel > th) {
+          const r = clamp(ratio, 1, 20)
+          const outDb = th + (playheadLevel - th) / r
+          dotY = toY(outDb, chartY, chartH)
+        }
+        else if ((type === 'expander' || type === 'gate') && playheadLevel < th) {
+          const r = clamp(ratio, 1, 100)
+          const outDb = th + r * (playheadLevel - th)
+          dotY = toY(outDb, chartY, chartH)
+        }
+      }
+
       c.fillStyle = 'rgba(255,255,0,0.85)'
       c.beginPath()
-      c.arc(toX(curLevel, chartW), toY(outDb, chartY, chartH), 2.75, 0, Math.PI * 2)
+      c.arc(dotX, dotY, 2.75, 0, Math.PI * 2)
       c.fill()
     }
 
