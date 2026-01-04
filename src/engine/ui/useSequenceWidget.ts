@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'preact/hooks'
+import { useCallback, useEffect, useMemo } from 'preact/hooks'
 import {
   FUTURE_BARS,
   HISTORY_DATA_OFFSET,
@@ -201,18 +201,17 @@ export function useSequenceWidget({
   resetKey,
 }: UseSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const controls = new Map<number, number>()
-  const lastResetKeyRef = useRef<string | number | null | undefined>(undefined)
-  if (lastResetKeyRef.current !== resetKey) {
-    lastResetKeyRef.current = resetKey
-    frameRef.current = []
-    controlStateRef.current?.clear()
-  }
 
   const defaultScaleIndex = useMemo(() => {
     const extracted = extractScaleFromSource(dspSource)
     if (extracted.errors.length) return undefined
     return extracted.scale
   }, [dspSource])
+
+  useEffect(() => {
+    frameRef.current = []
+    controlStateRef.current?.clear()
+  }, [resetKey])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return

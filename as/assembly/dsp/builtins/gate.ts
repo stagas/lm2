@@ -25,7 +25,7 @@ export function callGate(
   length: i32,
   ringBase: i32,
 ): void {
-  // gate(in, attack=.001, release=.5, threshold=-24, ratio=.01, knee=0, key?)
+  // gate(in, attack=.001, release=.5, threshold=-24, ratio=20, knee=0, hold=.02, key?)
   if (posCount < 1 && namedCount === 0) {
     stack.push(VmTag.Undef)
     return
@@ -48,12 +48,16 @@ export function callGate(
   let thresholdAux: i32 = 0
 
   let ratioTag: VmTag = VmTag.Num
-  let ratioNum: f64 = 0.01  // Very low ratio for hard gating
+  let ratioNum: f64 = 20.0
   let ratioAux: i32 = 0
 
   let kneeTag: VmTag = VmTag.Num
   let kneeNum: f64 = 0.0  // Sharp knee for gate
   let kneeAux: i32 = 0
+
+  let holdTag: VmTag = VmTag.Num
+  let holdNum: f64 = 0.02
+  let holdAux: i32 = 0
 
   let keyTag: VmTag = VmTag.Undef
   let keyNum: f64 = 0.0
@@ -96,9 +100,15 @@ export function callGate(
   }
 
   if (posCount >= 7 && posTags[6] !== VmTag.Undef && posTags[6] !== VmTag.Null) {
-    keyTag = posTags[6] as VmTag
-    keyNum = posNums[6]
-    keyAux = posAux[6]
+    holdTag = posTags[6] as VmTag
+    holdNum = posNums[6]
+    holdAux = posAux[6]
+  }
+
+  if (posCount >= 8 && posTags[7] !== VmTag.Undef && posTags[7] !== VmTag.Null) {
+    keyTag = posTags[7] as VmTag
+    keyNum = posNums[7]
+    keyAux = posAux[7]
   }
 
   let index: i32 = 0
@@ -135,6 +145,11 @@ export function callGate(
       kneeNum = nameNums[i]
       kneeAux = nameAux[i]
     }
+    else if (k === VmSym.Hold) {
+      holdTag = nameTags[i] as VmTag
+      holdNum = nameNums[i]
+      holdAux = nameAux[i]
+    }
     else if (k === VmSym.Key) {
       keyTag = nameTags[i] as VmTag
       keyNum = nameNums[i]
@@ -155,6 +170,7 @@ export function callGate(
   const threshold$ = audio.toAudioPtr(thresholdTag, thresholdNum, thresholdAux, length, program)
   const ratio$ = audio.toAudioPtr(ratioTag, ratioNum, ratioAux, length, program)
   const knee$ = audio.toAudioPtr(kneeTag, kneeNum, kneeAux, length, program)
+  const hold$ = audio.toAudioPtr(holdTag, holdNum, holdAux, length, program)
 
   const outIndex = audio.allocOut(program)
   const out$ = program.getOutBuffer(outIndex)
@@ -170,6 +186,7 @@ export function callGate(
   gate.threshold$ = threshold$
   gate.ratio$ = ratio$
   gate.knee$ = knee$
+  gate.hold$ = hold$
 
   gate.telemetryEnabled = 1
   gate.telemetryRingBase = ringBase

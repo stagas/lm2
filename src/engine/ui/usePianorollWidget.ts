@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import {
   FUTURE_BARS,
   HISTORY_DATA_OFFSET,
@@ -86,11 +86,6 @@ export function usePianorollWidget({
   resetKey,
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
-  const lastResetKeyRef = useRef<string | number | null | undefined>(undefined)
-  if (lastResetKeyRef.current !== resetKey) {
-    lastResetKeyRef.current = resetKey
-    pianorollStateRef.current.clear()
-  }
 
   const theme = useTheme()
 
@@ -99,6 +94,10 @@ export function usePianorollWidget({
     if (extracted.errors.length) return undefined
     return extracted.scale
   }, [dspSource])
+
+  useEffect(() => {
+    pianorollStateRef.current.clear()
+  }, [resetKey])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return

@@ -150,7 +150,7 @@ export type GateRef = {
   keyArgLoc: Loc | null
   /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
   knobParams: Array<{
-    name: 'attack' | 'release' | 'threshold' | 'ratio' | 'knee'
+    name: 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' | 'hold'
     value: number
     valueLoc: Loc
   }>
@@ -161,6 +161,7 @@ export type GateRef = {
     threshold: number
     ratio: number
     knee: number
+    hold: number
   }
 }
 

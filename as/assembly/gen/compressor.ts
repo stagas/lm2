@@ -50,8 +50,9 @@ export class Compressor extends Gen {
     const k: f32 = Mathf.max(0.0, Mathf.min(k0, 40.0))
 
     const sr: f32 = sampleRate
-    const attackCoeff: f32 = Mathf.exp(-1.0 / (att * sr))
-    const releaseCoeff: f32 = Mathf.exp(-1.0 / (rel * sr))
+    // Use 3x multiplier so time = time to ~95% completion
+    const attackCoeff: f32 = Mathf.exp(-3.0 / (att * sr))
+    const releaseCoeff: f32 = Mathf.exp(-3.0 / (rel * sr))
 
     const kneeStart: f32 = th - k * 0.5
     const kneeEnd: f32 = th + k * 0.5
@@ -120,5 +121,3 @@ export class Compressor extends Gen {
     }
   }
 }
-
-

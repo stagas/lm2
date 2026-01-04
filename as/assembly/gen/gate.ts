@@ -8,24 +8,37 @@ export class Gate extends Gen {
   threshold$: usize = 0
   ratio$: usize = 0
   knee$: usize = 0
+  hold$: usize = 0
 
   telemetryLevelDb$: usize = 0
   telemetryGrDb$: usize = 0
   telemetryRingBase: i32 = 0
   telemetryEnabled: i32 = 0
 
-  private targetGain: f32 = 1.0
-  private currentGain: f32 = 1.0
+  private envelope: f32 = 0.0
+  private gain: f32 = 0.0
+  private holdCounter: i32 = 0
+  private releaseCounter: i32 = 0
+  private releaseStartGain: f32 = 0.0
+  private gateState: i32 = 0 // 0=closed, 1=opening, 2=open, 3=holding, 4=releasing
 
   reset(): void {
-    this.targetGain = 1.0
-    this.currentGain = 1.0
+    this.envelope = 0.0
+    this.gain = 0.0
+    this.holdCounter = 0
+    this.releaseCounter = 0
+    this.releaseStartGain = 0.0
+    this.gateState = 0
   }
 
   copyFrom(other: Gen): void {
     const src = other as Gate
-    this.targetGain = src.targetGain
-    this.currentGain = src.currentGain
+    this.envelope = src.envelope
+    this.gain = src.gain
+    this.holdCounter = src.holdCounter
+    this.releaseCounter = src.releaseCounter
+    this.releaseStartGain = src.releaseStartGain
+    this.gateState = src.gateState
   }
 
   process(out$: usize, length: i32): void {
@@ -36,26 +49,35 @@ export class Gate extends Gen {
     let threshold$: usize = this.threshold$
     let ratio$: usize = this.ratio$
     let knee$: usize = this.knee$
+    let hold$: usize = this.hold$
 
     const th0: f32 = load<f32>(threshold$)
     const r0: f32 = load<f32>(ratio$)
     const att0: f32 = load<f32>(attack$)
     const rel0: f32 = load<f32>(release$)
-    const k0: f32 = load<f32>(knee$)
+    const hold0: f32 = load<f32>(hold$)
 
     const th: f32 = Mathf.max(-80.0, Mathf.min(th0, 0.0))
-    const r: f32 = Mathf.max(0.0001, Mathf.min(r0, 1.0))  // Gate ratio: very small values for hard gating
+    const r: f32 = Mathf.max(1.0, Mathf.min(r0, 100.0))
     const att: f32 = Mathf.max(0.0001, Mathf.min(att0, 1.0))
-    const rel: f32 = Mathf.max(0.0001, Mathf.min(rel0, 5.0))
-    const k: f32 = Mathf.max(0.0, Mathf.min(k0, 40.0))
+    const rel: f32 = Mathf.max(0.001, Mathf.min(rel0, 5.0))
+    const holdTime: f32 = Mathf.max(0.0, Mathf.min(hold0, 1.0))
 
     const sr: f32 = sampleRate
-    const attackCoeff: f32 = Mathf.exp(-1.0 / (att * sr))
-    const releaseCoeff: f32 = Mathf.exp(-1.0 / (rel * sr))
+    const holdSamples: i32 = i32(holdTime * sr + 0.5)
+    const releaseSamples: i32 = i32(rel * sr + 0.5)
+    const attackSamples: i32 = i32(att * sr + 0.5)
 
-    const kneeStart: f32 = th - k * 0.5
-    const kneeEnd: f32 = th + k * 0.5
-    const expansionFactor: f32 = 1.0 / r - 1.0
+    // Threshold in linear amplitude
+    const thLin: f32 = Mathf.pow(10.0, th / 20.0)
+
+    // Gain floor from ratio
+    const maxAttenDb: f32 = Mathf.min(120.0, (r - 1.0) * 20.0)
+    const gainFloor: f32 = Mathf.pow(10.0, -maxAttenDb / 20.0)
+
+    // Envelope detector: very fast attack, fast release
+    const envAttackAlpha: f32 = 1.0 - Mathf.exp(-1.0 / (0.0001 * sr))
+    const envReleaseAlpha: f32 = 1.0 - Mathf.exp(-1.0 / (0.005 * sr))
 
     const telemetryEnabled: bool = this.telemetryEnabled !== 0
     const levelDbBase$: usize = this.telemetryLevelDb$
@@ -66,52 +88,91 @@ export class Gate extends Gen {
       const inSample: f32 = load<f32>(in$)
       const keySample: f32 = load<f32>(key$)
 
-      const keyLevel: f32 = Mathf.abs(keySample)
-      const safeLevel: f32 = Mathf.max(keyLevel, 0.0001)
-      const inputDb: f32 = 20.0 * Mathf.log10(safeLevel)
+      // Peak envelope follower
+      const keyAbs: f32 = Mathf.abs(keySample)
+      if (keyAbs > this.envelope) {
+        this.envelope += (keyAbs - this.envelope) * envAttackAlpha
+      }
+      else {
+        this.envelope += (keyAbs - this.envelope) * envReleaseAlpha
+      }
 
-      let reductionDb: f32 = 0.0
+      // State machine
+      const aboveThreshold: bool = this.envelope >= thLin
 
-      // Gate transfer function - extreme expansion below threshold
-      if (k > 0.0) {
-        if (inputDb >= kneeEnd) {
-          reductionDb = 0.0
+      if (aboveThreshold) {
+        // Signal above threshold: open or stay open
+        if (this.gateState !== 2) {
+          this.gateState = 1 // opening
         }
-        else if (inputDb <= kneeStart) {
-          reductionDb = (th - inputDb) * expansionFactor
+        this.holdCounter = holdSamples
+      }
+      else {
+        // Signal below threshold
+        if (this.gateState === 2) {
+          // Was open, start hold
+          this.gateState = 3 // holding
+        }
+
+        if (this.gateState === 3) {
+          if (this.holdCounter > 0) {
+            this.holdCounter--
+          }
+          else {
+            // Hold expired, start release
+            this.gateState = 4 // releasing
+            this.releaseCounter = releaseSamples
+            this.releaseStartGain = this.gain
+          }
+        }
+      }
+
+      // Apply gain based on state
+      if (this.gateState === 1) {
+        // Opening: ramp up
+        if (attackSamples > 0) {
+          this.gain += (1.0 - gainFloor) / f32(attackSamples)
         }
         else {
-          const d: f32 = kneeEnd - inputDb
-          reductionDb = expansionFactor * (d * d) / (2.0 * k)
+          this.gain = 1.0
+        }
+        if (this.gain >= 1.0) {
+          this.gain = 1.0
+          this.gateState = 2 // fully open
+        }
+      }
+      else if (this.gateState === 2 || this.gateState === 3) {
+        // Open or holding: stay at 1.0
+        this.gain = 1.0
+      }
+      else if (this.gateState === 4) {
+        // Releasing: linear ramp down from releaseStartGain to gainFloor
+        if (this.releaseCounter > 0) {
+          const progress: f32 = 1.0 - f32(this.releaseCounter) / f32(releaseSamples)
+          this.gain = this.releaseStartGain + (gainFloor - this.releaseStartGain) * progress
+          this.releaseCounter--
+        }
+        else {
+          this.gain = gainFloor
+          this.gateState = 0 // closed
         }
       }
       else {
-        if (inputDb < th) reductionDb = (th - inputDb) * expansionFactor
+        // Closed: stay at gainFloor
+        this.gain = gainFloor
       }
 
-      // For gate, ensure very heavy attenuation when below threshold
-      if (r < 0.01 && inputDb < th) {
-        reductionDb = Mathf.max(reductionDb, 80.0)  // At least 80dB reduction for hard gate
-      }
+      // Clamp
+      this.gain = Mathf.max(gainFloor, Mathf.min(1.0, this.gain))
 
-      const targetGain: f32 = reductionDb > 0.0 ? Mathf.max(0.0, Mathf.pow(10.0, -reductionDb / 20.0)) : 1.0
-      this.targetGain = targetGain
-
-      if (this.currentGain > targetGain) {
-        this.currentGain = targetGain + (this.currentGain - targetGain) * attackCoeff
-      }
-      else {
-        this.currentGain = targetGain - (targetGain - this.currentGain) * releaseCoeff
-      }
-
-      this.currentGain = Mathf.max(0.0, Mathf.min(1.0, this.currentGain))
-
-      store<f32>(out$, inSample * this.currentGain)
+      store<f32>(out$, inSample * this.gain)
 
       if (telemetryEnabled) {
         const w: i32 = ringBase + i
-        store<f32>(levelDbBase$ + (w * 4) as usize, inputDb)
-        store<f32>(grDbBase$ + (w * 4) as usize, reductionDb)
+        const envDb: f32 = 20.0 * Mathf.log10(Mathf.max(this.envelope, 0.000001))
+        const grDb: f32 = -20.0 * Mathf.log10(Mathf.max(this.gain, 0.000001))
+        store<f32>(levelDbBase$ + (w * 4) as usize, envDb)
+        store<f32>(grDbBase$ + (w * 4) as usize, grDb)
       }
 
       out$ += 4
@@ -122,6 +183,7 @@ export class Gate extends Gen {
       threshold$ += 4
       ratio$ += 4
       knee$ += 4
+      hold$ += 4
     }
   }
 }

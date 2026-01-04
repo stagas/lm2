@@ -10,16 +10,22 @@ import {
 import { tryEvalConstNumber } from './helpers.ts'
 import type { GateRef } from './types.ts'
 
-function isKnobParamName(name: string): name is 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' {
-  return name === 'attack' || name === 'release' || name === 'threshold' || name === 'ratio' || name === 'knee'
+function isKnobParamName(name: string): name is 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' | 'hold' {
+  return name === 'attack'
+    || name === 'release'
+    || name === 'threshold'
+    || name === 'ratio'
+    || name === 'knee'
+    || name === 'hold'
 }
 
-function posIndexToKnobName(posIndex: number): 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' | null {
+function posIndexToKnobName(posIndex: number): 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' | 'hold' | null {
   if (posIndex === 1) return 'attack'
   if (posIndex === 2) return 'release'
   if (posIndex === 3) return 'threshold'
   if (posIndex === 4) return 'ratio'
   if (posIndex === 5) return 'knee'
+  if (posIndex === 6) return 'hold'
   return null
 }
 
@@ -40,6 +46,7 @@ export function createGateVisitor(src: string, refs: GateRef[]) {
         const thresholdExpr = findNamedArg(expr, 'threshold')?.value ?? getPosArg(expr, 3)?.value
         const ratioExpr = findNamedArg(expr, 'ratio')?.value ?? getPosArg(expr, 4)?.value
         const kneeExpr = findNamedArg(expr, 'knee')?.value ?? getPosArg(expr, 5)?.value
+        const holdExpr = findNamedArg(expr, 'hold')?.value ?? getPosArg(expr, 6)?.value
 
         const knobParams: GateRef['knobParams'] = []
         const seen = new Set<string>()
@@ -84,8 +91,9 @@ export function createGateVisitor(src: string, refs: GateRef[]) {
             attack: getNumberOrDefault(attackExpr, 0.001),
             release: getNumberOrDefault(releaseExpr, 0.5),
             threshold: getNumberOrDefault(thresholdExpr, -24),
-            ratio: getNumberOrDefault(ratioExpr, 0.01),
+            ratio: getNumberOrDefault(ratioExpr, 20),
             knee: getNumberOrDefault(kneeExpr, 0),
+            hold: getNumberOrDefault(holdExpr, 0.02),
           },
         })
       }

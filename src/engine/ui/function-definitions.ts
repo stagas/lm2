@@ -439,7 +439,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
       { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
       { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
-      { name: 'ratio', type: 'number', description: 'Expansion ratio (0.001 .. 1)' },
+      { name: 'ratio', type: 'number', description: 'Expansion ratio (1 .. 100)' },
       { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
     ],
@@ -447,8 +447,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description:
       'Expands the input signal. When `key` is provided, gain reduction is driven by the key signal (sidechain) but applied to `in`.',
     examples: [
-      'expander(saw(hz), .01, .1, -24, .5, 6) |> out($)',
-      'expander(in:$, attack:.005, release:.2, threshold:-18, ratio:.3, knee:8) |> out($)',
+      'expander(saw(hz), .01, .1, -24, 2, 6) |> out($)',
+      'expander(in:$, attack:.005, release:.2, threshold:-18, ratio:4, knee:8) |> out($)',
     ],
   },
   gate: {
@@ -458,16 +458,17 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
       { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
       { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
-      { name: 'ratio', type: 'number', description: 'Gate ratio (0.0001 .. 1)' },
+      { name: 'ratio', type: 'number', description: 'Gate ratio (1 .. 100)' },
       { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
+      { name: 'hold', type: 'number', description: 'Hold time in seconds (0 .. 1)' },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
     ],
     returnType: 'number',
     description:
       'Noise gate that heavily attenuates signals below threshold. When `key` is provided, gating is driven by the key signal (sidechain) but applied to `in`.',
     examples: [
-      'gate(saw(hz), .001, .5, -24, .01, 0) |> out($)',
-      'gate(in:$, attack:.0005, release:.3, threshold:-20, ratio:.005, knee:0) |> out($)',
+      'gate(saw(hz), .001, .08, -24, 20, 0, .02) |> out($)',
+      'gate(in:$, attack:.0005, release:.12, threshold:-20, ratio:30, knee:0, hold:.03) |> out($)',
     ],
   },
   limiter: {

@@ -25,7 +25,7 @@ export function callExpander(
   length: i32,
   ringBase: i32,
 ): void {
-  // expander(in, attack=.01, release=.1, threshold=-24, ratio=.5, knee=6, key?)
+  // expander(in, attack=.01, release=.1, threshold=-24, ratio=2, knee=6, key?)
   if (posCount < 1 && namedCount === 0) {
     stack.push(VmTag.Undef)
     return
@@ -48,7 +48,7 @@ export function callExpander(
   let thresholdAux: i32 = 0
 
   let ratioTag: VmTag = VmTag.Num
-  let ratioNum: f64 = 0.5  // Expansion ratio < 1
+  let ratioNum: f64 = 2.0
   let ratioAux: i32 = 0
 
   let kneeTag: VmTag = VmTag.Num

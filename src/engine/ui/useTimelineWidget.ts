@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import {
   ARRAY_HEADER_SIZE,
   FUTURE_BARS,
@@ -60,14 +60,13 @@ export function useTimelineWidget({
 }: UseTimelineParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const stateRef = useRef<Map<number, TimelineState>>(new Map())
   const compiledCacheRef = useRef<Map<number, { sequence: string; arrayRaw: Float32Array }>>(new Map())
-  const lastResetKeyRef = useRef<string | number | null | undefined>(undefined)
-  if (lastResetKeyRef.current !== resetKey) {
-    lastResetKeyRef.current = resetKey
-    stateRef.current.clear()
-    compiledCacheRef.current.clear()
-  }
 
   const theme = useTheme()
+
+  useEffect(() => {
+    stateRef.current.clear()
+    compiledCacheRef.current.clear()
+  }, [resetKey])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
