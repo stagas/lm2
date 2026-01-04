@@ -36,6 +36,36 @@ const builtinSigIndex: Record<string, Map<string, number>> = Object.fromEntries(
     }),
 )
 
+type SigInfo = {
+  names: string[]
+  idxOf: Map<string, number>
+}
+
+function resolveParamName(raw: string, paramNames: string[]): { ok: true; name: string } | {
+  ok: false
+  message: string
+} {
+  const exact = paramNames.find(p => p === raw)
+  if (exact) return { ok: true, name: exact }
+
+  const lower = raw.toLowerCase()
+  const ci = paramNames.find(p => p.toLowerCase() === lower)
+  if (ci) return { ok: true, name: ci }
+
+  const prefix = paramNames.filter(p => p.startsWith(raw))
+  if (prefix.length === 1) return { ok: true, name: prefix[0]! }
+  if (prefix.length === 0) {
+    return {
+      ok: false,
+      message: `Unknown parameter '${raw}'. Valid parameters are: ${paramNames.join(', ')}`,
+    }
+  }
+  return {
+    ok: false,
+    message: `Ambiguous parameter '${raw}'. It matches: ${prefix.join(', ')}`,
+  }
+}
+
 export type Instr =
   | { op: 'PUSH_CONST'; k: number; loc?: Loc }
   | { op: 'BRANCH' }
@@ -151,6 +181,7 @@ class Compiler {
   private callTempId = 0
   private forTempId = 0
   private destructureTempId = 0
+  private sigScopes: Array<Map<string, SigInfo>> = [new Map()]
 
   constructor(private readonly src: string) {}
 
@@ -170,6 +201,37 @@ class Compiler {
   private emit(ins: Instr): number {
     this.chunk.code.push(ins)
     return this.chunk.code.length - 1
+  }
+
+  private enterSigScope(): void {
+    this.sigScopes.push(new Map())
+  }
+
+  private exitSigScope(): void {
+    if (this.sigScopes.length > 1) this.sigScopes.pop()
+  }
+
+  private findSigInfo(name: string): SigInfo | null {
+    for (let i = this.sigScopes.length - 1; i >= 0; i--) {
+      const hit = this.sigScopes[i]!.get(name)
+      if (hit) return hit
+    }
+    const builtin = builtinSigNames[name]
+    const idxOf = builtinSigIndex[name]
+    if (builtin && idxOf) return { names: builtin, idxOf }
+    return null
+  }
+
+  private setSigInfo(name: string, info: SigInfo | null): void {
+    for (let i = this.sigScopes.length - 1; i >= 0; i--) {
+      const scope = this.sigScopes[i]!
+      if (scope.has(name)) {
+        if (info) scope.set(name, info)
+        else scope.delete(name)
+        return
+      }
+    }
+    if (info) this.sigScopes[this.sigScopes.length - 1]!.set(name, info)
   }
 
   private patch(at: number, to: number): void {
@@ -315,15 +377,18 @@ class Compiler {
 
   private compileBlockStmt(block: BlockStmt, isLast: boolean): void {
     this.emit({ op: 'ENTER_SCOPE' })
+    this.enterSigScope()
     for (let i = 0; i < block.body.length; i++) {
       this.compileStmt(block.body[i]!, isLast && i === block.body.length - 1)
     }
+    this.exitSigScope()
     this.emit({ op: 'EXIT_SCOPE' })
   }
 
   private compileForStmt(stmt: ForStmt): void {
     // Loops introduce a scope (loop head bindings shouldn't leak).
     this.emit({ op: 'ENTER_SCOPE' })
+    this.enterSigScope()
 
     if (stmt.head.kind === 'c_style') {
       if (stmt.head.init) {
@@ -350,6 +415,7 @@ class Compiler {
         }
         this.emit({ op: 'JUMP', to: start })
       }
+      this.exitSigScope()
       this.emit({ op: 'EXIT_SCOPE' })
       return
     }
@@ -417,6 +483,7 @@ class Compiler {
     this.emit({ op: 'JUMP', to: start })
     this.patch(jEnd, this.chunk.code.length)
     this.emit({ op: 'EXIT_SCOPE' })
+    this.exitSigScope()
   }
 
   private compileSwitchStmt(stmt: SwitchStmt): void {
@@ -730,11 +797,29 @@ class Compiler {
       this.emit({ op: 'LOAD', name: this.nameConst(name) })
 
       type CallTempArg =
-        | { kind: 'pos'; temp: string }
+        | { kind: 'pos'; temp: string; identName?: string; isImplicitNamedCandidate: boolean }
         | { kind: 'named'; temp: string; name: string }
 
       const temps: CallTempArg[] = []
       const tmp = () => `%arg${this.callTempId++}`
+
+      const sigInfo = this.findSigInfo(name)
+      const sigNames = sigInfo?.names ?? null
+      const idxOf = sigInfo?.idxOf
+
+      if (sigNames) {
+        for (const a of expr.args) {
+          if (a.kind !== 'named' && a.kind !== 'shorthand') continue
+          if (a.name.startsWith('%')) continue
+          const r = resolveParamName(a.name, sigNames)
+          if (r.ok) {
+            ;(a as any).name = r.name
+          }
+          else {
+            this.err(a.loc, `${r.message} for function '${name}'`)
+          }
+        }
+      }
 
       for (const a of expr.args) {
         const t = tmp()
@@ -742,7 +827,14 @@ class Compiler {
           this.compileExpr(a.value)
           this.emit({ op: 'STORE', name: this.nameConst(t) })
           this.emit({ op: 'POP' })
-          temps.push({ kind: 'pos', temp: t })
+          let identName: string | undefined
+          if (a.value.kind === 'ident') identName = a.value.name
+          temps.push({
+            kind: 'pos',
+            temp: t,
+            identName,
+            isImplicitNamedCandidate: identName !== undefined,
+          })
           continue
         }
         if (a.kind === 'named') {
@@ -759,6 +851,69 @@ class Compiler {
       }
 
       const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
+
+      if (sigNames && idxOf) {
+        const reserved: boolean[] = []
+        const slots: Array<string | undefined> = []
+        const extraNamed: { name: string; temp: string }[] = []
+
+        const allTemps: CallTempArg[] = [{ kind: 'pos', temp: recvTemp, isImplicitNamedCandidate: false }, ...temps]
+
+        for (const a of allTemps) {
+          if (a.kind === 'named') {
+            const idx = idxOf.get(a.name)
+            if (idx !== undefined) reserved[idx] = true
+            else extraNamed.push({ name: a.name, temp: a.temp })
+            continue
+          }
+          if (a.isImplicitNamedCandidate && a.identName) {
+            const idx = idxOf.get(a.identName)
+            if (idx !== undefined) reserved[idx] = true
+          }
+        }
+
+        for (const a of allTemps) {
+          if (a.kind === 'named') {
+            const idx = idxOf.get(a.name)
+            if (idx !== undefined) slots[idx] = a.temp
+            continue
+          }
+          if (a.isImplicitNamedCandidate && a.identName) {
+            const idx = idxOf.get(a.identName)
+            if (idx !== undefined) slots[idx] = a.temp
+          }
+        }
+
+        let next = 0
+        for (const a of allTemps) {
+          if (a.kind !== 'pos') continue
+          if (a.isImplicitNamedCandidate && a.identName && idxOf.has(a.identName)) continue
+          while (reserved[next] === true || slots[next] !== undefined) next++
+          if (next >= sigNames.length) break
+          slots[next] = a.temp
+          next++
+        }
+
+        let maxIdx = -1
+        for (let i = 0; i < slots.length; i++) if (slots[i] !== undefined) maxIdx = i
+        const pos = maxIdx + 1
+
+        const emitUndef = () => this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+        for (let i = 0; i < pos; i++) {
+          const t = slots[i]
+          if (t !== undefined) emitLoadTemp(t)
+          else emitUndef()
+        }
+
+        for (let i = extraNamed.length - 1; i >= 0; i--) {
+          const a = extraNamed[i]!
+          this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
+          emitLoadTemp(a.temp)
+        }
+
+        this.emit({ op: 'CALL', pos, named: extraNamed.length })
+        return true
+      }
 
       const namedTemps: { name: string; temp: string }[] = []
       let pos = 1
@@ -802,6 +957,30 @@ class Compiler {
     let firstPosTemp: string | null = null
     let posSeen = 0
 
+    const sigInfo = calleeName ? this.findSigInfo(calleeName) : null
+    const sigNames = sigInfo?.names ?? null
+
+    if (sigNames) {
+      // Validate and normalize named keys against the signature (exact, case-insensitive, then unique prefix).
+      for (const a of expr.args) {
+        if (a.kind !== 'named' && a.kind !== 'shorthand') continue
+        if (a.name.startsWith('%')) continue
+        const r = resolveParamName(a.name, sigNames)
+        if (r.ok) {
+          ;(a as any).name = r.name
+        }
+        else {
+          this.err(a.loc, `${r.message} for function '${calleeName}'`)
+        }
+      }
+
+      const userCount = expr.args.filter(a => !(a.kind === 'named' && a.name.startsWith('%'))).length
+      if (userCount > sigNames.length) {
+        this.err(expr.loc,
+          `Too many arguments for function '${calleeName}'. Expected at most ${sigNames.length} arguments, got ${userCount}`)
+      }
+    }
+
     // Evaluate args left-to-right, storing each into a temp so we can reorder stack layout later.
     for (const a of expr.args) {
       const t = tmp()
@@ -835,8 +1014,7 @@ class Compiler {
       temps.push({ kind: 'named', temp: t, name: a.name })
     }
 
-    const sig = calleeName ? builtinSigNames[calleeName] : undefined
-    const idxOf = calleeName ? builtinSigIndex[calleeName] : undefined
+    const idxOf = sigInfo?.idxOf
 
     const emitUndef = () => this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
     const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
@@ -857,7 +1035,7 @@ class Compiler {
       this.emit({ op: 'LOAD', name: this.nameConst(calleeTemp) })
     }
 
-    if (sig && idxOf) {
+    if (sigNames && idxOf) {
       const reserved: boolean[] = []
       const slots: Array<string | undefined> = []
       const extraNamed: { name: string; temp: string }[] = []
@@ -894,6 +1072,7 @@ class Compiler {
         if (a.kind !== 'pos') continue
         if (a.isImplicitNamedCandidate && a.identName && idxOf.has(a.identName)) continue
         while (reserved[next] === true || slots[next] !== undefined) next++
+        if (sigNames && next >= sigNames.length) break
         slots[next] = a.temp
         next++
       }
@@ -1028,6 +1207,15 @@ class Compiler {
     }
 
     if (expr.target.kind === 'ident') {
+      if (expr.value?.kind === 'func') {
+        const names = expr.value.params.map(p => p.name)
+        const idxOf = new Map<string, number>()
+        for (let i = 0; i < names.length; i++) idxOf.set(names[i]!, i)
+        this.setSigInfo(expr.target.name, { names, idxOf })
+      }
+      else {
+        this.setSigInfo(expr.target.name, null)
+      }
       this.compileExpr(expr.value)
       this.emit({ op: 'STORE', name: this.nameConst(expr.target.name) })
       return
@@ -1077,8 +1265,10 @@ class Compiler {
 
   private compileBlockAsExpr(block: BlockStmt): void {
     this.emit({ op: 'ENTER_SCOPE' })
+    this.enterSigScope()
     if (!block.body.length) {
       this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+      this.exitSigScope()
       this.emit({ op: 'EXIT_SCOPE' })
       return
     }
@@ -1093,6 +1283,7 @@ class Compiler {
     }
     const last = block.body[block.body.length - 1]!
     if (last.kind !== 'expr_stmt') this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+    this.exitSigScope()
     this.emit({ op: 'EXIT_SCOPE' })
   }
 

@@ -1,5 +1,6 @@
 // dprint-ignore-file
 import { sampleRate, baseSampleRate } from '../globals'
+import { f32BufArena } from '../f32-buf-arena'
 import { cubic } from '../util'
 import { Gen } from './gen'
 
@@ -51,7 +52,8 @@ export class Dattorro extends Gen {
 
   private taps: StaticArray<i32> = new StaticArray<i32>(NUM_TAPS)
 
-  private preDelay: StaticArray<f32> = new StaticArray<f32>(CHUNK_SIZE)
+  private preDelay!: StaticArray<f32>
+  private preDelayHandle: i32 = -1
   private preDelayLength: i32 = CHUNK_SIZE
   private preDelayWrite: i32 = 0
 
@@ -64,6 +66,7 @@ export class Dattorro extends Gen {
   private excDepthSamples: f64 = 0.0
 
   private dBufs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(NUM_DELAYS)
+  private dBufHandles: StaticArray<i32> = new StaticArray<i32>(NUM_DELAYS)
   private dMask: StaticArray<i32> = new StaticArray<i32>(NUM_DELAYS)
   private dLen: StaticArray<i32> = new StaticArray<i32>(NUM_DELAYS)
   private dWrite: StaticArray<i32> = new StaticArray<i32>(NUM_DELAYS)
@@ -102,8 +105,19 @@ export class Dattorro extends Gen {
     this.tapSecs[12] = 0.011256342
     this.tapSecs[13] = 0.004065724
 
+    {
+      const h: i32 = f32BufArena.acquireAtLeast(CHUNK_SIZE)
+      this.preDelayHandle = h
+      this.preDelay = f32BufArena.get(h)
+      this.preDelayLength = CHUNK_SIZE
+      this.preDelayWrite = 0
+      memory.fill(changetype<usize>(this.preDelay), 0, CHUNK_SIZE << 2)
+    }
+
     for (let i: i32 = 0; i < NUM_DELAYS; i++) {
-      this.dBufs[i] = new StaticArray<f32>(1)
+      const h: i32 = f32BufArena.acquireAtLeast(1)
+      this.dBufHandles[i] = h
+      this.dBufs[i] = f32BufArena.get(h)
       this.dMask[i] = 0
       this.dLen[i] = 1
       this.dWrite[i] = 0
@@ -123,8 +137,13 @@ export class Dattorro extends Gen {
     const pLen: i32 = sr + pad
     this.preDelayLength = pLen
     this.preDelayWrite = 0
-    this.preDelay = new StaticArray<f32>(pLen)
-    for (let i: i32 = 0; i < pLen; i++) unchecked(this.preDelay[i] = 0.0 as f32)
+    if (pLen > this.preDelay.length) {
+      const nextHandle: i32 = f32BufArena.acquireAtLeast(pLen)
+      f32BufArena.release(this.preDelayHandle)
+      this.preDelayHandle = nextHandle
+      this.preDelay = f32BufArena.get(nextHandle)
+    }
+    memory.fill(changetype<usize>(this.preDelay), 0, pLen << 2)
 
     // Excursion parameters in samples (will be updated per-sample in processStereo).
     this.excStep = 0.5 / (sr as f64) // Default excursionRate
@@ -138,13 +157,18 @@ export class Dattorro extends Gen {
       const cap: i32 = nextPow2(len)
       const mask: i32 = cap - 1
 
-      this.dBufs[i] = new StaticArray<f32>(cap)
+      if (cap > this.dBufs[i].length) {
+        const nextHandle: i32 = f32BufArena.acquireAtLeast(cap)
+        f32BufArena.release(this.dBufHandles[i])
+        this.dBufHandles[i] = nextHandle
+        this.dBufs[i] = f32BufArena.get(nextHandle)
+      }
       this.dMask[i] = mask
       this.dLen[i] = len
       this.dWrite[i] = (len - 1) & mask
       this.dRead[i] = 0
       const b = this.dBufs[i]
-      for (let j: i32 = 0; j < cap; j++) unchecked(b[j] = 0.0 as f32)
+      memory.fill(changetype<usize>(b), 0, cap << 2)
     }
 
     // Output taps in samples.
@@ -249,15 +273,21 @@ export class Dattorro extends Gen {
       this.dRead[i] = src.dRead[i]
 
       const srcBuf = src.dBufs[i]
-      if (this.dBufs[i].length !== srcBuf.length) {
-        this.dBufs[i] = new StaticArray<f32>(srcBuf.length)
+      if (srcBuf.length > this.dBufs[i].length) {
+        const nextHandle: i32 = f32BufArena.acquireAtLeast(srcBuf.length)
+        f32BufArena.release(this.dBufHandles[i])
+        this.dBufHandles[i] = nextHandle
+        this.dBufs[i] = f32BufArena.get(nextHandle)
       }
       const dstBuf = this.dBufs[i]
       for (let j: i32 = 0; j < srcBuf.length; j++) unchecked(dstBuf[j] = srcBuf[j])
     }
 
-    if (this.preDelay.length !== src.preDelay.length) {
-      this.preDelay = new StaticArray<f32>(src.preDelay.length)
+    if (src.preDelay.length > this.preDelay.length) {
+      const nextHandle: i32 = f32BufArena.acquireAtLeast(src.preDelay.length)
+      f32BufArena.release(this.preDelayHandle)
+      this.preDelayHandle = nextHandle
+      this.preDelay = f32BufArena.get(nextHandle)
     }
     for (let i: i32 = 0; i < src.preDelay.length; i++) unchecked(this.preDelay[i] = src.preDelay[i])
   }

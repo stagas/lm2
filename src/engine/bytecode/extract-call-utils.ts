@@ -172,7 +172,7 @@ export function buildLineStartsForLocs(src: string): number[] {
 }
 
 export function getIndexFromCall(call: any): number {
-  const namedIdx = findNamedArg(call, 'index')
+  const namedIdx = findNamedArg(call, '%index')
   if (namedIdx?.value) return tryEvalConstNumber(namedIdx.value) ?? 0
   return 0
 }

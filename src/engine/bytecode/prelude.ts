@@ -20,6 +20,34 @@ widen=([L,R],seconds=0.0001)->{
   return [loL+hiL,loR+delay(hiR,seconds)]
 }
 
+modDelay=(in,baseDelay,depth,rate,feedback,offset=0)->{
+  lfo = lfosine(rate, offset)
+  delayTime = baseDelay + depth * lfo
+  delay(in, delayTime, feedback)
+}
+
+flanger=(in,rate=1,depth=0.00125,base=0.00125,feedback=0.7)->{
+  modDelay(in, base, depth, rate, feedback)
+}
+
+chorus=(in,voices=3,base=0.02,depth=0.006,rate=0.25,spread=.5)->{
+  sum = 0
+
+  for (i=0;i<voices;i++) {
+    phase = (i / voices) * spread
+    sum += modDelay(
+      in,
+      base,
+      depth,
+      rate,
+      feedback = 0,
+      phase
+    )
+  }
+
+  sum / voices
+}
+
 mix=in->in
 `
 

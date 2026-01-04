@@ -1,5 +1,6 @@
 // dprint-ignore-file
 import { sampleRate } from '../globals'
+import { f32BufArena } from '../f32-buf-arena'
 import { Gen } from './gen'
 
 const NUM_COMBS: i32 = 8
@@ -42,11 +43,13 @@ export class Freeverb extends Gen {
   private allpassTuning: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES * 2)
 
   private combBufs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(NUM_COMBS * 2)
+  private combBufHandles: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS * 2)
   private combLen: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS * 2)
   private combIdx: StaticArray<i32> = new StaticArray<i32>(NUM_COMBS * 2)
   private combFilter: StaticArray<f32> = new StaticArray<f32>(NUM_COMBS * 2)
 
   private allpassBufs: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(NUM_ALLPASSES * 2)
+  private allpassBufHandles: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES * 2)
   private allpassLen: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES * 2)
   private allpassIdx: StaticArray<i32> = new StaticArray<i32>(NUM_ALLPASSES * 2)
 
@@ -84,14 +87,18 @@ export class Freeverb extends Gen {
     this.allpassTuning[7] = 248
 
     for (let i: i32 = 0; i < NUM_COMBS * 2; i++) {
-      this.combBufs[i] = new StaticArray<f32>(1)
+      const h: i32 = f32BufArena.acquireAtLeast(1)
+      this.combBufHandles[i] = h
+      this.combBufs[i] = f32BufArena.get(h)
       this.combLen[i] = 1
       this.combIdx[i] = 0
       this.combFilter[i] = 0.0 as f32
     }
 
     for (let i: i32 = 0; i < NUM_ALLPASSES * 2; i++) {
-      this.allpassBufs[i] = new StaticArray<f32>(1)
+      const h: i32 = f32BufArena.acquireAtLeast(1)
+      this.allpassBufHandles[i] = h
+      this.allpassBufs[i] = f32BufArena.get(h)
       this.allpassLen[i] = 1
       this.allpassIdx[i] = 0
     }
@@ -105,23 +112,29 @@ export class Freeverb extends Gen {
 
     for (let i: i32 = 0; i < NUM_COMBS * 2; i++) {
       const n: i32 = scaledDelaySamples(this.combTuning[i], sr)
-      this.combBufs[i] = new StaticArray<f32>(n)
+      if (n > this.combBufs[i].length) {
+        const nextHandle: i32 = f32BufArena.acquireAtLeast(n)
+        f32BufArena.release(this.combBufHandles[i])
+        this.combBufHandles[i] = nextHandle
+        this.combBufs[i] = f32BufArena.get(nextHandle)
+      }
       this.combLen[i] = n
       this.combIdx[i] = 0
       this.combFilter[i] = 0.0 as f32
-      for (let j: i32 = 0; j < n; j++) {
-        unchecked(this.combBufs[i][j] = 0.0 as f32)
-      }
+      memory.fill(changetype<usize>(this.combBufs[i]), 0, n << 2)
     }
 
     for (let i: i32 = 0; i < NUM_ALLPASSES * 2; i++) {
       const n: i32 = scaledDelaySamples(this.allpassTuning[i], sr)
-      this.allpassBufs[i] = new StaticArray<f32>(n)
+      if (n > this.allpassBufs[i].length) {
+        const nextHandle: i32 = f32BufArena.acquireAtLeast(n)
+        f32BufArena.release(this.allpassBufHandles[i])
+        this.allpassBufHandles[i] = nextHandle
+        this.allpassBufs[i] = f32BufArena.get(nextHandle)
+      }
       this.allpassLen[i] = n
       this.allpassIdx[i] = 0
-      for (let j: i32 = 0; j < n; j++) {
-        unchecked(this.allpassBufs[i][j] = 0.0 as f32)
-      }
+      memory.fill(changetype<usize>(this.allpassBufs[i]), 0, n << 2)
     }
   }
 
@@ -156,8 +169,11 @@ export class Freeverb extends Gen {
       this.combFilter[i] = src.combFilter[i]
 
       const srcBuf = src.combBufs[i]
-      if (this.combBufs[i].length !== n) {
-        this.combBufs[i] = new StaticArray<f32>(n)
+      if (n > this.combBufs[i].length) {
+        const nextHandle: i32 = f32BufArena.acquireAtLeast(n)
+        f32BufArena.release(this.combBufHandles[i])
+        this.combBufHandles[i] = nextHandle
+        this.combBufs[i] = f32BufArena.get(nextHandle)
       }
       const dstBuf = this.combBufs[i]
       for (let j: i32 = 0; j < n; j++) unchecked(dstBuf[j] = srcBuf[j])
@@ -170,8 +186,11 @@ export class Freeverb extends Gen {
       this.allpassIdx[i] = n > 0 ? (src.allpassIdx[i] % n) : 0
 
       const srcBuf = src.allpassBufs[i]
-      if (this.allpassBufs[i].length !== n) {
-        this.allpassBufs[i] = new StaticArray<f32>(n)
+      if (n > this.allpassBufs[i].length) {
+        const nextHandle: i32 = f32BufArena.acquireAtLeast(n)
+        f32BufArena.release(this.allpassBufHandles[i])
+        this.allpassBufHandles[i] = nextHandle
+        this.allpassBufs[i] = f32BufArena.get(nextHandle)
       }
       const dstBuf = this.allpassBufs[i]
       for (let j: i32 = 0; j < n; j++) unchecked(dstBuf[j] = srcBuf[j])

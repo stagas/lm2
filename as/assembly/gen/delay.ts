@@ -1,3 +1,4 @@
+import { f32BufArena } from '../f32-buf-arena'
 import { sampleRate } from '../globals'
 import { Gen } from './gen'
 
@@ -9,10 +10,19 @@ export class Delay extends Gen {
   feedback$: usize = 0
 
   private lastSampleRate: i32 = 0
-  private cap: i32 = 1
+  private cap: i32 = 0
   private len: i32 = 1
   private writePos: i32 = 0
-  private buf: StaticArray<f32> = new StaticArray<f32>(1)
+  private bufHandle: i32 = -1
+  private buf: StaticArray<f32>
+
+  constructor() {
+    super()
+    const h: i32 = f32BufArena.acquireAtLeast(1)
+    this.bufHandle = h
+    this.buf = f32BufArena.get(h)
+    this.cap = f32BufArena.len(h)
+  }
 
   @inline
   private ensureBuffer(): void {
@@ -20,20 +30,21 @@ export class Delay extends Gen {
     if (sr === this.lastSampleRate) return
     this.lastSampleRate = sr
 
-    let nextLen: i32 = sr > 0 ? (sr * 10) : 1
+    let nextLen: i32 = sr > 0 ? sr : 1
     if (nextLen < 1) nextLen = 1
 
     if (nextLen > this.cap) {
-      this.buf = new StaticArray<f32>(nextLen)
-      this.cap = nextLen
+      const nextHandle: i32 = f32BufArena.acquireAtLeast(nextLen)
+      if (this.bufHandle >= 0) f32BufArena.release(this.bufHandle)
+      this.bufHandle = nextHandle
+      this.buf = f32BufArena.get(nextHandle)
+      this.cap = f32BufArena.len(nextHandle)
     }
 
     this.len = nextLen
     this.writePos = 0
 
-    for (let i: i32 = 0; i < nextLen; i++) {
-      this.buf[i] = 0.0 as f32
-    }
+    memory.fill(changetype<usize>(this.buf), 0, this.len << 2)
   }
 
   @inline
@@ -151,8 +162,11 @@ export class Delay extends Gen {
     this.lastSampleRate = src.lastSampleRate
     const n: i32 = src.len
     if (n > this.cap) {
-      this.buf = new StaticArray<f32>(n)
-      this.cap = n
+      const nextHandle: i32 = f32BufArena.acquireAtLeast(n)
+      if (this.bufHandle >= 0) f32BufArena.release(this.bufHandle)
+      this.bufHandle = nextHandle
+      this.buf = f32BufArena.get(nextHandle)
+      this.cap = f32BufArena.len(nextHandle)
     }
     this.len = n
     this.writePos = src.writePos % n

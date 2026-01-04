@@ -621,8 +621,8 @@ export function encodeLangToVmOps(
         })
 
         if (reverbIndex !== null) {
-          args = args.filter((a: any) => !(a.kind === 'named' && a.name === 'index'))
-          args = [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, reverbIndex),
+          args = args.filter((a: any) => !(a.kind === 'named' && (a.name === '%index' || a.name === 'index')))
+          args = [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, reverbIndex),
             loc: expr.loc }]
         }
 
@@ -690,21 +690,21 @@ export function encodeLangToVmOps(
           const idx = allocAdIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (isAdsr) {
           const idx = allocAdsrIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (isEnvfollow) {
           const idx = allocEnvfollowIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (isAnalyser) {
@@ -712,7 +712,7 @@ export function encodeLangToVmOps(
           // Keep only the first positional arg (signal), drop any user-provided index and any named index.
           let posSeen = 0
           args = args.filter((a: any) => {
-            if (a?.kind === 'named' && a.name === 'index') return false
+            if (a?.kind === 'named' && (a.name === '%index' || a.name === 'index')) return false
             if (a?.kind !== 'pos') return true
             const keep = posSeen === 0
             posSeen++
@@ -725,49 +725,49 @@ export function encodeLangToVmOps(
           const idx = allocCompressorIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (isLimiter) {
           const idx = allocLimiterIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (isFilter) {
           const idx = allocFilterIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (isLfo) {
           const idx = allocLfoIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (calleeName === 'every') {
           const idx = allocTrigIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (calleeName === 'at') {
           const idx = allocTrigIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (calleeName === 'euclid') {
           const idx = allocTrigIndex()
 
           return { ...expr, callee,
-            args: [...args, { kind: 'named', name: 'index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (isOut) {
