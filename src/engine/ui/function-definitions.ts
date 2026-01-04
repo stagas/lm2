@@ -831,6 +831,83 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'sine(220) |> delay($, seconds:.35, feedback:.4, cb:x -> lp(x, cutoff:1000, q:.8)) |> out($)',
     ],
   },
+  pan: {
+    name: 'pan',
+    parameters: [
+      { name: 'in', type: '[L:number, R:number]', description: 'Stereo signal to be panned' },
+      {
+        name: 'balance',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.5,
+        description: 'Pan position (0=left, 0.5=center, 1=right)',
+      },
+    ],
+    returnType: '[L:number, R:number]',
+    description:
+      'Pans a stereo signal left or right. Balance of 0 sends fully to left, 0.5 is center, 1 is fully right.',
+    examples: [
+      'stereo(saw(hz)) |> pan($, balance:0.2) |> out($)',
+      '[saw(220), saw(221)] |> pan($, balance:0.8) |> out($)',
+    ],
+  },
+  stereo: {
+    name: 'stereo',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Mono signal to convert to stereo' },
+      {
+        name: 'width',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Stereo width in seconds (0 = mono, >0 = delayed right channel)',
+      },
+    ],
+    returnType: '[L:number, R:number]',
+    description:
+      'Converts a mono signal to stereo by duplicating to both channels, optionally with delay-based widening.',
+    examples: [
+      'sine(440) |> stereo($) |> out($)',
+      'saw(hz) |> stereo($, width:0.01) |> out($)',
+    ],
+  },
+  stereowidth: {
+    name: 'stereowidth',
+    parameters: [
+      { name: 'in', type: '[L:number, R:number]', description: 'Stereo signal to modify' },
+      {
+        name: 'width',
+        type: 'number',
+        optional: true,
+        defaultValue: 1,
+        description: 'Width multiplier (0 = mono, 1 = normal, >1 = wider)',
+      },
+    ],
+    returnType: '[L:number, R:number]',
+    description: 'Changes the stereo width of a signal using mid-side processing.',
+    examples: [
+      '[saw(220), saw(221)] |> stereowidth($, width:2) |> out($)',
+      'stereo(saw(hz)) |> stereowidth($, width:0.5) |> out($)',
+    ],
+  },
+  widen: {
+    name: 'widen',
+    parameters: [
+      { name: 'in', type: '[L:number, R:number]', description: 'Stereo signal to widen' },
+      {
+        name: 'seconds',
+        type: 'number',
+        optional: true,
+        defaultValue: 0.0001,
+        description: 'Delay time for widening effect in seconds',
+      },
+    ],
+    returnType: '[L:number, R:number]',
+    description: 'Widens a stereo signal by delaying high frequencies in the right channel.',
+    examples: [
+      '[saw(220), saw(221)] |> widen($, seconds:0.005) |> out($)',
+    ],
+  },
   freeverb: {
     name: 'freeverb',
     parameters: [

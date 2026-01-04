@@ -986,7 +986,11 @@ export function callClamp(
   program: Program,
   length: i32,
 ): void {
-  callTernaryMath(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio, program, length, (x: f64, lo: f64, hi: f64): f64 => Mathf.min(Mathf.max(x as f32, lo as f32), hi as f32) as f64, VmSym.X, VmSym.Lo, VmSym.Hi)
+  callTernaryMath(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio, program, length, (x: f64, lo: f64, hi: f64): f64 => {
+    if (x < lo) return lo
+    if (x > hi) return hi
+    return x
+  }, VmSym.X, VmSym.Lo, VmSym.Hi)
 }
 
 // lerp(a, b, t)

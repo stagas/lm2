@@ -561,6 +561,12 @@ export class Dsp {
           restoreTo = savedOut + 1
         }
       }
+      else if (tag === VmTag.Arr) {
+        // Arrays can contain Audio values backed by out buffers allocated during the call.
+        // Rewinding outCursor would allow those buffers to be reused/clobbered before the caller consumes the array.
+        // Keep all outs allocated during this call alive.
+        restoreTo = this.audio.outCursor
+      }
     }
 
     this.env.count = savedEnv

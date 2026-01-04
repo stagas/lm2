@@ -100,6 +100,10 @@ export class VmEnv {
     }
 
     const at = this.count
+    if (at < 0 || at >= this.sym.length) {
+      setVmError(12, 0)
+      return
+    }
     this.sym[at] = sym
     this.tag[at] = tag
     this.num[at] = num

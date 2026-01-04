@@ -29,13 +29,17 @@ const locOf = (n: { loc: Loc } | Loc) => ('loc' in n ? n.loc : n)
 
 const parseCache = new Map<string, { program: Program; errors: LangError[] }>()
 
-export function parse(src: string, tokens: Token[]): { program: Program; errors: LangError[] } {
-  const cached = parseCache.get(src)
+export function parse(
+  src: string,
+  tokens: Token[],
+  cacheKey: string = src,
+): { program: Program; errors: LangError[] } {
+  const cached = parseCache.get(cacheKey)
   if (cached) return cached
   const p = new Parser(src, tokens)
   const program = p.parseProgram()
   const result = { program, errors: p.errors }
-  parseCache.set(src, result)
+  parseCache.set(cacheKey, result)
   return result
 }
 
@@ -77,7 +81,7 @@ class Parser {
       line: t.line,
       column: t.column,
       length: Math.max(1, t.length),
-      code: lineText(this.src, t.line),
+      code: t.line <= 0 ? '' : lineText(this.src, t.line),
     })
   }
 
