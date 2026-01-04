@@ -9,7 +9,7 @@ import type { TimelineWindow } from '../types.ts'
 import { PauseGradientIcon, PlayGradientIcon, StopGradientIcon } from './Icons.tsx'
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
-import { useLoopView } from './useLoopView.ts'
+import { usePlayingState } from './usePlayingState.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
 
 function PlaybackButton(
@@ -152,7 +152,7 @@ export function Nav({
   const globalSampleCount = useEngineRuntimeStore(state => state.globalSampleCount)
   const uiZeroBased = useEngineUiStore(state => state.zeroBasedTimelines)
 
-  const { globalSampleCount: viewGlobalSampleCount, seekToSample, canControlPlayback } = useLoopView(
+  const { globalSampleCount: viewGlobalSampleCount, seekToSample, canControlPlayback } = usePlayingState(
     currentLoop?.data.id ?? null,
   )
 

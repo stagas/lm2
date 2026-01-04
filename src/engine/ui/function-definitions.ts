@@ -458,7 +458,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
       { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
       { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
-      { name: 'ratio', type: 'number', description: 'Gate ratio (1 .. 100)' },
+      { name: 'ratio', type: 'number', description: 'Gate ratio (1 .. inf)' },
       { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
       { name: 'hold', type: 'number', description: 'Hold time in seconds (0 .. 1)' },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },

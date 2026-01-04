@@ -6,12 +6,14 @@ import { SpinnerLarge } from '../../components/Spinner.tsx'
 import { useEngine } from '../dsp/program.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { DspSourceEditor } from './DspSourceEditor.tsx'
+import type { Loop } from './loop.ts'
 import { Nav } from './Nav.tsx'
 import { RouterProvider, useRouter } from './router.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import { useCurrentLoop } from './useCurrentLoop.ts'
 import { useFontsLoaded } from './useFontsLoaded.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
+import { useLoopView } from './useLoopView.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
 
 function Intro(
@@ -51,6 +53,11 @@ function Intro(
       </div>
     </div>
   )
+}
+
+function SyncSampleCount({ currentLoop }: { currentLoop: Loop | null }) {
+  useLoopView(currentLoop?.data.id ?? null)
+  return null
 }
 
 function RouterContent({
@@ -113,6 +120,7 @@ function RouterContent({
     <>
       {showIntro && <Intro isFadingIn={isFadingIn} isFadingOut={isFadingOut} />}
       <div className="flex flex-col">
+        <SyncSampleCount currentLoop={currentLoop} />
         <Nav
           timelineWindowRef={timelineWindowRef}
           currentLoop={currentLoop}
