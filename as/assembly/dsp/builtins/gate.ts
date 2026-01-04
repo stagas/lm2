@@ -25,7 +25,7 @@ export function callGate(
   length: i32,
   ringBase: i32,
 ): void {
-  // gate(in, attack=.001, release=.5, threshold=-24, ratio=20, knee=0, hold=.02, key?)
+  // gate(in, attack=.001, release=.5, threshold=-24, knee=0, hold=.02, key?) - ratio is fixed at 100
   if (posCount < 1 && namedCount === 0) {
     stack.push(VmTag.Undef)
     return
@@ -48,7 +48,7 @@ export function callGate(
   let thresholdAux: i32 = 0
 
   let ratioTag: VmTag = VmTag.Num
-  let ratioNum: f64 = 20.0
+  let ratioNum: f64 = 100.0  // Fixed ratio for gate
   let ratioAux: i32 = 0
 
   let kneeTag: VmTag = VmTag.Num
@@ -87,28 +87,23 @@ export function callGate(
     thresholdAux = posAux[3]
   }
 
+
   if (posCount >= 5 && posTags[4] !== VmTag.Undef && posTags[4] !== VmTag.Null) {
-    ratioTag = posTags[4] as VmTag
-    ratioNum = posNums[4]
-    ratioAux = posAux[4]
+    kneeTag = posTags[4] as VmTag
+    kneeNum = posNums[4]
+    kneeAux = posAux[4]
   }
 
   if (posCount >= 6 && posTags[5] !== VmTag.Undef && posTags[5] !== VmTag.Null) {
-    kneeTag = posTags[5] as VmTag
-    kneeNum = posNums[5]
-    kneeAux = posAux[5]
+    holdTag = posTags[5] as VmTag
+    holdNum = posNums[5]
+    holdAux = posAux[5]
   }
 
   if (posCount >= 7 && posTags[6] !== VmTag.Undef && posTags[6] !== VmTag.Null) {
-    holdTag = posTags[6] as VmTag
-    holdNum = posNums[6]
-    holdAux = posAux[6]
-  }
-
-  if (posCount >= 8 && posTags[7] !== VmTag.Undef && posTags[7] !== VmTag.Null) {
-    keyTag = posTags[7] as VmTag
-    keyNum = posNums[7]
-    keyAux = posAux[7]
+    keyTag = posTags[6] as VmTag
+    keyNum = posNums[6]
+    keyAux = posAux[6]
   }
 
   let index: i32 = 0
@@ -134,11 +129,6 @@ export function callGate(
       thresholdTag = nameTags[i] as VmTag
       thresholdNum = nameNums[i]
       thresholdAux = nameAux[i]
-    }
-    else if (k === VmSym.Ratio) {
-      ratioTag = nameTags[i] as VmTag
-      ratioNum = nameNums[i]
-      ratioAux = nameAux[i]
     }
     else if (k === VmSym.Knee) {
       kneeTag = nameTags[i] as VmTag

@@ -1,5 +1,5 @@
 // dprint-ignore-file
-import { Expander } from '../../gen/expander'
+import { Gate } from '../../gen/gate'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmSym } from '../vm-sym'
@@ -155,6 +155,7 @@ export function callExpander(
   const threshold$ = audio.toAudioPtr(thresholdTag, thresholdNum, thresholdAux, length, program)
   const ratio$ = audio.toAudioPtr(ratioTag, ratioNum, ratioAux, length, program)
   const knee$ = audio.toAudioPtr(kneeTag, kneeNum, kneeAux, length, program)
+  const hold$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
 
   const outIndex = audio.allocOut(program)
   const out$ = program.getOutBuffer(outIndex)
@@ -162,7 +163,7 @@ export function callExpander(
   const levelDb$ = program.expanderOutsPool.getLevelDb(index)
   const grDb$ = program.expanderOutsPool.getGrDb(index)
 
-  const expander = program.gensPool.get(Op.Expander) as Expander
+  const expander = program.gensPool.get(Op.Gate) as Gate
   expander.in$ = in$
   expander.key$ = key$
   expander.attack$ = attack$
@@ -170,6 +171,7 @@ export function callExpander(
   expander.threshold$ = threshold$
   expander.ratio$ = ratio$
   expander.knee$ = knee$
+  expander.hold$ = hold$
 
   expander.telemetryEnabled = 1
   expander.telemetryRingBase = ringBase
