@@ -651,55 +651,6 @@ class Parser {
         const end = this.expect('r_paren', 'Expected \')\'')
         expr = { kind: 'call', callee: expr, args, loc: locFrom(expr.loc, end) }
 
-        // Validate named parameters against function definitions
-        if (expr.callee.kind === 'ident') {
-          const funcDef = functionDefinitions[expr.callee.name]
-          if (funcDef) {
-            for (const arg of args) {
-              if (arg.kind === 'named') {
-                const paramNames = funcDef.parameters.map(p => p.name)
-
-                // First check for exact match
-                const exactMatch = paramNames.find(p => p === arg.name)
-                if (exactMatch) continue
-
-                // If no exact match, check for case-insensitive match
-                const caseInsensitiveMatch = paramNames.find(p => p.toLowerCase() === arg.name.toLowerCase())
-                if (caseInsensitiveMatch) {
-                  // Update the argument name to the correct case
-                  ;(arg as any).name = caseInsensitiveMatch
-                  continue
-                }
-
-                // If no case-insensitive match, check for prefix matches
-                const prefixMatches = paramNames.filter(p => p.startsWith(arg.name))
-                if (prefixMatches.length === 1) {
-                  // Update the argument name to the full parameter name
-                  ;(arg as any).name = prefixMatches[0]
-                }
-                else if (prefixMatches.length === 0) {
-                  this.error(arg.loc as Token,
-                    `Unknown parameter '${arg.name}' for function '${expr.callee.name}'. Valid parameters are: ${
-                      paramNames.join(', ')
-                    }`)
-                }
-                else {
-                  this.error(arg.loc as Token,
-                    `Ambiguous parameter '${arg.name}' for function '${expr.callee.name}'. It matches: ${
-                      prefixMatches.join(', ')
-                    }`)
-                }
-              }
-            }
-
-            // Validate that we don't exceed the maximum number of arguments
-            if (args.length > funcDef.parameters.length) {
-              this.error(expr.loc,
-                `Too many arguments for function '${expr.callee.name}'. Expected at most ${funcDef.parameters.length} arguments, got ${args.length}`)
-            }
-          }
-        }
-
         continue
       }
       if (this.match('dot')) {
@@ -737,8 +688,15 @@ class Parser {
       if (this.at('identifier') && this.tokens[this.i + 1]?.kind === 'colon') {
         const nameTok = this.next()
         this.next()
-        const value = this.parseExpr()
-        args.push({ kind: 'named', name: nameTok.lexeme, value, loc: locFrom(nameTok, value.loc) })
+        this.skipStatementSep()
+        if (this.at('comma') || this.at('r_paren')) {
+          // `name:` shorthand
+          args.push({ kind: 'shorthand', name: nameTok.lexeme, loc: locFrom(nameTok) })
+        }
+        else {
+          const value = this.parseExpr()
+          args.push({ kind: 'named', name: nameTok.lexeme, value, loc: locFrom(nameTok, value.loc) })
+        }
       }
       else {
         const value = this.parseExpr()

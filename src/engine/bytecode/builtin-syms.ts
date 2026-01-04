@@ -122,7 +122,7 @@ export const builtinSyms: Record<string, number> = {
   hold: VmSym.Hold,
   gain: VmSym.Gain,
   // Named args for analyser()
-  index: VmSym.Index,
+  '%index': VmSym.Index,
   // Named args for timeline()
   pattern: VmSym.Pattern,
   color: VmSym.Color,

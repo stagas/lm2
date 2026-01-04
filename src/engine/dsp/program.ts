@@ -294,6 +294,7 @@ export type ProgramBuildDiff = {
 export type ProgramBuildResult = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
+  miniPlayBars: Array<number | undefined>
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
   adRefs: AdRef[]
@@ -633,10 +634,10 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, timelineRefs, timelineLabels, adRefs, adsrRefs, envfollowRefs,
-          slewRefs, analyserRefs, compressorRefs, expanderRefs, gateRefs, limiterRefs, filterRefs, reverbRefs,
-          slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams, numberLiterals,
-          sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
+        const { sequences, timelineSequences, miniRefs, miniPlayBars, timelineRefs, timelineLabels, adRefs, adsrRefs,
+          envfollowRefs, slewRefs, analyserRefs, compressorRefs, expanderRefs, gateRefs, limiterRefs, filterRefs,
+          reverbRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
+          numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
         const totalSeqCount = sequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
@@ -682,6 +683,7 @@ async function createProgram(
         return {
           sequences,
           miniRefs,
+          miniPlayBars,
           timelineRefs,
           timelineLabels,
           adRefs,

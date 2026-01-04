@@ -1,7 +1,7 @@
 import { CHUNK_SIZE, LITERALS_COUNT, SEQ_VOICES } from '../constants'
 import { GensPool } from '../gens-pool'
 import { Program } from '../program'
-import { addAudio, clearAudio, mulAudioScalar } from './audio-ops'
+import { addAudio, clearAudio, copyAudio, mulAudioScalar } from './audio-ops'
 import { callAd } from './builtins/ad'
 import { callAdsr } from './builtins/adsr'
 import { callAnalyser } from './builtins/analyser'
@@ -93,7 +93,7 @@ import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { callVelvet } from './builtins/velvet'
 import { Dsp } from './dsp'
-import { VmBuiltin, VmTag } from './types'
+import { VM_FUNC_HEADER, VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
 import { VmStack } from './vm-stack'
 import { VmSym } from './vm-sym'
@@ -106,6 +106,15 @@ export class VmBuiltins {
   callPosTags: StaticArray<i32> = new StaticArray<i32>(16)
   callPosNums: StaticArray<f64> = new StaticArray<f64>(16)
   callPosAux: StaticArray<i32> = new StaticArray<i32>(16)
+  callTmpTags: StaticArray<i32> = new StaticArray<i32>(16)
+  callTmpNums: StaticArray<f64> = new StaticArray<f64>(16)
+  callTmpAux: StaticArray<i32> = new StaticArray<i32>(16)
+  callFuncTags: StaticArray<i32> = new StaticArray<i32>(16)
+  callFuncNums: StaticArray<f64> = new StaticArray<f64>(16)
+  callFuncAux: StaticArray<i32> = new StaticArray<i32>(16)
+  callFuncParamSyms: StaticArray<i32> = new StaticArray<i32>(16)
+  callFuncReserved: StaticArray<i32> = new StaticArray<i32>(16)
+  callFuncHas: StaticArray<i32> = new StaticArray<i32>(16)
 
   miniTrigOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
   miniVelOuts: StaticArray<i32> = new StaticArray<i32>(SEQ_VOICES)
@@ -596,6 +605,133 @@ export class VmBuiltins {
     return true
   }
 
+  private tryAutoLiftFunc(
+    funcPc: i32,
+    posCount: i32,
+    posTags: StaticArray<i32>,
+    posNums: StaticArray<f64>,
+    posAux: StaticArray<i32>,
+    stack: VmStack,
+    audio: VmAudio,
+    program: Program,
+    length: i32,
+    left$: usize,
+    right$: usize,
+    dsp: Dsp,
+  ): bool {
+    if (posCount < 1 || (posTags[0] as VmTag) !== VmTag.Arr) return false
+
+    const ops = program.data.ops
+    if (funcPc < 0 || funcPc >= ops.length) return false
+    if (ops[funcPc] !== VM_FUNC_HEADER) return false
+    const paramCount: i32 = ops[funcPc + 1]
+    if (paramCount <= 0) return false
+    if (ops[funcPc + 2] !== VmSym.In) return false
+
+    // IMPORTANT: Don't call `vmInvokeFunc*` with the shared `callPos*` scratch arrays.
+    // Nested calls inside the invoked function reuse `callPos*` and will clobber the arguments between iterations.
+    const argTags = this.callFuncTags
+    const argNums = this.callFuncNums
+    const argAux = this.callFuncAux
+    for (let i: i32 = 0; i < posCount; i++) {
+      argTags[i] = posTags[i]
+      argNums[i] = posNums[i]
+      argAux[i] = posAux[i]
+    }
+
+    const arrId: i32 = argAux[0]
+    if (arrId < 0 || arrId >= dsp.arrays.count) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+
+    const srcStart: i32 = dsp.arrays.start[arrId]
+    const n: i32 = dsp.arrays.len[arrId]
+    const srcPc: i32 = dsp.arrays.createPc[arrId]
+    if (n < 0) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+
+    const outId: i32 = dsp.arrays.count
+    const outStart: i32 = dsp.arrays.elemCount
+    const outEnd: i32 = outStart + n
+    if (outId < 0 || outId >= dsp.arrays.start.length) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+    if (outEnd < 0 || outEnd > dsp.arrays.elemTag.length) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+
+    // Reserve a "holey" output array first so nested allocations inside the function can't collide
+    // with the output's reserved element region.
+    dsp.arrays.start[outId] = outStart
+    dsp.arrays.len[outId] = n
+    dsp.arrays.createPc[outId] = srcPc
+    dsp.arrays.elemType[outId] = VmTag.Undef
+    dsp.arrays.count = outId + 1
+    dsp.arrays.elemCount = outEnd
+    for (let i: i32 = 0; i < n; i++) {
+      dsp.arrays.elemTag[outStart + i] = VmTag.Undef
+      dsp.arrays.elemNum[outStart + i] = 0.0
+      dsp.arrays.elemAux[outStart + i] = 0
+    }
+
+    const savedTag0: i32 = argTags[0]
+    const savedNum0: f64 = argNums[0]
+    const savedAux0: i32 = argAux[0]
+
+    let tag0: i32 = -1
+    let mixed: bool = false
+
+    for (let i: i32 = 0; i < n; i++) {
+      const at: i32 = srcStart + i
+      argTags[0] = dsp.arrays.elemTag[at]
+      argNums[0] = dsp.arrays.elemNum[at]
+      argAux[0] = dsp.arrays.elemAux[at]
+
+      dsp.vmInvokeFuncKeepOuts(funcPc, posCount, argTags, argNums, argAux, length, left$, right$)
+
+      const resIdx: i32 = stack.pop()
+      const rTag: i32 = stack.tag[resIdx]
+      if (tag0 < 0) tag0 = rTag
+      else if (rTag !== tag0) mixed = true
+
+      // If the function returns audio, copy it into a fresh stable out buffer before storing.
+      // This avoids cases where function-produced buffers are reused/overwritten by later iterations.
+      if ((rTag as VmTag) === VmTag.Audio) {
+        const srcIndex: i32 = stack.aux[resIdx]
+        const src$: usize = program.getOutBuffer(srcIndex)
+        const outIndex: i32 = audio.allocOut(program)
+        const out$: usize = program.getOutBuffer(outIndex)
+        copyAudio(out$, src$, length)
+        dsp.arrays.elemTag[outStart + i] = VmTag.Audio
+        dsp.arrays.elemNum[outStart + i] = 0.0
+        dsp.arrays.elemAux[outStart + i] = outIndex
+      }
+      else {
+        dsp.arrays.elemTag[outStart + i] = rTag
+        dsp.arrays.elemNum[outStart + i] = stack.num[resIdx]
+        dsp.arrays.elemAux[outStart + i] = stack.aux[resIdx]
+      }
+    }
+
+    argTags[0] = savedTag0
+    argNums[0] = savedNum0
+    argAux[0] = savedAux0
+
+    if (mixed) {
+      stack.push(VmTag.Undef)
+      return true
+    }
+
+    dsp.arrays.elemType[outId] = tag0 < 0 ? (VmTag.Undef as i32) : tag0
+    stack.push(VmTag.Arr, 0.0, outId)
+    return true
+  }
+
   @inline
   call(
     pos: i32,
@@ -649,7 +785,77 @@ export class VmBuiltins {
 
     if (calleeTag === VmTag.Func) {
       // User-defined function values.
-      // Named args are currently ignored (still popped above to keep stack balanced).
+      // Map named args to parameter slots by symbol id (same semantics as builtin slotting).
+      const ops = program.data.ops
+      const maxPos = 16
+
+      if (calleeAux >= 0 && calleeAux < ops.length && ops[calleeAux] === VM_FUNC_HEADER && namedCount > 0) {
+        const tmpTags = this.callTmpTags
+        const tmpNums = this.callTmpNums
+        const tmpAux = this.callTmpAux
+        for (let i: i32 = 0; i < posCount; i++) {
+          tmpTags[i] = posTags[i]
+          tmpNums[i] = posNums[i]
+          tmpAux[i] = posAux[i]
+        }
+
+        const paramCount: i32 = ops[calleeAux + 1]
+        const n: i32 = paramCount < maxPos ? paramCount : maxPos
+
+        const paramSyms = this.callFuncParamSyms
+        const reserved = this.callFuncReserved
+        const has = this.callFuncHas
+
+        for (let i: i32 = 0; i < n; i++) {
+          paramSyms[i] = ops[calleeAux + 2 + i]
+          reserved[i] = 0
+          has[i] = 0
+          posTags[i] = VmTag.Undef
+          posNums[i] = 0.0
+          posAux[i] = 0
+        }
+
+        for (let i: i32 = 0; i < namedCount; i++) {
+          const sym: i32 = nameSyms[i]
+          let idx: i32 = -1
+          for (let j: i32 = 0; j < n; j++) {
+            if (paramSyms[j] === sym) {
+              idx = j
+              break
+            }
+          }
+          if (idx >= 0) {
+            posTags[idx] = nameTags[i]
+            posNums[idx] = nameNums[i]
+            posAux[idx] = nameAux[i]
+            reserved[idx] = 1
+            has[idx] = 1
+          }
+        }
+
+        let next: i32 = 0
+        for (let i: i32 = 0; i < posCount; i++) {
+          while (next < n && (reserved[next] !== 0 || has[next] !== 0)) next++
+          if (next >= n) break
+          posTags[next] = tmpTags[i]
+          posNums[next] = tmpNums[i]
+          posAux[next] = tmpAux[i]
+          has[next] = 1
+          next++
+        }
+
+        let maxIdx: i32 = -1
+        for (let i: i32 = 0; i < n; i++) {
+          if (has[i] !== 0) maxIdx = i
+        }
+        posCount = maxIdx + 1
+      }
+
+      if (this.tryAutoLiftFunc(calleeAux, posCount, posTags, posNums, posAux, stack, audio, program, length, left$,
+        right$, dsp))
+      {
+        return
+      }
       dsp.vmInvokeFunc(calleeAux, posCount, posTags, posNums, posAux, length, left$, right$)
       return
     }
