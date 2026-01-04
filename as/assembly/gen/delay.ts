@@ -112,6 +112,39 @@ export class Delay extends Gen {
     this.writePos = (w0 + n) % len
   }
 
+  @inline
+  processWithCallback(out$: usize, processedEcho$: usize, length: i32): void {
+    this.ensureBuffer()
+
+    const buf = this.buf
+    const n: i32 = length
+    const len: i32 = this.len
+    const w0: i32 = this.writePos
+
+    let o$: usize = out$
+    let i$: usize = this.in$
+    let e$: usize = processedEcho$
+    let f$: usize = this.feedback$
+
+    for (let i: i32 = 0; i < n; i++) {
+      const w: i32 = (w0 + i) % len
+      const x: f32 = load<f32>(i$)
+      const pe: f32 = load<f32>(e$)
+      const fb: f32 = load<f32>(f$)
+
+      const output: f32 = (x + pe * fb) as f32
+      store<f32>(o$, output)
+      buf[w] = output
+
+      o$ += 4
+      i$ += 4
+      e$ += 4
+      f$ += 4
+    }
+
+    this.writePos = (w0 + n) % len
+  }
+
   process(out$: usize, length: i32): void {
     this.ensureBuffer()
 
