@@ -53,6 +53,18 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'array.avg() |> out($)',
     ],
   },
+  '.step': {
+    name: '.step',
+    parameters: [
+      { name: 'trig', type: 'number', description: 'Trigger impulse that advances to next array element' },
+    ],
+    returnType: 'number',
+    description: 'Steps through array elements on trigger impulses, wrapping around when reaching the end.',
+    examples: [
+      '[100,200,400,800].step(every(1/4)) |> sine(hz:$) |> out($)',
+      'scales.step(trig) |> note($) |> sine(hz:$) |> out($)',
+    ],
+  },
   oversample: {
     name: 'oversample',
     parameters: [

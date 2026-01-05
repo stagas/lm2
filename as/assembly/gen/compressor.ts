@@ -54,70 +54,82 @@ export class Compressor extends Gen {
     const attackCoeff: f32 = Mathf.exp(-3.0 / (att * sr))
     const releaseCoeff: f32 = Mathf.exp(-3.0 / (rel * sr))
 
-    const kneeStart: f32 = th - k * 0.5
-    const kneeEnd: f32 = th + k * 0.5
     const ratioFactor: f32 = 1.0 - 1.0 / r
 
-    const telemetryEnabled: bool = this.telemetryEnabled !== 0
     const levelDbBase$: usize = this.telemetryLevelDb$
     const grDbBase$: usize = this.telemetryGrDb$
     const ringBase: i32 = this.telemetryRingBase
 
-    for (let i: i32 = 0; i < length; i++) {
-      const inSample: f32 = load<f32>(in$)
-      const keySample: f32 = load<f32>(key$)
+    for (let i: i32 = 0, y: i32 = 0, inSample: f32, keySample: f32, keyLevel: f32, safeLevel: f32, inputDb: f32,
+      reductionDb: f32, targetGain: f32, d: f32, w: i32, halfK: f32, delta: f32, aboveKnee: f32, belowKnee: f32,
+      inKnee: f32, linearReduction: f32, kneeReduction: f32, hasKnee: f32, noKnee: f32, kneeResult: f32,
+      noKneeResult: f32, hasReduction: f32, isAttack: f32, attackGain: f32, releaseGain: f32, levelOffset: usize,
+      grOffset: usize; i < length; i += 16)
+    {
+      unroll(16, () => {
+        inSample = load<f32>(in$)
+        keySample = load<f32>(key$)
 
-      const keyLevel: f32 = Mathf.abs(keySample)
-      const safeLevel: f32 = Mathf.max(keyLevel, 0.0001)
-      const inputDb: f32 = 20.0 * Mathf.log10(safeLevel)
+        keyLevel = Mathf.abs(keySample)
+        safeLevel = Mathf.max(keyLevel, 0.0001)
+        inputDb = 20.0 * Mathf.log10(safeLevel)
 
-      let reductionDb: f32 = 0.0
+        // Branchless soft-knee transfer (reduction in dB)
+        halfK = k * 0.5
+        delta = inputDb - th
 
-      // Standard soft-knee transfer (reduction in dB)
-      if (k > 0.0) {
-        if (inputDb <= kneeStart) {
-          reductionDb = 0.0
-        }
-        else if (inputDb >= kneeEnd) {
-          reductionDb = (inputDb - th) * ratioFactor
-        }
-        else {
-          const d: f32 = inputDb - kneeStart
-          reductionDb = ratioFactor * (d * d) / (2.0 * k)
-        }
-      }
-      else {
-        if (inputDb > th) reductionDb = (inputDb - th) * ratioFactor
-      }
+        // Three regions (branchless selection):
+        // above knee: delta >= halfK -> reductionDb = 0
+        // in knee: -halfK < delta < halfK -> quadratic
+        // below knee: delta <= -halfK -> linear
 
-      const targetGain: f32 = reductionDb > 0.0 ? Mathf.max(0.0, Mathf.pow(10.0, -reductionDb / 20.0)) : 1.0
-      this.targetGain = targetGain
+        aboveKnee = f32(delta >= halfK)
+        belowKnee = f32(delta <= -halfK)
+        inKnee = (1.0 - aboveKnee) * (1.0 - belowKnee)
 
-      if (this.currentGain > targetGain) {
-        this.currentGain = targetGain + (this.currentGain - targetGain) * attackCoeff
-      }
-      else {
-        this.currentGain = targetGain - (targetGain - this.currentGain) * releaseCoeff
-      }
+        linearReduction = delta * ratioFactor
+        kneeReduction = ratioFactor * (delta * delta) / (2.0 * k)
 
-      this.currentGain = Mathf.max(0.0, Mathf.min(1.0, this.currentGain))
+        // Select based on knee width
+        hasKnee = f32(k > 0.0)
+        noKnee = 1.0 - hasKnee
 
-      store<f32>(out$, inSample * this.currentGain)
+        // With knee: use region-based selection
+        kneeResult = inKnee * kneeReduction + belowKnee * linearReduction
 
-      if (telemetryEnabled) {
-        const w: i32 = ringBase + i
-        store<f32>(levelDbBase$ + (w * 4) as usize, inputDb)
-        store<f32>(grDbBase$ + (w * 4) as usize, reductionDb)
-      }
+        // Without knee: simple threshold
+        noKneeResult = f32(inputDb > th) * linearReduction
 
-      out$ += 4
-      in$ += 4
-      key$ += 4
-      attack$ += 4
-      release$ += 4
-      threshold$ += 4
-      ratio$ += 4
-      knee$ += 4
+        reductionDb = hasKnee * kneeResult + noKnee * noKneeResult
+
+        hasReduction = f32(reductionDb > 0.0)
+        targetGain = hasReduction * Mathf.max(0.0, Mathf.pow(10.0, -reductionDb / 20.0)) + (1.0 - hasReduction) * 1.0
+        this.targetGain = targetGain
+
+        isAttack = f32(this.currentGain > targetGain)
+        attackGain = targetGain + (this.currentGain - targetGain) * attackCoeff
+        releaseGain = targetGain - (targetGain - this.currentGain) * releaseCoeff
+        this.currentGain = isAttack * attackGain + (1.0 - isAttack) * releaseGain
+
+        this.currentGain = Mathf.max(0.0, Mathf.min(1.0, this.currentGain))
+
+        store<f32>(out$, inSample * this.currentGain)
+
+        w = ringBase + y++
+        levelOffset = levelDbBase$ + (w << 2) as usize
+        grOffset = grDbBase$ + (w << 2) as usize
+        store<f32>(levelOffset, inputDb)
+        store<f32>(grOffset, reductionDb)
+
+        out$ += 4
+        in$ += 4
+        key$ += 4
+        attack$ += 4
+        release$ += 4
+        threshold$ += 4
+        ratio$ += 4
+        knee$ += 4
+      })
     }
   }
 }

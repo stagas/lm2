@@ -67,6 +67,7 @@ import {
   callTrunc,
   callWrap,
 } from './builtins/math'
+import { callArrayStep } from './builtins/step'
 import { callMini } from './builtins/mini'
 import { callMhp, callMlp } from './builtins/moog'
 import { callBrown, callFractal, callGauss, callPink, callSmooth, callWhite } from './builtins/noise'
@@ -299,6 +300,7 @@ export class VmBuiltins {
       calleeAux !== VmBuiltin.Map
       && calleeAux !== VmBuiltin.Sum
       && calleeAux !== VmBuiltin.Avg
+      && calleeAux !== VmBuiltin.ArrayStep
       && calleeAux !== VmBuiltin.Glide
       && calleeAux !== VmBuiltin.Out
       && calleeAux !== VmBuiltin.Solo
@@ -1044,6 +1046,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Sum) {
       callSum(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.ArrayStep) {
+      callArrayStep(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
       return
     }

@@ -33,38 +33,42 @@ export class Slew extends Gen {
     let down$ = this.down$
     let exp$ = this.exp$
 
-    for (let i = 0; i < length; i++) {
-      const target: f32 = load<f32>(in$)
-      const upVal: f32 = load<f32>(up$)
-      const downVal: f32 = load<f32>(down$) <= 0.0 ? upVal : load<f32>(down$)
-      const exp: f32 = load<f32>(exp$)
+    for (let i: i32 = 0, target: f32, upVal: f32, downVal: f32, exp: f32, diff: f32, coeff: f32, step: f32, a: f32;
+      i < length; i += 16)
+    {
+      unroll(16, () => {
+        target = load<f32>(in$)
+        upVal = load<f32>(up$)
+        downVal = load<f32>(down$) <= 0.0 ? upVal : load<f32>(down$)
+        exp = load<f32>(exp$)
 
-      const diff: f32 = target - this.current
+        diff = target - this.current
 
-      if (Mathf.abs(diff) < 0.000001) {
-        this.current = target
-        this.visPhase = 2
-        this.visPhase01 = 0.5
-      }
-      else {
-        const a: f32 = clamp01(diff > 0.0 ? upVal : downVal)
-        const coeff: f32 = f32(applyCurve(a as f64, exp as f64))
-        const step: f32 = diff * coeff
+        if (Mathf.abs(diff) < 0.000001) {
+          this.current = target
+          this.visPhase = 2
+          this.visPhase01 = 0.5
+        }
+        else {
+          a = clamp01(diff > 0.0 ? upVal : downVal)
+          coeff = f32(applyCurve(a as f64, exp as f64))
+          step = diff * coeff
 
-        if (Mathf.abs(step) >= Mathf.abs(diff)) this.current = target
-        else this.current += step
+          if (Mathf.abs(step) >= Mathf.abs(diff)) this.current = target
+          else this.current += step
 
-        this.visPhase = diff > 0.0 ? 1 : 0
-        this.visPhase01 = 0.5
-      }
+          this.visPhase = diff > 0.0 ? 1 : 0
+          this.visPhase01 = 0.5
+        }
 
-      store<f32>(out$, this.current)
+        store<f32>(out$, this.current)
 
-      out$ += 4
-      in$ += 4
-      up$ += 4
-      down$ += 4
-      exp$ += 4
+        out$ += 4
+        in$ += 4
+        up$ += 4
+        down$ += 4
+        exp$ += 4
+      })
     }
   }
 }

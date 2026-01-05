@@ -1,5 +1,5 @@
-import { Gen } from './gen'
 import { applyCurve } from '../util'
+import { Gen } from './gen'
 
 enum Phase {
   Idle,
@@ -101,21 +101,23 @@ export class Ad extends Gen {
     let exponent$ = this.exponent$
     let trig$ = this.trig$
 
-    for (let i = 0; i < length; i++) {
-      const sample = this.generate(
-        load<f32>(attack$),
-        load<f32>(decay$),
-        load<f32>(exponent$),
-        load<f32>(trig$),
-      )
+    for (let i: i32 = 0, sample: f32; i < length; i += 16) {
+      unroll(16, () => {
+        sample = this.generate(
+          load<f32>(attack$),
+          load<f32>(decay$),
+          load<f32>(exponent$),
+          load<f32>(trig$),
+        )
 
-      store<f32>(out$, sample)
+        store<f32>(out$, sample)
 
-      out$ += 4
-      attack$ += 4
-      decay$ += 4
-      exponent$ += 4
-      trig$ += 4
+        out$ += 4
+        attack$ += 4
+        decay$ += 4
+        exponent$ += 4
+        trig$ += 4
+      })
     }
   }
 }

@@ -92,14 +92,16 @@ export class Slp extends Svf {
     let q$ = this.q$
     let in$ = this.in$
 
-    for (let i = 0; i < length; i++) {
-      this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
-      this.processSample(load<f32>(in$))
-      store<f32>(out$, this.v2)
-      out$ += 4
-      in$ += 4
-      cut$ += 4
-      q$ += 4
+    for (let i = 0, output: f32; i < length; i += 16) {
+      unroll(16, () => {
+        this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
+        this.processSample(load<f32>(in$))
+        store<f32>(out$, this.v2)
+        out$ += 4
+        in$ += 4
+        cut$ += 4
+        q$ += 4
+      })
     }
   }
 }
@@ -110,15 +112,17 @@ export class Shp extends Svf {
     let q$ = this.q$
     let in$ = this.in$
 
-    for (let i = 0; i < length; i++) {
-      this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
-      this.processSample(load<f32>(in$))
-      const output = this.v0 - this.k * this.v1 - this.v2
-      store<f32>(out$, output)
-      out$ += 4
-      in$ += 4
-      cut$ += 4
-      q$ += 4
+    for (let i = 0, output: f32; i < length; i += 16) {
+      unroll(16, () => {
+        this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
+        this.processSample(load<f32>(in$))
+        output = this.v0 - this.k * this.v1 - this.v2
+        store<f32>(out$, output)
+        out$ += 4
+        in$ += 4
+        cut$ += 4
+        q$ += 4
+      })
     }
   }
 }
@@ -129,14 +133,16 @@ export class Sbp extends Svf {
     let q$ = this.q$
     let in$ = this.in$
 
-    for (let i = 0; i < length; i++) {
-      this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
-      this.processSample(load<f32>(in$))
-      store<f32>(out$, this.v1)
-      out$ += 4
-      in$ += 4
-      cut$ += 4
-      q$ += 4
+    for (let i = 0, output: f32; i < length; i += 16) {
+      unroll(16, () => {
+        this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
+        this.processSample(load<f32>(in$))
+        store<f32>(out$, this.v1)
+        out$ += 4
+        in$ += 4
+        cut$ += 4
+        q$ += 4
+      })
     }
   }
 }
@@ -147,15 +153,17 @@ export class Sbs extends Svf {
     let q$ = this.q$
     let in$ = this.in$
 
-    for (let i = 0; i < length; i++) {
-      this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
-      this.processSample(load<f32>(in$))
-      const output = this.v0 - this.k * this.v1
-      store<f32>(out$, output)
-      out$ += 4
-      in$ += 4
-      cut$ += 4
-      q$ += 4
+    for (let i = 0, output: f32; i < length; i += 16) {
+      unroll(16, () => {
+        this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
+        this.processSample(load<f32>(in$))
+        output = this.v0 - this.k * this.v1
+        store<f32>(out$, output)
+        out$ += 4
+        in$ += 4
+        cut$ += 4
+        q$ += 4
+      })
     }
   }
 }
@@ -166,15 +174,17 @@ export class Speak extends Svf {
     let q$ = this.q$
     let in$ = this.in$
 
-    for (let i = 0; i < length; i++) {
-      this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
-      this.processSample(load<f32>(in$))
-      const output = this.v0 - this.k * this.v1 - 2.0 * this.v2
-      store<f32>(out$, output)
-      out$ += 4
-      in$ += 4
-      cut$ += 4
-      q$ += 4
+    for (let i = 0, output: f32; i < length; i += 16) {
+      unroll(16, () => {
+        this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
+        this.processSample(load<f32>(in$))
+        output = this.v0 - this.k * this.v1 - 2.0 * this.v2
+        store<f32>(out$, output)
+        out$ += 4
+        in$ += 4
+        cut$ += 4
+        q$ += 4
+      })
     }
   }
 }
@@ -185,15 +195,17 @@ export class Sap extends Svf {
     let q$ = this.q$
     let in$ = this.in$
 
-    for (let i = 0; i < length; i++) {
-      this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
-      this.processSample(load<f32>(in$))
-      const output = this.v0 - 2.0 * this.k * this.v1
-      store<f32>(out$, output)
-      out$ += 4
-      in$ += 4
-      cut$ += 4
-      q$ += 4
+    for (let i = 0, output: f32; i < length; i += 16) {
+      unroll(16, () => {
+        this.updateCoeffs(load<f32>(cut$), load<f32>(q$))
+        this.processSample(load<f32>(in$))
+        output = this.v0 - 2.0 * this.k * this.v1
+        store<f32>(out$, output)
+        out$ += 4
+        in$ += 4
+        cut$ += 4
+        q$ += 4
+      })
     }
   }
 }

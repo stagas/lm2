@@ -190,78 +190,80 @@ export class Fdn extends Gen {
     const delayOuts: StaticArray<f32> = this.tmpDelayOuts
     const feedback: StaticArray<f32> = this.tmpFeedback
 
-    for (let s: i32 = 0; s < length; s++) {
-      const inL: f32 = load<f32>(iL$)
-      const inR: f32 = load<f32>(iR$)
-      const monoIn: f32 = ((0.5 as f32) * (inL + inR)) as f32
+    for (let s: i32 = 0, inL: f32, inR: f32, monoIn: f32, roomSize: f32, decay: f32, damping: f32, modulationDepth: f32, outL: f32, outR: f32; s < length; s += 16) {
+      unroll(16, () => {
+        inL = load<f32>(iL$)
+        inR = load<f32>(iR$)
+        monoIn = ((0.5 as f32) * (inL + inR)) as f32
 
-      const roomSize: f32 = load<f32>(roomSize$)
-      const decay: f32 = load<f32>(decay$)
-      const damping: f32 = load<f32>(damping$)
-      const modulationDepth: f32 = load<f32>(modulationDepth$)
+        roomSize = load<f32>(roomSize$)
+        decay = load<f32>(decay$)
+        damping = load<f32>(damping$)
+        modulationDepth = load<f32>(modulationDepth$)
 
-      // Read current delay outputs
-      for (let i: i32 = 0; i < NUM_DELAYS; i++) {
-        // Fractional delay (4-point cubic interpolation), with modulation applied before interpolation.
-        const baseDelay: f32 = (BASE_DELAYS[i] as f32) * roomSize
-        const phase: f32 = this.modPhases[i]
-        const mod: f32 = Mathf.sin(phase)
-        const depthSamples: f32 = (MOD_DEPTH_MS * baseSampleRate / (1000.0 as f32)) as f32
-        const modOffset: f32 = (depthSamples * modulationDepth * mod) as f32
-        const totalDelay: f32 = (baseDelay + modOffset) as f32
+        // Read current delay outputs
+        for (let i: i32 = 0; i < NUM_DELAYS; i++) {
+          // Fractional delay (4-point cubic interpolation), with modulation applied before interpolation.
+          const baseDelay: f32 = (BASE_DELAYS[i] as f32) * roomSize
+          const phase: f32 = this.modPhases[i]
+          const mod: f32 = Mathf.sin(phase)
+          const depthSamples: f32 = (MOD_DEPTH_MS * baseSampleRate / (1000.0 as f32)) as f32
+          const modOffset: f32 = (depthSamples * modulationDepth * mod) as f32
+          const totalDelay: f32 = (baseDelay + modOffset) as f32
 
-        const mask: i32 = this.delayMasks[i]
-        const write: i32 = this.delayWrites[i]
-        const buf = this.delayBufs[i]
-        const ip: i32 = i32(totalDelay)
-        const frac: f32 = (totalDelay - f32(ip)) as f32
-        const idx: i32 = (write - ip) & mask
-        const xm1: f32 = unchecked(buf[(idx - 1) & mask])
-        const x0: f32 = unchecked(buf[idx])
-        const x1: f32 = unchecked(buf[(idx + 1) & mask])
-        const x2: f32 = unchecked(buf[(idx + 2) & mask])
-        delayOuts[i] = cubic(xm1, x0, x1, x2, frac)
+          const mask: i32 = this.delayMasks[i]
+          const write: i32 = this.delayWrites[i]
+          const buf = this.delayBufs[i]
+          const ip: i32 = i32(totalDelay)
+          const frac: f32 = (totalDelay - f32(ip)) as f32
+          const idx: i32 = (write - ip) & mask
+          const xm1: f32 = unchecked(buf[(idx - 1) & mask])
+          const x0: f32 = unchecked(buf[idx])
+          const x1: f32 = unchecked(buf[(idx + 1) & mask])
+          const x2: f32 = unchecked(buf[(idx + 2) & mask])
+          delayOuts[i] = cubic(xm1, x0, x1, x2, frac)
 
-        // Modulation phase update (rate 0.15 Hz).
-        let p: f32 = (phase + ((2.0 as f32) * Mathf.PI * MOD_RATE_HZ / baseSampleRate)) as f32
-        const twoPi: f32 = ((2.0 as f32) * Mathf.PI) as f32
-        if (p >= twoPi) p = (p - twoPi) as f32
-        this.modPhases[i] = p
-      }
-
-      // Apply Hadamard matrix to get feedback signals
-      for (let row: i32 = 0; row < NUM_DELAYS; row++) {
-        let sum: f32 = 0.0
-        for (let col: i32 = 0; col < NUM_DELAYS; col++) {
-          sum += HADAMARD[row * NUM_DELAYS + col] * delayOuts[col]
+          // Modulation phase update (rate 0.15 Hz).
+          let p: f32 = (phase + ((2.0 as f32) * Mathf.PI * MOD_RATE_HZ / baseSampleRate)) as f32
+          const twoPi: f32 = ((2.0 as f32) * Mathf.PI) as f32
+          if (p >= twoPi) p = (p - twoPi) as f32
+          this.modPhases[i] = p
         }
-        feedback[row] = this.processFeedback(row, sum, decay, damping)
-      }
 
-      // Write input + feedback to delay lines
-      for (let i: i32 = 0; i < NUM_DELAYS; i++) {
-        this.writeDelay(i, monoIn + feedback[i])
-      }
+        // Apply Hadamard matrix to get feedback signals
+        for (let row: i32 = 0; row < NUM_DELAYS; row++) {
+          let sum: f32 = 0.0
+          for (let col: i32 = 0; col < NUM_DELAYS; col++) {
+            sum += HADAMARD[row * NUM_DELAYS + col] * delayOuts[col]
+          }
+          feedback[row] = this.processFeedback(row, sum, decay, damping)
+        }
 
-      // Output: sum of delay lines [1,3,5,7] for left, [2,4,6,8] for right
-      let outL: f32 = (delayOuts[0] + delayOuts[2] + delayOuts[4] + delayOuts[6]) as f32
-      let outR: f32 = (delayOuts[1] + delayOuts[3] + delayOuts[5] + delayOuts[7]) as f32
+        // Write input + feedback to delay lines
+        for (let i: i32 = 0; i < NUM_DELAYS; i++) {
+          this.writeDelay(i, monoIn + feedback[i])
+        }
 
-      // Normalize output gain (energy-preserving sum of 4 uncorrelated lines).
-      outL = (outL * (0.5 as f32)) as f32
-      outR = (outR * (0.5 as f32)) as f32
+        // Output: sum of delay lines [1,3,5,7] for left, [2,4,6,8] for right
+        outL = (delayOuts[0] + delayOuts[2] + delayOuts[4] + delayOuts[6]) as f32
+        outR = (delayOuts[1] + delayOuts[3] + delayOuts[5] + delayOuts[7]) as f32
 
-      store<f32>(oL$, outL)
-      store<f32>(oR$, outR)
+        // Normalize output gain (energy-preserving sum of 4 uncorrelated lines).
+        outL = (outL * (0.5 as f32)) as f32
+        outR = (outR * (0.5 as f32)) as f32
 
-      oL$ += 4
-      oR$ += 4
-      iL$ += 4
-      iR$ += 4
-      roomSize$ += 4
-      damping$ += 4
-      decay$ += 4
-      modulationDepth$ += 4
+        store<f32>(oL$, outL)
+        store<f32>(oR$, outR)
+
+        oL$ += 4
+        oR$ += 4
+        iL$ += 4
+        iR$ += 4
+        roomSize$ += 4
+        damping$ += 4
+        decay$ += 4
+        modulationDepth$ += 4
+      })
     }
   }
 }

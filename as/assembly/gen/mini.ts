@@ -803,11 +803,13 @@ export class Mini extends Gen {
       const baseValue: f32 = voice.baseValue
       let pVel$: usize = vel$
       let pVal$: usize = val$
-      for (let i: i32 = 0; i < length; i++) {
-        store<f32>(pVel$, vel)
-        store<f32>(pVal$, baseValue)
-        pVel$ += 4
-        pVal$ += 4
+      for (let i: i32 = 0; i < length; i += 16) {
+        unroll(16, () => {
+          store<f32>(pVel$, vel)
+          store<f32>(pVal$, baseValue)
+          pVel$ += 4
+          pVal$ += 4
+        })
       }
 
       // Trig is 1 only during the hold segment; outside is already 0.
@@ -856,8 +858,11 @@ export class Mini extends Gen {
 
     // Write voice count
     if (this.outVoiceCount$ !== 0) {
-      for (let i = 0; i < length; i++) {
-        store<f32>(this.outVoiceCount$ + (i << 2), activeCount as f32)
+      for (let i: i32 = 0, y: i32 = 0; i < length; i += 16) {
+        unroll(16, () => {
+          store<f32>(this.outVoiceCount$ + y, activeCount as f32)
+          y += 4
+        })
       }
     }
   }

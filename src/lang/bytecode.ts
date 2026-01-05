@@ -785,16 +785,16 @@ class Compiler {
     }
 
     // `array.sum()` is compiled as `sum(array)` to avoid GET_PROP in the VM encoder.
-    const compileMemberCallAsBuiltin = (name: string): boolean => {
+    const compileMemberCallAsBuiltin = (propName: string, loadName?: string): boolean => {
       if (expr.callee.kind !== 'member' || expr.callee.computed !== false) return false
-      if (expr.callee.prop !== name) return false
+      if (expr.callee.prop !== propName) return false
 
       const recvTemp = `%recv${this.callTempId++}`
       this.compileExpr(expr.callee.object)
       this.emit({ op: 'STORE', name: this.nameConst(recvTemp) })
       this.emit({ op: 'POP' })
 
-      this.emit({ op: 'LOAD', name: this.nameConst(name) })
+      this.emit({ op: 'LOAD', name: this.nameConst(loadName || propName) })
 
       type CallTempArg =
         | { kind: 'pos'; temp: string; identName?: string; isImplicitNamedCandidate: boolean }
@@ -803,7 +803,8 @@ class Compiler {
       const temps: CallTempArg[] = []
       const tmp = () => `%arg${this.callTempId++}`
 
-      const sigInfo = this.findSigInfo(name)
+      const builtinName = loadName || propName
+      const sigInfo = this.findSigInfo(builtinName)
       const sigNames = sigInfo?.names ?? null
       const idxOf = sigInfo?.idxOf
 
@@ -816,7 +817,7 @@ class Compiler {
             ;(a as any).name = r.name
           }
           else {
-            this.err(a.loc, `${r.message} for function '${name}'`)
+            this.err(a.loc, `${r.message} for function '${builtinName}'`)
           }
         }
       }
@@ -940,6 +941,8 @@ class Compiler {
     if (compileMemberCallAsBuiltin('avg')) return
     // `array.glide(bar, exp?)` is compiled as `glide(array, bar, exp?)` to avoid GET_PROP in the VM encoder.
     if (compileMemberCallAsBuiltin('glide')) return
+    // `array.step(trig)` is compiled as `arrayStep(array, trig)` to avoid GET_PROP in the VM encoder.
+    if (compileMemberCallAsBuiltin('step', 'arrayStep')) return
     // `signal.delay(seconds, feedback?, cb?)` is compiled as `delay(signal, seconds, feedback?, cb?)`.
     if (compileMemberCallAsBuiltin('delay')) return
 

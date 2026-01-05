@@ -35,6 +35,7 @@ export const builtinSyms: Record<string, number> = {
   map: VmSym.Map,
   sum: VmSym.Sum,
   avg: VmSym.Avg,
+  arrayStep: VmSym.ArrayStep,
   oversample: VmSym.Oversample,
   glide: VmSym.Glide,
   slew: VmSym.Slew,

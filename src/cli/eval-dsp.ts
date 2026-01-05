@@ -139,11 +139,11 @@ async function evalDsp(programSource: string) {
   console.log('\n=== BYTECODE ===')
   console.log(analysis.bytecodeText)
 
-  // console.log('\n=== VM OPS ===')
-  // console.log(ops)
+  console.log('\n=== VM OPS ===')
+  console.log(ops)
 
-  // console.log('\n=== VM LITERALS ===')
-  // console.log(literals)
+  console.log('\n=== VM LITERALS ===')
+  console.log(literals)
 
   console.log('\n=== OUTPUT SAMPLES ===')
   console.log(leftSamples)

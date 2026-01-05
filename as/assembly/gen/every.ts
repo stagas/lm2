@@ -44,51 +44,71 @@ export class Every extends Gen {
 
     let o$ = out$
 
-    for (let i: i32 = 0; i < length; i++) {
-      const rawBar: f64 = load<f32>(bar$) as f64
-      const probValue: f64 = clamp01f64(load<f32>(prob$) as f64)
-      const swingValue: f64 = clamp01f64(load<f32>(swing$) as f64)
-      const offsetSeconds: f64 = load<f32>(offset$) as f64
+    for (let i: i32 = 0,
+      rawBar: f64,
+      probValue: f64,
+      swingValue: f64,
+      offsetSeconds: f64,
+      barValue: f64,
+      interval: f64,
+      offsetSamples: f64,
+      globalSample: f64,
+      sample: f64,
+      prevSample: f64,
+      swingOffset: i32,
+      beatIndex: i32,
+      prevBeatIndex: i32,
+      currentBeatCycle: i32,
+      previousBeatCycle: i32,
+      shouldTrigger: bool,
+      random: f64; i < length; i += 16)
+    {
+      unroll(16, () => {
+        rawBar = load<f32>(bar$) as f64
+        probValue = clamp01f64(load<f32>(prob$) as f64)
+        swingValue = clamp01f64(load<f32>(swing$) as f64)
+        offsetSeconds = load<f32>(offset$) as f64
 
-      const barValue: f64 = Math.max(minBar, rawBar)
+        barValue = Math.max(minBar, rawBar)
 
-      const interval: f64 = barValue * samplesPerWholeNote
-      const offsetSamples: f64 = offsetSeconds * rate
+        interval = barValue * samplesPerWholeNote
+        offsetSamples = offsetSeconds * rate
 
-      const globalSample: f64 = (globalSampleCount + i) as f64
-      let sample: f64 = globalSample - offsetSamples
-      let prevSample: f64 = sample - 1.0
+        globalSample = (globalSampleCount + i) as f64
+        sample = globalSample - offsetSamples
+        prevSample = sample - 1.0
 
-      if (swingValue > 0.0) {
-        const swingOffset: i32 = i32(Math.round(interval * swingValue * 0.5))
-        const beatIndex: i32 = Every.floorDivF64(sample, interval)
-        if ((beatIndex & 1) === 1) sample -= swingOffset as f64
-        const prevBeatIndex: i32 = Every.floorDivF64(prevSample, interval)
-        if ((prevBeatIndex & 1) === 1) prevSample -= swingOffset as f64
-      }
+        if (swingValue > 0.0) {
+          swingOffset = i32(Math.round(interval * swingValue * 0.5))
+          beatIndex = Every.floorDivF64(sample, interval)
+          if ((beatIndex & 1) === 1) sample -= swingOffset as f64
+          prevBeatIndex = Every.floorDivF64(prevSample, interval)
+          if ((prevBeatIndex & 1) === 1) prevSample -= swingOffset as f64
+        }
 
-      const currentBeatCycle: i32 = Every.floorDivF64(sample, interval)
-      const previousBeatCycle: i32 = Every.floorDivF64(prevSample, interval)
+        currentBeatCycle = Every.floorDivF64(sample, interval)
+        previousBeatCycle = Every.floorDivF64(prevSample, interval)
 
-      let shouldTrigger: bool = false
+        shouldTrigger = false
 
-      if (currentBeatCycle > previousBeatCycle) {
-        shouldTrigger = true
-      }
+        if (currentBeatCycle > previousBeatCycle) {
+          shouldTrigger = true
+        }
 
-      if (shouldTrigger) {
-        const random: f64 = seededRandom01(baseSeed, currentBeatCycle as f64, randKey)
-        store<f32>(o$, random < probValue ? 1.0 : 0.0)
-      }
-      else {
-        store<f32>(o$, 0.0)
-      }
+        if (shouldTrigger) {
+          random = seededRandom01(baseSeed, currentBeatCycle as f64, randKey)
+          store<f32>(o$, random < probValue ? 1.0 : 0.0)
+        }
+        else {
+          store<f32>(o$, 0.0)
+        }
 
-      o$ += 4
-      bar$ += 4
-      prob$ += 4
-      swing$ += 4
-      offset$ += 4
+        o$ += 4
+        bar$ += 4
+        prob$ += 4
+        swing$ += 4
+        offset$ += 4
+      })
     }
   }
 }
