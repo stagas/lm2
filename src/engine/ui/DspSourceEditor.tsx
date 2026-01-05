@@ -1119,7 +1119,7 @@ function DspSourceEditorReady(
               e.altKey || !runtime.playingLoopId ? 0 : undefined)
           }
           else {
-            runtime.start()
+            void useEngineDspStore.getState().playLoop(currentLoop.data.id, currentLoop.codeFile.value, undefined)
           }
         })()
       }
