@@ -25,7 +25,6 @@ import { callGlide } from './builtins/glide'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLimiter } from './builtins/limiter'
 import { callMap } from './builtins/map'
-import { callPitchShift } from './builtins/pitch-shift'
 import {
   callAbs,
   callAcos,
@@ -76,6 +75,7 @@ import { callOhp, callOlp } from './builtins/onepole'
 import { callOut } from './builtins/out'
 import { callOversample } from './builtins/oversample'
 import { callPhasor } from './builtins/phasor'
+import { callPitchShift } from './builtins/pitch-shift'
 import { callPlay } from './builtins/play'
 import { callPlayPick } from './builtins/play-pick'
 import { callPost } from './builtins/post'
@@ -303,10 +303,10 @@ export class VmBuiltins {
       && calleeAux !== VmBuiltin.Out
       && calleeAux !== VmBuiltin.Solo
       && calleeAux !== VmBuiltin.Analyser
-      && calleeAux !== VmBuiltin.Freeverb
-      && calleeAux !== VmBuiltin.Dattorro
-      && calleeAux !== VmBuiltin.Fdn
-      && calleeAux !== VmBuiltin.Velvet
+      // && calleeAux !== VmBuiltin.Freeverb
+      // && calleeAux !== VmBuiltin.Dattorro
+      // && calleeAux !== VmBuiltin.Fdn
+      // && calleeAux !== VmBuiltin.Velvet
     ) {
       for (let i: i32 = 0; i < posCount; i++) {
         this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
@@ -366,8 +366,8 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.PitchShift) {
-      callPitchShift(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      callPitchShift(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
       return
     }
 
@@ -1077,8 +1077,8 @@ export class VmBuiltins {
     }
 
     if (calleeAux === VmBuiltin.PitchShift) {
-      callPitchShift(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
-        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
+      callPitchShift(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
       return
     }
 
