@@ -170,6 +170,7 @@ export enum VmSym {
   Sqrt,
   Square,
   Step,
+  ArrayStep,
   Sum,
   Sustain,
   Swing,

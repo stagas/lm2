@@ -1155,7 +1155,9 @@ export function encodeLangToVmOps(
 
     const litOfLocKey = (key: string, value: number) => {
       const prev = litIndexByLocKey.get(key)
-      if (prev !== undefined) return prev
+      // Only reuse the cached index if the value matches (kernel code at line 0
+      // can have the same column across different function bodies with different values)
+      if (prev !== undefined && target.literals[prev] === value) return prev
       // Check if this value already has a literal index (from litOfValue)
       const existingIdx = litIndexByValue.get(value)
       if (existingIdx !== undefined) {

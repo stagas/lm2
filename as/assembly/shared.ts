@@ -86,6 +86,8 @@ export enum Op {
   DiodeLadder,
   Olp,
   Ohp,
+  Step,
+  ArrayStep,
   PitchShift,
 }
 

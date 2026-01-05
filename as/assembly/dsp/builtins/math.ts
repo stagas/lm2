@@ -69,11 +69,14 @@ function callUnaryMath(
   const out$ = program.getOutBuffer(outIndex)
 
   let p$ = out$
-  for (let s = 0; s < length; s++) {
-    const x = load<f32>(x$ + (s << 2)) as f64
-    const result = fn(x)
-    store<f32>(p$, result as f32)
-    p$ += 4
+  for (let s: i32 = 0, y: i32 = 0, x: f64, result: f64; s < length; s += 16) {
+    unroll(16, () => {
+      x = load<f32>(x$ + y) as f64
+      result = fn(x)
+      store<f32>(p$, result as f32)
+      p$ += 4
+      y += 4
+    })
   }
 
   stack.push(VmTag.Audio, 0.0, outIndex)
@@ -161,12 +164,15 @@ function callBinaryMath(
   const out$ = program.getOutBuffer(outIndex)
 
   let p$ = out$
-  for (let s = 0; s < length; s++) {
-    const x = xAudio ? (load<f32>(x$ + (s << 2)) as f64) : x0
-    const y = yAudio ? (load<f32>(y$ + (s << 2)) as f64) : y0
-    const result = fn(x, y)
-    store<f32>(p$, result as f32)
-    p$ += 4
+  for (let s: i32 = 0, z: i32 = 0, x: f64, y: f64, result: f64; s < length; s += 16) {
+    unroll(16, () => {
+      x = xAudio ? (load<f32>(x$ + z) as f64) : x0
+      y = yAudio ? (load<f32>(y$ + z) as f64) : y0
+      result = fn(x, y)
+      store<f32>(p$, result as f32)
+      p$ += 4
+      z += 4
+    })
   }
 
   stack.push(VmTag.Audio, 0.0, outIndex)
@@ -276,13 +282,16 @@ function callTernaryMath(
   const out$ = program.getOutBuffer(outIndex)
 
   let p$ = out$
-  for (let s = 0; s < length; s++) {
-    const a = aAudio ? (load<f32>(a$ + (s << 2)) as f64) : a0
-    const b = bAudio ? (load<f32>(b$ + (s << 2)) as f64) : b0
-    const c = cAudio ? (load<f32>(c$ + (s << 2)) as f64) : c0
-    const result = fn(a, b, c)
-    store<f32>(p$, result as f32)
-    p$ += 4
+  for (let s: i32 = 0, z: i32 = 0, a: f64, b: f64, c: f64, result: f64; s < length; s += 16) {
+    unroll(16, () => {
+      a = aAudio ? (load<f32>(a$ + z) as f64) : a0
+      b = bAudio ? (load<f32>(b$ + z) as f64) : b0
+      c = cAudio ? (load<f32>(c$ + z) as f64) : c0
+      result = fn(a, b, c)
+      store<f32>(p$, result as f32)
+      p$ += 4
+      z += 4
+    })
   }
 
   stack.push(VmTag.Audio, 0.0, outIndex)
@@ -1051,7 +1060,7 @@ export function callStep(
   stack: VmStack,
   audio: VmAudio,
   program: Program,
-  length: i32,
+  length: i32
 ): void {
   callBinaryMath(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio, program, length, (x: f64, edge: f64): f64 => x < edge ? 0.0 : 1.0, VmSym.X, VmSym.Edge)
 }

@@ -74,23 +74,26 @@ export class Delay extends Gen {
     let o$: usize = out$
     let s$: usize = this.seconds$
 
-    for (let i: i32 = 0; i < n; i++) {
-      const w: i32 = (w0 + i) % len
-      const d: i32 = this.clampDelaySamples(load<f32>(s$))
+    for (let i: i32 = 0, y: i32 = 0, w: i32, d: i32; i < n; i += 16) {
+      unroll(16, () => {
+        w = (w0 + y) % len
+        d = this.clampDelaySamples(load<f32>(s$))
 
-      if (d == 0) {
-        // Zero delay: no echo
-        store<f32>(o$, 0.0)
-      }
-      else {
-        // Normal delay: read from buffer
-        let r: i32 = w - d
-        if (r < 0) r += len
-        store<f32>(o$, buf[r])
-      }
+        if (d == 0) {
+          // Zero delay: no echo
+          store<f32>(o$, 0.0)
+        }
+        else {
+          // Normal delay: read from buffer
+          let r: i32 = w - d
+          if (r < 0) r += len
+          store<f32>(o$, buf[r])
+        }
 
-      o$ += 4
-      s$ += 4
+        o$ += 4
+        s$ += 4
+        y++
+      })
     }
   }
 
@@ -107,20 +110,22 @@ export class Delay extends Gen {
     let e$: usize = echo$
     let f$: usize = this.feedback$
 
-    for (let s: i32 = 0; s < n; s++) {
-      const w: i32 = (w0 + s) % len
-      const x: f32 = load<f32>(i$)
-      const e: f32 = load<f32>(e$)
-      const fb: f32 = load<f32>(f$)
-      buf[w] = (x + e * fb) as f32
-      i$ += 4
-      e$ += 4
-      f$ += 4
+    for (let s: i32 = 0, y: i32 = 0, w: i32, x: f32, e: f32, fb: f32; s < n; s += 16) {
+      unroll(16, () => {
+        w = (w0 + y) % len
+        x = load<f32>(i$)
+        e = load<f32>(e$)
+        fb = load<f32>(f$)
+        buf[w] = (x + e * fb) as f32
+        i$ += 4
+        e$ += 4
+        f$ += 4
+        y++
+      })
     }
 
     this.writePos = (w0 + n) % len
   }
-
   @inline
   processWithCallback(out$: usize, processedEcho$: usize, length: i32): void {
     this.ensureBuffer()
@@ -135,20 +140,23 @@ export class Delay extends Gen {
     let e$: usize = processedEcho$
     let f$: usize = this.feedback$
 
-    for (let i: i32 = 0; i < n; i++) {
-      const w: i32 = (w0 + i) % len
-      const x: f32 = load<f32>(i$)
-      const pe: f32 = load<f32>(e$)
-      const fb: f32 = load<f32>(f$)
+    for (let i: i32 = 0, y: i32 = 0, w: i32, x: f32, pe: f32, fb: f32, output: f32; i < n; i += 16) {
+      unroll(16, () => {
+        w = (w0 + y) % len
+        x = load<f32>(i$)
+        pe = load<f32>(e$)
+        fb = load<f32>(f$)
 
-      const output: f32 = (x + pe * fb) as f32
-      store<f32>(o$, output)
-      buf[w] = output
+        output = (x + pe * fb) as f32
+        store<f32>(o$, output)
+        buf[w] = output
 
-      o$ += 4
-      i$ += 4
-      e$ += 4
-      f$ += 4
+        o$ += 4
+        i$ += 4
+        e$ += 4
+        f$ += 4
+        y++
+      })
     }
 
     this.writePos = (w0 + n) % len
@@ -167,32 +175,34 @@ export class Delay extends Gen {
     let s$: usize = this.seconds$
     let f$: usize = this.feedback$
 
-    for (let i: i32 = 0; i < n; i++) {
-      const w: i32 = (w0 + i) % len
-      const d: i32 = this.clampDelaySamples(load<f32>(s$))
+    for (let i: i32 = 0, y: i32 = 0, w: i32, d: i32, r: i32, x: f32, fb: f32, echo: f32; i < n; i += 16) {
+      unroll(16, () => {
+        w = (w0 + y) % len
+        d = this.clampDelaySamples(load<f32>(s$))
+        x = load<f32>(i$)
+        fb = load<f32>(f$)
 
-      const x: f32 = load<f32>(i$)
-      const fb: f32 = load<f32>(f$)
+        if (d == 0) {
+          // Zero delay: output input directly
+          store<f32>(o$, x)
+          buf[w] = (x + x * fb) as f32
+        }
+        else {
+          // Normal delay: read from buffer
+          r = w - d
+          if (r < 0) r += len
 
-      if (d == 0) {
-        // Zero delay: output input directly
-        store<f32>(o$, x)
-        buf[w] = (x + x * fb) as f32
-      }
-      else {
-        // Normal delay: read from buffer
-        let r: i32 = w - d
-        if (r < 0) r += len
+          echo = buf[r]
+          store<f32>(o$, echo)
+          buf[w] = (x + echo * fb) as f32
+        }
 
-        const echo: f32 = buf[r]
-        store<f32>(o$, echo)
-        buf[w] = (x + echo * fb) as f32
-      }
-
-      o$ += 4
-      i$ += 4
-      s$ += 4
-      f$ += 4
+        o$ += 4
+        i$ += 4
+        s$ += 4
+        f$ += 4
+        y++
+      })
     }
 
     this.writePos = (w0 + n) % len
