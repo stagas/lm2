@@ -7,9 +7,16 @@ const isIdentContinue = (c: string) => isAlphaNum(c) || c === '#'
 
 const lexCache = new Map<string, { tokens: Token[]; errors: LexError[] }>()
 
+function preprocessSource(src: string): string {
+  // Rewrite `identifier=|>` to `identifier=_p->_p|>`
+  // This allows shorthand syntax for pipe lambdas
+  return src.replace(/([a-zA-Z_$][a-zA-Z0-9_$#]*)\s*=\s*\|>/g, '$1=_p->_p|>')
+}
+
 export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
   const cached = lexCache.get(src)
   if (cached) return cached
+  src = preprocessSource(src)
   const t: Token[] = []
   const e: LexError[] = []
 
