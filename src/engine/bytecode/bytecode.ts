@@ -352,6 +352,9 @@ export function encodeLangToVmOps(
   const p = normalizePrelude(prelude)
   const pLines = countNewlines(p)
   const po = normalizePrelude(postlude)
+  const sLines = countNewlines(src)
+  const userCodeStart = pLines
+  const userCodeEnd = pLines + sLines
   const fullSrc = `${p}${src}${po}`
 
   const mapError = (e: LangError): LangError => {
@@ -443,20 +446,26 @@ export function encodeLangToVmOps(
     } = earlyData
 
     // Filter out refs from prelude (line <= pLines) and normalize line numbers
-    const isLocFromUserCode = (item: any) => item.line > pLines
+    const isLineFromUserCode = (item: { line: number }) => item.line > userCodeStart && item.line <= userCodeEnd
+    const isLocLineFromUserCode = (item: { loc: { line: number } }) =>
+      item.loc.line > userCodeStart && item.loc.line <= userCodeEnd
     const mapRefLoc = (ref: any) => ({ ...ref, loc: mapLoc(ref.loc) })
 
-    const miniRefs = allMiniRefs.filter(r => r.loc?.line > pLines).map(mapRefLoc)
+    const miniRefs = allMiniRefs.filter(isLocLineFromUserCode).map(mapRefLoc).map(r => ({ ...r,
+      start: r.start - p.length, end: r.end - p.length })
+    )
     const miniPlayBars = allMiniPlayBars
     const timelineSequences = allTimelineSequences
-    const timelineRefs = allTimelineRefs.filter(r => r.loc?.line > pLines).map(mapRefLoc)
-    const timelineLabels = allTimelineLabels.filter(l => l.loc?.line > pLines).map(mapRefLoc)
-    const samples = allSamples.filter(s => s.loc?.line > pLines).map(mapRefLoc)
-    const explicitNumberParams = allExplicitNumberParams.filter(isLocFromUserCode).map(p => ({ ...p,
+    const timelineRefs = allTimelineRefs.filter(isLocLineFromUserCode).map(mapRefLoc).map(r => ({ ...r,
+      start: r.start - p.length, end: r.end - p.length })
+    )
+    const timelineLabels = allTimelineLabels.filter(isLocLineFromUserCode).map(mapRefLoc)
+    const samples = allSamples.filter(isLocLineFromUserCode).map(mapRefLoc)
+    const explicitNumberParams = allExplicitNumberParams.filter(isLineFromUserCode).map(p => ({ ...p,
       line: p.line - pLines })
     )
-    const lpNumberLiterals = allLpNumberLiterals.filter(isLocFromUserCode).map(p => ({ ...p, line: p.line - pLines }))
-    const numberLiterals = allNumberLiterals.filter(isLocFromUserCode).map(p => ({ ...p, line: p.line - pLines }))
+    const lpNumberLiterals = allLpNumberLiterals.filter(isLineFromUserCode).map(p => ({ ...p, line: p.line - pLines }))
+    const numberLiterals = allNumberLiterals.filter(isLineFromUserCode).map(p => ({ ...p, line: p.line - pLines }))
 
     // Create a set of locations that already have explicit sliders
     const explicitSliderKeys = new Set(explicitNumberParams.map(p => `${p.line}:${p.column}:${p.length}`))
@@ -1073,7 +1082,6 @@ export function encodeLangToVmOps(
     const extractionResults = extractAllRefsFromProgram(fullSrc, transformedProgram)
 
     // Filter out refs from prelude (line <= pLines) and normalize line numbers
-    const isFromUserCode = (ref: any) => ref.loc?.line > pLines
     const mapRefLocs = (ref: any) => {
       const mapped: any = { ...ref }
       if (mapped.loc) mapped.loc = mapLoc(mapped.loc)
@@ -1091,22 +1099,24 @@ export function encodeLangToVmOps(
       return mapped
     }
 
-    adRefs = extractionResults.adRefs.filter(isFromUserCode).map(mapRefLocs)
-    adsrRefs = extractionResults.adsrRefs.filter(isFromUserCode).map(mapRefLocs)
-    envfollowRefs = extractionResults.envfollowRefs.filter(isFromUserCode).map(mapRefLocs)
-    slewRefs = extractionResults.slewRefs.filter(isFromUserCode).map(mapRefLocs)
-    analyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs].filter(isFromUserCode).map(mapRefLocs)
-    compressorRefs = extractionResults.compressorRefs.filter(isFromUserCode).map(mapRefLocs)
-    expanderRefs = extractionResults.expanderRefs.filter(isFromUserCode).map(mapRefLocs)
-    gateRefs = extractionResults.gateRefs.filter(isFromUserCode).map(mapRefLocs)
-    limiterRefs = extractionResults.limiterRefs.filter(isFromUserCode).map(mapRefLocs)
-    filterRefs = extractionResults.filterRefs.filter(isFromUserCode).map(mapRefLocs)
-    reverbRefs = extractionResults.reverbRefs.filter(isFromUserCode).map(mapRefLocs)
-    slicerRefs = extractionResults.slicerRefs.filter(isFromUserCode).map(mapRefLocs)
-    lfoRefs = extractionResults.lfoRefs.filter(isFromUserCode).map(mapRefLocs)
-    everyRefs = extractionResults.everyRefs.filter(isFromUserCode).map(mapRefLocs)
-    atRefs = extractionResults.atRefs.filter(isFromUserCode).map(mapRefLocs)
-    euclidRefs = extractionResults.euclidRefs.filter(isFromUserCode).map(mapRefLocs)
+    adRefs = extractionResults.adRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    adsrRefs = extractionResults.adsrRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    envfollowRefs = extractionResults.envfollowRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    slewRefs = extractionResults.slewRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    analyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs].filter(isLocLineFromUserCode).map(
+      mapRefLocs,
+    )
+    compressorRefs = extractionResults.compressorRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    expanderRefs = extractionResults.expanderRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    gateRefs = extractionResults.gateRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    limiterRefs = extractionResults.limiterRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    filterRefs = extractionResults.filterRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    reverbRefs = extractionResults.reverbRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    slicerRefs = extractionResults.slicerRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    lfoRefs = extractionResults.lfoRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    everyRefs = extractionResults.everyRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    atRefs = extractionResults.atRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    euclidRefs = extractionResults.euclidRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
     const compiled = compile(fullSrc, transformedProgram)
     errors.push(...compiled.errors)
     if (errors.length) return { errors: errors.map(mapError) }
@@ -1480,14 +1490,14 @@ export function encodeLangToVmOps(
 
     // Filter out arrayLiterals and branchMarks from prelude and normalize line numbers
     const filteredArrayLiterals = arrayLiterals
-      .filter(a => a.loc?.line > pLines)
+      .filter(isLocLineFromUserCode)
       .map(a => ({
         ...a,
         loc: mapLoc(a.loc),
         items: a.items.map(mapLoc),
       }))
     const filteredBranchMarks = branchMarks
-      .filter(b => b.loc?.line > pLines)
+      .filter(isLocLineFromUserCode)
       .map(b => ({ ...b, loc: mapLoc(b.loc) }))
 
     return errors.length
