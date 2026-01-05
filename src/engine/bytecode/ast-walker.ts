@@ -14,6 +14,7 @@ export interface VisitorFunctions {
 export function walkAst(program: Program, visitors: VisitorFunctions[], ctx: VisitorContext = {}): void {
   function visitExpr(expr: any): void {
     if (!expr) return
+    if (expr.loc?.kernel) return
 
     // Call all visitExpr visitors
     for (const visitor of visitors) {
@@ -86,6 +87,7 @@ export function walkAst(program: Program, visitors: VisitorFunctions[], ctx: Vis
 
   function visitStmt(stmt: any): void {
     if (!stmt) return
+    if (stmt.loc?.kernel) return
 
     // Call all visitStmt visitors
     for (const visitor of visitors) {

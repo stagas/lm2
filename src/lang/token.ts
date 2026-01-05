@@ -77,6 +77,7 @@ export type Token = {
   line: number;
   column: number;
   length: number;
+  kernel?: boolean;
 };
 
 export type LexError = {

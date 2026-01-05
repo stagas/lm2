@@ -17,14 +17,6 @@ import type {
 import { type LangError, lineText } from './errors.ts'
 import type { Token, TokenKind } from './token.ts'
 
-const locFrom = (a: { line: number; column: number; length: number },
-  b?: { line: number; column: number; length: number }): Loc =>
-{
-  if (!b) return { line: a.line, column: a.column, length: a.length }
-  const len = Math.max(1, (b.column + b.length) - a.column)
-  return { line: a.line, column: a.column, length: len }
-}
-
 const locOf = (n: { loc: Loc } | Loc) => ('loc' in n ? n.loc : n)
 
 const parseCache = new Map<string, { program: Program; errors: LangError[] }>()
@@ -32,11 +24,12 @@ const parseCache = new Map<string, { program: Program; errors: LangError[] }>()
 export function parse(
   src: string,
   tokens: Token[],
-  cacheKey: string = src,
+  options?: { cacheKey?: string; preludeLines?: number },
 ): { program: Program; errors: LangError[] } {
+  const cacheKey = options?.cacheKey ?? src
   const cached = parseCache.get(cacheKey)
   if (cached) return cached
-  const p = new Parser(src, tokens)
+  const p = new Parser(src, tokens, options?.preludeLines ?? 0)
   const program = p.parseProgram()
   const result = { program, errors: p.errors }
   parseCache.set(cacheKey, result)
@@ -50,7 +43,33 @@ class Parser {
   constructor(
     private readonly src: string,
     private readonly tokens: Token[],
+    private readonly preludeLines: number = 0,
   ) {}
+
+  private normalizeLine(line: number, isKernel?: boolean): number {
+    return isKernel ? 0 : Math.max(0, line - this.preludeLines)
+  }
+
+  private locFrom(
+    a: { line: number; column: number; length: number; kernel?: boolean },
+    b?: { line: number; column: number; length: number; kernel?: boolean },
+  ): Loc {
+    if (!b) {
+      return {
+        line: this.normalizeLine(a.line, a.kernel),
+        column: a.column,
+        length: a.length,
+        kernel: a.kernel
+      }
+    }
+    const len = Math.max(1, (b.column + b.length) - a.column)
+    return {
+      line: this.normalizeLine(a.line, a.kernel || b.kernel),
+      column: a.column,
+      length: len,
+      kernel: a.kernel || b.kernel
+    }
+  }
 
   private cur(): Token {
     return this.tokens[this.i] ?? this.tokens[this.tokens.length - 1]!
@@ -110,7 +129,7 @@ class Parser {
       body.push(s)
       this.skipStatementSep()
     }
-    return { kind: 'program', body, loc: locFrom(start, this.prev()) }
+    return { kind: 'program', body, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseStmt(): Stmt {
@@ -134,7 +153,7 @@ class Parser {
     if (destructure) return destructure
 
     const expr = this.parseExpr()
-    return { kind: 'expr_stmt', expr, loc: locFrom(t, this.prev()) }
+    return { kind: 'expr_stmt', expr, loc: this.locFrom(t, this.prev()) }
   }
 
   private tryParseLabelStmt(): Stmt | null {
@@ -145,7 +164,7 @@ class Parser {
     this.next()
     this.next()
     const stmt = this.parseStmt()
-    return { kind: 'label', name: nameTok.lexeme, stmt, loc: locFrom(nameTok, this.prev()) }
+    return { kind: 'label', name: nameTok.lexeme, stmt, loc: this.locFrom(nameTok, this.prev()) }
   }
 
   private tryParseDestructureStmt(): Stmt | null {
@@ -164,7 +183,7 @@ class Parser {
     }
     this.next()
     const value = this.parseExpr()
-    return { kind: 'destructure', pattern: pat, value, loc: locFrom(start, this.prev()) }
+    return { kind: 'destructure', pattern: pat, value, loc: this.locFrom(start, this.prev()) }
   }
 
   private tryParseDestructurePattern(): DestructurePattern | null {
@@ -185,7 +204,7 @@ class Parser {
         this.i = save
         return null
       }
-      return { kind: 'obj', keys, loc: locFrom(start, this.prev()) }
+      return { kind: 'obj', keys, loc: this.locFrom(start, this.prev()) }
     }
 
     if (this.match('l_bracket')) {
@@ -202,7 +221,7 @@ class Parser {
         this.i = save
         return null
       }
-      return { kind: 'arr', items, loc: locFrom(start, this.prev()) }
+      return { kind: 'arr', items, loc: this.locFrom(start, this.prev()) }
     }
 
     return null
@@ -218,7 +237,7 @@ class Parser {
       this.skipStatementSep()
     }
     this.expect('r_brace', 'Expected \'}\'')
-    return { kind: 'block', body, loc: locFrom(start, this.prev()) }
+    return { kind: 'block', body, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseForStmt(): Stmt {
@@ -227,7 +246,7 @@ class Parser {
     const head = this.parseForHead()
     this.expect('r_paren', 'Expected \')\' after for-head')
     const body = this.parseStmt()
-    return { kind: 'for', head, body, loc: locFrom(start, this.prev()) }
+    return { kind: 'for', head, body, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseForHead(): ForHead {
@@ -248,7 +267,7 @@ class Parser {
     this.expect('semicolon', 'Expected \';\' in for-head')
     if (!this.at('r_paren')) update = this.parseExpr()
 
-    return { kind: 'c_style', init, test, update, loc: locFrom(start, this.prev()) }
+    return { kind: 'c_style', init, test, update, loc: this.locFrom(start, this.prev()) }
   }
 
   private tryParseForOfHead(): ForHead | null {
@@ -277,7 +296,7 @@ class Parser {
       index: names[1],
       length: names[2],
       iterable,
-      loc: locFrom(start, this.prev()),
+      loc: this.locFrom(start, this.prev()),
     }
   }
 
@@ -287,7 +306,7 @@ class Parser {
     const test = this.parseExpr()
     this.expect('r_paren', 'Expected \')\' after while condition')
     const body = this.parseStmt()
-    return { kind: 'while', test, body, loc: locFrom(start, this.prev()) }
+    return { kind: 'while', test, body, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseDoWhileStmt(): Stmt {
@@ -298,7 +317,7 @@ class Parser {
     const test = this.parseExpr()
     this.expect('r_paren', 'Expected \')\' after while condition')
     this.match('semicolon')
-    return { kind: 'do_while', body, test, loc: locFrom(start, this.prev()) }
+    return { kind: 'do_while', body, test, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseSwitchStmt(): Stmt {
@@ -315,7 +334,7 @@ class Parser {
     }
 
     this.expect('r_brace', 'Expected \'}\' after switch')
-    return { kind: 'switch', test, cases, loc: locFrom(start, this.prev()) }
+    return { kind: 'switch', test, cases, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseSwitchCase(): SwitchCase {
@@ -348,7 +367,7 @@ class Parser {
       this.skipStatementSep()
     }
 
-    return { kind: 'case', test, body, loc: locFrom(start, this.prev()) }
+    return { kind: 'case', test, body, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseTryStmt(): Stmt {
@@ -375,36 +394,36 @@ class Parser {
       this.error(this.cur(), 'Expected \'catch\' or \'finally\' after \'try\' block')
     }
 
-    return { kind: 'try', body, catchName, catchBody, finallyBody, loc: locFrom(start, this.prev()) }
+    return { kind: 'try', body, catchName, catchBody, finallyBody, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseThrowStmt(): Stmt {
     const start = this.expect('kw_throw', 'Expected \'throw\'')
     const value = this.parseExpr()
-    return { kind: 'throw', value, loc: locFrom(start, this.prev()) }
+    return { kind: 'throw', value, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseReturnStmt(): Stmt {
     const start = this.expect('kw_return', 'Expected \'return\'')
     if (this.at('semicolon') || this.at('r_brace') || this.at('eof')) {
-      return { kind: 'return', loc: locFrom(start, start) }
+      return { kind: 'return', loc: this.locFrom(start, start) }
     }
     const value = this.parseExpr()
-    return { kind: 'return', value, loc: locFrom(start, this.prev()) }
+    return { kind: 'return', value, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseBreakStmt(): Stmt {
     const start = this.expect('kw_break', 'Expected \'break\'')
     let label: string | undefined
     if (this.at('identifier')) label = this.next().lexeme
-    return { kind: 'break', label, loc: locFrom(start, this.prev()) }
+    return { kind: 'break', label, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseContinueStmt(): Stmt {
     const start = this.expect('kw_continue', 'Expected \'continue\'')
     let label: string | undefined
     if (this.at('identifier')) label = this.next().lexeme
-    return { kind: 'continue', label, loc: locFrom(start, this.prev()) }
+    return { kind: 'continue', label, loc: this.locFrom(start, this.prev()) }
   }
 
   private parseExpr(): Expr {
@@ -418,7 +437,7 @@ class Parser {
     if (!op) return left
     this.next()
     const value = this.parseAssign()
-    return { kind: 'assign', op, target: left, value, loc: locFrom(left.loc, value.loc) } as const
+    return { kind: 'assign', op, target: left, value, loc: this.locFrom(left.loc, value.loc) } as const
   }
 
   private assignOp(kind: TokenKind): AssignOp | null {
@@ -436,7 +455,7 @@ class Parser {
     let expr = this.parseOr()
     while (this.match('pipe')) {
       const right = this.parseOr()
-      expr = { kind: 'binary', op: '|>', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: '|>', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -446,7 +465,7 @@ class Parser {
     let expr = this.parseAnd()
     while (this.match('or_or')) {
       const right = this.parseAnd()
-      expr = { kind: 'binary', op: '||', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: '||', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
 
     // Ternary operator (condition ? thenExpr : elseExpr) desugared to `if` expression.
@@ -460,9 +479,9 @@ class Parser {
         test: expr,
         then: thenExpr,
         else: elseExpr,
-        loc: locFrom(start, locOf(elseExpr)),
-        questionLoc: locFrom(questionTok),
-        colonLoc: locFrom(colonTok),
+        loc: this.locFrom(start, locOf(elseExpr)),
+        questionLoc: this.locFrom(questionTok),
+        colonLoc: this.locFrom(colonTok),
       }
     }
 
@@ -473,7 +492,7 @@ class Parser {
     let expr = this.parseEq()
     while (this.match('and_and')) {
       const right = this.parseEq()
-      expr = { kind: 'binary', op: '&&', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: '&&', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -482,7 +501,7 @@ class Parser {
     let expr = this.parseCmp()
     while (this.match('eq_eq')) {
       const right = this.parseCmp()
-      expr = { kind: 'binary', op: '==', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: '==', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -495,7 +514,7 @@ class Parser {
       this.next()
       const right = this.parseBitOr()
       const op = k === 'lt' ? '<' : k === 'lte' ? '<=' : k === 'gt' ? '>' : '>='
-      expr = { kind: 'binary', op, left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op, left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -504,7 +523,7 @@ class Parser {
     let expr = this.parseBitXor()
     while (this.match('bar')) {
       const right = this.parseBitXor()
-      expr = { kind: 'binary', op: '|', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: '|', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -513,7 +532,7 @@ class Parser {
     let expr = this.parseBitAnd()
     while (this.match('caret')) {
       const right = this.parseBitAnd()
-      expr = { kind: 'binary', op: '^', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: '^', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -522,7 +541,7 @@ class Parser {
     let expr = this.parseShift()
     while (this.match('amp')) {
       const right = this.parseShift()
-      expr = { kind: 'binary', op: '&', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: '&', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -535,7 +554,7 @@ class Parser {
       this.next()
       const right = this.parseAdd()
       const op = k === 'shift_l' ? '<<' : k === 'shift_r' ? '>>' : '>>>'
-      expr = { kind: 'binary', op, left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op, left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -547,7 +566,7 @@ class Parser {
       if (k !== 'plus' && k !== 'minus') break
       this.next()
       const right = this.parseMul()
-      expr = { kind: 'binary', op: k === 'plus' ? '+' : '-', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: k === 'plus' ? '+' : '-', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -560,7 +579,7 @@ class Parser {
       this.next()
       const right = this.parsePow()
       const op = k === 'star' ? '*' : k === 'slash' ? '/' : '%'
-      expr = { kind: 'binary', op, left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op, left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -569,7 +588,7 @@ class Parser {
     let expr = this.parseUnary()
     if (this.match('power')) {
       const right = this.parsePow()
-      expr = { kind: 'binary', op: '**', left: expr, right, loc: locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op: '**', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }
@@ -580,7 +599,8 @@ class Parser {
       const expr = this.parseUnary()
       // Fold `-<number>` into a single numeric literal when `-` is directly adjacent to the number token.
       // This keeps literal-only updates and literal extraction working (they rely on a contiguous `-?\d...` span).
-      if (expr.kind === 'number' && expr.loc.line === t.line && expr.loc.column === t.column + t.length) {
+      const tNormalizedLine = this.normalizeLine(t.line, t.kernel)
+      if (expr.kind === 'number' && expr.loc.line === tNormalizedLine && expr.loc.column === t.column + t.length) {
         const delta = expr.loc.column - t.column
         const slider = expr.slider
           ? { ...expr.slider, widgetLength: (expr.slider.widgetLength ?? expr.loc.length) + delta }
@@ -589,27 +609,27 @@ class Parser {
           ...expr,
           value: -expr.value,
           raw: `-${expr.raw}`,
-          loc: locFrom(t, expr.loc),
+          loc: this.locFrom(t, expr.loc),
           slider,
         }
       }
-      return { kind: 'unary', op: '-', expr, loc: locFrom(t, expr.loc) }
+      return { kind: 'unary', op: '-', expr, loc: this.locFrom(t, expr.loc) }
     }
     if (this.match('bang')) {
       const expr = this.parseUnary()
-      return { kind: 'unary', op: '!', expr, loc: locFrom(t, expr.loc) }
+      return { kind: 'unary', op: '!', expr, loc: this.locFrom(t, expr.loc) }
     }
     if (this.match('tilde')) {
       const expr = this.parseUnary()
-      return { kind: 'unary', op: '~', expr, loc: locFrom(t, expr.loc) }
+      return { kind: 'unary', op: '~', expr, loc: this.locFrom(t, expr.loc) }
     }
     if (this.match('plus_plus')) {
       const expr = this.parseUnary()
-      return { kind: 'unary', op: '++', expr, loc: locFrom(t, expr.loc) }
+      return { kind: 'unary', op: '++', expr, loc: this.locFrom(t, expr.loc) }
     }
     if (this.match('minus_minus')) {
       const expr = this.parseUnary()
-      return { kind: 'unary', op: '--', expr, loc: locFrom(t, expr.loc) }
+      return { kind: 'unary', op: '--', expr, loc: this.locFrom(t, expr.loc) }
     }
     return this.parsePostfix()
   }
@@ -636,12 +656,13 @@ class Parser {
               this.next()
             }
             this.next() // consume r_paren
+            const endTokNormalizedLine = this.normalizeLine(endTok.line, endTok.kernel)
             expr = {
               ...expr,
               slider: {
                 min: Number(minTok.value),
                 max: Number(maxTok.value),
-                widgetLength: endTok.line === expr.loc.line
+                widgetLength: endTokNormalizedLine === expr.loc.line
                   ? (endTok.column + endTok.length - expr.loc.column)
                   : expr.loc.length,
                 precision,
@@ -653,29 +674,29 @@ class Parser {
         }
         const args = this.parseArgs()
         const end = this.expect('r_paren', 'Expected \')\'')
-        expr = { kind: 'call', callee: expr, args, loc: locFrom(expr.loc, end) }
+        expr = { kind: 'call', callee: expr, args, loc: this.locFrom(expr.loc, end) }
 
         continue
       }
       if (this.match('dot')) {
         const id = this.expect('identifier', 'Expected property name after \'.\'')
         const prop = id.kind === 'identifier' ? id.lexeme : 'prop'
-        expr = { kind: 'member', object: expr, prop, computed: false, loc: locFrom(expr.loc, id) }
+        expr = { kind: 'member', object: expr, prop, computed: false, loc: this.locFrom(expr.loc, id) }
         continue
       }
       if (expr.kind === 'string' && this.at('l_bracket')) break
       if (this.match('l_bracket')) {
         const index = this.parseExpr()
         const end = this.expect('r_bracket', 'Expected \']\'')
-        expr = { kind: 'member', object: expr, index, computed: true, loc: locFrom(expr.loc, end) }
+        expr = { kind: 'member', object: expr, index, computed: true, loc: this.locFrom(expr.loc, end) }
         continue
       }
       if (this.match('plus_plus')) {
-        expr = { kind: 'postfix', op: '++', expr, loc: locFrom(expr.loc, this.prev()) }
+        expr = { kind: 'postfix', op: '++', expr, loc: this.locFrom(expr.loc, this.prev()) }
         continue
       }
       if (this.match('minus_minus')) {
-        expr = { kind: 'postfix', op: '--', expr, loc: locFrom(expr.loc, this.prev()) }
+        expr = { kind: 'postfix', op: '--', expr, loc: this.locFrom(expr.loc, this.prev()) }
         continue
       }
       break
@@ -695,16 +716,16 @@ class Parser {
         this.skipStatementSep()
         if (this.at('comma') || this.at('r_paren')) {
           // `name:` shorthand
-          args.push({ kind: 'shorthand', name: nameTok.lexeme, loc: locFrom(nameTok) })
+          args.push({ kind: 'shorthand', name: nameTok.lexeme, loc: this.locFrom(nameTok) })
         }
         else {
           const value = this.parseExpr()
-          args.push({ kind: 'named', name: nameTok.lexeme, value, loc: locFrom(nameTok, value.loc) })
+          args.push({ kind: 'named', name: nameTok.lexeme, value, loc: this.locFrom(nameTok, value.loc) })
         }
       }
       else {
         const value = this.parseExpr()
-        args.push({ kind: 'pos', value, loc: locFrom(start, value.loc) })
+        args.push({ kind: 'pos', value, loc: this.locFrom(start, value.loc) })
       }
 
       if (!this.match('comma')) break
@@ -717,16 +738,16 @@ class Parser {
     const t = this.cur()
 
     if (this.match('number')) {
-      return { kind: 'number', value: Number(t.value), raw: t.lexeme, loc: locFrom(t) }
+      return { kind: 'number', value: Number(t.value), raw: t.lexeme, loc: this.locFrom(t) }
     }
     if (this.match('string')) {
-      return { kind: 'string', value: String(t.value ?? ''), raw: t.lexeme, loc: locFrom(t) }
+      return { kind: 'string', value: String(t.value ?? ''), raw: t.lexeme, loc: this.locFrom(t) }
     }
-    if (this.match('kw_true')) return { kind: 'bool', value: true, loc: locFrom(t) }
-    if (this.match('kw_false')) return { kind: 'bool', value: false, loc: locFrom(t) }
-    if (this.match('kw_null')) return { kind: 'null', loc: locFrom(t) }
-    if (this.match('kw_undefined')) return { kind: 'undefined', loc: locFrom(t) }
-    if (this.match('pipe_value')) return { kind: 'pipe_value', loc: locFrom(t) }
+    if (this.match('kw_true')) return { kind: 'bool', value: true, loc: this.locFrom(t) }
+    if (this.match('kw_false')) return { kind: 'bool', value: false, loc: this.locFrom(t) }
+    if (this.match('kw_null')) return { kind: 'null', loc: this.locFrom(t) }
+    if (this.match('kw_undefined')) return { kind: 'undefined', loc: this.locFrom(t) }
+    if (this.match('pipe_value')) return { kind: 'pipe_value', loc: this.locFrom(t) }
 
     const fnFromId = this.tryParseArrowFuncFromIdent()
     if (fnFromId) return fnFromId
@@ -743,7 +764,7 @@ class Parser {
     if (this.at('kw_if')) return this.parseIfExpr()
 
     if (this.match('identifier')) {
-      return { kind: 'ident', name: t.lexeme, loc: locFrom(t) }
+      return { kind: 'ident', name: t.lexeme, loc: this.locFrom(t) }
     }
 
     if (this.at('l_bracket')) return this.parseArrayExpr()
@@ -751,7 +772,7 @@ class Parser {
 
     this.error(t, 'Expected expression')
     this.next()
-    return { kind: 'ident', name: 'error', loc: locFrom(t) }
+    return { kind: 'ident', name: 'error', loc: this.locFrom(t) }
   }
 
   private parseIfExpr(): Expr {
@@ -771,9 +792,9 @@ class Parser {
       test,
       then,
       else: elsePart,
-      loc: locFrom(start, locOf(elsePart)),
-      ifLoc: locFrom(start),
-      elseLoc: locFrom(elseTok),
+      loc: this.locFrom(start, locOf(elsePart)),
+      ifLoc: this.locFrom(start),
+      elseLoc: this.locFrom(elseTok),
     }
   }
 
@@ -788,7 +809,7 @@ class Parser {
       this.skipStatementSep()
     }
     const end = this.expect('r_bracket', 'Expected \']\'')
-    return { kind: 'array', items, loc: locFrom(start, end) }
+    return { kind: 'array', items, loc: this.locFrom(start, end) }
   }
 
   private parseObjectExpr(): Expr {
@@ -806,12 +827,12 @@ class Parser {
       }
       this.expect('colon', 'Expected \':\' after property key')
       const value = this.parseExpr()
-      if (key !== null) props.push({ key, value, loc: locFrom(keyTok, value.loc) })
+      if (key !== null) props.push({ key, value, loc: this.locFrom(keyTok, value.loc) })
       if (!this.match('comma')) break
       this.skipStatementSep()
     }
     const end = this.expect('r_brace', 'Expected \'}\'')
-    return { kind: 'object', props, loc: locFrom(start, end) }
+    return { kind: 'object', props, loc: this.locFrom(start, end) }
   }
 
   private tryParseArrowFuncFromIdent(): Expr | null {
@@ -820,9 +841,9 @@ class Parser {
     if (this.tokens[this.i + 1]?.kind !== 'arrow') return null
     this.next()
     this.next()
-    const params: Param[] = [{ name: nameTok.lexeme, isRest: false, loc: locFrom(nameTok) }]
+    const params: Param[] = [{ name: nameTok.lexeme, isRest: false, loc: this.locFrom(nameTok) }]
     const body = this.at('l_brace') ? this.parseBlockStmt() : this.parseExpr()
-    return { kind: 'func', params, body, loc: locFrom(nameTok, locOf(body)) }
+    return { kind: 'func', params, body, loc: this.locFrom(nameTok, locOf(body)) }
   }
 
   private tryParseArrowFuncFromParen(): Expr | null {
@@ -864,7 +885,7 @@ class Parser {
         }
         let def: Expr | undefined
         if (this.match('assign')) def = this.parseExpr()
-        params.push({ name, isRest, default: def, pattern, loc: locFrom(pStart, def?.loc ?? nameTok) })
+        params.push({ name, isRest, default: def, pattern, loc: this.locFrom(pStart, def?.loc ?? nameTok) })
         if (!this.match('comma')) break
         this.skipStatementSep()
       }
@@ -872,7 +893,7 @@ class Parser {
     this.expect('r_paren', 'Expected \')\'')
     this.expect('arrow', 'Expected \'->\' for arrow function')
     const body = this.at('l_brace') ? this.parseBlockStmt() : this.parseExpr()
-    return { kind: 'func', params, body, loc: locFrom(start, locOf(body)) }
+    return { kind: 'func', params, body, loc: this.locFrom(start, locOf(body)) }
   }
 
   private hasArrowAfterParen(startIdx: number): boolean {

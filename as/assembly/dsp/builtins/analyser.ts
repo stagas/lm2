@@ -1,4 +1,5 @@
 // dprint-ignore-file
+import { FINAL_OUT_ANALYSER_L_INDEX } from '../../constants'
 import { Program } from '../../program'
 import { Dsp } from '../dsp'
 import { VmTag } from '../types'
@@ -44,6 +45,8 @@ export function callAnalyser(
   }
 
   if (analyserIndex < 0) analyserIndex = 0
+  const maxUserIndex: i32 = FINAL_OUT_ANALYSER_L_INDEX - 1
+  if (analyserIndex > maxUserIndex) analyserIndex = maxUserIndex
 
   const argTag = posTags[0] as VmTag
   const argNum = posNums[0]
@@ -58,8 +61,17 @@ export function callAnalyser(
       return
     }
 
-    const arrLen = dsp.arrays.len[arrId]
+    let arrLen: i32 = dsp.arrays.len[arrId]
     const start: i32 = dsp.arrays.start[arrId]
+    if (arrLen <= 0) {
+      stack.push(VmTag.Arr, 0.0, arrId)
+      return
+    }
+
+    if (arrLen > maxUserIndex + 1) arrLen = maxUserIndex + 1
+    const maxStart: i32 = maxUserIndex - (arrLen - 1)
+    if (analyserIndex > maxStart) analyserIndex = maxStart
+    if (analyserIndex < 0) analyserIndex = 0
 
     // Copy each array element to consecutive analyser buffers
     for (let elemIdx = 0; elemIdx < arrLen; elemIdx++) {

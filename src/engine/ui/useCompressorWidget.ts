@@ -424,7 +424,7 @@ export function useCompressorWidget({
     c.moveTo(toX(diagStartIn, chartW), toY(diagStartIn, chartY, chartH))
     c.lineTo(toX(diagEndIn, chartW), toY(diagEndIn, chartY, chartH))
 
-    // 2) Knee: arc (screen-space cubic Bezier)
+    // 2) Knee: smooth quadratic Bezier curve (always convex)
     if (k > 0) {
       const kneeA = isDownward ? kneeStart : kneeEnd
       const kneeB = isDownward ? kneeEnd : kneeStart
@@ -436,30 +436,27 @@ export function useCompressorWidget({
       const bx = toX(kneeB, chartW)
       const by = toY(outB, chartY, chartH)
 
-      const dir = kneeB >= kneeA ? 1 : -1
-      const eps = Math.max(1e-4, Math.abs(kneeB - kneeA) * 0.02) * dir
+      // Calculate midpoint for convex quadratic Bezier control point
+      const mx = (ax + bx) / 2
+      const my = (ay + by) / 2
 
-      const outA2 = (kneeA + eps) - reduce(kneeA + eps, th, ratio, k)
-      const outB2 = (kneeB - eps) - reduce(kneeB - eps, th, ratio, k)
+      // Calculate the perpendicular direction for convexity
+      const dx = bx - ax
+      const dy = by - ay
+      const len = Math.hypot(dx, dy) || 1
+      const nx = dy / len // perpendicular vector
+      const ny = -dx / len
 
-      const a2x = toX(kneeA + eps, chartW)
-      const a2y = toY(outA2, chartY, chartH)
-      const b2x = toX(kneeB - eps, chartW)
-      const b2y = toY(outB2, chartY, chartH)
+      // Control point offset to ensure convexity
+      // For downward curves, we want the control point below the line
+      // For upward curves, we want it above the line
+      const offset = isDownward ? 1 : -1
+      const cpDist = Math.min(len * 0.015, 12) // gentler curve with smaller max distance
+      const cx = mx + nx * cpDist * offset
+      const cy = my + ny * cpDist * offset
 
-      let dax = a2x - ax
-      let day = a2y - ay
-      let dbx = bx - b2x
-      let dby = by - b2y
-      const daLen = Math.hypot(dax, day) || 1
-      const dbLen = Math.hypot(dbx, dby) || 1
-      dax /= daLen
-      day /= daLen
-      dbx /= dbLen
-      dby /= dbLen
-
-      const dist = 0.35 * Math.hypot(bx - ax, by - ay)
-      c.bezierCurveTo(ax + dax * dist, ay + day * dist, bx - dbx * dist, by - dby * dist, bx, by)
+      // Use quadratic Bezier curve for guaranteed convexity
+      c.quadraticCurveTo(cx, cy, bx, by)
     }
 
     // 3) Post-knee line
@@ -542,38 +539,28 @@ export function useCompressorWidget({
           const bx = toX(inB, chartW)
           const by = toY(outB, chartY, chartH)
 
-          const dir = inB >= inA ? 1 : -1
-          const eps = Math.max(1e-4, Math.abs(inB - inA) * 0.02) * dir
+          // Calculate midpoint for convex quadratic Bezier control point
+          const mx = (ax + bx) / 2
+          const my = (ay + by) / 2
 
-          const outA2 = (inA + eps) - reduce(inA + eps, th, ratio, k)
-          const outB2 = (inB - eps) - reduce(inB - eps, th, ratio, k)
+          // Calculate the perpendicular direction for convexity
+          const dx = bx - ax
+          const dy = by - ay
+          const len = Math.hypot(dx, dy) || 1
+          const nx = dy / len // perpendicular vector
+          const ny = -dx / len
 
-          const a2x = toX(inA + eps, chartW)
-          const a2y = toY(outA2, chartY, chartH)
-          const b2x = toX(inB - eps, chartW)
-          const b2y = toY(outB2, chartY, chartH)
+          // Control point offset to ensure convexity
+          const offset = isDownward ? 1 : -1
+          const cpDist = Math.min(len * 0.015, 12) // gentler curve with smaller max distance
+          const cx = mx + nx * cpDist * offset
+          const cy = my + ny * cpDist * offset
 
-          let dax = a2x - ax
-          let day = a2y - ay
-          let dbx = bx - b2x
-          let dby = by - b2y
-          const daLen = Math.hypot(dax, day) || 1
-          const dbLen = Math.hypot(dbx, dby) || 1
-          dax /= daLen
-          day /= daLen
-          dbx /= dbLen
-          dby /= dbLen
-
-          const dist = 0.35 * Math.hypot(bx - ax, by - ay)
-          const c1x = ax + dax * dist
-          const c1y = ay + day * dist
-          const c2x = bx - dbx * dist
-          const c2y = by - dby * dist
-
+          // Interpolate along quadratic Bezier curve
           const t = clamp((playheadLevel - inA) / (inB - inA), 0, 1)
           const mt = 1 - t
-          dotX = mt * mt * mt * ax + 3 * mt * mt * t * c1x + 3 * mt * t * t * c2x + t * t * t * bx
-          dotY = mt * mt * mt * ay + 3 * mt * mt * t * c1y + 3 * mt * t * t * c2y + t * t * t * by
+          dotX = mt * mt * ax + 2 * mt * t * cx + t * t * bx
+          dotY = mt * mt * ay + 2 * mt * t * cy + t * t * by
         }
         else if (isDownward ? playheadLevel > hi : playheadLevel < lo) {
           if (type === 'limiter') {

@@ -18,6 +18,8 @@ import { isLocalId, makeLocalId } from '../../utils/id.ts'
 import {
   encodeLangToVmOps,
   extractEarlyDataFromSource,
+  getKnobConfig,
+  getKnobParamConfig,
 } from '../bytecode/bytecode.ts'
 import type { TimelineLabel } from '../bytecode/bytecode.ts'
 import { KEYWORDS } from '../constants.ts'
@@ -882,97 +884,34 @@ function DspSourceEditorReady(
   const knobs = useMemo(() => {
     const out: KnobInfo[] = []
 
-    for (const ref of widgetCompileState.compressorRefs ?? []) {
-      for (const p of ref.knobParams ?? []) {
-        if (p.name === 'attack') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 1, precision: 4, mode: 'exp2' })
-        }
-        else if (p.name === 'release') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 5, precision: 4, mode: 'exp2' })
-        }
-        else if (p.name === 'threshold') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: -60, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
-        }
-        else if (p.name === 'ratio') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 1, max: 20, precision: 2, mode: 'linear', stepPerPx: 0.05 })
-        }
-        else if (p.name === 'knee') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
-        }
+    const addKnobsFromRef = (ref: any) => {
+      const functionName = String(ref?.functionName ?? '')
+      if (!functionName) return
+      const config = getKnobConfig(functionName)
+      if (!config) return
+      for (const p of ref?.knobParams ?? []) {
+        const param = getKnobParamConfig(config, String(p?.name ?? ''))
+        if (!param) continue
+        const loc = p?.valueLoc
+        if (!loc) continue
+        out.push({
+          line: loc.line,
+          column: loc.column,
+          length: loc.length,
+          value: Number(p?.value ?? 0),
+          min: param.min,
+          max: param.max,
+          precision: param.precision,
+          mode: param.mode,
+          stepPerPx: param.stepPerPx,
+        })
       }
     }
 
-    for (const ref of widgetCompileState.expanderRefs ?? []) {
-      for (const p of ref.knobParams ?? []) {
-        if (p.name === 'attack') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 1, precision: 4, mode: 'exp2' })
-        }
-        else if (p.name === 'release') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 5, precision: 4, mode: 'exp2' })
-        }
-        else if (p.name === 'threshold') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: -60, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
-        }
-        else if (p.name === 'ratio') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 1, max: 100, precision: 2, mode: 'linear', stepPerPx: 0.05 })
-        }
-        else if (p.name === 'knee') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
-        }
-      }
-    }
-
-    for (const ref of widgetCompileState.gateRefs ?? []) {
-      for (const p of ref.knobParams ?? []) {
-        if (p.name === 'attack') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 1, precision: 4, mode: 'exp2' })
-        }
-        else if (p.name === 'release') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 5, precision: 4, mode: 'exp2' })
-        }
-        else if (p.name === 'threshold') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: -60, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
-        }
-        else if (p.name === 'ratio') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 1, max: 100, precision: 2, mode: 'linear', stepPerPx: 0.05 })
-        }
-        else if (p.name === 'knee') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0, max: 40, precision: 1, mode: 'linear', stepPerPx: 0.2 })
-        }
-        else if (p.name === 'hold') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0, max: 1, precision: 2, mode: 'linear' })
-        }
-      }
-    }
-
-    for (const ref of widgetCompileState.limiterRefs ?? []) {
-      for (const p of ref.knobParams ?? []) {
-        if (p.name === 'release') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: 0.0001, max: 5, precision: 4, mode: 'exp2' })
-        }
-        else if (p.name === 'threshold') {
-          out.push({ line: p.valueLoc.line, column: p.valueLoc.column, length: p.valueLoc.length, value: p.value,
-            min: -80, max: 0, precision: 0, mode: 'linear', stepPerPx: 0.15 })
-        }
-      }
-    }
+    for (const ref of widgetCompileState.compressorRefs ?? []) addKnobsFromRef(ref)
+    for (const ref of widgetCompileState.expanderRefs ?? []) addKnobsFromRef(ref)
+    for (const ref of widgetCompileState.gateRefs ?? []) addKnobsFromRef(ref)
+    for (const ref of widgetCompileState.limiterRefs ?? []) addKnobsFromRef(ref)
 
     // Add knobs for filter number literals (min=20, max=20000)
     for (const param of widgetCompileState.numberParams ?? []) {

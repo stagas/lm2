@@ -1,4 +1,8 @@
-import { SEQ_VOICES } from '../../../as/assembly/constants.ts'
+import {
+  FINAL_OUT_ANALYSER_L_INDEX,
+  FINAL_OUT_ANALYSER_R_INDEX,
+  SEQ_VOICES,
+} from '../../../as/assembly/constants.ts'
 import { MAX_GEN_INDEX, Op, SeqOp } from '../../../as/assembly/shared.ts'
 import type {
   Loc,
@@ -15,12 +19,6 @@ import { findScaleIndex } from '../../mini/scales.ts'
 import { walkAst } from './ast-walker.ts'
 import { builtinSyms } from './builtin-syms.ts'
 import {
-  createAdVisitor,
-} from './extract-ad.ts'
-import {
-  createAdsrVisitor,
-} from './extract-adsr.ts'
-import {
   createAnalyserVisitor,
 } from './extract-analysers.ts'
 import {
@@ -28,27 +26,11 @@ import {
   createBpmVisitor,
 } from './extract-bpm-bars.ts'
 import {
-  createCompressorVisitor,
-} from './extract-compressors.ts'
-import {
-  createEnvfollowVisitor,
-} from './extract-envfollow.ts'
-import {
-  createExpanderVisitor,
-} from './extract-expanders.ts'
-import {
   createFilterNumberLiteralsVisitor,
-  createFiltersVisitor,
 } from './extract-filter.ts'
 import {
-  createGateVisitor,
-} from './extract-gates.ts'
-import {
-  createLfoVisitor,
-} from './extract-lfo.ts'
-import {
-  createLimiterVisitor,
-} from './extract-limiters.ts'
+  createGenericKnobVisitor,
+} from './extract-knobs-generic.ts'
 import {
   createMiniSequencesVisitor,
 } from './extract-mini.ts'
@@ -57,17 +39,11 @@ import {
   createNumberParamsVisitor,
 } from './extract-numbers.ts'
 import {
-  createReverbVisitor,
-} from './extract-reverb.ts'
-import {
   createSamplesVisitor,
 } from './extract-samples.ts'
 import {
   createScaleVisitor,
 } from './extract-scale.ts'
-import {
-  createSlewVisitor,
-} from './extract-slew.ts'
 import {
   createSlicersVisitor,
 } from './extract-slicers.ts'
@@ -118,19 +94,15 @@ import {
 export * from './builtin-syms.ts'
 export * from './extract-analysers.ts'
 export * from './extract-bpm-bars.ts'
-export * from './extract-compressors.ts'
-export * from './extract-envfollow.ts'
-export * from './extract-filter.ts'
-export * from './extract-lfo.ts'
+export * from './extract-knobs-generic.ts'
 export * from './extract-mini.ts'
 export * from './extract-numbers.ts'
 export * from './extract-samples.ts'
 export * from './extract-scale.ts'
-export * from './extract-slew.ts'
-export * from './extract-slicers.ts'
 export * from './extract-timeline-labels.ts'
 export * from './extract-timeline-sequences.ts'
 export * from './extract-trigs.ts'
+export * from './knob-config.ts'
 export * from './types.ts'
 
 const NOTE_OFFSETS: Record<string, number> = {
@@ -213,6 +185,26 @@ function extractEarlyDataFromProgram(src: string, program: Program, errors: Lang
 function extractAllRefsFromProgram(src: string, program: Program) {
   // Initialize result collections
   const analyserRefs: AnalyserRef[] = []
+  const knobRefs: any[] = []
+  const slicerRefs: SlicerRef[] = []
+  const everyRefs: EveryRef[] = []
+  const atRefs: AtRef[] = []
+  const euclidRefs: EuclidRef[] = []
+
+  // Create all visitor instances
+  const visitors = [
+    createAnalyserVisitor(analyserRefs),
+    createGenericKnobVisitor(src, knobRefs),
+    createSlicersVisitor(src, slicerRefs),
+    createEveryVisitor(everyRefs),
+    createAtVisitor(atRefs),
+    createEuclidVisitor(euclidRefs),
+  ]
+
+  // Run all visitors in a single AST traversal
+  walkAst(program, visitors, { src })
+
+  // Separate knob refs by function type
   const compressorRefs: CompressorRef[] = []
   const expanderRefs: ExpanderRef[] = []
   const gateRefs: GateRef[] = []
@@ -223,34 +215,24 @@ function extractAllRefsFromProgram(src: string, program: Program) {
   const envfollowRefs: EnvfollowRef[] = []
   const slewRefs: SlewRef[] = []
   const reverbRefs: ReverbRef[] = []
-  const slicerRefs: SlicerRef[] = []
   const lfoRefs: LfoRef[] = []
-  const everyRefs: EveryRef[] = []
-  const atRefs: AtRef[] = []
-  const euclidRefs: EuclidRef[] = []
 
-  // Create all visitor instances
-  const visitors = [
-    createAdVisitor(src, adRefs),
-    createAdsrVisitor(src, adsrRefs),
-    createEnvfollowVisitor(src, envfollowRefs),
-    createSlewVisitor(src, slewRefs),
-    createAnalyserVisitor(analyserRefs),
-    createCompressorVisitor(src, compressorRefs),
-    createExpanderVisitor(src, expanderRefs),
-    createGateVisitor(src, gateRefs),
-    createLimiterVisitor(src, limiterRefs),
-    createFiltersVisitor(src, filterRefs),
-    createReverbVisitor(src, reverbRefs),
-    createSlicersVisitor(src, slicerRefs),
-    createLfoVisitor(src, lfoRefs),
-    createEveryVisitor(everyRefs),
-    createAtVisitor(atRefs),
-    createEuclidVisitor(euclidRefs),
-  ]
-
-  // Run all visitors in a single AST traversal
-  walkAst(program, visitors, { src })
+  for (const ref of knobRefs) {
+    if (ref.functionName === 'compressor') compressorRefs.push(ref)
+    else if (ref.functionName === 'expander') expanderRefs.push(ref)
+    else if (ref.functionName === 'gate') gateRefs.push(ref)
+    else if (ref.functionName === 'limiter') limiterRefs.push(ref)
+    else if (['lp', 'hp', 'bp', 'bs', 'ls', 'hs', 'peak', 'ap', 'slp', 'shp', 'sbp', 'sbs', 'speak', 'sap', 'mlp',
+      'mhp', 'diodeladder', 'olp', 'ohp'].includes(ref.functionName)) filterRefs.push(ref)
+    else if (ref.functionName === 'ad') adRefs.push(ref)
+    else if (ref.functionName === 'adsr') adsrRefs.push(ref)
+    else if (ref.functionName === 'envfollow') envfollowRefs.push(ref)
+    else if (ref.functionName === 'slew') slewRefs.push(ref)
+    else if (['freeverb', 'dattorro', 'fdn', 'velvet'].includes(ref.functionName)) reverbRefs.push(ref)
+    else if (['lfosine', 'lfotri', 'lfosaw', 'lforamp', 'lfosqr', 'lfosah', 'smooth', 'fractal'].includes(
+      ref.functionName,
+    )) lfoRefs.push(ref)
+  }
 
   return {
     adRefs,
@@ -288,7 +270,7 @@ export function extractEarlyDataFromSource(src: string): {
   numberLiterals: NumberLiteralInfo[]
   errors: LangError[]
 } {
-  const lexed = lex(src)
+  const lexed = lex(src, { preludeLines: 0, postludeStart: Infinity })
   const parsed = parse(src, lexed.tokens)
   const errors: LangError[] = [...lexed.errors, ...parsed.errors]
   const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
@@ -353,24 +335,19 @@ export function encodeLangToVmOps(
   const pLines = countNewlines(p)
   const po = normalizePrelude(postlude)
   const sLines = countNewlines(src)
-  const userCodeStart = pLines
-  const userCodeEnd = pLines + sLines
+  const postludeStart = pLines + sLines + 1
   const fullSrc = `${p}${src}${po}`
 
   const mapError = (e: LangError): LangError => {
-    const line = e.line - pLines
-    if (line <= 0) return { ...e, line: 0, column: 0, code: '' }
-    return { ...e, line, code: lineText(src, line) }
+    if (e.line <= 0) return { ...e, line: 0, column: 0, code: '' }
+    return { ...e, code: lineText(src, e.line) }
   }
 
-  // Helper to map location line numbers (subtract prelude lines)
-  const mapLoc = (loc: any) => loc ? { ...loc, line: loc.line - pLines } : loc
-
   try {
-    const lexed = lex(fullSrc)
+    const lexed = lex(fullSrc, { preludeLines: pLines, postludeStart })
     const tokens = lexed.tokens
     const lexErrors: LangError[] = lexed.errors.map(mapError)
-    const parsed = parse(fullSrc, tokens)
+    const parsed = parse(fullSrc, tokens, { preludeLines: pLines })
     const errors: LangError[] = [...lexErrors, ...parsed.errors.map(mapError)]
 
     let visualizerVertex: string | undefined
@@ -426,7 +403,7 @@ export function encodeLangToVmOps(
     if (errors.length) return { errors: errors.map(mapError), visualizerVertex, visualizerFragment }
 
     // Extract all early data in a single AST traversal
-    const earlyData = extractEarlyDataFromProgram(fullSrc, parsed.program, errors)
+    const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
     if (errors.length) return { errors: errors.map(mapError) }
 
     const {
@@ -445,27 +422,15 @@ export function encodeLangToVmOps(
       numberLiterals: allNumberLiterals,
     } = earlyData
 
-    // Filter out refs from prelude (line <= pLines) and normalize line numbers
-    const isLineFromUserCode = (item: { line: number }) => item.line > userCodeStart && item.line <= userCodeEnd
-    const isLocLineFromUserCode = (item: { loc: { line: number } }) =>
-      item.loc.line > userCodeStart && item.loc.line <= userCodeEnd
-    const mapRefLoc = (ref: any) => ({ ...ref, loc: mapLoc(ref.loc) })
-
-    const miniRefs = allMiniRefs.filter(isLocLineFromUserCode).map(mapRefLoc).map(r => ({ ...r,
-      start: r.start - p.length, end: r.end - p.length })
-    )
+    const miniRefs = allMiniRefs
     const miniPlayBars = allMiniPlayBars
     const timelineSequences = allTimelineSequences
-    const timelineRefs = allTimelineRefs.filter(isLocLineFromUserCode).map(mapRefLoc).map(r => ({ ...r,
-      start: r.start - p.length, end: r.end - p.length })
-    )
-    const timelineLabels = allTimelineLabels.filter(isLocLineFromUserCode).map(mapRefLoc)
-    const samples = allSamples.filter(isLocLineFromUserCode).map(mapRefLoc)
-    const explicitNumberParams = allExplicitNumberParams.filter(isLineFromUserCode).map(p => ({ ...p,
-      line: p.line - pLines })
-    )
-    const lpNumberLiterals = allLpNumberLiterals.filter(isLineFromUserCode).map(p => ({ ...p, line: p.line - pLines }))
-    const numberLiterals = allNumberLiterals.filter(isLineFromUserCode).map(p => ({ ...p, line: p.line - pLines }))
+    const timelineRefs = allTimelineRefs
+    const timelineLabels = allTimelineLabels
+    const samples = allSamples
+    const explicitNumberParams = allExplicitNumberParams
+    const lpNumberLiterals = allLpNumberLiterals
+    const numberLiterals = allNumberLiterals
 
     // Create a set of locations that already have explicit sliders
     const explicitSliderKeys = new Set(explicitNumberParams.map(p => `${p.line}:${p.column}:${p.length}`))
@@ -508,46 +473,73 @@ export function encodeLangToVmOps(
 
     const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
 
-    // Unified index allocator utility
-    const createIndexAllocator = (): () => number => {
-      let index = 0
-      return () => index++
-      // const usedIndices = new Set(reservedIndices)
-      // let nextIndex = startIndex
-      // return (): number => {
-      //   if (nextIndex > maxIndex) return maxIndex
-      //   while (usedIndices.has(nextIndex) && nextIndex < maxIndex) nextIndex++
-      //   const idx = nextIndex
-      //   usedIndices.add(idx)
-      //   nextIndex = Math.min(maxIndex, idx + 1)
-      //   return idx
-      // }
+    const createIndexAllocator = (
+      opts: { start: number; max: number; reserved?: number[] },
+    ): (span?: number) => number => {
+      const used = new Set<number>(opts.reserved ?? [])
+      let next = opts.start | 0
+      const max = opts.max | 0
+
+      return (span = 1): number => {
+        span = Math.max(1, span | 0)
+        const maxStart = Math.max(0, max - (span - 1))
+
+        while (next <= maxStart) {
+          let ok = true
+          for (let i = 0; i < span; i++) {
+            if (used.has(next + i)) {
+              ok = false
+              break
+            }
+          }
+          if (ok) {
+            const idx = next
+            for (let i = 0; i < span; i++) used.add(idx + i)
+            next = idx + span
+            return idx
+          }
+          next++
+        }
+
+        // Saturate if we've run out of space; better to overlap than to crash or produce gaps.
+        const idx = maxStart
+        for (let i = 0; i < span; i++) used.add(idx + i)
+        return idx
+      }
     }
 
-    const allocAnalyserIndex = createIndexAllocator()
+    const allocAnalyserIndex = createIndexAllocator({
+      start: 0,
+      max: FINAL_OUT_ANALYSER_L_INDEX - 1,
+      reserved: [FINAL_OUT_ANALYSER_L_INDEX, FINAL_OUT_ANALYSER_R_INDEX],
+    })
 
     const implicitAnalyserRefs: AnalyserRef[] = []
 
-    const allocCompressorIndex = createIndexAllocator()
+    const allocCompressorIndex = createIndexAllocator({ start: 0, max: 63 })
 
-    const allocLimiterIndex = createIndexAllocator()
+    const allocExpanderIndex = createIndexAllocator({ start: 0, max: 63 })
 
-    const allocFilterIndex = createIndexAllocator()
+    const allocGateIndex = createIndexAllocator({ start: 0, max: 63 })
 
-    const allocLfoIndex = createIndexAllocator()
+    const allocLimiterIndex = createIndexAllocator({ start: 0, max: 63 })
 
-    const allocReverbIndex = createIndexAllocator()
+    const allocFilterIndex = createIndexAllocator({ start: 0, max: 63 })
+
+    const allocLfoIndex = createIndexAllocator({ start: 0, max: 63 })
+
+    const allocReverbIndex = createIndexAllocator({ start: 0, max: 63 })
 
     const isReverbCall = (name: string | null): boolean =>
       name === 'freeverb' || name === 'dattorro' || name === 'fdn' || name === 'velvet'
 
-    const allocAdIndex = createIndexAllocator()
+    const allocAdIndex = createIndexAllocator({ start: 0, max: 63 })
 
-    const allocAdsrIndex = createIndexAllocator()
+    const allocAdsrIndex = createIndexAllocator({ start: 0, max: 63 })
 
-    const allocEnvfollowIndex = createIndexAllocator()
+    const allocEnvfollowIndex = createIndexAllocator({ start: 0, max: 63 })
 
-    const allocTrigIndex = createIndexAllocator()
+    const allocTrigIndex = createIndexAllocator({ start: 0, max: 63 })
 
     const transformExpr = (expr: any): any => {
       if (!expr) return expr
@@ -658,6 +650,8 @@ export function encodeLangToVmOps(
         const isEnvfollow = calleeName === 'envfollow'
         const isAnalyser = calleeName === 'analyser'
         const isCompressor = calleeName === 'compressor'
+        const isExpander = calleeName === 'expander'
+        const isGate = calleeName === 'gate'
         const isLimiter = calleeName === 'limiter'
         const isFilter = calleeName === 'lp'
           || calleeName === 'hp'
@@ -740,12 +734,27 @@ export function encodeLangToVmOps(
             posSeen++
             return keep
           })
-          return { ...expr, callee, args: [...args, { kind: 'pos', value: toSeqIndexExpr(expr.loc, idx) }] }
+          return { ...expr, callee,
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
 
         if (isCompressor) {
           const idx = allocCompressorIndex()
 
+          return { ...expr, callee,
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+        }
+
+        if (isExpander) {
+          const idx = allocExpanderIndex()
+          args = args.filter((a: any) => !(a?.kind === 'named' && (a.name === '%index' || a.name === 'index')))
+          return { ...expr, callee,
+            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
+        }
+
+        if (isGate) {
+          const idx = allocGateIndex()
+          args = args.filter((a: any) => !(a?.kind === 'named' && (a.name === '%index' || a.name === 'index')))
           return { ...expr, callee,
             args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
         }
@@ -1076,47 +1085,36 @@ export function encodeLangToVmOps(
 
     const transformedProgram = { ...parsed.program,
       body: parsed.program.body.map(transformStmt).filter(Boolean) } as any
-    errors.push(...checkUndefinedVariableErrors(fullSrc, transformedProgram))
+    const undefinedVarErrors = checkUndefinedVariableErrors(fullSrc, transformedProgram)
+      .filter(e => e.line > 0)
+    errors.push(...undefinedVarErrors)
     if (errors.length) return { errors: errors.map(mapError) }
     // Extract all references in a single AST traversal
-    const extractionResults = extractAllRefsFromProgram(fullSrc, transformedProgram)
+    const extractionResults = extractAllRefsFromProgram(src, transformedProgram)
 
-    // Filter out refs from prelude (line <= pLines) and normalize line numbers
-    const mapRefLocs = (ref: any) => {
-      const mapped: any = { ...ref }
-      if (mapped.loc) mapped.loc = mapLoc(mapped.loc)
-      if (mapped.aboveLoc) mapped.aboveLoc = mapLoc(mapped.aboveLoc)
-      if (mapped.callLoc) mapped.callLoc = mapLoc(mapped.callLoc)
-      if (mapped.attackArgLoc) mapped.attackArgLoc = mapLoc(mapped.attackArgLoc)
-      if (mapped.decayArgLoc) mapped.decayArgLoc = mapLoc(mapped.decayArgLoc)
-      if (mapped.sustainArgLoc) mapped.sustainArgLoc = mapLoc(mapped.sustainArgLoc)
-      if (mapped.releaseArgLoc) mapped.releaseArgLoc = mapLoc(mapped.releaseArgLoc)
-      if (mapped.exponentArgLoc) mapped.exponentArgLoc = mapLoc(mapped.exponentArgLoc)
-      if (mapped.trigArgLoc) mapped.trigArgLoc = mapLoc(mapped.trigArgLoc)
-      if (mapped.cutoffArgLoc) mapped.cutoffArgLoc = mapLoc(mapped.cutoffArgLoc)
-      if (mapped.qArgLoc) mapped.qArgLoc = mapLoc(mapped.qArgLoc)
-      if (mapped.gainArgLoc) mapped.gainArgLoc = mapLoc(mapped.gainArgLoc)
-      return mapped
-    }
-
-    adRefs = extractionResults.adRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    adsrRefs = extractionResults.adsrRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    envfollowRefs = extractionResults.envfollowRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    slewRefs = extractionResults.slewRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    analyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs].filter(isLocLineFromUserCode).map(
-      mapRefLocs,
-    )
-    compressorRefs = extractionResults.compressorRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    expanderRefs = extractionResults.expanderRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    gateRefs = extractionResults.gateRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    limiterRefs = extractionResults.limiterRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    filterRefs = extractionResults.filterRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    reverbRefs = extractionResults.reverbRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    slicerRefs = extractionResults.slicerRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    lfoRefs = extractionResults.lfoRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    everyRefs = extractionResults.everyRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    atRefs = extractionResults.atRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
-    euclidRefs = extractionResults.euclidRefs.filter(isLocLineFromUserCode).map(mapRefLocs)
+    adRefs = extractionResults.adRefs
+    adsrRefs = extractionResults.adsrRefs
+    envfollowRefs = extractionResults.envfollowRefs
+    slewRefs = extractionResults.slewRefs
+    // Merge explicit and implicit analyser refs, deduplicating by index (in case saturation causes overlaps).
+    const seenAnalyserIndices = new Set<number>()
+    const allAnalyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs]
+    analyserRefs = allAnalyserRefs.filter(ref => {
+      if (seenAnalyserIndices.has(ref.analyserIndex)) return false
+      seenAnalyserIndices.add(ref.analyserIndex)
+      return true
+    })
+    compressorRefs = extractionResults.compressorRefs
+    expanderRefs = extractionResults.expanderRefs
+    gateRefs = extractionResults.gateRefs
+    limiterRefs = extractionResults.limiterRefs
+    filterRefs = extractionResults.filterRefs
+    reverbRefs = extractionResults.reverbRefs
+    slicerRefs = extractionResults.slicerRefs
+    lfoRefs = extractionResults.lfoRefs
+    everyRefs = extractionResults.everyRefs
+    atRefs = extractionResults.atRefs
+    euclidRefs = extractionResults.euclidRefs
     const compiled = compile(fullSrc, transformedProgram)
     errors.push(...compiled.errors)
     if (errors.length) return { errors: errors.map(mapError) }
@@ -1488,17 +1486,8 @@ export function encodeLangToVmOps(
       literalIndex: locKeyToLiteralIndex.get(sliderKeyOf(p)),
     }))
 
-    // Filter out arrayLiterals and branchMarks from prelude and normalize line numbers
     const filteredArrayLiterals = arrayLiterals
-      .filter(isLocLineFromUserCode)
-      .map(a => ({
-        ...a,
-        loc: mapLoc(a.loc),
-        items: a.items.map(mapLoc),
-      }))
     const filteredBranchMarks = branchMarks
-      .filter(isLocLineFromUserCode)
-      .map(b => ({ ...b, loc: mapLoc(b.loc) }))
 
     return errors.length
       ? {

@@ -7,18 +7,75 @@ const isIdentContinue = (c: string) => isAlphaNum(c) || c === '#'
 
 const lexCache = new Map<string, { tokens: Token[]; errors: LexError[] }>()
 
-function preprocessSource(src: string): string {
+type ColumnOffset = { line: number; column: number; offset: number }
+
+function preprocessSource(src: string): { src: string; offsets: ColumnOffset[] } {
   // Rewrite `identifier=|>` to `identifier=_p->_p|>`
   // This allows shorthand syntax for pipe lambdas
-  return src.replace(/([a-zA-Z_$][a-zA-Z0-9_$#]*)\s*=\s*\|>/g, '$1=_p->_p|>')
+  const offsets: ColumnOffset[] = []
+  let result = ''
+  let lastIndex = 0
+  let line = 1
+  let column = 1
+
+  const regex = /([a-zA-Z_$][a-zA-Z0-9_$#]*)\s*=\s*\|>/g
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(src)) !== null) {
+    // Add text before match
+    const beforeMatch = src.slice(lastIndex, match.index)
+    result += beforeMatch
+
+    // Update line/column for the text before match
+    for (let i = 0; i < beforeMatch.length; i++) {
+      if (beforeMatch[i] === '\n') {
+        line++
+        column = 1
+      } else {
+        column++
+      }
+    }
+
+    // Track where the replacement starts
+    const matchStartColumn = column
+
+    // Add the replacement
+    const ident = match[1]!
+    const original = match[0]!
+    const replacement = `${ident}=_p->_p|>`
+    result += replacement
+
+    // Calculate offset: the difference in length between replacement and original
+    const lengthDiff = replacement.length - original.length
+
+    // Record offset for this line starting after the = sign
+    offsets.push({ line, column: matchStartColumn + ident.length + 1, offset: lengthDiff })
+
+    // Update column for the replacement
+    column += replacement.length
+    lastIndex = regex.lastIndex
+  }
+
+  // Add remaining text
+  result += src.slice(lastIndex)
+
+  return { src: result, offsets }
 }
 
-export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
+export function lex(
+  src: string,
+  options?: { preludeLines?: number; postludeStart?: number },
+): { tokens: Token[]; errors: LexError[] } {
   const cached = lexCache.get(src)
   if (cached) return cached
-  src = preprocessSource(src)
+  const preprocessed = preprocessSource(src)
+  src = preprocessed.src
+  const columnOffsets = preprocessed.offsets
   const t: Token[] = []
   const e: LexError[] = []
+
+  const preludeLines = options?.preludeLines ?? 0
+  const postludeStart = options?.postludeStart ?? Infinity
 
   let i = 0
   let line = 1
@@ -43,20 +100,40 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
 
   const add = (kind: TokenKind, start: number, startLine: number, startCol: number, value?: Token['value']) => {
     const lexeme = src.slice(start, i)
+    const isKernel = startLine <= preludeLines || startLine >= postludeStart
+
+    // Adjust column back to original position by subtracting offsets
+    let adjustedCol = startCol
+    for (const offset of columnOffsets) {
+      if (offset.line === startLine && startCol >= offset.column) {
+        adjustedCol -= offset.offset
+      }
+    }
+
     t.push({
       kind,
       lexeme,
       value,
       line: startLine,
-      column: startCol,
+      column: adjustedCol,
       length: i - start,
+      kernel: isKernel || undefined,
     })
   }
 
   const addError = (message: string, start: number, startLine: number, startCol: number) => {
     const end = Math.min(src.length, start + 80)
     const code = src.slice(lineStart, src.indexOf('\n', lineStart) === -1 ? src.length : src.indexOf('\n', lineStart))
-    e.push({ message, line: startLine, column: startCol, length: Math.max(1, i - start), code })
+
+    // Adjust column back to original position by subtracting offsets
+    let adjustedCol = startCol
+    for (const offset of columnOffsets) {
+      if (offset.line === startLine && startCol >= offset.column) {
+        adjustedCol -= offset.offset
+      }
+    }
+
+    e.push({ message, line: startLine, column: adjustedCol, length: Math.max(1, i - start), code })
     i = Math.max(i, start + 1)
   }
 
@@ -313,7 +390,7 @@ export function lex(src: string): { tokens: Token[]; errors: LexError[] } {
     else add('invalid', start, startLine, startCol)
   }
 
-  t.push({ kind: 'eof', lexeme: '', line, column: col, length: 0 })
+  t.push({ kind: 'eof', lexeme: '', line, column: col, length: 0, kernel: undefined })
   const result = { tokens: t, errors: e }
   lexCache.set(src, result)
   return result

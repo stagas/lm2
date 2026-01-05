@@ -80,25 +80,38 @@ export type AnalyserRef = {
   loc: Loc
 }
 
-export type CompressorRef = {
+export type GenericKnobParam = {
+  name: string
+  value: number
+  valueLoc: Loc
+}
+
+export type GenericKnobRef = {
+  functionName: string
+  index: number
+  /** Location of the function identifier (for widget anchoring). */
+  loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
+  /** Location of the input arg (positional or `in:`/`input:`). */
+  inArgLoc: Loc | null
+  /** Location of the sidechain arg (positional or `key:`). */
+  keyArgLoc: Loc | null
+  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
+  knobParams: GenericKnobParam[]
+  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
+  params: Record<string, number>
+}
+
+export type CompressorRef = GenericKnobRef & {
   compressorIndex: number
-  /** Location of the `compressor` identifier (for widget anchoring). */
-  loc: Loc
-  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
-  aboveLoc: Loc
-  /** Location of the full call expression. */
-  callLoc: Loc
-  /** Location of the input arg (positional or `in:`). */
-  inArgLoc: Loc | null
-  /** Location of the sidechain arg (positional or `key:`). */
-  keyArgLoc: Loc | null
-  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
   knobParams: Array<{
     name: 'attack' | 'release' | 'threshold' | 'ratio' | 'knee'
     value: number
     valueLoc: Loc
   }>
-  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
     attack: number
     release: number
@@ -108,25 +121,13 @@ export type CompressorRef = {
   }
 }
 
-export type ExpanderRef = {
+export type ExpanderRef = GenericKnobRef & {
   expanderIndex: number
-  /** Location of the `expander` identifier (for widget anchoring). */
-  loc: Loc
-  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
-  aboveLoc: Loc
-  /** Location of the full call expression. */
-  callLoc: Loc
-  /** Location of the input arg (positional or `in:`). */
-  inArgLoc: Loc | null
-  /** Location of the sidechain arg (positional or `key:`). */
-  keyArgLoc: Loc | null
-  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
   knobParams: Array<{
     name: 'attack' | 'release' | 'threshold' | 'ratio' | 'knee'
     value: number
     valueLoc: Loc
   }>
-  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
     attack: number
     release: number
@@ -136,25 +137,13 @@ export type ExpanderRef = {
   }
 }
 
-export type GateRef = {
+export type GateRef = GenericKnobRef & {
   gateIndex: number
-  /** Location of the `gate` identifier (for widget anchoring). */
-  loc: Loc
-  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
-  aboveLoc: Loc
-  /** Location of the full call expression. */
-  callLoc: Loc
-  /** Location of the input arg (positional or `in:`). */
-  inArgLoc: Loc | null
-  /** Location of the sidechain arg (positional or `key:`). */
-  keyArgLoc: Loc | null
-  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
   knobParams: Array<{
     name: 'attack' | 'release' | 'threshold' | 'ratio' | 'knee' | 'hold'
     value: number
     valueLoc: Loc
   }>
-  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
     attack: number
     release: number
@@ -165,30 +154,21 @@ export type GateRef = {
   }
 }
 
-export type LimiterRef = {
+export type LimiterRef = GenericKnobRef & {
   limiterIndex: number
-  /** Location of the `limiter` identifier (for widget anchoring). */
-  loc: Loc
-  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
-  aboveLoc: Loc
-  /** Location of the full call expression. */
-  callLoc: Loc
-  /** Location of the input arg (positional or `in:`). */
-  inArgLoc: Loc | null
-  /** Numeric parameter value locations as they appear (only for params that are explicitly present). */
   knobParams: Array<{
     name: 'release' | 'threshold'
     value: number
     valueLoc: Loc
   }>
-  /** Current compile-time parameter snapshot (best-effort; non-const expressions fall back to defaults). */
   params: {
     release: number
     threshold: number
   }
 }
 
-export type FilterType = 'lp' | 'hp' | 'bp' | 'bs' | 'ls' | 'hs' | 'peak' | 'ap' | 'slp' | 'shp' | 'sbp' | 'sbs' | 'speak' | 'sap' | 'mlp' | 'mhp' | 'diodeladder' | 'olp' | 'ohp'
+export type FilterType = 'lp' | 'hp' | 'bp' | 'bs' | 'ls' | 'hs' | 'peak' | 'ap' | 'slp' | 'shp' | 'sbp' | 'sbs'
+  | 'speak' | 'sap' | 'mlp' | 'mhp' | 'diodeladder' | 'olp' | 'ohp'
 
 export type FilterRef = {
   filterType: FilterType
