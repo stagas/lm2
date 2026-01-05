@@ -174,5 +174,30 @@ export function buildLineStartsForLocs(src: string): number[] {
 export function getIndexFromCall(call: any): number {
   const namedIdx = findNamedArg(call, '%index')
   if (namedIdx?.value) return tryEvalConstNumber(namedIdx.value) ?? 0
+
+  // For analyser(), the index is the second positional argument
+  const posArgs = getPosArgs(call)
+  if (posArgs.length >= 2) {
+    const idx = tryEvalConstNumber(posArgs[1]?.value)
+    if (idx != null) return idx
+  }
+
   return 0
+}
+
+export function resolveParamName(raw: string, validNames: string[]): string | null {
+  // Exact match
+  const exact = validNames.find(p => p === raw)
+  if (exact) return exact
+
+  // Case-insensitive match
+  const lower = raw.toLowerCase()
+  const ci = validNames.find(p => p.toLowerCase() === lower)
+  if (ci) return ci
+
+  // Prefix match (if unambiguous)
+  const prefix = validNames.filter(p => p.startsWith(raw))
+  if (prefix.length === 1) return prefix[0]!
+
+  return null
 }

@@ -2,6 +2,7 @@ export type Loc = {
   line: number
   column: number
   length: number
+  kernel?: boolean
 }
 
 export type Program = {
