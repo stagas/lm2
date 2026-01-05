@@ -129,6 +129,9 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
     start: () => {
       const state = get()
       if (!state.control) return
+      // AudioContext can become suspended after initialization (tab switch, device change, etc).
+      // `start()` is always invoked from a user intent path, so resume opportunistically here.
+      void state.audioContext?.resume()
       if (state.playbackState === 'stopped' && state.seekSampleCount && state.playingLoopId) {
         const uiTarget = useEngineUiStore.getState().viewSampleCountByLoopId[state.playingLoopId]
         const prevTarget = Atomics.load(state.seekSampleCount, 0)

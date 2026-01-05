@@ -46,6 +46,7 @@ flanger=(in,rate=1,depth=0.00125,base=0.00125,feedback=0.7)->{
 
 chorus=(in,voices=3,base=0.02,depth=0.006,rate=0.25,spread=.5)->{
   sum = 0
+  voices = max(voices,1)
 
   for (i=0;i<voices;i++) {
     phase = (i / voices) * spread
@@ -54,7 +55,7 @@ chorus=(in,voices=3,base=0.02,depth=0.006,rate=0.25,spread=.5)->{
       base,
       depth,
       rate,
-      feedback = 0,
+      feedback:0,
       phase
     )
   }
@@ -69,7 +70,7 @@ eq3=(in,low=0,mid=0,high=0,lf=500,mf=2000,hf=8000)->{
   return lo+mi+hi
 }
 
-mix=in->in
+mix=|>$
 `
 
 export const POSTLUDE = `

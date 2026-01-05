@@ -52,14 +52,25 @@ export function PlaybackControls({
             }
             startSample = 0
           }
+          // When resuming the same loop, route through `playLoop()` so edits made while
+          // paused/stopped are applied before audio resumes.
           if (isSameLoop && playbackState !== 'running') {
-            start()
-          }
-          else {
             void playLoop(currentLoop.data.id, currentLoop.codeFile.value, startSample).catch(err => {
               onDspError(err instanceof Error ? err.message : String(err))
             })
+            return
           }
+
+          // If we're already "running", still kick the transport so a stale/suspended audio
+          // context or latched worklet state doesn't make Play a no-op.
+          if (isSameLoop) {
+            start()
+            return
+          }
+
+          void playLoop(currentLoop.data.id, currentLoop.codeFile.value, startSample).catch(err => {
+            onDspError(err instanceof Error ? err.message : String(err))
+          })
         }} />
       <PlaybackButton icon={<PauseGradientIcon />} onClick={() => {
         if (playbackState === 'running') {

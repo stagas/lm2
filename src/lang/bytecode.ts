@@ -1077,9 +1077,12 @@ class Compiler {
         next++
       }
 
-      let maxIdx = -1
-      for (let i = 0; i < slots.length; i++) if (slots[i] !== undefined) maxIdx = i
-      const pos = maxIdx + 1
+      // Emit all parameters up to the last non-undefined one (don't fill trailing undefined)
+      let lastNonUndef = -1
+      for (let i = 0; i < sigNames.length; i++) {
+        if (slots[i] !== undefined) lastNonUndef = i
+      }
+      const pos = lastNonUndef + 1
 
       for (let i = 0; i < pos; i++) {
         const t = slots[i]

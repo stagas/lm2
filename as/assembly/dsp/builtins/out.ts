@@ -57,8 +57,9 @@ export function callOut(
       const arrId: i32 = argAux
       if (arrId < 0 || arrId >= dsp.arrays.count) {
         // Invalid array, output silence
-        lPtr$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
-        rPtr$ = lPtr$
+        const ptr = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
+        lPtr$ = ptr
+        rPtr$ = ptr
         returnTag = VmTag.Num
         returnNum = 0.0
         returnAux = 0
@@ -71,13 +72,16 @@ export function callOut(
           const lTag = dsp.arrays.elemTag[start] as VmTag
           const lNum = dsp.arrays.elemNum[start]
           const lAux = dsp.arrays.elemAux[start]
-          lPtr$ = audio.toAudioPtr(lTag, lNum, lAux, length, program)
+          const lPtr = audio.toAudioPtr(lTag, lNum, lAux, length, program)
 
           // Get right channel
           const rTag = dsp.arrays.elemTag[start + 1] as VmTag
           const rNum = dsp.arrays.elemNum[start + 1]
           const rAux = dsp.arrays.elemAux[start + 1]
-          rPtr$ = audio.toAudioPtr(rTag, rNum, rAux, length, program)
+          const rPtr = audio.toAudioPtr(rTag, rNum, rAux, length, program)
+
+          lPtr$ = lPtr
+          rPtr$ = rPtr
 
           returnTag = lTag
           returnNum = lNum
@@ -87,16 +91,18 @@ export function callOut(
           const elemTag = dsp.arrays.elemTag[start] as VmTag
           const elemNum = dsp.arrays.elemNum[start]
           const elemAux = dsp.arrays.elemAux[start]
-          lPtr$ = audio.toAudioPtr(elemTag, elemNum, elemAux, length, program)
-          rPtr$ = lPtr$
+          const ptr = audio.toAudioPtr(elemTag, elemNum, elemAux, length, program)
+          lPtr$ = ptr
+          rPtr$ = ptr
 
           returnTag = elemTag
           returnNum = elemNum
           returnAux = elemAux
         } else {
           // Empty array, output silence
-          lPtr$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
-          rPtr$ = lPtr$
+          const ptr = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
+          lPtr$ = ptr
+          rPtr$ = ptr
           returnTag = VmTag.Num
           returnNum = 0.0
           returnAux = 0
@@ -104,16 +110,18 @@ export function callOut(
       }
     } else {
       // Handle single signal case: out(signal)
-      lPtr$ = audio.toAudioPtr(argTag, argNum, argAux, length, program)
-      rPtr$ = lPtr$ // Same signal to both channels
+      const ptr = audio.toAudioPtr(argTag, argNum, argAux, length, program)
+      lPtr$ = ptr
+      rPtr$ = ptr // Same signal to both channels
       returnTag = argTag
       returnNum = argNum
       returnAux = argAux
     }
   } else {
     // No arguments, output silence
-    lPtr$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
-    rPtr$ = lPtr$
+    const ptr = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)
+    lPtr$ = ptr
+    rPtr$ = ptr
     returnTag = VmTag.Num
     returnNum = 0.0
     returnAux = 0

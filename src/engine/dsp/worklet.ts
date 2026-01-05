@@ -718,7 +718,16 @@ export class DspProcessor extends AudioWorkletProcessor {
             : seekTargetSample
           this.applySeekSample(seekSample)
         }
+        // If `Start` is latched (e.g. a one-shot op races with a stop/fade-out),
+        // still begin playback. The state machine usually transitions on control
+        // changes, but this makes `Start` idempotent when fully stopped.
+        if (control === ControlOp.Start) {
+          this.state = 'fade-in'
+          this.shouldReset = false
+        }
+        else {
         return true
+        }
       }
 
       const ringPos = Atomics.load(this.options.processorOptions.ringPos, 0)
