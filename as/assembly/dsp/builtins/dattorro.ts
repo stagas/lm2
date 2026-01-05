@@ -211,6 +211,7 @@ export function callDattorro(
   let inR$: usize = 0
 
   if (inTag === VmTag.Arr) {
+    console.log('is array')
     const arrId: i32 = inAux
     if (arrId < 0 || arrId >= dsp.arrays.count) {
       inL$ = audio.toAudioPtr(VmTag.Num, 0.0, 0, length, program)

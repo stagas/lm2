@@ -313,105 +313,107 @@ export class Dattorro extends Gen {
 
     let phase: f64 = this.excPhase
 
-    for (let s: i32 = 0; s < length; s++) {
-      const inL: f32 = load<f32>(iL$)
-      const inR: f32 = load<f32>(iR$)
-      const input: f32 = ((inL + inR) * (0.5 as f32)) as f32
+    for (let s: i32 = 0, inL: f32, inR: f32, input: f32, w: i32, pd: i32, preIdx: i32, preIn: f32, bw: f32, bwScaled: f32, fi: f32, si: f32, pre: f32, split: f32, roomSize: f32, excursionRate: f64, excursionDepth: f64, sr: i32, phaseStep: f64, depth: f64, exc: f32, exc2: f32, ft: f32, st: f32, damping: f32, dp: f32, dpScaled: f32, temp: f32, lo: f32, ro: f32; s < length; s += 16) {
+      unroll(16, () => {
+        inL = load<f32>(iL$)
+        inR = load<f32>(iR$)
+        input = ((inL + inR) * (0.5 as f32)) as f32
 
-      const w: i32 = this.preDelayWrite + s
-      unchecked(this.preDelay[w] = input)
+        w = this.preDelayWrite + s
+        unchecked(this.preDelay[w] = input)
 
-      const pd: i32 = i32(Math.round(clamp01(load<f32>(preDelay$)) * f32(this.preDelayLength - 1)))
-      const preIdx: i32 = (this.preDelayLength + this.preDelayWrite - pd + s) % this.preDelayLength
-      const preIn: f32 = unchecked(this.preDelay[preIdx])
+        pd = i32(Math.round(clamp01(load<f32>(preDelay$)) * f32(this.preDelayLength - 1)))
+        preIdx = (this.preDelayLength + this.preDelayWrite - pd + s) % this.preDelayLength
+        preIn = unchecked(this.preDelay[preIdx])
 
-      const bw: f32 = clamp01(load<f32>(bandwidth$))
-      const bwScaled: f32 = (bw * baseSampleRate / sampleRate) as f32
-      this.lp1 = (this.lp1 + bwScaled * (preIn - this.lp1)) as f32
+        bw = clamp01(load<f32>(bandwidth$))
+        bwScaled = (bw * baseSampleRate / sampleRate) as f32
+        this.lp1 = (this.lp1 + bwScaled * (preIn - this.lp1)) as f32
 
-      const fi: f32 = clamp01(load<f32>(inputDiffusion1$))
-      const si: f32 = clamp01(load<f32>(inputDiffusion2$))
+        fi = clamp01(load<f32>(inputDiffusion1$))
+        si = clamp01(load<f32>(inputDiffusion2$))
 
-      let pre: f32 = 0.0 as f32
-      pre = this.writeDelay(0, (this.lp1 - fi * this.readDelay(0)) as f32)
-      pre = this.writeDelay(1, (fi * (pre - this.readDelay(1)) + this.readDelay(0)) as f32)
-      pre = this.writeDelay(2, (fi * pre + this.readDelay(1) - si * this.readDelay(2)) as f32)
-      pre = this.writeDelay(3, (si * (pre - this.readDelay(3)) + this.readDelay(2)) as f32)
+        pre = 0.0 as f32
+        pre = this.writeDelay(0, (this.lp1 - fi * this.readDelay(0)) as f32)
+        pre = this.writeDelay(1, (fi * (pre - this.readDelay(1)) + this.readDelay(0)) as f32)
+        pre = this.writeDelay(2, (fi * pre + this.readDelay(1) - si * this.readDelay(2)) as f32)
+        pre = this.writeDelay(3, (si * (pre - this.readDelay(3)) + this.readDelay(2)) as f32)
 
-      const split: f32 = (si * pre + this.readDelay(3)) as f32
+        split = (si * pre + this.readDelay(3)) as f32
 
-      const roomSize: f32 = clamp01(load<f32>(roomSize$))
+        roomSize = clamp01(load<f32>(roomSize$))
 
-      // Update excursion parameters for this sample
-      const excursionRate: f64 = clamp01(load<f32>(excursionRate$)) as f64 * 2.0
-      const excursionDepth: f64 = clamp01(load<f32>(excursionDepth$)) as f64 * 2.0
-      const sr: i32 = i32(sampleRate)
-      const phaseStep: f64 = excursionRate / (sr as f64)
-      const depth: f64 = excursionDepth * (sr as f64) / 1000.0
+        // Update excursion parameters for this sample
+        excursionRate = clamp01(load<f32>(excursionRate$)) as f64 * 2.0
+        excursionDepth = clamp01(load<f32>(excursionDepth$)) as f64 * 2.0
+        sr = i32(sampleRate)
+        phaseStep = excursionRate / (sr as f64)
+        depth = excursionDepth * (sr as f64) / 1000.0
 
-      const exc: f32 = f32(depth * (1.0 + Math.cos(phase * EXC_2PI_1)))
-      const exc2: f32 = f32(depth * (1.0 + Math.sin(phase * EXC_2PI_2)))
+        exc = f32(depth * (1.0 + Math.cos(phase * EXC_2PI_1)))
+        exc2 = f32(depth * (1.0 + Math.sin(phase * EXC_2PI_2)))
 
-      const ft: f32 = clamp01(load<f32>(decayDiffusion1$))
-      const st: f32 = clamp01(load<f32>(decayDiffusion2$))
-      const damping: f32 = clamp01(load<f32>(damping$))
-      const dp: f32 = (1.0 - damping) as f32
-      const dpScaled: f32 = (dp * baseSampleRate / sampleRate) as f32
+        ft = clamp01(load<f32>(decayDiffusion1$))
+        st = clamp01(load<f32>(decayDiffusion2$))
+        damping = clamp01(load<f32>(damping$))
+        dp = (1.0 - damping) as f32
+        dpScaled = (dp * baseSampleRate / sampleRate) as f32
 
-      // Left loop
-      let temp: f32 = 0.0 as f32
-      temp = this.writeDelay(4, (split + roomSize * this.readDelay(11) + ft * this.readDelayCAt(4, exc)) as f32)
-      this.writeDelay(5, (this.readDelayCAt(4, exc) - ft * temp) as f32)
-      this.lp2 = (this.lp2 + dpScaled * (this.readDelay(5) - this.lp2)) as f32
-      temp = this.writeDelay(6, (roomSize * this.lp2 - st * this.readDelay(6)) as f32)
-      this.writeDelay(7, (this.readDelay(6) + st * temp) as f32)
+        // Left loop
+        temp = 0.0 as f32
+        temp = this.writeDelay(4, (split + roomSize * this.readDelay(11) + ft * this.readDelayCAt(4, exc)) as f32)
+        this.writeDelay(5, (this.readDelayCAt(4, exc) - ft * temp) as f32)
+        this.lp2 = (this.lp2 + dpScaled * (this.readDelay(5) - this.lp2)) as f32
+        temp = this.writeDelay(6, (roomSize * this.lp2 - st * this.readDelay(6)) as f32)
+        this.writeDelay(7, (this.readDelay(6) + st * temp) as f32)
 
-      // Right loop
-      temp = this.writeDelay(8, (split + roomSize * this.readDelay(7) + ft * this.readDelayCAt(8, exc2)) as f32)
-      this.writeDelay(9, (this.readDelayCAt(8, exc2) - ft * temp) as f32)
-      this.lp3 = (this.lp3 + dpScaled * (this.readDelay(9) - this.lp3)) as f32
-      temp = this.writeDelay(10, (roomSize * this.lp3 - st * this.readDelay(10)) as f32)
-      this.writeDelay(11, (this.readDelay(10) + st * temp) as f32)
+        // Right loop
+        temp = this.writeDelay(8, (split + roomSize * this.readDelay(7) + ft * this.readDelayCAt(8, exc2)) as f32)
+        this.writeDelay(9, (this.readDelayCAt(8, exc2) - ft * temp) as f32)
+        this.lp3 = (this.lp3 + dpScaled * (this.readDelay(9) - this.lp3)) as f32
+        temp = this.writeDelay(10, (roomSize * this.lp3 - st * this.readDelay(10)) as f32)
+        this.writeDelay(11, (this.readDelay(10) + st * temp) as f32)
 
-      let lo: f32 = 0.0 as f32
-      let ro: f32 = 0.0 as f32
+        lo = 0.0 as f32
+        ro = 0.0 as f32
 
-      lo = (this.readDelayAt(9, this.taps[0])
-        + this.readDelayAt(9, this.taps[1])
-        - this.readDelayAt(10, this.taps[2])
-        + this.readDelayAt(11, this.taps[3])
-        - this.readDelayAt(5, this.taps[4])
-        - this.readDelayAt(6, this.taps[5])
-        - this.readDelayAt(7, this.taps[6])) as f32
+        lo = (this.readDelayAt(9, this.taps[0])
+          + this.readDelayAt(9, this.taps[1])
+          - this.readDelayAt(10, this.taps[2])
+          + this.readDelayAt(11, this.taps[3])
+          - this.readDelayAt(5, this.taps[4])
+          - this.readDelayAt(6, this.taps[5])
+          - this.readDelayAt(7, this.taps[6])) as f32
 
-      ro = (this.readDelayAt(5, this.taps[7])
-        + this.readDelayAt(5, this.taps[8])
-        - this.readDelayAt(6, this.taps[9])
-        + this.readDelayAt(7, this.taps[10])
-        - this.readDelayAt(9, this.taps[11])
-        - this.readDelayAt(10, this.taps[12])
-        - this.readDelayAt(11, this.taps[13])) as f32
+        ro = (this.readDelayAt(5, this.taps[7])
+          + this.readDelayAt(5, this.taps[8])
+          - this.readDelayAt(6, this.taps[9])
+          + this.readDelayAt(7, this.taps[10])
+          - this.readDelayAt(9, this.taps[11])
+          - this.readDelayAt(10, this.taps[12])
+          - this.readDelayAt(11, this.taps[13])) as f32
 
-      store<f32>(oL$, (lo * WET_GAIN) as f32)
-      store<f32>(oR$, (ro * WET_GAIN) as f32)
+        store<f32>(oL$, (lo * WET_GAIN) as f32)
+        store<f32>(oR$, (ro * WET_GAIN) as f32)
 
-      phase += phaseStep
-      this.advanceDelays()
+        phase += phaseStep
+        this.advanceDelays()
 
-      oL$ += 4
-      oR$ += 4
-      iL$ += 4
-      iR$ += 4
-      roomSize$ += 4
-      damping$ += 4
-      bandwidth$ += 4
-      inputDiffusion1$ += 4
-      inputDiffusion2$ += 4
-      decayDiffusion1$ += 4
-      decayDiffusion2$ += 4
-      excursionRate$ += 4
-      excursionDepth$ += 4
-      preDelay$ += 4
+        oL$ += 4
+        oR$ += 4
+        iL$ += 4
+        iR$ += 4
+        roomSize$ += 4
+        damping$ += 4
+        bandwidth$ += 4
+        inputDiffusion1$ += 4
+        inputDiffusion2$ += 4
+        decayDiffusion1$ += 4
+        decayDiffusion2$ += 4
+        excursionRate$ += 4
+        excursionDepth$ += 4
+        preDelay$ += 4
+      })
     }
 
     this.excPhase = phase
