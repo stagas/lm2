@@ -152,11 +152,11 @@ function tokenizeMiniMods(mods: string): Token[] {
     const ch = mods[i]!
     if (ch === '+') {
       if (mods[i + 1] === '?') {
-        tokens.push({ type: 'comment', content: '+?', length: 2 })
+        tokens.push({ type: 'string', content: '+?', length: 2 })
         i += 2
       }
       else {
-        tokens.push({ type: 'comment', content: '+', length: 1 })
+        tokens.push({ type: 'string', content: '+', length: 1 })
         i++
       }
     }
@@ -164,11 +164,11 @@ function tokenizeMiniMods(mods: string): Token[] {
       let j = i
       while (j < mods.length && mods[j] === '$') j++
       const dollars = mods.slice(i, j)
-      tokens.push({ type: 'comment', content: dollars, length: dollars.length })
+      tokens.push({ type: 'string', content: dollars, length: dollars.length })
       i = j
     }
     else if (/[*!@/\\.;?\-]/.test(ch)) {
-      tokens.push({ type: 'comment', content: ch, length: 1 })
+      tokens.push({ type: 'string', content: ch, length: 1 })
       i++
     }
     else {
@@ -182,7 +182,7 @@ function tokenizeMiniMods(mods: string): Token[] {
     while (j < mods.length && /[0-9.]/.test(mods[j]!)) j++
     if (j > i) {
       const num = mods.slice(i, j)
-      tokens.push({ type: 'number', content: num, length: num.length })
+      tokens.push({ type: 'parameter', content: num, length: num.length })
       i = j
     }
   }
