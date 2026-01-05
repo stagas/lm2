@@ -50,6 +50,8 @@ export function usePlayingState(loopId: string | null) {
       window.cancelAnimationFrame(raf)
       const nextPlaybackState = useEngineRuntimeStore.getState().playbackState
       if (nextPlaybackState === 'stopped') {
+        lastSyncedSampleRef.current = 0
+        Atomics.store(dst, 0, 0)
         setViewSampleCount(loopId, 0)
         return
       }

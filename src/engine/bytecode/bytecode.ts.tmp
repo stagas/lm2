@@ -335,7 +335,7 @@ export function encodeLangToVmOps(
   const pLines = countNewlines(p)
   const po = normalizePrelude(postlude)
   const sLines = countNewlines(src)
-  const postludeStart = pLines + sLines + 2
+  const postludeStart = pLines + sLines + 1
   const fullSrc = `${p}${src}${po}`
 
   const mapError = (e: LangError): LangError => {
@@ -404,7 +404,12 @@ export function encodeLangToVmOps(
 
     // Extract all early data in a single AST traversal
     const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
-    if (errors.length) return { errors: errors.map(mapError) }
+    if (errors.length) {
+    console.log('[DEBUG] Errors before mapError:', errors.map(e => ({ line: e.line, col: e.column, msg: e.message.slice(0, 30) })));
+    const mapped = errors.map(mapError);
+    console.log('[DEBUG] Errors after mapError:', mapped.map(e => ({ line: e.line, col: e.column, code: e.code.slice(0, 20) })));
+    return { errors: mapped };
+  }
 
     const {
       bpm,
@@ -1153,22 +1158,15 @@ export function encodeLangToVmOps(
       return idx
     }
 
-    const litOfLocKey = (key: string, value: number) => {
+    const litOfLocKey = (key: string) => {
       const prev = litIndexByLocKey.get(key)
       if (prev !== undefined) return prev
-      // Check if this value already has a literal index (from litOfValue)
-      const existingIdx = litIndexByValue.get(value)
-      if (existingIdx !== undefined) {
-        litIndexByLocKey.set(key, existingIdx)
-        return existingIdx
-      }
       if (litCount >= target.literals.length) {
         errors.push(encoderError(fullSrc, `Too many number literals (max ${target.literals.length})`))
         return 0
       }
       const idx = allocLit()
       litIndexByLocKey.set(key, idx)
-      litIndexByValue.set(value, idx)
       return idx
     }
 
@@ -1295,7 +1293,7 @@ export function encodeLangToVmOps(
             if (typeof v === 'number') {
               const key = ins.loc ? sliderKeyOf(ins.loc) : undefined
               const isSlider = key !== undefined && sliderKeys.has(key)
-              const k = key !== undefined ? litOfLocKey(key, v) : litOfValue(v)
+              const k = key !== undefined ? litOfLocKey(key) : litOfValue(v)
               target.literals[k] = v
               target.ops[w++] = isSlider ? VmOp.PushNumSmoothed : VmOp.PushNum
               target.ops[w++] = k

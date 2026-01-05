@@ -256,7 +256,7 @@ class Compiler {
       line: loc.line,
       column: loc.column,
       length: Math.max(1, loc.length),
-      code: lineText(this.src, loc.line),
+      code: '', // Will be filled in by mapError in encodeLangToVmOps
     })
   }
 
@@ -1135,6 +1135,15 @@ class Compiler {
 
   private compileBinary(expr: BinaryExpr): void {
     if (expr.op === '|>') {
+      // Validate that the right side is not a bare identifier (uncalled function)
+      if (expr.right.kind === 'ident') {
+        this.err(
+          expr.right.loc,
+          `Bare identifier '${expr.right.name}' in pipe. Did you mean to call it with '${expr.right.name}($)'?`,
+        )
+        // Still compile to avoid cascading errors
+      }
+
       const temp = `%pipe${this.pipe.length}`
       this.compileExpr(expr.left)
       this.emit({ op: 'STORE', name: this.nameConst(temp) })

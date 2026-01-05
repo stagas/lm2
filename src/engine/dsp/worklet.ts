@@ -25,7 +25,7 @@ type SwapState = {
   totalChunks: number
 }
 
-const CROSSFADE_CHUNKS = 8
+const CROSSFADE_CHUNKS = 64
 
 const f32BitsBuf = new ArrayBuffer(4)
 const f32BitsView = new DataView(f32BitsBuf)
@@ -726,7 +726,7 @@ export class DspProcessor extends AudioWorkletProcessor {
           this.shouldReset = false
         }
         else {
-        return true
+          return true
         }
       }
 
