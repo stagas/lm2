@@ -1,15 +1,14 @@
-import { useLayoutEffect, useMemo } from 'preact/hooks'
+import { useLayoutEffect } from 'preact/hooks'
 import { useEngineUiStore } from '../store.ts'
 import { usePlayingState } from './usePlayingState.ts'
 
 export function useLoopView(loopId: string | null) {
-  const viewSampleCountByLoopId = useEngineUiStore(state => state.viewSampleCountByLoopId)
   const { viewGlobalSampleCount } = usePlayingState(loopId)
 
-  const viewSampleCount = useMemo(() => {
+  const viewSampleCount = useEngineUiStore(state => {
     if (!loopId) return 0
-    return viewSampleCountByLoopId[loopId] ?? 0
-  }, [loopId, viewSampleCountByLoopId])
+    return state.viewSampleCountByLoopId[loopId] ?? 0
+  })
 
   useLayoutEffect(() => {
     Atomics.store(viewGlobalSampleCount, 0, Math.max(0, viewSampleCount))
