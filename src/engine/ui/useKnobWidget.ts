@@ -1,6 +1,7 @@
 import type { CodeFile, EditorWidget, Theme } from 'mini-code'
 import type React from 'preact/hooks'
 import { useMemo, useRef } from 'preact/hooks'
+import { getCurrentNumberAt, getEditableNumberToken } from './code-number-read.ts'
 import { updateValueWithSpacing } from './code-number-edit.ts'
 
 export type KnobInfo = {
@@ -80,8 +81,8 @@ export class KnobWidget {
         this.currentWidth = width
         const drag = this.dragStateRef.current
 
-        let value = this.info.value
-        if (drag && drag.isDragging && drag.line === this.info.line && drag.column === this.info.column) {
+        let value = getCurrentNumberAt(this.codeFile, this.info) ?? this.info.value
+        if (drag && drag.line === this.info.line && drag.column === this.info.column && drag.key === this.knobKey) {
           value = drag.value
         }
 
@@ -131,6 +132,11 @@ export class KnobWidget {
         const mode = this.info.mode ?? 'linear'
         const stepPerPx = this.info.stepPerPx ?? ((max - min) / 200)
 
+        const prev = this.dragStateRef.current
+        const baseValue = (prev?.key === this.knobKey && prev.line === this.info.line && prev.column === this.info.column)
+          ? prev.value
+          : (getCurrentNumberAt(this.codeFile, this.info) ?? this.info.value)
+
         this.dragStateRef.current = {
           key: this.knobKey,
           line: this.info.line,
@@ -142,8 +148,8 @@ export class KnobWidget {
           mode,
           stepPerPx,
           y0: y,
-          value0: this.info.value,
-          value: this.info.value,
+          value0: baseValue,
+          value: baseValue,
           isDragging: true,
         }
       },
@@ -175,8 +181,7 @@ export class KnobWidget {
           if (lineIndex < 0 || lineIndex >= lines.length) return
           const line = lines[lineIndex]!
           const from = d.column - 1
-          const match = line.substring(from).match(/^-?\d*\.?\d*/)
-          const oldStr = match?.[0] || line.slice(from, from + Math.max(1, d.length))
+          const oldStr = getEditableNumberToken(line, from, d.length)
           const newLine = updateValueWithSpacing(line, d.column, oldStr, d.value, d.length, d.precision)
           codeFile.edit(lineIndex, 0, line.length, newLine)
         })
@@ -184,11 +189,24 @@ export class KnobWidget {
 
       pointerUp: () => {
         const drag = this.dragStateRef.current
-        if (drag) drag.isDragging = false
+        if (!drag || drag.key !== this.knobKey) return
+        drag.isDragging = false
         if (this.rafRef.current) {
           cancelAnimationFrame(this.rafRef.current)
           this.rafRef.current = null
         }
+
+        const codeFile = this.codeFile
+        if (!codeFile) return
+
+        const lines = codeFile.value.split('\n')
+        const lineIndex = drag.line - 1
+        if (lineIndex < 0 || lineIndex >= lines.length) return
+        const line = lines[lineIndex]!
+        const from = drag.column - 1
+        const oldStr = getEditableNumberToken(line, from, drag.length)
+        const newLine = updateValueWithSpacing(line, drag.column, oldStr, drag.value, drag.length, drag.precision)
+        codeFile.edit(lineIndex, 0, line.length, newLine)
       },
     }
   }

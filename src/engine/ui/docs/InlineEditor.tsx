@@ -47,6 +47,124 @@ const inlineHeader: EditorHeader = {
   render: () => {},
 }
 
+type LastSuccessfulCompile = {
+  code: string
+  preview: ReturnType<typeof encodeLangToVmOps>
+  ops: Int32Array
+  literals: Float32Array
+}
+
+function lineStarts(src: string): number[] {
+  const out = [0]
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === '\n') out.push(i + 1)
+  }
+  return out
+}
+
+function normalizeSourceWithRanges(src: string, ranges: Array<{ start: number; end: number }>): string {
+  if (ranges.length === 0) return src
+  const sorted = [...ranges].sort((a, b) => a.start - b.start)
+  let out = ''
+  let pos = 0
+  for (const r of sorted) {
+    out += src.slice(pos, r.start)
+    out += '#'.repeat(Math.max(0, r.end - r.start))
+    pos = r.end
+  }
+  out += src.slice(pos)
+  return out
+}
+
+function readNumberAt(
+  src: string,
+  starts: number[],
+  info: { line: number; column: number; length: number },
+): { value: number; range: { start: number; end: number } } | null {
+  const lineStart = starts[info.line - 1]
+  if (lineStart === undefined) return null
+  const start = lineStart + (info.column - 1)
+  const end = start + Math.max(1, info.length)
+  if (start < 0 || end > src.length) return null
+
+  const token = src.slice(start, end)
+  const match = token.match(/^-?\d*\.?\d*k?/)
+  const raw = match?.[0] ?? ''
+  if (!raw) return null
+  const value = Number.parseFloat(raw.replace('k', '')) * (raw.includes('k') ? 1000 : 1)
+  if (!Number.isFinite(value)) return null
+  return { value, range: { start, end } }
+}
+
+function buildWidgetCompileState(code: string, preview: ReturnType<typeof encodeLangToVmOps>) {
+  if (preview.errors.length) {
+    return {
+      dspSource: code,
+      sequences: preview.miniSequences ?? [],
+      miniRefs: preview.miniRefs ?? [],
+      miniPlayBars: preview.miniPlayBars ?? [],
+      timelineRefs: preview.timelineRefs ?? [],
+      miniSourceMaps: [] as Array<Map<number, SourceLocation> | undefined>,
+      analyserRefs: preview.analyserRefs ?? [],
+      compressorRefs: preview.compressorRefs ?? [],
+      expanderRefs: preview.expanderRefs ?? [],
+      gateRefs: preview.gateRefs ?? [],
+      limiterRefs: preview.limiterRefs ?? [],
+      filterRefs: preview.filterRefs ?? [],
+      reverbRefs: preview.reverbRefs ?? [],
+      slicerRefs: preview.slicerRefs ?? [],
+      lfoRefs: preview.lfoRefs ?? [],
+      everyRefs: preview.everyRefs ?? [],
+      atRefs: preview.atRefs ?? [],
+      euclidRefs: preview.euclidRefs ?? [],
+      arrayLiterals: preview.arrayLiterals ?? [],
+      branchMarks: preview.branchMarks ?? [],
+      numberParams: preview.numberParams ?? [],
+      sampleDefs: preview.sampleDefs ?? [],
+      timelineLabels: [] as ReturnType<typeof buildTimelineLabels>,
+      bars: undefined as number | undefined,
+    }
+  }
+
+  const sequences = preview.miniSequences ?? []
+  const scaleIndex = preview.scale
+  const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map(s => {
+    const compiled = compileMiniNotation(s, scaleIndex === undefined ? {} : { defaultScale: { scaleIndex } })
+    return buildMiniSourceMap(s, compiled.nodes, compiled.bytecode)
+  })
+
+  const early = extractEarlyDataFromSource(code)
+  const bars = early.errors.length ? undefined : early.bars
+  const timelineLabels = early.errors.length ? [] : buildTimelineLabels(early.timelineLabels, early.bars)
+
+  return {
+    dspSource: code,
+    sequences,
+    miniRefs: preview.miniRefs ?? [],
+    miniPlayBars: preview.miniPlayBars ?? [],
+    timelineRefs: preview.timelineRefs ?? [],
+    miniSourceMaps,
+    analyserRefs: preview.analyserRefs ?? [],
+    compressorRefs: preview.compressorRefs ?? [],
+    expanderRefs: preview.expanderRefs ?? [],
+    gateRefs: preview.gateRefs ?? [],
+    limiterRefs: preview.limiterRefs ?? [],
+    filterRefs: preview.filterRefs ?? [],
+    reverbRefs: preview.reverbRefs ?? [],
+    slicerRefs: preview.slicerRefs ?? [],
+    lfoRefs: preview.lfoRefs ?? [],
+    everyRefs: preview.everyRefs ?? [],
+    atRefs: preview.atRefs ?? [],
+    euclidRefs: preview.euclidRefs ?? [],
+    arrayLiterals: preview.arrayLiterals ?? [],
+    branchMarks: preview.branchMarks ?? [],
+    numberParams: preview.numberParams ?? [],
+    sampleDefs: preview.sampleDefs ?? [],
+    timelineLabels,
+    bars,
+  }
+}
+
 export function InlineEditor({ id, initialCode }: InlineEditorProps) {
   const loopId = `docs:${id}`
   const codeFileRef = useRef<{ id: string; file: CodeFile } | null>(null)
@@ -65,6 +183,8 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     }
   }
 
+  const lastSuccessfulRef = useRef<LastSuccessfulCompile | null>(null)
+
   const playbackState = useEngineRuntimeStore(state => state.playbackState)
   const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
   const isPlaying = playingLoopId === loopId && playbackState === 'running'
@@ -74,10 +194,11 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
   const bpmValue = useEngineRuntimeStore(state => state.bpmValue)
   const ringPos = useEngineRuntimeStore(state => state.ringPos)
-  const isProgramSwapPending = useEngineDspStore(state => state.isProgramSwapPending)
   const program1 = useEngineRuntimeStore(state => state.program1)
   const program2 = useEngineRuntimeStore(state => state.program2)
-  const runtimeProgram = isProgramSwapPending ? program2 : program1
+  const wasmDsp = useEngineRuntimeStore(state => state.wasmDsp)
+  const activeProgram$ = wasmDsp?.program
+  const runtimeProgram = (activeProgram$ && program2?.program.ptr$ === activeProgram$) ? program2 : program1
 
   const showWidgets = true
 
@@ -112,12 +233,77 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     }
   }, [theme])
 
+  const wasLiteralOnlyRef = useRef(false)
+  const literalUpdatesRef = useRef<Array<{ index: number; value: number }>>([])
+
   const preview = useMemo(() => {
     const target = targetRef.current!
+    const lastSuccessful = lastSuccessfulRef.current
+
+    wasLiteralOnlyRef.current = false
+    literalUpdatesRef.current = []
+
+    if (lastSuccessful && isPlaying && runtimeProgram) {
+      const numberLiterals = lastSuccessful.preview.numberLiterals ?? []
+      if (numberLiterals.length > 0) {
+        const oldSource = lastSuccessful.code
+        const oldStarts = lineStarts(oldSource)
+        const newStarts = lineStarts(code)
+        const ranges: Array<{ start: number; end: number }> = []
+
+        const updates: Array<{ index: number; value: number }> = []
+        let canApplyLiteralOnly = true
+
+        for (const info of numberLiterals) {
+          const index = info.literalIndex
+          if (index === undefined) {
+            canApplyLiteralOnly = false
+            break
+          }
+
+          const oldRead = readNumberAt(oldSource, oldStarts, info)
+          const newRead = readNumberAt(code, newStarts, info)
+          if (!oldRead || !newRead) {
+            canApplyLiteralOnly = false
+            break
+          }
+
+          ranges.push(oldRead.range)
+          ranges.push(newRead.range)
+
+          if (newRead.value !== info.value) {
+            updates.push({ index, value: newRead.value })
+          }
+        }
+
+        if (canApplyLiteralOnly) {
+          const oldNorm = normalizeSourceWithRanges(oldSource, ranges.filter((_, i) => i % 2 === 0))
+          const newNorm = normalizeSourceWithRanges(code, ranges.filter((_, i) => i % 2 === 1))
+
+          if (oldNorm === newNorm) {
+            wasLiteralOnlyRef.current = true
+            literalUpdatesRef.current = updates
+            return lastSuccessful.preview
+          }
+        }
+      }
+    }
+
     target.ops.fill(0)
     target.literals.fill(0)
-    return encodeLangToVmOps(code, target)
-  }, [code])
+    const result = encodeLangToVmOps(code, target)
+
+    if (result.errors.length === 0) {
+      lastSuccessfulRef.current = {
+        code,
+        preview: result,
+        ops: new Int32Array(target.ops),
+        literals: new Float32Array(target.literals),
+      }
+    }
+
+    return result
+  }, [code, isPlaying, runtimeProgram])
 
   const canPlay = preview.errors.length === 0
 
@@ -125,27 +311,34 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     if (!isPlaying) return
     if (!canPlay) return
 
-    const target = targetRef.current
-    if (!target) return
+    const lastSuccessful = lastSuccessfulRef.current
+    if (!lastSuccessful) return
 
-    const vm: VmCompileSnapshot = {
-      source: code,
-      ops: new Int32Array(target.ops),
-      literals: new Float32Array(target.literals),
-      result: preview,
+    const isLiteralOnlyChange = wasLiteralOnlyRef.current
+    const updates = literalUpdatesRef.current
+
+    if (isLiteralOnlyChange && runtimeProgram && updates.length > 0) {
+      for (const u of updates) {
+        lastSuccessful.literals[u.index] = u.value
+      }
+      for (const u of updates) {
+        void runtimeProgram.program.writeLiteral(u.index, u.value)
+      }
     }
+    else if (!isLiteralOnlyChange) {
+      const vm: VmCompileSnapshot = {
+        source: code,
+        ops: new Int32Array(lastSuccessful.ops),
+        literals: new Float32Array(lastSuccessful.literals),
+        result: preview,
+      }
 
-    const t = window.setTimeout(() => {
-      void useEngineDspStore.getState().updateDspSource(code, vm)
-    }, 175)
-
-    return () => window.clearTimeout(t)
-  }, [canPlay, code, isPlaying, preview])
-
-  useEffect(() => {
-    if (!audioContext) return
-    void useEngineDspStore.getState().preloadSamples(code)
-  }, [audioContext, code])
+      const t = window.setTimeout(() => {
+        void useEngineDspStore.getState().applyDocsSource(code, vm)
+      }, 175)
+      return () => window.clearTimeout(t)
+    }
+  }, [canPlay, code, isPlaying, preview, runtimeProgram])
 
   const editorErrors = useMemo((): EditorError[] => {
     const out: EditorError[] = []
@@ -163,73 +356,17 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     return out
   }, [preview.errors])
 
+  const widgetCompileStateRef = useRef<ReturnType<typeof buildWidgetCompileState> | null>(null)
+
   const widgetCompileState = useMemo(() => {
-    if (preview.errors.length) {
-      return {
-        dspSource: code,
-        sequences: preview.miniSequences ?? [],
-        miniRefs: preview.miniRefs ?? [],
-        miniPlayBars: preview.miniPlayBars ?? [],
-        timelineRefs: preview.timelineRefs ?? [],
-        miniSourceMaps: [] as Array<Map<number, SourceLocation> | undefined>,
-        analyserRefs: preview.analyserRefs ?? [],
-        compressorRefs: preview.compressorRefs ?? [],
-        expanderRefs: preview.expanderRefs ?? [],
-        gateRefs: preview.gateRefs ?? [],
-        limiterRefs: preview.limiterRefs ?? [],
-        filterRefs: preview.filterRefs ?? [],
-        reverbRefs: preview.reverbRefs ?? [],
-        slicerRefs: preview.slicerRefs ?? [],
-        lfoRefs: preview.lfoRefs ?? [],
-        everyRefs: preview.everyRefs ?? [],
-        atRefs: preview.atRefs ?? [],
-        euclidRefs: preview.euclidRefs ?? [],
-        arrayLiterals: preview.arrayLiterals ?? [],
-        branchMarks: preview.branchMarks ?? [],
-        numberParams: preview.numberParams ?? [],
-        sampleDefs: preview.sampleDefs ?? [],
-        timelineLabels: [],
-        bars: undefined as number | undefined,
-      }
+    // For literal-only changes, return cached state to avoid triggering downstream updates
+    if (wasLiteralOnlyRef.current && widgetCompileStateRef.current) {
+      return widgetCompileStateRef.current
     }
 
-    const sequences = preview.miniSequences ?? []
-    const scaleIndex = preview.scale
-    const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map(s => {
-      const compiled = compileMiniNotation(s, scaleIndex === undefined ? {} : { defaultScale: { scaleIndex } })
-      return buildMiniSourceMap(s, compiled.nodes, compiled.bytecode)
-    })
-
-    const early = extractEarlyDataFromSource(code)
-    const bars = early.errors.length ? undefined : early.bars
-    const timelineLabels = early.errors.length ? [] : buildTimelineLabels(early.timelineLabels, early.bars)
-
-    return {
-      dspSource: code,
-      sequences,
-      miniRefs: preview.miniRefs ?? [],
-      miniPlayBars: preview.miniPlayBars ?? [],
-      timelineRefs: preview.timelineRefs ?? [],
-      miniSourceMaps,
-      analyserRefs: preview.analyserRefs ?? [],
-      compressorRefs: preview.compressorRefs ?? [],
-      expanderRefs: preview.expanderRefs ?? [],
-      gateRefs: preview.gateRefs ?? [],
-      limiterRefs: preview.limiterRefs ?? [],
-      filterRefs: preview.filterRefs ?? [],
-      reverbRefs: preview.reverbRefs ?? [],
-      slicerRefs: preview.slicerRefs ?? [],
-      lfoRefs: preview.lfoRefs ?? [],
-      everyRefs: preview.everyRefs ?? [],
-      atRefs: preview.atRefs ?? [],
-      euclidRefs: preview.euclidRefs ?? [],
-      arrayLiterals: preview.arrayLiterals ?? [],
-      branchMarks: preview.branchMarks ?? [],
-      numberParams: preview.numberParams ?? [],
-      sampleDefs: preview.sampleDefs ?? [],
-      timelineLabels,
-      bars,
-    }
+    const result = buildWidgetCompileState(code, preview)
+    widgetCompileStateRef.current = result
+    return result
   }, [code, preview])
 
   const frameRef = useRef<any[]>([])

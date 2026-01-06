@@ -134,6 +134,7 @@ export type EngineDspState = {
   dispose: () => void
   updateWasmBinary: () => Promise<void>
   updateDspSource: (source: string, vm?: VmCompileSnapshot) => Promise<string[] | undefined>
+  applyDocsSource: (source: string, vm?: VmCompileSnapshot) => Promise<void>
   preloadSamples: (source: string) => Promise<void>
   playLoop: (loopId: string, source: string, startSample?: number) => Promise<void>
   setUiCompilePreview: (next: {
@@ -187,19 +188,20 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
 
   function scheduleSampleLoad(
     defs: SampleDef[] | undefined,
-    opts: { uploadToWorklet: boolean },
+    opts: { uploadToWorklet: boolean; updateStore?: boolean },
   ): Promise<void> {
     const runtime = useEngineRuntimeStore.getState()
     const audioContext = runtime.audioContext
     if (!audioContext) return Promise.resolve()
     if (!defs?.length) return Promise.resolve()
 
+    const updateStore = opts.updateStore ?? true
     if (!sampleLoader) sampleLoader = new SampleLoader(audioContext)
     const token = opts.uploadToWorklet ? ++sampleUploadToken : ++sampleDecodeToken
     const isStale = () => token !== (opts.uploadToWorklet ? sampleUploadToken : sampleDecodeToken)
 
-    // Clear stale waveforms immediately when the same index points at a different URL.
-    {
+    if (updateStore) {
+      // Clear stale waveforms immediately when the same index points at a different URL.
       const prev = get().loadedSamples
       let next: Array<LoadedSample | undefined> | null = null
       for (const d of defs) {
@@ -217,7 +219,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         if (isStale()) return
 
         const alreadyUploaded = sampleUrlByIndex.get(d.sampleIndex) === d.url
-        const alreadyDecoded = get().loadedSamples[d.sampleIndex]?.url === d.url
+        const alreadyDecoded = updateStore ? get().loadedSamples[d.sampleIndex]?.url === d.url : false
         if (alreadyDecoded && (!opts.uploadToWorklet || alreadyUploaded)) continue
 
         const loaded = alreadyDecoded
@@ -225,7 +227,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
           : await sampleLoader!.load(d.url)
         if (isStale()) return
 
-        if (!alreadyDecoded) {
+        if (updateStore && !alreadyDecoded) {
           set(prev => {
             const next = prev.loadedSamples.slice()
             next[d.sampleIndex] = loaded
@@ -709,6 +711,77 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     }
   }
 
+  async function applyDocsSourceInner(source: string, vm?: VmCompileSnapshot): Promise<void> {
+    const runtime = useEngineRuntimeStore.getState()
+    const program1 = runtime.program1
+    const program2 = runtime.program2
+    if (!program1 || !program2) return
+
+    const activePtr = runtime.wasmDsp?.program
+    const primaryProgram = (activePtr && program2.program.ptr$ === activePtr) ? program2 : program1
+    const stagingProgram = primaryProgram === program1 ? program2 : program1
+
+    const comparisonReference = primaryProgram.program.data ?? stagingProgram.program.data
+    const primaryResult = await primaryProgram.program.compileSource(source, {
+      apply: false,
+      setData: false,
+      compareAgainst: comparisonReference,
+      vm,
+    })
+
+    if (runtime.worklet && runtime.audioContext) {
+      void scheduleSampleLoad(primaryResult.sampleDefs, { uploadToWorklet: true, updateStore: false })
+    }
+
+    if (primaryResult.bpm !== undefined && runtime.bpmValue) {
+      const oldBpm = runtime.bpmValue[0]
+      runtime.bpmValue[0] = primaryResult.bpm
+      runtime.worklet?.syncBpm(oldBpm, primaryResult.bpm)
+    }
+
+    if (!primaryResult.diff.significantChange) {
+      await primaryProgram.program.applyPreparedData(primaryResult.data)
+      return
+    }
+
+    const prevData = primaryResult.previousData ?? comparisonReference
+    const stagingResult = await stagingProgram.program.compileSource(source, {
+      apply: false,
+      setData: true,
+      compareAgainst: prevData,
+      copyVersionFrom: prevData,
+      vm,
+    })
+
+    if (runtime.worklet && runtime.audioContext) {
+      void scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true, updateStore: false })
+    }
+
+    if (stagingResult.bpm !== undefined && runtime.bpmValue) {
+      const oldBpm = runtime.bpmValue[0]
+      runtime.bpmValue[0] = stagingResult.bpm
+      runtime.worklet?.syncBpm(oldBpm, stagingResult.bpm)
+    }
+
+    const control = runtime.control
+    const swap = runtime.programSwap
+    const swapStatus = runtime.programSwapStatus
+    const seekSampleCount = runtime.seekSampleCount
+    const dspPtr = runtime.wasmDspPtr
+    if (!control || !swap || !swapStatus || !seekSampleCount || !dspPtr) return
+
+    const startSample = runtime.globalSampleCount ? Math.max(0, Atomics.load(runtime.globalSampleCount, 0)) : 0
+    const bpmBits = f32ToU32(runtime.bpmValue?.[0] ?? 60)
+
+    swapStatus.fill(0)
+    swap.fill(0)
+    Atomics.store(swap, 0, bpmBits)
+    Atomics.store(swap, 1, stagingProgram.program.ptr$)
+    Atomics.store(swap, 2, dspPtr)
+    Atomics.store(seekSampleCount, 0, startSample)
+    Atomics.store(control, 0, ControlOp.RestartWithProgram)
+  }
+
   async function processDspQueue() {
     if (dspUpdateQueue.isProcessing) return
     dspUpdateQueue.isProcessing = true
@@ -999,6 +1072,10 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         return Promise.resolve(undefined)
       }
       return enqueueDspUpdate(source, vm)
+    },
+
+    applyDocsSource: async (source: string, vm?: VmCompileSnapshot) => {
+      await applyDocsSourceInner(source, vm)
     },
 
     updateWasmBinary: async () => {
