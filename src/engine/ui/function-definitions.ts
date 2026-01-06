@@ -33,18 +33,16 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     type: 'variable',
   },
   '.map': {
-    name: '.map',
-    parameters: [
-      { name: 'callback', type: 'function', description: 'Callback to be called for each element.' },
-    ],
+    name: '[].map',
+    parameters: [],
     returnType: 'array',
     description: 'Maps over an array and returns a new array with the results.',
     examples: [
-      '[1,2,3].map(x -> x * 2)',
+      '[60,62,65].map(x->note(x)) |> tri($.step(every(1/8))) |> out($)',
     ],
   },
   '.glide': {
-    name: '.glide',
+    name: '[].glide',
     parameters: [
       { name: 'bar', type: 'number', description: 'Step duration in bars (1 = 4 beats).' },
       {
@@ -58,46 +56,42 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Iterates numeric array values on a beat-locked bar division and glides between them.',
     examples: [
-      '[0,1,0.25,0.75].glide(1) |> out($)',
-      '[100,200,400,800].glide(bar:0.5, exponent:2) |> sine(hz:$) |> out($)',
+      '[#1,#3,#5].glide(1/4) |> tri($*o4) |> out($)',
+      '#scale.glide(1/4) |> tri($*o4) |> out($)',
     ],
   },
   '.sum': {
-    name: '.sum',
-    parameters: [
-      { name: 'array', type: 'array', description: 'Array to be summed.' },
-    ],
+    name: '[].sum',
+    parameters: [],
     returnType: 'number',
     description: 'Sums an array and returns the result.',
     examples: [
-      'array.sum() |> out($)',
+      '[1,2,3].sum() |> print($)',
     ],
   },
   '.avg': {
-    name: '.avg',
-    parameters: [
-      { name: 'array', type: 'array', description: 'Array to be averaged.' },
-    ],
+    name: '[].avg',
+    parameters: [],
     returnType: 'number',
     description: 'Averages an array and returns the result.',
     examples: [
-      'array.avg() |> out($)',
+      '[1,2,3].avg() |> print($)',
     ],
   },
   '.step': {
-    name: 'array.step',
+    name: '[].step',
     parameters: [
       { name: 'trig', type: 'number', description: 'Trigger impulse that advances to next array element.' },
     ],
     returnType: 'number',
     description: 'Steps through array elements on trigger impulses, wrapping around when reaching the end.',
     examples: [
-      '[100,200,400,800].step(every(1/4)) |> sine(hz:$) |> out($)',
-      'scales.step(trig) |> note($) |> sine(hz:$) |> out($)',
+      '[#1,#3,#5].step(every(1/8)) |> tri($*o4) |> out($)',
+      '#scale.step(every(1/8)) |> tri($*o4) |> out($)',
     ],
   },
   '.random': {
-    name: '.random',
+    name: '[].random',
     parameters: [
       { name: 'trig', type: 'number', description: 'Trigger impulse that selects a random array element.' },
       { name: 'seed', type: 'number', description: 'Random seed (optional, default: 0).', optional: true },
@@ -105,8 +99,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Selects random array elements on trigger impulses.',
     examples: [
-      '[100,200,400,800].random(every(1/4)) |> sine(hz:$) |> out($)',
-      'scales.random(trig, seed:time) |> note($) |> sine(hz:$) |> out($)',
+      '[#1,#3,#5].random(every(1/8)) |> tri($*o4) |> out($)',
+      '#scale.random(every(1/8)) |> tri($*o4) |> out($)',
     ],
   },
   oversample: {

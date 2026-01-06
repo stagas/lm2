@@ -619,11 +619,13 @@ export function useAnalyserWidget({
     const floats = isLive ? st?.floats : null
 
     if (!floats) {
-      const third = Math.floor(w / 3)
-      const leftW = third
-      const midW = third
-      const rightW = w - leftW - midW
-      drawInitLines(c, w, h, leftW, midW, rightW)
+      if (kind === 'analyser') {
+        const third = Math.floor(w / 3)
+        const leftW = third
+        const midW = third
+        const rightW = w - leftW - midW
+        drawInitLines(c, w, h, leftW, midW, rightW)
+      }
       c.restore()
       return
     }

@@ -1,0 +1,634 @@
+import { PauseIcon, PlayIcon } from '@phosphor-icons/react'
+import { CodeEditor, CodeFile, type EditorError, type EditorHeader, type EditorWidget } from 'mini-code'
+import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
+import { LITERALS_COUNT, OPS_COUNT } from '../../../../as/assembly/constants.ts'
+import { buildMiniSourceMap, type SourceLocation } from '../../../lib/mini-source-map.ts'
+import { compileMiniNotation } from '../../../mini/compiler.ts'
+import { encodeLangToVmOps, extractEarlyDataFromSource, getKnobConfig,
+  getKnobParamConfig } from '../../bytecode/bytecode.ts'
+import { KEYWORDS } from '../../constants.ts'
+import type { VmCompileSnapshot } from '../../dsp/program.ts'
+import { buildTimelineLabels } from '../../dsp/timeline-labels.ts'
+import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../../store.ts'
+import { functionDefinitions } from '../function-definitions.ts'
+import { useTheme } from '../theme.ts'
+import { tokenizer } from '../tokenizer.ts'
+import { updatePredictedSampleCount } from '../update-predicted-sample-count.ts'
+import { useAnalyserWidget } from '../useAnalyserWidget.ts'
+import { useArrayAccessWidget } from '../useArrayAccessWidget.ts'
+import { useBranchWidget } from '../useBranchWidget.ts'
+import { useCodeFileValue } from '../useCodeFileValue.ts'
+import { useCompressorWidget } from '../useCompressorWidget.ts'
+import { useEnvelopeWidget } from '../useEnvelopeWidget.ts'
+import { useFilterWidget } from '../useFilterWidget.ts'
+import { type KnobInfo, useKnobWidget } from '../useKnobWidget.ts'
+import { useLfoWidget } from '../useLfoWidget.ts'
+import { usePianorollWidget } from '../usePianorollWidget.ts'
+import { usePlayingState } from '../usePlayingState.ts'
+import { useReverbWidget } from '../useReverbWidget.ts'
+import { useSampleWidget } from '../useSampleWidget.ts'
+import { useSequenceWidget } from '../useSequenceWidget.ts'
+import { useSlicerWidget } from '../useSlicerWidget.ts'
+import { useSliderWidget } from '../useSliderWidget.ts'
+import { useTimelineSequenceWidget } from '../useTimelineSequenceWidget.ts'
+import { useTimelineWidget } from '../useTimelineWidget.ts'
+import { useTrigWidget } from '../useTrigWidget.ts'
+
+type InlineEditorProps = {
+  id: string
+  initialCode: string
+}
+
+const inlineHeader: EditorHeader = {
+  height: 0,
+  pointerDown: () => {},
+  pointerMove: () => {},
+  pointerUp: () => {},
+  render: () => {},
+}
+
+export function InlineEditor({ id, initialCode }: InlineEditorProps) {
+  const loopId = `docs:${id}`
+  const codeFileRef = useRef<{ id: string; file: CodeFile } | null>(null)
+  if (!codeFileRef.current || codeFileRef.current.id !== loopId) {
+    codeFileRef.current = { id: loopId, file: new CodeFile(initialCode) }
+  }
+  const codeFile = codeFileRef.current.file
+  useCodeFileValue(codeFile)
+  const code = codeFile.value
+
+  const targetRef = useRef<{ ops: Int32Array; literals: Float32Array } | null>(null)
+  if (!targetRef.current) {
+    targetRef.current = {
+      ops: new Int32Array(OPS_COUNT),
+      literals: new Float32Array(LITERALS_COUNT),
+    }
+  }
+
+  const playbackState = useEngineRuntimeStore(state => state.playbackState)
+  const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
+  const isPlaying = playingLoopId === loopId && playbackState === 'running'
+  const uiShowWidgets = useEngineUiStore(state => state.showWidgets)
+
+  const { globalSampleCount, isPlaybackRunningForView } = usePlayingState(loopId)
+  const audioContext = useEngineRuntimeStore(state => state.audioContext)
+  const bpmValue = useEngineRuntimeStore(state => state.bpmValue)
+  const ringPos = useEngineRuntimeStore(state => state.ringPos)
+  const isProgramSwapPending = useEngineDspStore(state => state.isProgramSwapPending)
+  const program1 = useEngineRuntimeStore(state => state.program1)
+  const program2 = useEngineRuntimeStore(state => state.program2)
+  const runtimeProgram = isProgramSwapPending ? program2 : program1
+
+  const showWidgets = true
+
+  const theme = useTheme()
+  const themeForEditor = useMemo(() => {
+    const withAlpha = (c: string, a: number): string => {
+      if (!c.startsWith('#')) return c
+      const h = c.slice(1)
+      const toByte = (x: string) => parseInt(x, 16)
+      let r = 0
+      let g = 0
+      let b = 0
+      if (h.length === 3) {
+        r = toByte(h[0]! + h[0]!)
+        g = toByte(h[1]! + h[1]!)
+        b = toByte(h[2]! + h[2]!)
+      }
+      else if (h.length === 6) {
+        r = toByte(h.slice(0, 2))
+        g = toByte(h.slice(2, 4))
+        b = toByte(h.slice(4, 6))
+      }
+      else {
+        return c
+      }
+      return `rgba(${r}, ${g}, ${b}, ${a})`
+    }
+    return {
+      ...theme,
+      background: withAlpha(theme.background, 0.35),
+      gutterBackground: withAlpha(theme.gutterBackground, 0.2),
+    }
+  }, [theme])
+
+  const preview = useMemo(() => {
+    const target = targetRef.current!
+    target.ops.fill(0)
+    target.literals.fill(0)
+    return encodeLangToVmOps(code, target)
+  }, [code])
+
+  const canPlay = preview.errors.length === 0
+
+  useEffect(() => {
+    if (!isPlaying) return
+    if (!canPlay) return
+
+    const target = targetRef.current
+    if (!target) return
+
+    const vm: VmCompileSnapshot = {
+      source: code,
+      ops: new Int32Array(target.ops),
+      literals: new Float32Array(target.literals),
+      result: preview,
+    }
+
+    const t = window.setTimeout(() => {
+      void useEngineDspStore.getState().updateDspSource(code, vm)
+    }, 175)
+
+    return () => window.clearTimeout(t)
+  }, [canPlay, code, isPlaying, preview])
+
+  useEffect(() => {
+    if (!audioContext) return
+    void useEngineDspStore.getState().preloadSamples(code)
+  }, [audioContext, code])
+
+  const editorErrors = useMemo((): EditorError[] => {
+    const out: EditorError[] = []
+    for (const err of preview.errors ?? []) {
+      const line = Math.max(0, err.line - 1)
+      const startColumn = Math.max(0, err.column - 1)
+      const endColumn = startColumn + Math.max(1, err.length)
+      out.push({
+        line,
+        startColumn,
+        endColumn,
+        message: err.message,
+      })
+    }
+    return out
+  }, [preview.errors])
+
+  const widgetCompileState = useMemo(() => {
+    if (preview.errors.length) {
+      return {
+        dspSource: code,
+        sequences: preview.miniSequences ?? [],
+        miniRefs: preview.miniRefs ?? [],
+        miniPlayBars: preview.miniPlayBars ?? [],
+        timelineRefs: preview.timelineRefs ?? [],
+        miniSourceMaps: [] as Array<Map<number, SourceLocation> | undefined>,
+        analyserRefs: preview.analyserRefs ?? [],
+        compressorRefs: preview.compressorRefs ?? [],
+        expanderRefs: preview.expanderRefs ?? [],
+        gateRefs: preview.gateRefs ?? [],
+        limiterRefs: preview.limiterRefs ?? [],
+        filterRefs: preview.filterRefs ?? [],
+        reverbRefs: preview.reverbRefs ?? [],
+        slicerRefs: preview.slicerRefs ?? [],
+        lfoRefs: preview.lfoRefs ?? [],
+        everyRefs: preview.everyRefs ?? [],
+        atRefs: preview.atRefs ?? [],
+        euclidRefs: preview.euclidRefs ?? [],
+        arrayLiterals: preview.arrayLiterals ?? [],
+        branchMarks: preview.branchMarks ?? [],
+        numberParams: preview.numberParams ?? [],
+        sampleDefs: preview.sampleDefs ?? [],
+        timelineLabels: [],
+        bars: undefined as number | undefined,
+      }
+    }
+
+    const sequences = preview.miniSequences ?? []
+    const scaleIndex = preview.scale
+    const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = sequences.map(s => {
+      const compiled = compileMiniNotation(s, scaleIndex === undefined ? {} : { defaultScale: { scaleIndex } })
+      return buildMiniSourceMap(s, compiled.nodes, compiled.bytecode)
+    })
+
+    const early = extractEarlyDataFromSource(code)
+    const bars = early.errors.length ? undefined : early.bars
+    const timelineLabels = early.errors.length ? [] : buildTimelineLabels(early.timelineLabels, early.bars)
+
+    return {
+      dspSource: code,
+      sequences,
+      miniRefs: preview.miniRefs ?? [],
+      miniPlayBars: preview.miniPlayBars ?? [],
+      timelineRefs: preview.timelineRefs ?? [],
+      miniSourceMaps,
+      analyserRefs: preview.analyserRefs ?? [],
+      compressorRefs: preview.compressorRefs ?? [],
+      expanderRefs: preview.expanderRefs ?? [],
+      gateRefs: preview.gateRefs ?? [],
+      limiterRefs: preview.limiterRefs ?? [],
+      filterRefs: preview.filterRefs ?? [],
+      reverbRefs: preview.reverbRefs ?? [],
+      slicerRefs: preview.slicerRefs ?? [],
+      lfoRefs: preview.lfoRefs ?? [],
+      everyRefs: preview.everyRefs ?? [],
+      atRefs: preview.atRefs ?? [],
+      euclidRefs: preview.euclidRefs ?? [],
+      arrayLiterals: preview.arrayLiterals ?? [],
+      branchMarks: preview.branchMarks ?? [],
+      numberParams: preview.numberParams ?? [],
+      sampleDefs: preview.sampleDefs ?? [],
+      timelineLabels,
+      bars,
+    }
+  }, [code, preview])
+
+  const frameRef = useRef<any[]>([])
+  const controlStateRef = useRef<Map<number, any>>(new Map())
+  const resetKey = `${loopId}:${playingLoopId ?? ''}:${playbackState}`
+
+  const { widgets: sequenceWidgets, onBeforeDraw: onBeforeDrawSequence } = useSequenceWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    sequences: widgetCompileState.sequences,
+    miniSourceMaps: widgetCompileState.miniSourceMaps,
+    miniRefs: widgetCompileState.miniRefs,
+    miniPlayBars: widgetCompileState.miniPlayBars,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    resetKey,
+    frameRef,
+    controlStateRef,
+    bpmValue,
+  })
+
+  const { widgets: pianorollWidgets, onBeforeDraw: onBeforeDrawPianoroll } = usePianorollWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    sequences: widgetCompileState.sequences,
+    miniSourceMaps: widgetCompileState.miniSourceMaps,
+    miniRefs: widgetCompileState.miniRefs,
+    miniPlayBars: widgetCompileState.miniPlayBars,
+    timelineLabels: widgetCompileState.timelineLabels,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    resetKey,
+  })
+
+  const { widgets: timelineWidgets, onBeforeDraw: onBeforeDrawTimeline } = useTimelineWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    timelineRefs: widgetCompileState.timelineRefs,
+    timelineLabels: widgetCompileState.timelineLabels,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    isLive: isPlaying,
+    resetKey,
+  })
+
+  const { widgets: timelineSequenceWidgets, onBeforeDraw: onBeforeDrawTimelineSequence } = useTimelineSequenceWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    timelineRefs: widgetCompileState.timelineRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    isLive: isPlaying,
+    resetKey,
+  })
+
+  const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
+    program1: runtimeProgram,
+    ringPos,
+    analyserRefs: widgetCompileState.analyserRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isPlaying,
+    playbackState,
+    sampleRate: audioContext?.sampleRate,
+  })
+
+  const { widgets: compressorWidgets, onBeforeDraw: onBeforeDrawCompressor } = useCompressorWidget({
+    program1: runtimeProgram,
+    ringPos,
+    compressorRefs: widgetCompileState.compressorRefs,
+    expanderRefs: widgetCompileState.expanderRefs,
+    gateRefs: widgetCompileState.gateRefs,
+    limiterRefs: widgetCompileState.limiterRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isPlaying,
+    playbackState,
+    sampleRate: audioContext?.sampleRate,
+  })
+
+  const { widgets: filterWidgets, onBeforeDraw: onBeforeDrawFilter } = useFilterWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    filterRefs: widgetCompileState.filterRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isPlaying,
+    playbackState,
+  })
+
+  const { widgets: reverbWidgets, onBeforeDraw: onBeforeDrawReverb } = useReverbWidget({
+    program1: runtimeProgram,
+    reverbRefs: widgetCompileState.reverbRefs,
+    showWidgets,
+    isLive: isPlaying,
+    playbackState,
+  })
+
+  const { widgets: slicerWidgets, onBeforeDraw: onBeforeDrawSlicer } = useSlicerWidget({
+    slicerRefs: widgetCompileState.slicerRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+  })
+
+  const { widgets: lfoWidgets, onBeforeDraw: onBeforeDrawLfo } = useLfoWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    lfoRefs: widgetCompileState.lfoRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isPlaying,
+    playbackState,
+  })
+
+  const { widgets: trigWidgets, onBeforeDraw: onBeforeDrawTrig } = useTrigWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    everyRefs: widgetCompileState.everyRefs,
+    atRefs: widgetCompileState.atRefs,
+    euclidRefs: widgetCompileState.euclidRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isPlaying,
+    playbackState,
+  })
+
+  const { widgets: arrayAccessWidgets, onBeforeDraw: onBeforeDrawArrayAccess } = useArrayAccessWidget({
+    program1: runtimeProgram,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets: showWidgets && isPlaying,
+    arrayLiterals: widgetCompileState.arrayLiterals,
+  })
+
+  const { widgets: branchWidgets, onBeforeDraw: onBeforeDrawBranch } = useBranchWidget({
+    program1: runtimeProgram,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets: showWidgets && isPlaying,
+    branchMarks: widgetCompileState.branchMarks,
+  })
+
+  const { widgets: sampleWidgets, onBeforeDraw: onBeforeDrawSample } = useSampleWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    sampleDefs: widgetCompileState.sampleDefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    playbackState,
+  })
+
+  const { widgets: envelopeWidgets, onBeforeDraw: onBeforeDrawEnvelope } = useEnvelopeWidget({
+    program1: runtimeProgram,
+    adRefs: preview.adRefs ?? [],
+    adsrRefs: preview.adsrRefs ?? [],
+    envfollowRefs: preview.envfollowRefs ?? [],
+    slewRefs: preview.slewRefs ?? [],
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isPlaying,
+    playbackState,
+  })
+
+  const { knobs, knobLocKeys } = useMemo(() => {
+    const out: KnobInfo[] = []
+    const knobLocKeys = new Set<string>()
+
+    const addKnobsFromRef = (ref: any) => {
+      const functionName = String(ref?.functionName ?? '')
+      if (!functionName) return
+      const config = getKnobConfig(functionName)
+      if (!config) return
+      for (const p of ref?.knobParams ?? []) {
+        const param = getKnobParamConfig(config, String(p?.name ?? ''))
+        if (!param) continue
+        const loc = p?.valueLoc
+        if (!loc) continue
+        knobLocKeys.add(`${loc.line}:${loc.column}`)
+        out.push({
+          line: loc.line,
+          column: loc.column,
+          length: loc.length,
+          value: Number(p?.value ?? 0),
+          min: param.min,
+          max: param.max,
+          precision: param.precision,
+          mode: param.mode,
+          stepPerPx: param.stepPerPx,
+        })
+      }
+    }
+
+    const refs: any[] = [
+      ...(widgetCompileState.compressorRefs ?? []),
+      ...(widgetCompileState.expanderRefs ?? []),
+      ...(widgetCompileState.gateRefs ?? []),
+      ...(widgetCompileState.limiterRefs ?? []),
+      ...(widgetCompileState.filterRefs ?? []),
+      ...(widgetCompileState.reverbRefs ?? []),
+      ...(widgetCompileState.lfoRefs ?? []),
+      ...(preview.adRefs ?? []),
+      ...(preview.adsrRefs ?? []),
+      ...(preview.envfollowRefs ?? []),
+      ...(preview.slewRefs ?? []),
+    ]
+    for (const ref of refs) addKnobsFromRef(ref)
+
+    return { knobs: out, knobLocKeys }
+  }, [
+    preview.adRefs,
+    preview.adsrRefs,
+    preview.envfollowRefs,
+    preview.slewRefs,
+    widgetCompileState.compressorRefs,
+    widgetCompileState.expanderRefs,
+    widgetCompileState.filterRefs,
+    widgetCompileState.gateRefs,
+    widgetCompileState.lfoRefs,
+    widgetCompileState.limiterRefs,
+    widgetCompileState.reverbRefs,
+  ])
+
+  const { widgets: knobWidgets } = useKnobWidget({
+    showWidgets,
+    knobs,
+    theme,
+    codeFile,
+  })
+
+  const sliderNumberParams = useMemo(() => {
+    const params = widgetCompileState.numberParams ?? []
+    if (params.length === 0) return params
+    if (knobLocKeys.size === 0) return params
+    return params.filter(p => !knobLocKeys.has(`${p.line}:${p.column}`))
+  }, [knobLocKeys, widgetCompileState.numberParams])
+
+  const { widgets: sliderWidgets } = useSliderWidget({
+    showWidgets,
+    numberParams: sliderNumberParams,
+    theme,
+    codeFile,
+  })
+
+  const predictedSampleCountRef = useRef<number | null>(null)
+  const lastWallTimeRef = useRef<number | null>(null)
+  const isFirstFrameRef = useRef(true)
+
+  const onBeforeDrawCombined = useCallback(() => {
+    if (!showWidgets) return
+    const result = updatePredictedSampleCount(
+      audioContext,
+      globalSampleCount,
+      { predictedSampleCountRef, lastWallTimeRef, isFirstFrameRef },
+      { isPlaying: isPlaybackRunningForView },
+    )
+    useEngineRuntimeStore.getState().setPredictedSampleCountResult(result)
+    onBeforeDrawSample()
+    onBeforeDrawAnalyser()
+    onBeforeDrawCompressor()
+    onBeforeDrawEnvelope()
+    onBeforeDrawFilter()
+    onBeforeDrawReverb()
+    onBeforeDrawSlicer()
+    onBeforeDrawLfo()
+    onBeforeDrawTrig()
+    onBeforeDrawTimeline()
+    onBeforeDrawTimelineSequence()
+    onBeforeDrawPianoroll()
+    onBeforeDrawSequence()
+    onBeforeDrawArrayAccess()
+    onBeforeDrawBranch()
+  }, [
+    audioContext,
+    globalSampleCount,
+    isPlaybackRunningForView,
+    onBeforeDrawAnalyser,
+    onBeforeDrawArrayAccess,
+    onBeforeDrawBranch,
+    onBeforeDrawCompressor,
+    onBeforeDrawEnvelope,
+    onBeforeDrawFilter,
+    onBeforeDrawLfo,
+    onBeforeDrawPianoroll,
+    onBeforeDrawReverb,
+    onBeforeDrawSample,
+    onBeforeDrawSequence,
+    onBeforeDrawSlicer,
+    onBeforeDrawTimeline,
+    onBeforeDrawTimelineSequence,
+    onBeforeDrawTrig,
+    showWidgets,
+  ])
+
+  const widgets = useMemo((): EditorWidget[] => {
+    if (!showWidgets) return []
+    return [
+      ...sampleWidgets,
+      ...analyserWidgets,
+      ...compressorWidgets,
+      ...envelopeWidgets,
+      ...filterWidgets,
+      ...reverbWidgets,
+      ...slicerWidgets,
+      ...lfoWidgets,
+      ...trigWidgets,
+      ...timelineWidgets,
+      ...timelineSequenceWidgets,
+      ...pianorollWidgets,
+      ...sequenceWidgets,
+      ...arrayAccessWidgets,
+      ...branchWidgets,
+      ...sliderWidgets,
+      ...knobWidgets,
+    ]
+  }, [
+    showWidgets,
+    sampleWidgets,
+    analyserWidgets,
+    compressorWidgets,
+    envelopeWidgets,
+    filterWidgets,
+    reverbWidgets,
+    slicerWidgets,
+    lfoWidgets,
+    trigWidgets,
+    timelineWidgets,
+    timelineSequenceWidgets,
+    pianorollWidgets,
+    sequenceWidgets,
+    arrayAccessWidgets,
+    branchWidgets,
+    sliderWidgets,
+    knobWidgets,
+  ])
+
+  return (
+    <div className="my-3 w-full border border-[#333] bg-neutral-950 rounded-md overflow-hidden">
+      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-[#333]">
+        <button
+          className={`h-8 w-8 flex items-center justify-center rounded text-white ${
+            canPlay ? 'bg-orange-600' : 'bg-neutral-800'
+          }`}
+          disabled={!canPlay}
+          onClick={() => {
+            const runtime = useEngineRuntimeStore.getState()
+            if (isPlaying) {
+              runtime.pause()
+              return
+            }
+            void useEngineDspStore.getState().playLoop(loopId, code, 0)
+          }}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+          title={isPlaying ? 'Pause' : (canPlay ? 'Play' : 'Fix errors to play')}
+        >
+          {isPlaying ? <PauseIcon weight="fill" size={18} /> : <PlayIcon weight="fill" size={18} />}
+        </button>
+        {!canPlay && (
+          <div className="text-xs text-red-300 truncate">
+            {preview.errors[0]?.message ?? 'Compile error'}
+          </div>
+        )}
+      </div>
+      <div className="w-full relative">
+        <CodeEditor
+          codeFile={codeFile}
+          widgets={widgets}
+          errors={editorErrors}
+          header={inlineHeader}
+          theme={themeForEditor}
+          tokenizer={tokenizer}
+          keywords={KEYWORDS}
+          functionDefinitions={functionDefinitions}
+          hideFunctionSignatures={false}
+          hideHoverFunctionSignatures={false}
+          isAnimating={true}
+          gutter={true}
+          autoHeight={true}
+          wordWrap={true}
+          keyOverride={e => {
+            e.stopPropagation()
+            return true
+          }}
+          onBeforeDraw={onBeforeDrawCombined}
+        />
+      </div>
+    </div>
+  )
+}
