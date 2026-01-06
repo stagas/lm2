@@ -25,7 +25,7 @@ function parseMarkdown(src: string, idPrefix: string): MdNode[] {
       break
     }
     const raw = src.slice(fenceStart + 3, fenceEnd)
-    const code = raw.replace(/^\w+\n/, '').trim()
+    const code = raw.replace(/^\w+\n/, '')
     out.push({ type: 'code', code, id: `${idPrefix}:code:${codeIndex++}` })
     pos = fenceEnd + 3
   }
@@ -81,8 +81,8 @@ export function MarkdownDoc({ idPrefix, markdown }: { idPrefix: string; markdown
           const cls = n.level === 1
             ? 'text-2xl font-semibold'
             : n.level === 2
-              ? 'text-xl font-semibold'
-              : 'text-lg font-semibold'
+            ? 'text-xl font-semibold'
+            : 'text-lg font-semibold'
           return (
             <Tag key={i} className={`${cls} text-white`}>
               {n.text}
@@ -92,9 +92,7 @@ export function MarkdownDoc({ idPrefix, markdown }: { idPrefix: string; markdown
         if (n.type === 'list') {
           return (
             <ul key={i} className="list-disc pl-6 text-neutral-200">
-              {n.items.map((it, j) => (
-                <li key={j}>{it}</li>
-              ))}
+              {n.items.map((it, j) => <li key={j}>{it}</li>)}
             </ul>
           )
         }
@@ -107,4 +105,3 @@ export function MarkdownDoc({ idPrefix, markdown }: { idPrefix: string; markdown
     </div>
   )
 }
-

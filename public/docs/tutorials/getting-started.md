@@ -3,6 +3,7 @@
 loopmaster is a tiny language for making sound. Every line is a signal flow, and `out($)` sends the result to the speakers.
 
 ```
+
 sine(220) * 0.2 |> out($)
 ```
 
@@ -11,6 +12,7 @@ sine(220) * 0.2 |> out($)
 You can route a signal into the next function with `|>`. The placeholder `$` means “the signal from the left”.
 
 ```
+
 saw(110) |> lp($, cutoff:800, q:0.7) |> out($)
 ```
 
@@ -19,7 +21,9 @@ saw(110) |> lp($, cutoff:800, q:0.7) |> out($)
 Use `mini()` to define a pattern, then `play()` to turn it into voices.
 
 ```
+
 mel = mini('scale dorian [i ii v]$.5/2', '#05f')
+
 play(mel, (trig, velocity, hz) -> sine(hz, trig) * velocity) * 0.25 |> out($)
 ```
 
