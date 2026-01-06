@@ -15,6 +15,7 @@ import { useFontsLoaded } from './useFontsLoaded.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { useLoopView } from './useLoopView.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
+import { Docs } from './docs/Docs.tsx'
 
 function Intro(
   { isFadingOut = false, isFadingIn = true }: { isFadingOut?: boolean; isFadingIn?: boolean },
@@ -249,6 +250,7 @@ export function EngineUI() {
         hasHydrated={hasHydrated}
         onDspError={setDspError}
       />
+      <Docs />
     </RouterProvider>
   )
 }
