@@ -2,6 +2,7 @@ import type { CodeFile, EditorWidget, Theme } from 'mini-code'
 import type React from 'preact/hooks'
 import { useMemo, useRef } from 'preact/hooks'
 import type { NumberWithParamsInfo } from '../bytecode/bytecode.ts'
+import { getCurrentNumberAt, getEditableNumberToken } from './code-number-read.ts'
 import { updateValueWithSpacing } from './code-number-edit.ts'
 
 type DragState = {
@@ -55,17 +56,19 @@ export class SliderWidget {
         const drag = this.dragStateRef.current
 
         let value: number
-        if (drag && drag.isDragging && drag.line === this.info.line && drag.column === this.info.column) {
+        if (drag && drag.line === this.info.line && drag.column === this.info.column && drag.key === this.sliderKey) {
           value = drag.value
-          drag.x = x
-          drag.y = y
-          drag.width = width
-          drag.min = this.info.min
-          drag.max = this.info.max
-          drag.key = this.sliderKey
+          if (drag.isDragging) {
+            drag.x = x
+            drag.y = y
+            drag.width = width
+            drag.min = this.info.min
+            drag.max = this.info.max
+            drag.key = this.sliderKey
+          }
         }
         else {
-          value = this.info.value
+          value = getCurrentNumberAt(this.codeFile, this.info) ?? this.info.value
         }
 
         const min = Math.min(this.info.min, this.info.max)
@@ -142,8 +145,7 @@ export class SliderWidget {
 
         const line = lines[lineIndex]!
         const from = this.info.column - 1
-        const match = line.substring(from).match(/^-?\d*\.?\d*/)
-        const oldStr = match?.[0] || line.slice(from, from + Math.max(1, this.info.length))
+        const oldStr = getEditableNumberToken(line, from, this.info.length)
         const newLine = updateValueWithSpacing(
           line,
           this.info.column,
@@ -185,8 +187,7 @@ export class SliderWidget {
           if (lineIndex >= 0 && lineIndex < lines.length) {
             const line = lines[lineIndex]!
             const from = currentDrag.column - 1
-            const match = line.substring(from).match(/^-?\d*\.?\d*/)
-            const oldStr = match?.[0] || line.slice(from, from + Math.max(1, currentDrag.length))
+            const oldStr = getEditableNumberToken(line, from, currentDrag.length)
             const newLine = updateValueWithSpacing(
               line,
               currentDrag.column,
@@ -203,11 +204,33 @@ export class SliderWidget {
 
       pointerUp: () => {
         const drag = this.dragStateRef.current
-        if (drag) drag.isDragging = false
+        if (!drag || drag.key !== this.sliderKey) return
+        drag.isDragging = false
+
         if (this.rafRef.current) {
           cancelAnimationFrame(this.rafRef.current)
           this.rafRef.current = null
         }
+
+        const codeFile = this.codeFile
+        if (!codeFile) return
+
+        const lines = codeFile.value.split('\n')
+        const lineIndex = drag.line - 1
+        if (lineIndex < 0 || lineIndex >= lines.length) return
+
+        const line = lines[lineIndex]!
+        const from = drag.column - 1
+        const oldStr = getEditableNumberToken(line, from, drag.length)
+        const newLine = updateValueWithSpacing(
+          line,
+          drag.column,
+          oldStr,
+          drag.value,
+          drag.length,
+          drag.precision,
+        )
+        codeFile.edit(lineIndex, 0, line.length, newLine)
       },
     }
   }

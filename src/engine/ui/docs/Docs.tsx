@@ -229,7 +229,8 @@ export function Docs() {
   }, [tutorials])
 
   useEffect(() => {
-    if (selectedId && items.some(i => i.id === selectedId)) return
+    const currentSelected = items.find(i => i.id === selectedId)
+    if (currentSelected?.group === 'tutorial') return
     setSelectedId(items[0]?.id ?? null)
   }, [items, selectedId])
 
