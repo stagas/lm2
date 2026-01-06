@@ -61,21 +61,45 @@ export function useTimelineWidget({
   const stateRef = useRef<Map<number, TimelineState>>(new Map())
   const compiledCacheRef = useRef<Map<number, { sequence: string; arrayRaw: Float32Array }>>(new Map())
   const lastResetKeyRef = useRef<string | number | null | undefined>(undefined)
-  if (lastResetKeyRef.current !== resetKey) {
+  const lastIsPlayingRef = useRef(isPlaying)
+
+  // Use a version counter to track state clears. Snap if version differs from last consumed.
+  const switchVersionRef = useRef(0)
+  const lastConsumedVersionRef = useRef(-1)
+
+  // Clear state on loop switch OR when isPlaying changes (view <-> live mode switch)
+  if (lastResetKeyRef.current !== resetKey || lastIsPlayingRef.current !== isPlaying) {
     lastResetKeyRef.current = resetKey
+    lastIsPlayingRef.current = isPlaying
     stateRef.current.clear()
     compiledCacheRef.current.clear()
+    switchVersionRef.current++
   }
 
   const theme = useTheme()
 
-  const onBeforeDraw = useCallback(() => {
+  // onBeforeDraw is called every frame, so no need for useCallback memoization.
+  // Using a regular function ensures we always see the latest stateRef.current after clearing.
+  const onBeforeDraw = () => {
     if (!showWidgets) return
     if (isLive && !program1?.program?.histories) return
 
-    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
-    if (!pred) return
-    const { sampleRate, sampleCount, timeSeconds } = pred
+    const runtime = useEngineRuntimeStore.getState()
+    const pred = runtime.predictedSampleCountResult
+    const sampleRate = audioContext?.sampleRate || pred?.sampleRate || 0
+    if (!sampleRate) return
+
+    const rawSampleCount = globalSampleCount
+      ? ((Atomics.load(globalSampleCount, 0) >>> 0) as number)
+      : undefined
+    const targetSampleCount = (isPlaying && pred)
+      ? pred.sampleCount
+      : (rawSampleCount ?? pred?.sampleCount)
+    if (targetSampleCount == null) return
+
+    const targetTimeSeconds = (isPlaying && pred)
+      ? pred.timeSeconds
+      : (targetSampleCount / sampleRate)
 
     const seenSeqs = new Set<number>()
     for (const ref of timelineRefs) {
@@ -90,12 +114,15 @@ export function useTimelineWidget({
         frameSegs: [],
       }
 
-      if (st.timeSeconds == null) {
-        st.sampleCount = sampleCount
-        st.timeSeconds = timeSeconds
+      const needsSnap = switchVersionRef.current !== lastConsumedVersionRef.current
+      if (st.timeSeconds == null || needsSnap) {
+        // First frame after clear: snap instantly (dead zone)
+        st.sampleCount = targetSampleCount
+        st.timeSeconds = targetTimeSeconds
       }
       else {
-        st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount, 100 * sampleRate))
+        // Subsequent frames: apply smoothing
+        st.sampleCount = Math.round(applySmoothing(st.sampleCount, targetSampleCount, 100 * sampleRate))
         st.timeSeconds = st.sampleCount / sampleRate
       }
 
@@ -136,7 +163,10 @@ export function useTimelineWidget({
       st.frameSegs = segs
       stateRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, isLive, isPlaying, timelineRefs])
+
+    // Mark version as consumed after processing all sequences
+    lastConsumedVersionRef.current = switchVersionRef.current
+  }
 
   const drawTimeline = useCallback((
     c: CanvasRenderingContext2D,
@@ -349,7 +379,7 @@ export function useTimelineWidget({
 
     c.restore()
     c.restore()
-  }, [audioContext, bpmValue, timelineLabels, theme.colors.argument])
+  }, [audioContext, bpmValue, timelineLabels, theme.colors.argument, resetKey, isPlaying])
 
   const widgets = useMemo(() => {
     if (!showWidgets) return []

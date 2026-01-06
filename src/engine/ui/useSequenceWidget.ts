@@ -202,10 +202,19 @@ export function useSequenceWidget({
 }: UseSequenceParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const controls = new Map<number, number>()
   const lastResetKeyRef = useRef<string | number | null | undefined>(undefined)
-  if (lastResetKeyRef.current !== resetKey) {
+  const lastIsPlayingRef = useRef(isPlaying)
+
+  // Use a version counter to track state clears. Snap if version differs from last consumed.
+  const switchVersionRef = useRef(0)
+  const lastConsumedVersionRef = useRef(-1)
+
+  // Clear state on loop switch OR when isPlaying changes (view <-> live mode switch)
+  if (lastResetKeyRef.current !== resetKey || lastIsPlayingRef.current !== isPlaying) {
     lastResetKeyRef.current = resetKey
+    lastIsPlayingRef.current = isPlaying
     frameRef.current = []
     controlStateRef.current?.clear()
+    switchVersionRef.current++
   }
 
   const defaultScaleIndex = useMemo(() => {
@@ -214,15 +223,26 @@ export function useSequenceWidget({
     return extracted.scale
   }, [dspSource])
 
-  const onBeforeDraw = useCallback(() => {
+  // onBeforeDraw is called every frame, so no need for useCallback memoization.
+  // Using a regular function ensures we always see the latest state after clearing.
+  const onBeforeDraw = () => {
     if (!showWidgets) return
     const playbackState = useEngineRuntimeStore.getState().playbackState
     if (playbackState === 'paused') return
     const visualWasm = useEngineRuntimeStore.getState().visualWasm
     const FADEOUT_SECONDS = 0.3
-    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
-    if (!pred) return
-    const { sampleRate, sampleCount: currentSampleCount } = pred
+    const runtime = useEngineRuntimeStore.getState()
+    const pred = runtime.predictedSampleCountResult
+    const sampleRate = audioContext?.sampleRate || pred?.sampleRate || 0
+    if (!sampleRate) return
+
+    const rawSampleCount = globalSampleCount
+      ? ((Atomics.load(globalSampleCount, 0) >>> 0) as number)
+      : undefined
+    const currentSampleCount = (isPlaying && pred)
+      ? pred.sampleCount
+      : (rawSampleCount ?? pred?.sampleCount)
+    if (currentSampleCount == null) return
 
     const bpm = bpmValue?.[0] || 60
     const barLengthSeconds = (4 * 60) / bpm
@@ -392,20 +412,10 @@ export function useSequenceWidget({
     }
 
     frameRef.current = nextFrame
-  }, [
-    showWidgets,
-    program1,
-    audioContext,
-    bpmValue,
-    globalSampleCount,
-    isPlaying,
-    sequences,
-    miniSourceMaps,
-    miniRefs,
-    miniPlayBars,
-    controlStateRef,
-    frameRef,
-  ])
+
+    // Mark version as consumed after processing
+    lastConsumedVersionRef.current = switchVersionRef.current
+  }
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []

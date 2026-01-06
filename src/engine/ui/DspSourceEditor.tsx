@@ -1025,6 +1025,7 @@ function DspSourceEditorReady(
     audioContext,
     globalSampleCount,
     isPlaybackRunningForView,
+    loopId,
   ])
 
   const widgets = useMemo((): EditorWidget[] => {

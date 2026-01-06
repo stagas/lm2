@@ -106,9 +106,18 @@ export function useTimelineSequenceWidget({
     if (!showWidgets) return
     if (!audioContext || !bpmValue) return
 
-    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
-    if (!pred) return
-    const { sampleCount, sampleRate } = pred
+    const runtime = useEngineRuntimeStore.getState()
+    const pred = runtime.predictedSampleCountResult
+    const sampleRate = audioContext.sampleRate || pred?.sampleRate || 0
+    if (!sampleRate) return
+
+    const rawSampleCount = globalSampleCount
+      ? ((Atomics.load(globalSampleCount, 0) >>> 0) as number)
+      : undefined
+    const sampleCount = (isPlaying && pred)
+      ? pred.sampleCount
+      : (rawSampleCount ?? pred?.sampleCount)
+    if (sampleCount == null) return
 
     const bpm = bpmValue[0] || 60
     const seenSeqs = new Set<number>()
