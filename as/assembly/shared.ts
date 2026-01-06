@@ -44,6 +44,8 @@ export enum Op {
   Sqr,
   Pwm,
   Phasor,
+  Impulse,
+  Zerox,
   Lp,
   Compressor,
   Expander,
@@ -91,6 +93,7 @@ export enum Op {
   ArrayStep,
   ArrayRandom,
   PitchShift,
+  Sah,
 }
 
 export enum SeqOp {

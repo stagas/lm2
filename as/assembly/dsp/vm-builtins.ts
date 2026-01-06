@@ -8,6 +8,8 @@ import { callAnalyser } from './builtins/analyser'
 import { callAt } from './builtins/at'
 import { callAvg } from './builtins/avg'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
+import { callImpulse } from './builtins/impulse'
+import { callZerox } from './builtins/zerox'
 import { callCompressor } from './builtins/compressor'
 import { callDattorro } from './builtins/dattorro'
 import { callDc } from './builtins/dc'
@@ -91,6 +93,7 @@ import { callSolo } from './builtins/solo'
 import { callSqr } from './builtins/sqr'
 import { callArrayRandom, callArrayStep } from './builtins/step'
 import { callSum } from './builtins/sum'
+import { callSah } from './builtins/sah'
 import { callSap, callSbp, callSbs, callShp, callSlp, callSpeak } from './builtins/svf'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
@@ -180,6 +183,7 @@ export class VmBuiltins {
     this.autoLift[VmBuiltin.DiodeLadder] = 1
     this.autoLift[VmBuiltin.Slew] = 1
     this.autoLift[VmBuiltin.Envfollow] = 1
+    this.autoLift[VmBuiltin.Zerox] = 1
     this.autoLift[VmBuiltin.Dc] = 1
   }
 
@@ -455,6 +459,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Sap) {
       callSap(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Sah) {
+      callSah(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
@@ -1016,6 +1026,22 @@ export class VmBuiltins {
         program, length)
       return
     }
+    if (calleeAux === VmBuiltin.Impulse) {
+      callImpulse(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Zerox) {
+      callZerox(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Zerox) {
+      callZerox(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
 
     if (calleeAux === VmBuiltin.Olp) {
       callOlp(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
@@ -1310,6 +1336,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Sap) {
       callSap(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Sah) {
+      callSah(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

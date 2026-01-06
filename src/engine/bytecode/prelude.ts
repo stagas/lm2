@@ -1,19 +1,29 @@
 export const PRELUDE = `
+// Set the global BPM (beats per minute) for timing calculations
 bpm=60
 
-// return a multiplier for the input value to convert it to decibels
+// Convert decibels to linear gain multiplier (10^(dB/20))
 db=x->10**(x/20)
 
-// return a multiplier to shift a value by a number of semitones
+// Convert bipolar signal to unipolar ([-1,1] to [0,1])
+uni=x->x*.5+.5
+
+// Convert unipolar signal to bipolar ([-1,1] to [0,1])
+bi=x->x*2-1
+
+// Crossfade between two signals
+crossfade=(a,b,t)->lerp(a,b,clamp(t,0,1))
+
+// Convert semitones to frequency multiplier (2^(semitones/12))
 semis=x->2**(x/12)
 
-// convert a mono signal to a stereo signal and optionally widen it
+// Convert mono signal to stereo, optionally with delay-based widening
 stereo=(in,width=0)->[in,delay(in,seconds:width)]
 
-// convert a stereo signal to a mono signal
+// Convert stereo signal to mono by averaging channels
 mono=([L,R])->(L+R)*.5
 
-// change the stereo width of a stereo signal
+// Adjust stereo width using mid-side processing (1 = normal, 0 = mono, >1 = wider)
 stereowidth=([L,R],width=1)->{
   mid=(L+R)*0.5
   side=(L-R)*0.5
@@ -21,7 +31,7 @@ stereowidth=([L,R],width=1)->{
   return [mid+side,mid-side]
 }
 
-// widen a stereo signal
+// Widen stereo signal by delaying high frequencies in right channel
 widen=([L,R],seconds=0.0001)->{
   cutoff=200
   loL=lp(L,cutoff)
@@ -31,22 +41,25 @@ widen=([L,R],seconds=0.0001)->{
   return [loL+hiL,loR+delay(hiR,seconds)]
 }
 
-// pan a stereo signal left or right (0=left, 0.5=center, 1=right)
+// Pan stereo signal (0=left, 0.5=center, 1=right)
 pan=([L,R],balance=0.5)->{
   p=clamp(balance,0,1)
   return [L*(1-p),R*p]
 }
 
+// Modulated delay effect with LFO-controlled delay time
 modDelay=(in,baseDelay,depth,rate,feedback,offset=0)->{
   lfo = lfosine(rate, offset)
   delayTime = baseDelay + depth * lfo
   delay(in, delayTime, feedback)
 }
 
+// Classic flanger effect (modulated comb filter)
 flanger=(in,rate=1,depth=0.00125,base=0.00125,feedback=0.7)->{
   modDelay(in, base, depth, rate, feedback)
 }
 
+// Multi-voice chorus effect with spread and modulation
 chorus=(in,voices=3,base=0.02,depth=0.006,rate=0.25,spread=.5)->{
   sum = 0
   voices = max(voices,1)
@@ -66,8 +79,13 @@ chorus=(in,voices=3,base=0.02,depth=0.006,rate=0.25,spread=.5)->{
   sum / voices
 }
 
+// Simple delay tap (alias for delay with callback)
+tap=(in,seconds,cb)->delay(in,seconds,cb)
+
+// Comb filter (feedforward + feedback delay)
 comb=(in,seconds,feedback,cb)->in+delay(in,seconds,feedback,cb)
 
+// 3-band equalizer with low/mid/high controls
 eq3=(in,low=0,mid=0,high=0,lf=500,mf=2000,hf=8000)->{
   lo=ls(in,cutoff:lf,gain:low)
   mi=peak(in,cutoff:mf,q:1,gain:mid)
@@ -75,8 +93,10 @@ eq3=(in,low=0,mid=0,high=0,lf=500,mf=2000,hf=8000)->{
   return lo+mi+hi
 }
 
+// Granular synthesis-inspired trigger generator based on speed
 grain=(speed=1,seed)->step(random(seed),.999+.001*((1-clamp(speed,0,1))**.293))
 
+// Vocoder effect using bandpass filters and envelope following
 vocoder=(carrier,modulator,numBands=16,attack=.01,release=.04,freqMin=100,freqMax=8000)->{
   logRange = log(freqMax / freqMin)
   step     = logRange / (numBands - 1)
@@ -93,6 +113,7 @@ vocoder=(carrier,modulator,numBands=16,attack=.01,release=.04,freqMin=100,freqMa
   s
 }
 
+// Karplus-Strong plucked string synthesis
 karplus=(hz,pluck=pink,seed=334,attack=.0001,decay=.1,exponent=40,damping=.5,trig)->{
   exc = pluck(seed, trig) * ad(attack,decay,exponent,trig)
   delayTime = safediv(1, hz)
@@ -100,6 +121,7 @@ karplus=(hz,pluck=pink,seed=334,attack=.0001,decay=.1,exponent=40,damping=.5,tri
   oversample(16, () -> delay(exc,delayTime,1,x -> tanh(olp(x, dampingCutoff))))
 }
 
+// Generate metronome sound with major/minor chord progression
 metronome=()->{
   trig=every(1/4)
   major=pink(184,trig)
@@ -107,6 +129,7 @@ metronome=()->{
   ;[major,minor,minor,minor][t]*ad(.0001,.0310,20,trig) |> olp($,138.17+4839.33*ad(.0001,.0420,20.000,trig)) |> hp($,289.47 ) |> tanh($*8)
 }
 
+// Additive synthesis with harmonic series and tilt control
 harmonics=(hz,numHarmonics=3,tilt=3,offset=0,trig)->{
   s = 0
   maxH = min(numHarmonics, floor(20000 / hz))
@@ -119,6 +142,7 @@ harmonics=(hz,numHarmonics=3,tilt=3,offset=0,trig)->{
   s * norm
 }
 
+// Wave folding synthesis with harmonic enhancement
 folded=(hz,numHarmonics=2,amount=2)->{
   s = 0
   amount=max(.0001,amount)
@@ -129,12 +153,14 @@ folded=(hz,numHarmonics=2,amount=2)->{
   fold(s, -1 / amount, 1 / amount)
 }
 
+// Pulsar synthesis with phasor-controlled envelope
 pulsar=(hz,density=1)->{
   x = phasor(hz*(2**density))
   env = smoothstep(x,0,0.2)
   sine(hz) * env
 }
 
+// Supersaw oscillator with detuned voices
 supersaw=(hz,voices=5,spread=.05)->{
   s = 0
   for (i=0;i<voices;i++) {
@@ -144,6 +170,7 @@ supersaw=(hz,voices=5,spread=.05)->{
   s / voices
 }
 
+// Hammond organ-style drawbar oscillator
 drawbar=(hz,bars=[1])->{
   s = 0
   for (i=0;i<bars.length;i++) {
@@ -155,6 +182,7 @@ drawbar=(hz,bars=[1])->{
   s / bars.sum()
 }
 
+// Drum synthesis using filtered noise excitation
 drum=(noise=white,seed=42,freqs=[120,200,330,470],trig)->{
   exc = noise(seed,trig)
   s = 0
@@ -164,19 +192,21 @@ drum=(noise=white,seed=42,freqs=[120,200,330,470],trig)->{
   s
 }
 
+// Vowel formant constants (a,e,i,o,u)
 va=0
 ve=1
 vi=2
 vo=3
 vu=4
 
+// Formant filter for vowel sounds
 vowel=(in,vowelName)->{
   F = [
-    [730,1090,2440],
-    [530,1840,2480],
-    [270,2290,3010],
-    [570,840,2410],
-    [300,870,2240]
+    [730,1090,2440],  // a
+    [530,1840,2480],  // e
+    [270,2290,3010],  // i
+    [570,840,2410],   // o
+    [300,870,2240]    // u
   ]
   freqs = F[vowelName]
   s = in
@@ -186,16 +216,24 @@ vowel=(in,vowelName)->{
   s
 }
 
+// Ring modulation effect
 ring=(in,hz)->in*sine(hz)
 
+// Tube saturation/distortion
 tube=(in,drive=3,bias=.2)->{
   tanh((in+bias)*drive)-tanh(bias*drive)
 }
 
+// Hard clipping distortion
 clip=(in,x=1)->clamp(in,-x,x)
 
-tap=(in,seconds,cb)->delay(in,seconds,cb)
+// Bit crushing effect using sample and hold
+bitcrush=(in,rate=8000)->{
+  trig = impulse(rate)
+  sah(in,trig)
+}
 
+// Mix operator (passes through signal unchanged)
 mix=|>$
 `
 

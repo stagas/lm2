@@ -22,7 +22,8 @@ import { Mhp, Mlp } from './gen/moog'
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from './gen/noise'
 import { Ohp, Olp } from './gen/onepole'
 import { Random } from './gen/random'
-import { Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
+import { Sah } from './gen/sah'
+import { Impulse, Phasor, Pwm, Ramp, Saw, Sqr, Tri, Zerox } from './gen/osc'
 import { PitchShift } from './gen/pitch-shift'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
@@ -84,6 +85,8 @@ export class GensPool {
   private sqrs: GenPool<Sqr> = new GenPool<Sqr>(() => new Sqr())
   private pwms: GenPool<Pwm> = new GenPool<Pwm>(() => new Pwm())
   private phasors: GenPool<Phasor> = new GenPool<Phasor>(() => new Phasor())
+  private impulses: GenPool<Impulse> = new GenPool<Impulse>(() => new Impulse())
+  private zeroxes: GenPool<Zerox> = new GenPool<Zerox>(() => new Zerox())
   private ads: GenPool<Ad> = new GenPool<Ad>(() => new Ad())
   private adsrs: GenPool<Adsr> = new GenPool<Adsr>(() => new Adsr())
   private envfollows: GenPool<Envfollow> = new GenPool<Envfollow>(() => new Envfollow())
@@ -140,9 +143,10 @@ export class GensPool {
   private steps: GenPool<Step> = new GenPool<Step>(() => new Step())
   private randoms: GenPool<Random> = new GenPool<Random>(() => new Random())
   private pitchShifts: GenPool<PitchShift> = new GenPool<PitchShift>(() => new PitchShift())
+  private sahs: GenPool<Sah> = new GenPool<Sah>(() => new Sah())
 
   // Keep in sync with `saveIndices()`/`restoreIndices()`.
-  static readonly INDICES_COUNT: i32 = 61
+  static readonly INDICES_COUNT: i32 = 63
 
   @inline
   saveIndices(out: StaticArray<i32>): void {
@@ -154,6 +158,7 @@ export class GensPool {
     out[i++] = this.sqrs.getIndex()
     out[i++] = this.pwms.getIndex()
     out[i++] = this.phasors.getIndex()
+    out[i++] = this.impulses.getIndex()
     out[i++] = this.ads.getIndex()
     out[i++] = this.adsrs.getIndex()
     out[i++] = this.envfollows.getIndex()
@@ -208,6 +213,7 @@ export class GensPool {
     out[i++] = this.steps.getIndex()
     out[i++] = this.randoms.getIndex()
     out[i++] = this.pitchShifts.getIndex()
+    out[i++] = this.sahs.getIndex()
   }
 
   @inline
@@ -220,6 +226,7 @@ export class GensPool {
     this.sqrs.setIndex(src[i++])
     this.pwms.setIndex(src[i++])
     this.phasors.setIndex(src[i++])
+    this.impulses.setIndex(src[i++])
     this.ads.setIndex(src[i++])
     this.adsrs.setIndex(src[i++])
     this.envfollows.setIndex(src[i++])
@@ -274,6 +281,7 @@ export class GensPool {
     this.steps.setIndex(src[i++])
     this.randoms.setIndex(src[i++])
     this.pitchShifts.setIndex(src[i++])
+    this.sahs.setIndex(src[i++])
   }
   resetIndices(): void {
     this.sines.resetIndex()
@@ -283,6 +291,7 @@ export class GensPool {
     this.sqrs.resetIndex()
     this.pwms.resetIndex()
     this.phasors.resetIndex()
+    this.impulses.resetIndex()
     this.ads.resetIndex()
     this.adsrs.resetIndex()
     this.envfollows.resetIndex()
@@ -337,6 +346,7 @@ export class GensPool {
     this.steps.resetIndex()
     this.randoms.resetIndex()
     this.pitchShifts.resetIndex()
+    this.sahs.resetIndex()
   }
   reset(): void {
     this.sines.reset()
@@ -346,6 +356,7 @@ export class GensPool {
     this.sqrs.reset()
     this.pwms.reset()
     this.phasors.reset()
+    this.impulses.reset()
     this.ads.reset()
     this.adsrs.reset()
     this.envfollows.reset()
@@ -400,6 +411,7 @@ export class GensPool {
     this.steps.reset()
     this.randoms.reset()
     this.pitchShifts.reset()
+    this.sahs.reset()
   }
 
   get(op: Op): Gen {
@@ -418,6 +430,10 @@ export class GensPool {
         return this.pwms.get()
       case Op.Phasor:
         return this.phasors.get()
+      case Op.Impulse:
+        return this.impulses.get()
+      case Op.Zerox:
+        return this.zeroxes.get()
       case Op.Ad:
         return this.ads.get()
       case Op.Adsr:
@@ -532,6 +548,8 @@ export class GensPool {
         return this.randoms.get()
       case Op.PitchShift:
         return this.pitchShifts.get()
+      case Op.Sah:
+        return this.sahs.get()
     }
     throw new Error(`Invalid gen op: ${op}`)
   }
@@ -544,6 +562,7 @@ export class GensPool {
     this.sqrs.copyFrom(source.sqrs)
     this.pwms.copyFrom(source.pwms)
     this.phasors.copyFrom(source.phasors)
+    this.impulses.copyFrom(source.impulses)
     this.ads.copyFrom(source.ads)
     this.adsrs.copyFrom(source.adsrs)
     this.envfollows.copyFrom(source.envfollows)
@@ -596,5 +615,6 @@ export class GensPool {
     this.steps.copyFrom(source.steps)
     this.randoms.copyFrom(source.randoms)
     this.pitchShifts.copyFrom(source.pitchShifts)
+    this.sahs.copyFrom(source.sahs)
   }
 }
