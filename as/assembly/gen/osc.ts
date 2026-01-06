@@ -10,13 +10,11 @@ export class Osc extends Gen {
   phase: f32 = 0.0
   lastTrig: f32 = 0.0
   lastOutput: f32 = 0.0
-  phasorDone: f32 = 0.0
 
   reset(): void {
     this.phase = 0.0
     this.lastTrig = 0.0
     this.lastOutput = 0.0
-    this.phasorDone = 0.0
   }
 
   copyFrom(other: Gen): void {
@@ -24,7 +22,6 @@ export class Osc extends Gen {
     this.phase = src.phase
     this.lastTrig = src.lastTrig
     this.lastOutput = src.lastOutput
-    this.phasorDone = src.phasorDone
   }
 
   process(out$: usize, length: i32): void {}
@@ -321,7 +318,6 @@ export class Osc extends Gen {
 
     let phase: f32 = this.phase
     let lastTrig: f32 = this.lastTrig
-    let phasorDone: f32 = this.phasorDone
 
     for (let i = 0; i < length; i++) {
       const hz: f32 = clampNyquist(load<f32>(hz$))
@@ -332,20 +328,13 @@ export class Osc extends Gen {
         let phaseOffset: f32 = (offsetSeconds * hz) % 1.0
         if (phaseOffset < 0.0) phaseOffset += 1.0
         phase = phaseOffset
-        phasorDone = 0.0
       }
       lastTrig = trig
 
-      if (phasorDone > 0.0) {
-        store<f32>(out$, 1.0)
-      }
-      else {
-        store<f32>(out$, phase)
-        phase += hz / sampleRate
-        if (phase >= 1.0) {
-          phase = 1.0
-          phasorDone = 1.0
-        }
+      store<f32>(out$, phase)
+      phase += hz / sampleRate
+      if (phase >= 1.0) {
+        phase = 0.0
       }
 
       out$ += 4
@@ -356,7 +345,6 @@ export class Osc extends Gen {
 
     this.phase = phase
     this.lastTrig = lastTrig
-    this.phasorDone = phasorDone
   }
 }
 

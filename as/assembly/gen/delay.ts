@@ -1,5 +1,6 @@
 import { f32BufArena } from '../f32-buf-arena'
 import { sampleRate } from '../globals'
+import { cubic } from '../util'
 import { Gen } from './gen'
 
 const MAX_SECONDS: f32 = 10.0
@@ -63,10 +64,39 @@ export class Delay extends Gen {
   }
 
   @inline
+  private getDelaySamplesFrac(sec: f32): f32 {
+    let s: f32 = sec
+    if (s < 0.0) s = 0.0
+    if (s > MAX_SECONDS) s = MAX_SECONDS
+
+    const sr: f32 = f32(sampleRate)
+    let d: f32 = s * sr
+
+    const max: f32 = f32(this.len - 1)
+    if (d < 0.0) d = 0.0
+    if (d > max) d = max
+    return d
+  }
+
+  @inline
+  private cubicRead(readPos: f32): f32 {
+    const len: i32 = this.len
+    const buf = this.buf
+    const intPos: i32 = i32(readPos)
+    const frac: f32 = readPos - f32(intPos)
+
+    const p0: i32 = (intPos - 1 + len) % len
+    const p1: i32 = intPos % len
+    const p2: i32 = (intPos + 1) % len
+    const p3: i32 = (intPos + 2) % len
+
+    return cubic(buf[p0], buf[p1], buf[p2], buf[p3], frac)
+  }
+
+  @inline
   readEcho(out$: usize, length: i32): void {
     this.ensureBuffer()
 
-    const buf = this.buf
     const n: i32 = length
     const len: i32 = this.len
     const w0: i32 = this.writePos
@@ -74,20 +104,20 @@ export class Delay extends Gen {
     let o$: usize = out$
     let s$: usize = this.seconds$
 
-    for (let i: i32 = 0, y: i32 = 0, w: i32, d: i32; i < n; i += 16) {
+    for (let i: i32 = 0, y: i32 = 0, w: i32, d: f32; i < n; i += 16) {
       unroll(16, () => {
         w = (w0 + y) % len
-        d = this.clampDelaySamples(load<f32>(s$))
+        d = this.getDelaySamplesFrac(load<f32>(s$))
 
-        if (d == 0) {
+        if (d == 0.0) {
           // Zero delay: no echo
           store<f32>(o$, 0.0)
         }
         else {
-          // Normal delay: read from buffer
-          let r: i32 = w - d
-          if (r < 0) r += len
-          store<f32>(o$, buf[r])
+          // Normal delay: read from buffer with cubic interpolation
+          let readPos: f32 = f32(w) - d
+          if (readPos < 0.0) readPos += f32(len)
+          store<f32>(o$, this.cubicRead(readPos))
         }
 
         o$ += 4
@@ -136,23 +166,20 @@ export class Delay extends Gen {
     const w0: i32 = this.writePos
 
     let o$: usize = out$
-    let i$: usize = this.in$
     let e$: usize = processedEcho$
     let f$: usize = this.feedback$
 
-    for (let i: i32 = 0, y: i32 = 0, w: i32, x: f32, pe: f32, fb: f32, output: f32; i < n; i += 16) {
+    for (let i: i32 = 0, y: i32 = 0, w: i32, readPos: f32, pe: f32, fb: f32, output: f32; i < n; i += 16) {
       unroll(16, () => {
         w = (w0 + y) % len
-        x = load<f32>(i$)
         pe = load<f32>(e$)
         fb = load<f32>(f$)
 
-        output = (x + pe * fb) as f32
+        output = pe * fb
         store<f32>(o$, output)
         buf[w] = output
 
         o$ += 4
-        i$ += 4
         e$ += 4
         f$ += 4
         y++
@@ -175,24 +202,23 @@ export class Delay extends Gen {
     let s$: usize = this.seconds$
     let f$: usize = this.feedback$
 
-    for (let i: i32 = 0, y: i32 = 0, w: i32, d: i32, r: i32, x: f32, fb: f32, echo: f32; i < n; i += 16) {
+    for (let idx: i32 = 0, y: i32 = 0, w: i32, d: f32, x: f32, fb: f32, echo: f32; idx < n; idx += 16) {
       unroll(16, () => {
         w = (w0 + y) % len
-        d = this.clampDelaySamples(load<f32>(s$))
+        d = this.getDelaySamplesFrac(load<f32>(s$))
         x = load<f32>(i$)
         fb = load<f32>(f$)
 
-        if (d == 0) {
+        if (d == 0.0) {
           // Zero delay: output input directly
           store<f32>(o$, x)
           buf[w] = (x + x * fb) as f32
         }
         else {
-          // Normal delay: read from buffer
-          r = w - d
-          if (r < 0) r += len
-
-          echo = buf[r]
+          // Normal delay: read from buffer with cubic interpolation
+          let readPos: f32 = f32(w) - d
+          if (readPos < 0.0) readPos += f32(len)
+          echo = this.cubicRead(readPos)
           store<f32>(o$, echo)
           buf[w] = (x + echo * fb) as f32
         }

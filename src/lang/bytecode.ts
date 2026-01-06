@@ -948,7 +948,6 @@ class Compiler {
     // `signal.delay(seconds, feedback?, cb?)` is compiled as `delay(signal, seconds, feedback?, cb?)`.
     if (compileMemberCallAsBuiltin('delay')) return
 
-    this.compileExpr(expr.callee)
     type TempArg =
       | { kind: 'pos'; temp: string; valueKind?: string; identName?: string; isImplicitNamedCandidate: boolean }
       | { kind: 'named'; temp: string; name: string }
@@ -1027,18 +1026,15 @@ class Compiler {
     // Side-effect analyser tap for out()/solo(): emit `analyser(arg0, idx)` without rewriting the expression to
     // `out(analyser(arg0))` (which would change semantics for arrays).
     if ((calleeName === 'out' || calleeName === 'solo') && tapAnalyserIndex !== null && firstPosTemp) {
-      const calleeTemp = `%callee${this.callTempId++}`
-      this.emit({ op: 'STORE', name: this.nameConst(calleeTemp) })
-      this.emit({ op: 'POP' })
-
       this.emit({ op: 'LOAD', name: this.nameConst('analyser') })
       emitLoadTemp(firstPosTemp)
       this.emit({ op: 'PUSH_CONST', k: this.k(tapAnalyserIndex) })
       this.emit({ op: 'CALL', pos: 2, named: 0 })
       this.emit({ op: 'POP' })
-
-      this.emit({ op: 'LOAD', name: this.nameConst(calleeTemp) })
     }
+
+    // Compile the callee AFTER evaluating arguments to prevent stack corruption
+    this.compileExpr(expr.callee)
 
     if (sigNames && idxOf) {
       const reserved: boolean[] = []
@@ -1259,6 +1255,13 @@ class Compiler {
     const thenLoc = expr.ifLoc ?? expr.questionLoc ?? expr.then.loc ?? expr.loc
     if (!noBranchMark) this.emitBranchMark(thenLoc)
     this.compileIfBranch(expr.then)
+
+    if (!expr.else) {
+      this.patch(jFalse, this.chunk.code.length)
+      this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+      return
+    }
+
     const jEnd = this.emit({ op: 'JUMP', to: -1 })
     this.patch(jFalse, this.chunk.code.length)
 

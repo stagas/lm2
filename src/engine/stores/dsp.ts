@@ -628,6 +628,11 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
 
       useEngineRuntimeStore.setState(swappedPrograms)
 
+      const nextControl = useEngineRuntimeStore.getState().playbackState === 'running'
+        ? ControlOp.Start
+        : ControlOp.Pause
+      Atomics.store(control, 0, nextControl)
+
       const committedBars = stagingResult.bars
       const committedLabels = buildTimelineLabels(stagingResult.timelineLabels, committedBars)
       set({
