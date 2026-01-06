@@ -938,7 +938,11 @@ export function useFilterWidget({
     const isDiodeLadder = ref.filterType === 'diodeladder'
     const isOnePole = ref.filterType === 'olp' || ref.filterType === 'ohp'
 
-    const cutoff = clamp(st?.cutoff ?? ref.params.cut, (isSvf || isMoog || isDiodeLadder || isOnePole) ? 20 : minHz, maxHz)
+    const cutoff = clamp(
+      st?.cutoff ?? (ref.params.cutoff ?? (ref.params as any).cut),
+      (isSvf || isMoog || isDiodeLadder || isOnePole) ? 20 : minHz,
+      maxHz,
+    )
     const q = clamp(st?.q ?? ref.params.q, 0.01, (isSvf || isMoog || isDiodeLadder) ? 0.985 : 20)
     const gain = st?.gain ?? ref.params.gain ?? 0
 

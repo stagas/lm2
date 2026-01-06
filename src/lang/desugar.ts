@@ -58,6 +58,15 @@ function desugarExpr(expr: Expr): Expr {
         }
       }
 
+      if (raw === 'scale') {
+        return {
+          kind: 'call',
+          callee: { kind: 'ident', name: 'getScale', loc: expr.loc },
+          args: [],
+          loc: expr.loc,
+        }
+      }
+
       const chordMatch = raw.match(/^([ivxlcdm]+)(.*)$/i)
       if (chordMatch) {
         const roman = chordMatch[1]

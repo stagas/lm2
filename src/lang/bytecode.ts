@@ -943,6 +943,8 @@ class Compiler {
     if (compileMemberCallAsBuiltin('glide')) return
     // `array.step(trig)` is compiled as `arrayStep(array, trig)` to avoid GET_PROP in the VM encoder.
     if (compileMemberCallAsBuiltin('step', 'arrayStep')) return
+    // `array.random(trig)` is compiled as `arrayRandom(array, trig)` to avoid GET_PROP in the VM encoder.
+    if (compileMemberCallAsBuiltin('random', 'arrayRandom')) return
     // `signal.delay(seconds, feedback?, cb?)` is compiled as `delay(signal, seconds, feedback?, cb?)`.
     if (compileMemberCallAsBuiltin('delay')) return
 

@@ -137,13 +137,12 @@ export class Slicer extends Gen {
           if (sliceEnd < sliceStart) sliceEnd = sliceStart
 
           let off = load<f32>(offset$)
-          if (off < -1.0) off = -1.0
-          if (off > 1.0) off = 1.0
-          const off01: f32 = (off + 1.0) * 0.5
+          // if (off < 0.0) off = 0.0
+          // if (off > 1.0) off = 1.0
           const segLen: i32 = sliceEnd - sliceStart
           // Map 0..1 to 0..(segLen-1) so offset=1 stays inside the slice.
           const relMax: i32 = segLen > 1 ? (segLen - 1) : 0
-          const relRaw: i32 = i32(Mathf.floor(off01 * f32(relMax)))
+          const relRaw: i32 = i32(Mathf.floor(off * f32(relMax)))
           let rel: i32 = relRaw
           if (rel < 0) rel = 0
           if (rel > relMax) rel = relMax

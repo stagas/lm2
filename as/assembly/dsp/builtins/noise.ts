@@ -1,5 +1,6 @@
 // dprint-ignore-file
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from '../../gen/noise'
+import { Random } from '../../gen/random'
 import { LFO_DATA_OFFSET, LFO_ENTRY_SIZE, LFO_HISTORY_SIZE, LFO_WRITE_POS_OFFSET } from '../../constants'
 import { globalSampleCount } from '../../globals'
 import { Program } from '../../program'
@@ -571,5 +572,58 @@ export function callFractal(
   gen.process(out$, length)
 
   writeHistory(program, lfoIndex, 7, seed$, rate$, gen.phases[0], out$, length)
+  stack.push(VmTag.Audio, 0.0, outIndex)
+}
+
+// @ts-ignore
+@inline
+export function callRandom(
+  posCount: i32,
+  nameSyms: StaticArray<i32>,
+  nameTags: StaticArray<i32>,
+  nameNums: StaticArray<f64>,
+  nameAux: StaticArray<i32>,
+  namedCount: i32,
+  posTags: StaticArray<i32>,
+  posNums: StaticArray<f64>,
+  posAux: StaticArray<i32>,
+  stack: VmStack,
+  audio: VmAudio,
+  program: Program,
+  length: i32,
+): void {
+  // random(seed=1234)
+  let seedTag: VmTag = VmTag.Num
+  let seedNum: f64 = 1234.0
+  let seedAux: i32 = 0
+
+  if (posCount >= 1) {
+    const t = posTags[0] as VmTag
+    if (t !== VmTag.Undef && t !== VmTag.Null) {
+      seedTag = t
+      seedNum = posNums[0]
+      seedAux = posAux[0]
+    }
+  }
+
+  // Named overrides (seed)
+  for (let i = 0; i < namedCount; i++) {
+    const k = nameSyms[i]
+    if (k === VmSym.Seed) {
+      seedTag = nameTags[i] as VmTag
+      seedNum = nameNums[i]
+      seedAux = nameAux[i]
+      break
+    }
+  }
+
+  const seed$ = audio.toAudioPtr(seedTag, seedNum, seedAux, length, program)
+  const outIndex = audio.allocOut(program)
+  const out$ = program.getOutBuffer(outIndex)
+
+  const gen = program.gensPool.get(Op.Random) as Random
+  gen.seed$ = seed$
+  gen.process(out$, length)
+
   stack.push(VmTag.Audio, 0.0, outIndex)
 }

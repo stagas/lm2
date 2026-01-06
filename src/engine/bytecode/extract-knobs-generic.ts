@@ -11,6 +11,59 @@ import { tryEvalConstNumber } from './helpers.ts'
 import { getKnobConfig, getParamNameForPosition, getValidParamNames } from './knob-config.ts'
 import type { GenericKnobRef } from './types.ts'
 
+function collectNumberLiterals(expr: any, out: Array<{ value: number; loc: Loc }>): void {
+  if (!expr) return
+
+  if (expr.kind === 'number') {
+    const v = Number(expr.value ?? expr.raw ?? 0)
+    if (Number.isFinite(v) && expr.loc) out.push({ value: v, loc: expr.loc })
+    return
+  }
+
+  if (expr.kind === 'unary') {
+    const op = String(expr.op ?? '')
+    const inner = expr.expr
+    // Preserve the unary span so edits include the '-' sign.
+    if ((op === '-' || op === '+') && inner?.kind === 'number') {
+      const v0 = Number(inner.value ?? inner.raw ?? 0)
+      const v = op === '-' ? -v0 : v0
+      if (Number.isFinite(v) && expr.loc) out.push({ value: v, loc: expr.loc })
+      return
+    }
+    collectNumberLiterals(inner, out)
+    return
+  }
+
+  if (expr.kind === 'postfix') {
+    collectNumberLiterals(expr.expr, out)
+    return
+  }
+
+  if (expr.kind === 'binary') {
+    collectNumberLiterals(expr.left, out)
+    if (expr.op !== '**') collectNumberLiterals(expr.right, out)
+    return
+  }
+
+  if (expr.kind === 'member') {
+    collectNumberLiterals(expr.object, out)
+    if (expr.computed) collectNumberLiterals(expr.index, out)
+    return
+  }
+
+  if (expr.kind === 'array') {
+    for (const it of expr.items ?? []) collectNumberLiterals(it, out)
+    return
+  }
+
+  if (expr.kind === 'object') {
+    for (const p of expr.props ?? []) collectNumberLiterals(p?.value, out)
+    return
+  }
+
+  // Don't collect from calls, functions, etc.
+}
+
 /**
  * Creates a generic visitor that extracts knob parameters for any function
  * defined in the knob configuration.
@@ -80,11 +133,18 @@ export function createGenericKnobVisitor(src: string, refs: GenericKnobRef[]) {
           const v = tryEvalConstNumber(a.value)
           if (v != null && Number.isFinite(v)) {
             params[paramName] = v
-            if (a.value?.loc && !a.value.loc.kernel && a.value.loc.line > 0) {
-              seen.add(paramName)
-              knobParams.push({ name: paramName, value: v, valueLoc: a.value.loc })
-            }
           }
+
+          const lits: Array<{ value: number; loc: Loc }> = []
+          collectNumberLiterals(a.value, lits)
+          let did = false
+          for (const lit of lits) {
+            const loc = lit.loc
+            if (!loc || loc.kernel || loc.line <= 0) continue
+            did = true
+            knobParams.push({ name: paramName, value: lit.value, valueLoc: loc })
+          }
+          if (did) seen.add(paramName)
           continue
         }
 
@@ -101,11 +161,18 @@ export function createGenericKnobVisitor(src: string, refs: GenericKnobRef[]) {
           const v = tryEvalConstNumber(a.value)
           if (v != null && Number.isFinite(v)) {
             params[resolvedName] = v
-            if (a.value?.loc && !a.value.loc.kernel && a.value.loc.line > 0) {
-              seen.add(resolvedName)
-              knobParams.push({ name: resolvedName, value: v, valueLoc: a.value.loc })
-            }
           }
+
+          const lits: Array<{ value: number; loc: Loc }> = []
+          collectNumberLiterals(a.value, lits)
+          let did = false
+          for (const lit of lits) {
+            const loc = lit.loc
+            if (!loc || loc.kernel || loc.line <= 0) continue
+            did = true
+            knobParams.push({ name: resolvedName, value: lit.value, valueLoc: loc })
+          }
+          if (did) seen.add(resolvedName)
         }
       }
 

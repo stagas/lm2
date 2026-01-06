@@ -63,11 +63,43 @@ chorus=(in,voices=3,base=0.02,depth=0.006,rate=0.25,spread=.5)->{
   sum / voices
 }
 
+comb=(in,seconds,feedback,cb)->in+delay(in,seconds,feedback,cb)
+
 eq3=(in,low=0,mid=0,high=0,lf=500,mf=2000,hf=8000)->{
   lo=ls(in,cutoff:lf,gain:low)
   mi=peak(in,cutoff:mf,q:1,gain:mid)
   hi=hs(in,cutoff:hf,gain:high)
   return lo+mi+hi
+}
+
+grain=(speed=1,seed)->step(random(seed),.999+.001*((1-clamp(speed,0,1))**.293))
+
+vocoder=(carrier,modulator,numBands=16,attack=.01,release=.04,freqMin=100,freqMax=8000)->{
+  logRange = log(freqMax / freqMin)
+  step     = logRange / (numBands - 1)
+  r = exp(step)
+  Q = clamp(1 / (r - 1), 1.5, 20)
+  s = 0
+  for (i=0; i<numBands-1; i++) {
+    freq = freqMin * exp(i * step)
+    modBand = bp(modulator, freq, Q)
+    env     = envfollow(abs(modBand), attack, release)
+    carBand = bp(carrier, freq, Q)
+    s += carBand * env
+  }
+  s
+}
+
+karplus=(hz,pluck=pink,seed=334,attack=.0001,decay=.20,exponent=80,trig)->{
+  // excitation burst
+  exc = pluck(seed, trig) * ad(attack,decay,exponent,trig)
+  // delay length = string period
+  delayTime = clamp(safediv(1, hz), 0.0027, 0.15)
+
+  fb=lerp(0.9, 0.999, clamp(100 / hz, 0, 1))**.05
+
+  // feedback loop with damping
+  delay(exc,delayTime,fb,x -> tanh(olp(x, hz * 8)))
 }
 
 mix=|>$
