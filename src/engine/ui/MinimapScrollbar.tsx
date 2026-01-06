@@ -71,6 +71,7 @@ export function MinimapScrollbar({
   const currentSampleRef = useRef(0)
   const canvasDimsRef = useRef({ width: 0, height: 0, pixelRatio: 1 })
   const isValidRef = useRef(false)
+  const drawMinimapRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     timelineRefsRef.current = timelineRefs
@@ -449,6 +450,12 @@ export function MinimapScrollbar({
     zeroBased,
   ])
 
+  drawMinimapRef.current = drawMinimap
+
+  const drawMinimapFrame = useCallback(() => {
+    drawMinimapRef.current?.()
+  }, [])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const release = () => {
@@ -475,6 +482,7 @@ export function MinimapScrollbar({
         ctx?.scale(pixelRatio, pixelRatio)
         canvasDimsRef.current = { width, height, pixelRatio }
         isValidRef.current = true
+        drawMinimapRef.current?.()
       }
     })
 
@@ -484,11 +492,12 @@ export function MinimapScrollbar({
 
   useEffect(() => {
     if (!animationManager) return
-    animationManager.register(drawMinimap)
+    animationManager.register(drawMinimapFrame)
+    drawMinimapFrame()
     return () => {
-      animationManager.unregister(drawMinimap)
+      animationManager.unregister(drawMinimapFrame)
     }
-  }, [drawMinimap, animationManager])
+  }, [animationManager, drawMinimapFrame])
 
   return (
     <div className="flex flex-row w-full h-full">
