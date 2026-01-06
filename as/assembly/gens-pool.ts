@@ -21,6 +21,7 @@ import { Mini } from './gen/mini'
 import { Mhp, Mlp } from './gen/moog'
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from './gen/noise'
 import { Ohp, Olp } from './gen/onepole'
+import { Random } from './gen/random'
 import { Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
 import { PitchShift } from './gen/pitch-shift'
 import { Sampler } from './gen/sampler'
@@ -137,10 +138,11 @@ export class GensPool {
   private olps: GenPool<Olp> = new GenPool<Olp>(() => new Olp())
   private ohps: GenPool<Ohp> = new GenPool<Ohp>(() => new Ohp())
   private steps: GenPool<Step> = new GenPool<Step>(() => new Step())
+  private randoms: GenPool<Random> = new GenPool<Random>(() => new Random())
   private pitchShifts: GenPool<PitchShift> = new GenPool<PitchShift>(() => new PitchShift())
 
   // Keep in sync with `saveIndices()`/`restoreIndices()`.
-  static readonly INDICES_COUNT: i32 = 60
+  static readonly INDICES_COUNT: i32 = 61
 
   @inline
   saveIndices(out: StaticArray<i32>): void {
@@ -204,6 +206,7 @@ export class GensPool {
     out[i++] = this.olps.getIndex()
     out[i++] = this.ohps.getIndex()
     out[i++] = this.steps.getIndex()
+    out[i++] = this.randoms.getIndex()
     out[i++] = this.pitchShifts.getIndex()
   }
 
@@ -269,6 +272,7 @@ export class GensPool {
     this.olps.setIndex(src[i++])
     this.ohps.setIndex(src[i++])
     this.steps.setIndex(src[i++])
+    this.randoms.setIndex(src[i++])
     this.pitchShifts.setIndex(src[i++])
   }
   resetIndices(): void {
@@ -331,6 +335,7 @@ export class GensPool {
     this.olps.resetIndex()
     this.ohps.resetIndex()
     this.steps.resetIndex()
+    this.randoms.resetIndex()
     this.pitchShifts.resetIndex()
   }
   reset(): void {
@@ -393,6 +398,7 @@ export class GensPool {
     this.olps.reset()
     this.ohps.reset()
     this.steps.reset()
+    this.randoms.reset()
     this.pitchShifts.reset()
   }
 
@@ -482,6 +488,8 @@ export class GensPool {
         return this.smooths.get()
       case Op.Fractal:
         return this.fractals.get()
+      case Op.Random:
+        return this.randoms.get()
       case Op.Delay:
         return this.delays.get()
       case Op.Limiter:
@@ -520,6 +528,8 @@ export class GensPool {
         return this.ohps.get()
       case Op.ArrayStep:
         return this.steps.get()
+      case Op.ArrayRandom:
+        return this.randoms.get()
       case Op.PitchShift:
         return this.pitchShifts.get()
     }
@@ -584,6 +594,7 @@ export class GensPool {
     this.olps.copyFrom(source.olps)
     this.ohps.copyFrom(source.ohps)
     this.steps.copyFrom(source.steps)
+    this.randoms.copyFrom(source.randoms)
     this.pitchShifts.copyFrom(source.pitchShifts)
   }
 }

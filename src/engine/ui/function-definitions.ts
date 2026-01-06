@@ -65,6 +65,19 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'scales.step(trig) |> note($) |> sine(hz:$) |> out($)',
     ],
   },
+  '.random': {
+    name: '.random',
+    parameters: [
+      { name: 'trig', type: 'number', description: 'Trigger impulse that selects a random array element' },
+      { name: 'seed', type: 'number', description: 'Random seed (optional, default: 0)', optional: true },
+    ],
+    returnType: 'number',
+    description: 'Selects random array elements on trigger impulses.',
+    examples: [
+      '[100,200,400,800].random(every(1/4)) |> sine(hz:$) |> out($)',
+      'scales.random(trig, seed:time) |> note($) |> sine(hz:$) |> out($)',
+    ],
+  },
   oversample: {
     name: 'oversample',
     parameters: [
@@ -440,6 +453,61 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description: 'Creates an analyser for the signal. Returns the original signal.',
     examples: [
       'signal |> analyser($) |> out($)',
+    ],
+  },
+  amplitude: {
+    name: 'amplitude',
+    parameters: [
+      { name: 'signal', type: 'number', description: 'Signal to create an amplitude analyser' },
+    ],
+    returnType: 'number',
+    description: 'Creates an amplitude analyser widget for the signal. Returns the original signal.',
+    examples: [
+      'signal |> amplitude($) |> out($)',
+    ],
+  },
+  waveform: {
+    name: 'waveform',
+    parameters: [
+      { name: 'signal', type: 'number', description: 'Signal to create a waveform analyser' },
+    ],
+    returnType: 'number',
+    description: 'Creates a waveform analyser widget for the signal. Returns the original signal.',
+    examples: [
+      'signal |> waveform($) |> out($)',
+    ],
+  },
+  spectrum: {
+    name: 'spectrum',
+    parameters: [
+      { name: 'signal', type: 'number', description: 'Signal to create a spectrum analyser' },
+    ],
+    returnType: 'number',
+    description: 'Creates a spectrum analyser widget for the signal. Returns the original signal.',
+    examples: [
+      'signal |> spectrum($) |> out($)',
+    ],
+  },
+  level: {
+    name: 'level',
+    parameters: [
+      { name: 'signal', type: 'number', description: 'Signal to create a level meter analyser' },
+    ],
+    returnType: 'number',
+    description: 'Creates a level meter (VU) analyser widget for the signal. Returns the original signal.',
+    examples: [
+      'signal |> level($) |> out($)',
+    ],
+  },
+  print: {
+    name: 'print',
+    parameters: [
+      { name: 'signal', type: 'number', description: 'Signal to print/inspect' },
+    ],
+    returnType: 'number',
+    description: 'Creates a print analyser widget that shows the values it receives. Returns the original signal.',
+    examples: [
+      'signal |> print($) |> out($)',
     ],
   },
   compressor: {
@@ -1142,6 +1210,17 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'degree(1) |> out($)',
     ],
   },
+  getScale: {
+    name: 'getScale',
+    parameters: [],
+    returnType: 'array',
+    description:
+      'Returns the current scale as an array of semitone intervals from the root. Use with scale directive (e.g., scale=\'dorian\').',
+    examples: [
+      'scale=\'pentatonic\'\n#scale // [0, 3, 5, 7, 10]',
+      'scale=\'dorian\'\n#scale // [0, 2, 3, 5, 7, 9, 10]',
+    ],
+  },
   label: {
     name: 'label',
     parameters: [
@@ -1581,6 +1660,19 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'brown() |> out($)',
       'brown(1234, trig) |> out($)',
+    ],
+  },
+  random: {
+    name: 'random',
+    parameters: [
+      { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
+        description: 'Initial seed (resets the random sequence when it changes, default: 1234)' },
+    ],
+    returnType: 'number',
+    description: 'True random noise stream in 0..1 (stateful, advances every sample, no wavetable).',
+    examples: [
+      'random() |> out($)',
+      'random(5678) * 2 - 1 |> out($)',
     ],
   },
   smooth: {

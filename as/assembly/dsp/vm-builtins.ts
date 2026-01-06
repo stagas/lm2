@@ -13,6 +13,7 @@ import { callDattorro } from './builtins/dattorro'
 import { callDc } from './builtins/dc'
 import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
+import { callGetScale } from './builtins/get-scale'
 import { callDiodeLadder } from './builtins/diodeladder'
 import { callEnvfollow } from './builtins/envfollow'
 import { callEuclid } from './builtins/euclid'
@@ -67,10 +68,9 @@ import {
   callTrunc,
   callWrap,
 } from './builtins/math'
-import { callArrayStep } from './builtins/step'
 import { callMini } from './builtins/mini'
 import { callMhp, callMlp } from './builtins/moog'
-import { callBrown, callFractal, callGauss, callPink, callSmooth, callWhite } from './builtins/noise'
+import { callBrown, callFractal, callGauss, callPink, callRandom, callSmooth, callWhite } from './builtins/noise'
 import { callNote } from './builtins/note'
 import { callOhp, callOlp } from './builtins/onepole'
 import { callOut } from './builtins/out'
@@ -89,6 +89,7 @@ import { callSlew } from './builtins/slew'
 import { callSlicer } from './builtins/slicer'
 import { callSolo } from './builtins/solo'
 import { callSqr } from './builtins/sqr'
+import { callArrayRandom, callArrayStep } from './builtins/step'
 import { callSum } from './builtins/sum'
 import { callSap, callSbp, callSbs, callShp, callSlp, callSpeak } from './builtins/svf'
 import { callTimeline } from './builtins/timeline'
@@ -301,6 +302,7 @@ export class VmBuiltins {
       && calleeAux !== VmBuiltin.Sum
       && calleeAux !== VmBuiltin.Avg
       && calleeAux !== VmBuiltin.ArrayStep
+      && calleeAux !== VmBuiltin.ArrayRandom
       && calleeAux !== VmBuiltin.Glide
       && calleeAux !== VmBuiltin.Out
       && calleeAux !== VmBuiltin.Solo
@@ -1037,6 +1039,11 @@ export class VmBuiltins {
         program, length, dsp)
       return
     }
+    if (calleeAux === VmBuiltin.GetScale) {
+      callGetScale(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp, dsp.arrays)
+      return
+    }
 
     if (calleeAux === VmBuiltin.Map) {
       callMap(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
@@ -1053,6 +1060,12 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.ArrayStep) {
       callArrayStep(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.ArrayRandom) {
+      callArrayRandom(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
+        audio, program, length, dsp)
       return
     }
 
@@ -1356,6 +1369,12 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Fractal) {
       callFractal(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Random) {
+      callRandom(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

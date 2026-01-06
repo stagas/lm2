@@ -56,7 +56,6 @@ export function createSamplesVisitor(src: string, samples: SampleDef[], errors: 
           ensureSample(id, expr.loc)
         }
       }
-    }
+    },
   }
 }
-

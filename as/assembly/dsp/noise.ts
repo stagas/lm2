@@ -1,30 +1,7 @@
-import { clamp01f64, clamp11 } from '../util'
-
-const U24_INV: f32 = 1.0 / 16777216.0 // 2^24
-
-function hashU32(v: u32): u32 {
-  v ^= v >> 16
-  v *= 0x7feb352d
-  v ^= v >> 15
-  v *= 0x846ca68b
-  v ^= v >> 16
-  return v
-}
-
-function u32To01(v: u32): f32 {
-  // Use the top 24 bits so mapping to f32 is uniform-ish and stable.
-  return (f32(v >>> 8) * U24_INV) as f32
-}
+import { clamp01f64, clamp11, hashU32, seededHash, u32To01 } from '../util'
 
 function u32To11(v: u32): f32 {
   return (u32To01(v) * 2.0 - 1.0) as f32
-}
-
-function seededHash(seed: f64, key: u32): u32 {
-  // Avoid float->int truncation (can trap on large values). Hash the f32 bit-pattern instead.
-  const a: u32 = reinterpret<u32>(f32(seed))
-  const b: u32 = reinterpret<u32>(f32(seed * 0.1031 + 0.11369))
-  return hashU32(hashU32(a ^ (key * 0x9e3779b9)) ^ b)
 }
 
 export function white11(seed: f64): f32 {
@@ -122,5 +99,3 @@ export function brown11(seed: f64): f32 {
   }
   return clamp11((sum / norm) as f32)
 }
-
-

@@ -68,6 +68,7 @@ export enum Op {
   Brown,
   Smooth,
   Fractal,
+  Random,
   Delay,
   Limiter,
   Freeverb,
@@ -88,6 +89,7 @@ export enum Op {
   Ohp,
   Step,
   ArrayStep,
+  ArrayRandom,
   PitchShift,
 }
 

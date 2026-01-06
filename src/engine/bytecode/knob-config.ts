@@ -93,7 +93,7 @@ export const KNOB_CONFIGS: FunctionKnobConfig[] = [
     ],
   },
 
-  // Filters
+  // Filters - keep config for params extraction, but don't create knob widgets (have specialized widgets)
   {
     functionNames: ['lp', 'hp', 'bp', 'bs', 'ls', 'hs', 'peak', 'ap', 'slp', 'shp', 'sbp', 'sbs', 'speak', 'sap', 'mlp',
       'mhp', 'diodeladder', 'olp', 'ohp'],
@@ -105,7 +105,7 @@ export const KNOB_CONFIGS: FunctionKnobConfig[] = [
     ],
   },
 
-  // Reverbs
+  // Reverbs - keep config for params extraction, but don't create knob widgets (have specialized widgets)
   {
     functionNames: ['freeverb', 'dattorro', 'fdn', 'velvet'],
     hasInputParam: true,
@@ -114,7 +114,7 @@ export const KNOB_CONFIGS: FunctionKnobConfig[] = [
     ],
   },
 
-  // LFOs
+  // LFOs - keep config for params extraction, but don't create knob widgets (have specialized widgets)
   {
     functionNames: ['lfosine', 'lfotri', 'lfosaw', 'lforamp', 'lfosqr', 'lfosah', 'smooth', 'fractal'],
     knobParams: [
@@ -126,7 +126,7 @@ export const KNOB_CONFIGS: FunctionKnobConfig[] = [
     ],
   },
 
-  // Envelopes
+  // Envelopes - keep config for params extraction, but don't create knob widgets (have specialized widgets)
   {
     functionNames: ['ad'],
     knobParams: [
@@ -154,18 +154,18 @@ export const KNOB_CONFIGS: FunctionKnobConfig[] = [
     ],
   },
 
-  // Slew
+  // Slew - keep config for params extraction, but don't create knob widgets (has specialized widget)
   {
     functionNames: ['slew'],
     hasInputParam: true,
     knobParams: [
-      { name: 'up', defaultValue: 0.01, min: 0.0001, max: 10, mode: 'exp2', precision: 4 },
-      { name: 'down', defaultValue: 0.01, min: 0.0001, max: 10, mode: 'exp2', precision: 4 },
+      { name: 'up', defaultValue: 0.0, min: 0.0, max: 10, mode: 'exp2', precision: 4 },
+      { name: 'down', defaultValue: 0.0, min: 0.0, max: 10, mode: 'exp2', precision: 4 },
       { name: 'exponent', defaultValue: 1, min: 0.1, max: 8, mode: 'exp2', precision: 3 },
     ],
   },
 
-  // Slicer
+  // Slicer - keep config for params extraction, but don't create knob widgets (has specialized widget)
   {
     functionNames: ['slicer'],
     knobParams: [

@@ -460,7 +460,8 @@ export function useEnvelopeWidget({
             const rt = (isLive || playbackState !== 'running') ? stRef.current.slew[slewRef.slewIndex] : undefined
             const pl = stRef.current.slewPlay[slewRef.slewIndex]
             const up = rt?.attack ?? slewRef.params.up
-            const down = rt?.decay ?? slewRef.params.down
+            const down0 = rt?.decay ?? slewRef.params.down
+            const down = down0 > 0 ? down0 : up
             const exponent = rt?.exponent ?? slewRef.params.exponent ?? 1
 
             const invUp = up > 0 ? 1 / up : 1e6

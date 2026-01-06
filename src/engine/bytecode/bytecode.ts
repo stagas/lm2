@@ -193,7 +193,7 @@ function extractAllRefsFromProgram(src: string, program: Program) {
 
   // Create all visitor instances
   const visitors = [
-    createAnalyserVisitor(analyserRefs),
+    createAnalyserVisitor(src, analyserRefs),
     createGenericKnobVisitor(src, knobRefs),
     createSlicersVisitor(src, slicerRefs),
     createEveryVisitor(everyRefs),
@@ -429,18 +429,12 @@ export function encodeLangToVmOps(
     const timelineLabels = allTimelineLabels
     const samples = allSamples
     const explicitNumberParams = allExplicitNumberParams
-    const lpNumberLiterals = allLpNumberLiterals
     const numberLiterals = allNumberLiterals
 
-    // Create a set of locations that already have explicit sliders
-    const explicitSliderKeys = new Set(explicitNumberParams.map(p => `${p.line}:${p.column}:${p.length}`))
-
-    // Filter out lp number literals that already have explicit sliders
-    const filteredLpNumberLiterals = lpNumberLiterals.filter(p =>
-      !explicitSliderKeys.has(`${p.line}:${p.column}:${p.length}`)
-    )
-
-    const numberParams = [...explicitNumberParams, ...filteredLpNumberLiterals]
+    // Only explicit `{min,max,...}` sliders become slider widgets.
+    // Filter cutoff knobs are driven by `knob-config.ts` (via generic knob extraction),
+    // so we do not auto-inject filter cutoff number literals into `numberParams`.
+    const numberParams = explicitNumberParams
 
     // Initialize ref collections for late extraction
     let adRefs: AdRef[] = []
@@ -569,6 +563,15 @@ export function encodeLangToVmOps(
             }
           }
 
+          if (raw === 'scale') {
+            return {
+              kind: 'call',
+              callee: { kind: 'ident', name: 'getScale', loc: expr.loc },
+              args: [],
+              loc: expr.loc,
+            }
+          }
+
           const chordMatch = raw.match(/^([ivxlcdm]+)(.*)$/i)
           if (chordMatch) {
             const roman = chordMatch[1]
@@ -648,7 +651,17 @@ export function encodeLangToVmOps(
         const isAd = calleeName === 'ad'
         const isAdsr = calleeName === 'adsr'
         const isEnvfollow = calleeName === 'envfollow'
-        const isAnalyser = calleeName === 'analyser'
+        const analyserKind = (
+            calleeName === 'analyser'
+            || calleeName === 'amplitude'
+            || calleeName === 'waveform'
+            || calleeName === 'spectrum'
+            || calleeName === 'level'
+            || calleeName === 'print'
+          )
+          ? calleeName
+          : null
+        const isAnalyser = analyserKind !== null
         const isCompressor = calleeName === 'compressor'
         const isExpander = calleeName === 'expander'
         const isGate = calleeName === 'gate'
@@ -814,9 +827,22 @@ export function encodeLangToVmOps(
           // Important: we do NOT desugar to `out(analyser(x))` because that changes semantics for arrays
           // (e.g. `array |> out($)` would get coerced). Instead, attach an analyser tap index and emit
           // a side-effect analyser call at bytecode compile time.
-          if (audioArg?.kind === 'pos' && audioExpr && audioCalleeName !== 'analyser') {
+          const isAlreadyAnalysed = audioCalleeName === 'analyser'
+            || audioCalleeName === 'amplitude'
+            || audioCalleeName === 'waveform'
+            || audioCalleeName === 'spectrum'
+            || audioCalleeName === 'level'
+            || audioCalleeName === 'print'
+          if (audioArg?.kind === 'pos' && audioExpr && !isAlreadyAnalysed) {
             const idx = allocAnalyserIndex()
-            implicitAnalyserRefs.push({ analyserIndex: idx, loc: expr.callee?.loc ?? expr.loc })
+            const calleeLoc = expr.callee?.loc ?? expr.loc
+            implicitAnalyserRefs.push({
+              kind: 'analyser',
+              analyserIndex: idx,
+              loc: calleeLoc,
+              aboveLoc: calleeLoc,
+              callLoc: expr.loc,
+            })
             return { ...(expr as any), callee, args, __tapAnalyserIndex: idx }
           }
         }

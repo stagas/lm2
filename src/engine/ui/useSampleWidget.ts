@@ -325,8 +325,8 @@ export function useSampleWidget({
         length: 1,
         height: 40,
         culling: false,
-        render: (ctx, _x, y, _w, h, vx, vw) => {
-          draw(ctx, def.sampleIndex, y, h, vx, vw)
+        render: (ctx, _x, _y, _w, h, vx, vw, vy) => {
+          draw(ctx, def.sampleIndex, vy, h, vx, vw)
         },
       })
     }

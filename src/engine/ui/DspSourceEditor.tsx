@@ -422,15 +422,15 @@ function DspSourceEditorReady(
         limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
         filterRefs: previewCompile.filterRefs ?? filterRefs,
         reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
-        slicerRefs,
-        lfoRefs,
-        everyRefs,
-        euclidRefs,
-        atRefs,
-        arrayLiterals,
-        branchMarks,
-        numberParams,
-        sampleDefs,
+        slicerRefs: previewCompile.slicerRefs ?? slicerRefs,
+        lfoRefs: previewCompile.lfoRefs ?? lfoRefs,
+        everyRefs: previewCompile.everyRefs ?? everyRefs,
+        euclidRefs: previewCompile.euclidRefs ?? euclidRefs,
+        atRefs: previewCompile.atRefs ?? atRefs,
+        arrayLiterals: previewCompile.arrayLiterals ?? arrayLiterals,
+        branchMarks: previewCompile.branchMarks ?? branchMarks,
+        numberParams: previewCompile.numberParams ?? numberParams,
+        sampleDefs: previewCompile.sampleDefs ?? sampleDefs,
         errors: [],
       }
     }
@@ -874,15 +874,9 @@ function DspSourceEditorReady(
     playbackState,
   })
 
-  const { widgets: sliderWidgets } = useSliderWidget({
-    showWidgets,
-    numberParams: widgetCompileState.numberParams?.filter(p => !(p.min === 20 && p.max === 20000)),
-    theme,
-    codeFile: currentLoop?.codeFile,
-  })
-
-  const knobs = useMemo(() => {
+  const { knobs, knobLocKeys } = useMemo(() => {
     const out: KnobInfo[] = []
+    const knobLocKeys = new Set<string>()
 
     const addKnobsFromRef = (ref: any) => {
       const functionName = String(ref?.functionName ?? '')
@@ -894,6 +888,9 @@ function DspSourceEditorReady(
         if (!param) continue
         const loc = p?.valueLoc
         if (!loc) continue
+        // Don't key on `length`: the slider extractor and knob extractor can disagree on span
+        // (e.g. unary '-' or formatting), which would cause duplicates (slider + knob).
+        knobLocKeys.add(`${loc.line}:${loc.column}`)
         out.push({
           line: loc.line,
           column: loc.column,
@@ -908,34 +905,55 @@ function DspSourceEditorReady(
       }
     }
 
-    for (const ref of widgetCompileState.compressorRefs ?? []) addKnobsFromRef(ref)
-    for (const ref of widgetCompileState.expanderRefs ?? []) addKnobsFromRef(ref)
-    for (const ref of widgetCompileState.gateRefs ?? []) addKnobsFromRef(ref)
-    for (const ref of widgetCompileState.limiterRefs ?? []) addKnobsFromRef(ref)
+    // Knobs only appear for params that are explicitly present in the code (ref.knobParams),
+    // but their UI ranges/precision come from `knob-config.ts`.
+    const refs: any[] = [
+      ...(widgetCompileState.compressorRefs ?? []),
+      ...(widgetCompileState.expanderRefs ?? []),
+      ...(widgetCompileState.gateRefs ?? []),
+      ...(widgetCompileState.limiterRefs ?? []),
+      ...(widgetCompileState.filterRefs ?? []),
+      ...(widgetCompileState.reverbRefs ?? []),
+      ...(widgetCompileState.lfoRefs ?? []),
+      ...(widgetCompileState.adRefs ?? []),
+      ...(widgetCompileState.adsrRefs ?? []),
+      ...(widgetCompileState.envfollowRefs ?? []),
+      ...(widgetCompileState.slewRefs ?? []),
+    ]
+    for (const ref of refs) addKnobsFromRef(ref)
 
-    // Add knobs for filter number literals (min=20, max=20000)
-    for (const param of widgetCompileState.numberParams ?? []) {
-      if (param.min === 20 && param.max === 20000) {
-        out.push({
-          line: param.line,
-          column: param.column,
-          length: param.length,
-          value: param.value,
-          min: param.min,
-          max: param.max,
-          precision: param.precision ?? 0,
-          mode: 'exp2',
-        })
-      }
-    }
-
-    return out
-  }, [widgetCompileState.compressorRefs, widgetCompileState.expanderRefs, widgetCompileState.gateRefs,
-    widgetCompileState.limiterRefs, widgetCompileState.filterRefs, widgetCompileState.numberParams])
+    return { knobs: out, knobLocKeys }
+  }, [
+    widgetCompileState.compressorRefs,
+    widgetCompileState.expanderRefs,
+    widgetCompileState.gateRefs,
+    widgetCompileState.limiterRefs,
+    widgetCompileState.filterRefs,
+    widgetCompileState.reverbRefs,
+    widgetCompileState.lfoRefs,
+    widgetCompileState.adRefs,
+    widgetCompileState.adsrRefs,
+    widgetCompileState.envfollowRefs,
+    widgetCompileState.slewRefs,
+  ])
 
   const { widgets: knobWidgets } = useKnobWidget({
     showWidgets,
     knobs,
+    theme,
+    codeFile: currentLoop?.codeFile,
+  })
+
+  const sliderNumberParams = useMemo(() => {
+    const params = widgetCompileState.numberParams ?? []
+    if (params.length === 0) return params
+    if (knobLocKeys.size === 0) return params
+    return params.filter(p => !knobLocKeys.has(`${p.line}:${p.column}`))
+  }, [knobLocKeys, widgetCompileState.numberParams])
+
+  const { widgets: sliderWidgets } = useSliderWidget({
+    showWidgets,
+    numberParams: sliderNumberParams,
     theme,
     codeFile: currentLoop?.codeFile,
   })

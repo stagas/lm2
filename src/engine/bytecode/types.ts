@@ -76,8 +76,14 @@ export type BranchMarkRef = {
 }
 
 export type AnalyserRef = {
+  kind: 'analyser' | 'amplitude' | 'waveform' | 'spectrum' | 'level' | 'print'
   analyserIndex: number
+  /** Location of the analyser identifier (for widget anchoring). */
   loc: Loc
+  /** Location span for the above widget (start at callee; width covers max call width even across multi-line calls). */
+  aboveLoc: Loc
+  /** Location of the full call expression. */
+  callLoc: Loc
 }
 
 export type GenericKnobParam = {

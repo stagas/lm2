@@ -51,12 +51,14 @@ class Parser {
   }
 
   private locFrom(
-    a: { line: number; column: number; length: number; kernel?: boolean },
+    a: { line: number; column: number; length: number; kernel?: boolean; kind?: unknown },
     b?: { line: number; column: number; length: number; kernel?: boolean },
   ): Loc {
+    // If 'a' has no 'kind', it's a Loc (already normalized), not a Token
+    const aLine = 'kind' in a ? this.normalizeLine(a.line, a.kernel) : a.line
     if (!b) {
       return {
-        line: this.normalizeLine(a.line, a.kernel),
+        line: aLine,
         column: a.column,
         length: a.length,
         kernel: a.kernel
@@ -64,7 +66,7 @@ class Parser {
     }
     const len = Math.max(1, (b.column + b.length) - a.column)
     return {
-      line: this.normalizeLine(a.line, a.kernel || b.kernel),
+      line: aLine,
       column: a.column,
       length: len,
       kernel: a.kernel || b.kernel

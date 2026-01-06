@@ -115,3 +115,36 @@ export function cubic(xm1: f32, x0: f32, x1: f32, x2: f32, frac: f32): f32 {
   const c: f32 = ((x1 - xm1) * (0.5 as f32)) as f32
   return (((a * frac + b) * frac + c) * frac + x0) as f32
 }
+
+// @ts-ignore
+@inline
+export function hashU32(v: u32): u32 {
+  v ^= v >> 16
+  v *= 0x7feb352d
+  v ^= v >> 15
+  v *= 0x846ca68b
+  v ^= v >> 16
+  return v
+}
+
+// @ts-ignore
+@inline
+export function u32To01(v: u32): f32 {
+  const U24_INV: f32 = 1.0 / 16777216.0
+  return (f32(v >>> 8) * U24_INV) as f32
+}
+
+// @ts-ignore
+@inline
+export function seededHash(seed: f64, key: u32): u32 {
+  const a: u32 = reinterpret<u32>(f32(seed))
+  const b: u32 = reinterpret<u32>(f32(seed * 0.1031 + 0.11369))
+  return hashU32(hashU32(a ^ (key * 0x9e3779b9)) ^ b
+)
+}
+
+// @ts-ignore
+@inline
+export function randomU32(seed: f64): u32 {
+  return seededHash(seed, 0)
+}

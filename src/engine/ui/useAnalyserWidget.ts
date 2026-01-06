@@ -402,6 +402,104 @@ function drawInitLines(
   c.stroke()
 }
 
+function drawLevelMeter(
+  c: CanvasRenderingContext2D,
+  floats: Float32Array,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  levels: Array<number | undefined>,
+  analyserIndex: number,
+) {
+  if (w <= 1 || h <= 1) return
+
+  const N = Math.min(floats.length, 1024)
+  let sumSq = 0
+  let peak = 0
+  for (let i = 0; i < N; i++) {
+    const v = floats[i]!
+    sumSq += v * v
+    peak = Math.max(peak, Math.abs(v))
+  }
+  const rms = Math.sqrt(sumSq / Math.max(1, N))
+
+  const minDb = -60
+  const maxDb = 0
+  const db = 20 * Math.log10(rms + 1e-10)
+  const norm = (db - minDb) / (maxDb - minDb)
+  const clamped = norm < 0 ? 0 : norm > 1 ? 1 : norm
+
+  const prev = levels[analyserIndex] ?? 0
+  const fall = 0.035
+  const next = clamped > prev ? clamped : Math.max(0, prev - fall)
+  levels[analyserIndex] = next
+
+  c.save()
+  c.translate(x, y)
+
+  const pad = 0
+  const innerW = Math.max(1, w - pad * 2)
+  const innerH = Math.max(1, h - pad * 2)
+
+  const fillW = Math.max(1, innerW * next)
+  const barX = pad
+  const barY = pad
+
+  // Create horizontal gradient from left to right
+  const grad = c.createLinearGradient(barX, 0, barX + innerW, 0)
+  grad.addColorStop(0, '#07f')
+  grad.addColorStop(0.2, '#0f0')
+  grad.addColorStop(0.7, '#ff0')
+  grad.addColorStop(0.95, '#f00')
+
+  c.fillStyle = grad
+  c.fillRect(barX, barY + innerH - 13, fillW, 10)
+
+  const peakDb = 20 * Math.log10(peak + 1e-10)
+  c.fillStyle = 'rgba(255, 255, 255, 0.7)'
+  c.font = '7pt "Space Mono"'
+  c.textAlign = 'right'
+  c.textBaseline = 'middle'
+  // c.fillText(`${db.toFixed(1)} dB`, w - 6, h / 2 - 7)
+  c.fillText(`${peakDb.toFixed(1)} dB`, w - 6, h - 20)
+  c.restore()
+}
+
+function drawPrintValues(
+  c: CanvasRenderingContext2D,
+  floats: Float32Array,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  analyserIndex: number,
+) {
+  if (w <= 1 || h <= 1) return
+
+  const N = floats.length
+  const last = N > 0 ? floats[N - 1]! : 0
+  const a = N > 1 ? floats[(N * 0.25) | 0]! : last
+  const b = N > 2 ? floats[(N * 0.5) | 0]! : last
+  const d = N > 3 ? floats[(N * 0.75) | 0]! : last
+
+  let peak = 0
+  const M = Math.min(N, 1024)
+  for (let i = 0; i < M; i++) peak = Math.max(peak, Math.abs(floats[i]!))
+
+  c.save()
+  c.translate(x, y)
+
+  c.fillStyle = 'rgba(255, 255, 255, 0.75)'
+  c.font = '7pt "Space Mono"'
+  c.textAlign = 'right'
+  c.textBaseline = 'bottom'
+
+  const line = `${last.toFixed(2)}`
+  c.fillText(line, w - 2, h - 2)
+  c.restore()
+}
+
 export function useAnalyserWidget({
   program1,
   ringPos,
@@ -416,6 +514,7 @@ export function useAnalyserWidget({
   const fftRef = useRef<FftState | null>(null)
   const ampCanvasRef = useRef<Array<AmpCanvasState | undefined>>([])
   const animatedSpectrumHeightsRef = useRef<Array<Float32Array | undefined>>([])
+  const levelRef = useRef<Array<number | undefined>>([])
   const spectrumCacheRef = useRef<Map<number, SpectrumCache>>(new Map())
   const seenRef = useRef<Set<number>>(new Set())
   const renderedThisFrameRef = useRef<Set<number>>(new Set())
@@ -491,16 +590,19 @@ export function useAnalyserWidget({
     }
   }, [showWidgets, analyserRefs, isLive, playbackState, program1, ringPos])
 
-  const drawAnalyser = useCallback((
+  const drawWidget = useCallback((
     c: CanvasRenderingContext2D,
+    kind: AnalyserRef['kind'],
     analyserIndex: number,
+    widgetX: number,
     widgetY: number,
+    widgetWidth: number,
     widgetHeight: number,
     viewX: number,
     viewWidth: number,
   ) => {
-    const x = viewX
-    const w = viewWidth
+    const x = kind === 'analyser' ? viewX : widgetX
+    const w = kind === 'analyser' ? viewWidth : widgetWidth
     const h = Math.max(40, widgetHeight)
 
     c.save()
@@ -513,59 +615,113 @@ export function useAnalyserWidget({
     c.fillStyle = theme.background
     c.fillRect(0, 0, w, h)
 
-    const third = Math.floor(w / 3)
-    const leftW = third
-    const midW = third
-    const rightW = w - leftW - midW
-
     const st = analyserStateRef.current[analyserIndex]
     const floats = isLive ? st?.floats : null
 
     if (!floats) {
+      const third = Math.floor(w / 3)
+      const leftW = third
+      const midW = third
+      const rightW = w - leftW - midW
       drawInitLines(c, w, h, leftW, midW, rightW)
       c.restore()
       return
     }
 
-    // Only do the expensive rendering work once per analyser per frame
-    if (!renderedThisFrameRef.current.has(analyserIndex)) {
-      renderedThisFrameRef.current.add(analyserIndex)
+    const kindId = kind === 'analyser'
+      ? 0
+      : kind === 'spectrum'
+      ? 1
+      : kind === 'amplitude'
+      ? 2
+      : kind === 'waveform'
+      ? 3
+      : kind === 'level'
+      ? 4
+      : kind === 'print'
+      ? 5
+      : 5
+    const renderKey = analyserIndex * 8 + kindId
 
-      drawSpectrum(
-        c,
-        0,
-        0,
-        leftW,
-        h,
-        floats,
-        fftRef.current,
-        animatedSpectrumHeightsRef.current,
-        analyserIndex,
-        sampleRate,
-        spectrumCacheRef.current,
-      )
-      drawAmplitudeScroller(
-        c,
-        floats,
-        leftW,
-        0,
-        midW,
-        h,
-        ampCanvasRef.current,
-        analyserIndex,
-        playbackState,
-        theme.background,
-      )
-      drawWaveform(c, leftW + midW, 0, rightW, h, floats)
+    // Only do the expensive rendering work once per analyser+kind per frame
+    if (!renderedThisFrameRef.current.has(renderKey)) {
+      renderedThisFrameRef.current.add(renderKey)
+
+      if (kind === 'analyser') {
+        const third = Math.floor(w / 3)
+        const leftW = third
+        const midW = third
+        const rightW = w - leftW - midW
+
+        drawSpectrum(
+          c,
+          0,
+          0,
+          leftW,
+          h,
+          floats,
+          fftRef.current,
+          animatedSpectrumHeightsRef.current,
+          analyserIndex,
+          sampleRate,
+          spectrumCacheRef.current,
+        )
+        drawAmplitudeScroller(
+          c,
+          floats,
+          leftW,
+          0,
+          midW,
+          h,
+          ampCanvasRef.current,
+          analyserIndex,
+          playbackState,
+          theme.background,
+        )
+        drawWaveform(c, leftW + midW, 0, rightW, h, floats)
+      }
+      else if (kind === 'spectrum') {
+        drawSpectrum(
+          c,
+          0,
+          0,
+          w,
+          h,
+          floats,
+          fftRef.current,
+          animatedSpectrumHeightsRef.current,
+          analyserIndex,
+          sampleRate,
+          spectrumCacheRef.current,
+        )
+      }
+      else if (kind === 'amplitude') {
+        drawAmplitudeScroller(
+          c,
+          floats,
+          0,
+          0,
+          w,
+          h,
+          ampCanvasRef.current,
+          analyserIndex,
+          playbackState,
+          theme.background,
+        )
+      }
+      else if (kind === 'waveform') {
+        drawWaveform(c, 0, 0, w, h, floats)
+      }
+      else if (kind === 'level') {
+        drawLevelMeter(c, floats, 0, 0, w, h, levelRef.current, analyserIndex)
+      }
+      else {
+        drawPrintValues(c, floats, 0, 0, w, h, analyserIndex)
+      }
     }
     else {
-      // This analyser was already rendered this frame, just draw a simple indicator
-      c.fillStyle = 'rgba(255, 255, 255, 0.1)'
+      c.fillStyle = 'rgba(255, 255, 255, 0.05)'
       c.fillRect(0, 0, w, h)
-      c.fillStyle = 'rgba(255, 255, 255, 0.5)'
-      c.font = '12px monospace'
-      c.textAlign = 'center'
-      c.fillText(`Analyser ${analyserIndex}`, w / 2, h / 2 + 4)
     }
 
     c.restore()
@@ -579,18 +735,20 @@ export function useAnalyserWidget({
     for (const ref of analyserRefs) {
       out.push({
         type: 'above',
-        line: ref.loc.line,
-        column: ref.loc.column,
-        length: ref.loc.length,
+        line: ref.aboveLoc.line,
+        column: ref.aboveLoc.column,
+        length: Math.max(1, ref.aboveLoc.length),
         height: 40,
         culling: false,
-        render: (ctx, x, y, _w, h, vx, vw, vy) => {
-          drawAnalyser(ctx, ref.analyserIndex, vy, h, vx, vw)
+        render: (ctx, x, y, w, h, vx, vw, vy) => {
+          const widgetY = ref.kind === 'analyser' ? vy : y
+          const widgetW = w
+          drawWidget(ctx, ref.kind, ref.analyserIndex, x, widgetY, widgetW, h, vx, vw)
         },
       })
     }
     return out
-  }, [showWidgets, analyserRefs, drawAnalyser])
+  }, [showWidgets, analyserRefs, drawWidget])
 
   return { widgets, onBeforeDraw }
 }
