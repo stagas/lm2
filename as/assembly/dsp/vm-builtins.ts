@@ -654,7 +654,8 @@ export class VmBuiltins {
     return true
   }
 
-  private tryAutoLiftFunc(
+  @inline
+  tryAutoLiftFunc(
     funcPc: i32,
     posCount: i32,
     posTags: StaticArray<i32>,

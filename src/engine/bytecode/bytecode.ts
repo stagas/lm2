@@ -1184,19 +1184,14 @@ export function encodeLangToVmOps(
       // Only reuse the cached index if the value matches (kernel code at line 0
       // can have the same column across different function bodies with different values)
       if (prev !== undefined && target.literals[prev] === value) return prev
-      // Check if this value already has a literal index (from litOfValue)
-      const existingIdx = litIndexByValue.get(value)
-      if (existingIdx !== undefined) {
-        litIndexByLocKey.set(key, existingIdx)
-        return existingIdx
-      }
+      // Each unique location gets its own literal index so literal-only updates
+      // don't accidentally overwrite other locations with the same value
       if (litCount >= target.literals.length) {
         errors.push(encoderError(fullSrc, `Too many number literals (max ${target.literals.length})`))
         return 0
       }
       const idx = allocLit()
       litIndexByLocKey.set(key, idx)
-      litIndexByValue.set(value, idx)
       return idx
     }
 
@@ -1521,8 +1516,8 @@ export function encodeLangToVmOps(
       literalIndex: locKeyToLiteralIndex.get(sliderKeyOf(p)),
     }))
 
-    const filteredArrayLiterals = arrayLiterals
-    const filteredBranchMarks = branchMarks
+    const filteredArrayLiterals = arrayLiterals.filter(a => !a.loc.kernel && a.loc.line > 0)
+    const filteredBranchMarks = branchMarks.filter(m => !m.loc.kernel && m.loc.line > 0)
 
     return errors.length
       ? {

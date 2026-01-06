@@ -45,6 +45,7 @@ export class Every extends Gen {
     let o$ = out$
 
     for (let i: i32 = 0,
+      y: i32 = 0,
       rawBar: f64,
       probValue: f64,
       swingValue: f64,
@@ -74,7 +75,7 @@ export class Every extends Gen {
         interval = barValue * samplesPerWholeNote
         offsetSamples = offsetSeconds * rate
 
-        globalSample = (globalSampleCount + i) as f64
+        globalSample = (globalSampleCount + y) as f64
         sample = globalSample - offsetSamples
         prevSample = sample - 1.0
 
@@ -108,6 +109,7 @@ export class Every extends Gen {
         prob$ += 4
         swing$ += 4
         offset$ += 4
+        y++
       })
     }
   }

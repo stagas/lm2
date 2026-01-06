@@ -235,7 +235,7 @@ export type IfExpr = {
   kind: 'if'
   test: Expr
   then: Expr | BlockStmt
-  else: Expr | BlockStmt
+  else?: Expr | BlockStmt
   loc: Loc
   /** Location of the `if` keyword for `if (...) ... else ...` syntax. */
   ifLoc?: Loc

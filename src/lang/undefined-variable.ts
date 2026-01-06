@@ -137,7 +137,7 @@ export function checkUndefinedVariableErrors(src: string, program: Program): Lan
       case 'if':
         visitExpr(expr.test)
         visitBranch(expr.then)
-        visitBranch(expr.else)
+        if (expr.else) visitBranch(expr.else)
         return
       case 'func':
         withScope(() => {

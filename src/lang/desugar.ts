@@ -163,7 +163,7 @@ function desugarExpr(expr: Expr): Expr {
   }
   if (expr.kind === 'if') {
     const thenPart: any = expr.then?.kind === 'block' ? desugarStmt(expr.then) : desugarExpr(expr.then as any)
-    const elsePart: any = expr.else?.kind === 'block' ? desugarStmt(expr.else) : desugarExpr(expr.else as any)
+    const elsePart: any = expr.else ? (expr.else.kind === 'block' ? desugarStmt(expr.else) : desugarExpr(expr.else as any)) : undefined
     return { ...expr, test: desugarExpr(expr.test), then: thenPart, else: elsePart }
   }
   if (expr.kind === 'func') {

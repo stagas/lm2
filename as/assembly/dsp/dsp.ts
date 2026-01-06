@@ -505,6 +505,13 @@ export class Dsp {
       return
     }
 
+    // Check if auto-lift should apply (first param is 'in' and first arg is an array)
+    if (this.builtins.tryAutoLiftFunc(funcPc, argCount, argTags, argNums, argAux, this.stack, this.audio,
+      this.program, length, left$, right$, this))
+    {
+      return
+    }
+
     const paramCount = ops[funcPc + 1]
     const maxParams = this.funcParamSyms.length
     const n = paramCount < maxParams ? paramCount : maxParams

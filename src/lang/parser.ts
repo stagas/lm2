@@ -61,7 +61,7 @@ class Parser {
         line: aLine,
         column: a.column,
         length: a.length,
-        kernel: a.kernel
+        kernel: a.kernel,
       }
     }
     const len = Math.max(1, (b.column + b.length) - a.column)
@@ -69,7 +69,7 @@ class Parser {
       line: aLine,
       column: a.column,
       length: len,
-      kernel: a.kernel || b.kernel
+      kernel: a.kernel || b.kernel,
     }
   }
 
@@ -437,6 +437,12 @@ class Parser {
     const t = this.cur()
     const op = this.assignOp(t.kind)
     if (!op) return left
+
+    // Check if we're assigning to a special case variable
+    if (left.kind === 'ident' && this.isSpecialCaseVariable(left.name)) {
+      this.error(t, `Cannot assign to special case variable '${left.name}'`)
+    }
+
     this.next()
     const value = this.parseAssign()
     return { kind: 'assign', op, target: left, value, loc: this.locFrom(left.loc, value.loc) } as const
@@ -451,6 +457,31 @@ class Parser {
     if (kind === 'assign_percent') return '%='
     if (kind === 'assign_power') return '**='
     return null
+  }
+
+  private isSpecialCaseVariable(name: string): boolean {
+    // Check for note variables: c0-c9, d0-d9, e0-e9, f0-f9, g0-g9, a0-a9, b0-b9
+    if (/^[cdefgab][#b]?\d$/.test(name)) {
+      return true
+    }
+
+    // Check for #scale
+    if (name === '#scale') {
+      return true
+    }
+
+    // Check for degree identifiers: #1, #2, #3, etc.
+    if (/^#\d+$/.test(name)) {
+      return true
+    }
+
+    // Check for roman numeral chords: #i, #ii, #iii, etc.
+    // Roman numerals: i, ii, iii, iv, v, vi, vii (and their uppercase variants)
+    if (/^#(i{1,3}|iv|v|vi|vii)$/i.test(name)) {
+      return true
+    }
+
+    return false
   }
 
   private parsePipe(): Expr {
@@ -783,7 +814,16 @@ class Parser {
     const test = this.parseExpr()
     this.expect('r_paren', 'Expected \')\'')
     const then = this.at('l_brace') ? this.parseBlockStmt() : this.parseExpr()
-    const elseTok = this.expect('kw_else', 'Expected \'else\'')
+    const elseTok = this.match('kw_else')
+    if (!elseTok) {
+      return {
+        kind: 'if',
+        test,
+        then,
+        loc: this.locFrom(start, locOf(then)),
+        ifLoc: this.locFrom(start),
+      }
+    }
     const elsePart = this.at('kw_if')
       ? this.parseIfExpr()
       : this.at('l_brace')

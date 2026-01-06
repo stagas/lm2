@@ -45,6 +45,13 @@ export function vmBinaryOp(
   let bAux = stack.aux[b]
 
   if (aTag === VmTag.Arr || bTag === VmTag.Arr) {
+    // For equality comparison, arrays are only equal to other arrays (by reference)
+    if (code === VmBinary.Eq) {
+      const eq = (aTag === VmTag.Arr && bTag === VmTag.Arr && aAux === bAux)
+      stack.push(VmTag.Bool, eq ? 1.0 : 0.0)
+      return
+    }
+
     if (aTag === VmTag.Arr && bTag === VmTag.Arr) {
       const aArrId = aAux
       const bArrId = bAux
@@ -210,6 +217,7 @@ export function vmBinaryOp(
       if (code === VmBinary.Eq) {
         let eq = false
         if ((aTag === VmTag.Null || aTag === VmTag.Undef) && (bTag === VmTag.Null || bTag === VmTag.Undef)) eq = true
+        else if (aTag === VmTag.Arr && bTag === VmTag.Arr) eq = aAux === bAux
         else if (aTag === VmTag.Num && bTag === VmTag.Num) eq = aNum === bNum
         else if (aTag === VmTag.Bool && bTag === VmTag.Bool) eq = (aNum != 0.0) === (bNum != 0.0)
         else if (aTag === VmTag.Sym && bTag === VmTag.Sym) eq = stack.aux[a] === stack.aux[b]
