@@ -82,6 +82,7 @@ export enum VmBuiltin {
   Sqr = VmSym.Sqr,
   Pwm = VmSym.Pwm,
   Phasor = VmSym.Phasor,
+  Impulse = VmSym.Impulse,
   Ad = VmSym.Ad,
   Adsr = VmSym.Adsr,
   Envfollow = VmSym.Envfollow,
@@ -123,6 +124,7 @@ export enum VmBuiltin {
   Sbs = VmSym.Sbs,
   Speak = VmSym.Speak,
   Sap = VmSym.Sap,
+  Sah = VmSym.Sah,
   Mlp = VmSym.Mlp,
   Mhp = VmSym.Mhp,
   DiodeLadder = VmSym.DiodeLadder,
@@ -189,6 +191,7 @@ export enum VmBuiltin {
   Isinf = VmSym.Isinf,
   Safediv = VmSym.Safediv,
   Oversample = VmSym.Oversample,
+  Zerox = VmSym.Zerox,
   PitchShift = VmSym.PitchShift,
 }
 

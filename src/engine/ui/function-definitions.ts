@@ -342,6 +342,43 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'phasor(1, .25, trig) |> out($)',
     ],
   },
+  impulse: {
+    name: 'impulse',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+      },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+      },
+    ],
+    returnType: 'number',
+    description: 'Impulse oscillator that produces steady impulses (1 sample of value 1, rest 0) at the given frequency.',
+    examples: [
+      'impulse(440) |> out($)',
+      'impulse(hz, 0, trig) |> out($)',
+    ],
+  },
+  zerox: {
+    name: 'zerox',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal to detect zero crossings' },
+    ],
+    returnType: 'number',
+    description: 'Zero crossing detector that outputs 1.0 for one sample when the signal crosses from ≤0 to >0, otherwise outputs 0.',
+    examples: [
+      'sine(1) |> zerox($) |> out($)',
+      'saw(0.1) |> zerox($) |> ad(0.01, 0.1, trig:$) |> sine(440) |> out($)',
+    ],
+  },
   pitchshift: {
     name: 'pitchshift',
     parameters: [
@@ -1418,6 +1455,19 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'saw(hz) |> sap($, cutoff:1000, q:1) |> out($)',
     ],
   },
+  sah: {
+    name: 'sah',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal to sample' },
+      { name: 'trig', type: 'number', description: 'Trigger signal - samples when > 0 and rising' },
+    ],
+    returnType: 'number',
+    description: 'Sample and hold - latches the input signal value when the trigger signal rises above 0.',
+    examples: [
+      'sine(440) |> sah($, every(1/4)) |> out($)',
+      'noise() |> sah($, at(1/16)) |> out($)',
+    ],
+  },
   diodeladder: {
     name: 'diodeladder',
     parameters: [
@@ -2056,6 +2106,370 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'signal * db(6) |> out($)',
       'signal * db(-3) |> out($)',
+    ],
+  },
+  semis: {
+    name: 'semis',
+    parameters: [{ name: 'x', type: 'number', description: 'Number of semitones' }],
+    returnType: 'number',
+    description: 'Converts semitones to frequency multiplier.',
+    examples: [
+      'note(60) * semis(7) |> sine(hz:$) |> out($)',
+    ],
+  },
+  stereo: {
+    name: 'stereo',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Mono input signal' },
+      { name: 'width', type: 'number', optional: true, defaultValue: 0, description: 'Stereo width in seconds' },
+    ],
+    returnType: '[L:number, R:number]',
+    description: 'Converts mono signal to stereo, optionally with delay-based widening.',
+    examples: [
+      'sine(440) |> stereo($) |> out($)',
+      'saw(220) |> stereo($, width:0.01) |> out($)',
+    ],
+  },
+  mono: {
+    name: 'mono',
+    parameters: [{ name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' }],
+    returnType: 'number',
+    description: 'Converts stereo signal to mono by averaging channels.',
+    examples: [
+      '[saw(220), saw(221)] |> mono($) |> out($)',
+    ],
+  },
+  stereowidth: {
+    name: 'stereowidth',
+    parameters: [
+      { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
+      { name: 'width', type: 'number', optional: true, defaultValue: 1, description: 'Width multiplier' },
+    ],
+    returnType: '[L:number, R:number]',
+    description: 'Adjusts stereo width using mid-side processing.',
+    examples: [
+      '[saw(220), saw(221)] |> stereowidth($, width:2) |> out($)',
+      'stereo(saw(220)) |> stereowidth($, width:0.5) |> out($)',
+    ],
+  },
+  widen: {
+    name: 'widen',
+    parameters: [
+      { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
+      { name: 'seconds', type: 'number', optional: true, defaultValue: 0.0001, description: 'Delay time in seconds' },
+    ],
+    returnType: '[L:number, R:number]',
+    description: 'Widens stereo signal by delaying high frequencies in right channel.',
+    examples: [
+      '[saw(220), saw(221)] |> widen($, seconds:0.005) |> out($)',
+    ],
+  },
+  pan: {
+    name: 'pan',
+    parameters: [
+      { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
+      { name: 'balance', type: 'number', optional: true, defaultValue: 0.5, description: 'Pan position (0=left, 1=right)' },
+    ],
+    returnType: '[L:number, R:number]',
+    description: 'Pans stereo signal left or right.',
+    examples: [
+      '[saw(220), saw(221)] |> pan($, balance:0.2) |> out($)',
+    ],
+  },
+  modDelay: {
+    name: 'modDelay',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'baseDelay', type: 'number', description: 'Base delay time in seconds' },
+      { name: 'depth', type: 'number', description: 'Modulation depth' },
+      { name: 'rate', type: 'number', description: 'LFO rate in Hz' },
+      { name: 'feedback', type: 'number', description: 'Feedback amount' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset' },
+    ],
+    returnType: 'number',
+    description: 'Modulated delay effect with LFO-controlled delay time.',
+    examples: [
+      'sine(440) |> modDelay($, 0.1, 0.05, 1, 0.3) |> out($)',
+    ],
+  },
+  flanger: {
+    name: 'flanger',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 1, description: 'LFO rate in Hz' },
+      { name: 'depth', type: 'number', optional: true, defaultValue: 0.00125, description: 'Modulation depth' },
+      { name: 'base', type: 'number', optional: true, defaultValue: 0.00125, description: 'Base delay time' },
+      { name: 'feedback', type: 'number', optional: true, defaultValue: 0.7, description: 'Feedback amount' },
+    ],
+    returnType: 'number',
+    description: 'Classic flanger effect using modulated comb filtering.',
+    examples: [
+      'saw(220) |> flanger($, rate:0.5, depth:0.005) |> out($)',
+    ],
+  },
+  chorus: {
+    name: 'chorus',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'voices', type: 'number', optional: true, defaultValue: 3, description: 'Number of chorus voices' },
+      { name: 'base', type: 'number', optional: true, defaultValue: 0.02, description: 'Base delay time' },
+      { name: 'depth', type: 'number', optional: true, defaultValue: 0.006, description: 'Modulation depth' },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 0.25, description: 'LFO rate' },
+      { name: 'spread', type: 'number', optional: true, defaultValue: 0.5, description: 'Voice spread' },
+    ],
+    returnType: 'number',
+    description: 'Multi-voice chorus effect with spread and modulation.',
+    examples: [
+      'sine(440) |> chorus($, voices:5, rate:0.3) |> out($)',
+    ],
+  },
+  tap: {
+    name: 'tap',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'seconds', type: 'number', description: 'Delay time in seconds' },
+      { name: 'cb', type: 'function', description: 'Callback function for feedback processing' },
+    ],
+    returnType: 'number',
+    description: 'Simple delay tap with callback processing.',
+    examples: [
+      'sine(440) |> tap($, 0.25, x -> x * 0.5) |> out($)',
+    ],
+  },
+  comb: {
+    name: 'comb',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'seconds', type: 'number', description: 'Delay time in seconds' },
+      { name: 'feedback', type: 'number', description: 'Feedback amount' },
+      { name: 'cb', type: 'function', description: 'Callback function for feedback processing' },
+    ],
+    returnType: 'number',
+    description: 'Comb filter combining feedforward and feedback delay.',
+    examples: [
+      'saw(110) |> comb($, 0.1, 0.8, x -> lp(x, 1000)) |> out($)',
+    ],
+  },
+  eq3: {
+    name: 'eq3',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'low', type: 'number', optional: true, defaultValue: 0, description: 'Low frequency gain in dB' },
+      { name: 'mid', type: 'number', optional: true, defaultValue: 0, description: 'Mid frequency gain in dB' },
+      { name: 'high', type: 'number', optional: true, defaultValue: 0, description: 'High frequency gain in dB' },
+      { name: 'lf', type: 'number', optional: true, defaultValue: 500, description: 'Low frequency cutoff' },
+      { name: 'mf', type: 'number', optional: true, defaultValue: 2000, description: 'Mid frequency cutoff' },
+      { name: 'hf', type: 'number', optional: true, defaultValue: 8000, description: 'High frequency cutoff' },
+    ],
+    returnType: 'number',
+    description: '3-band equalizer with adjustable low, mid, and high frequency gains.',
+    examples: [
+      'saw(220) |> eq3($, low:6, mid:-3, high:2) |> out($)',
+    ],
+  },
+  grain: {
+    name: 'grain',
+    parameters: [
+      { name: 'speed', type: 'number', optional: true, defaultValue: 1, description: 'Playback speed' },
+      { name: 'seed', type: 'number', description: 'Random seed' },
+    ],
+    returnType: 'number',
+    description: 'Granular synthesis-inspired trigger generator based on speed.',
+    examples: [
+      'grain(speed:2, seed:123) |> out($)',
+    ],
+  },
+  vocoder: {
+    name: 'vocoder',
+    parameters: [
+      { name: 'carrier', type: 'number', description: 'Carrier signal' },
+      { name: 'modulator', type: 'number', description: 'Modulator signal' },
+      { name: 'numBands', type: 'number', optional: true, defaultValue: 16, description: 'Number of frequency bands' },
+      { name: 'attack', type: 'number', optional: true, defaultValue: 0.01, description: 'Envelope attack time' },
+      { name: 'release', type: 'number', optional: true, defaultValue: 0.04, description: 'Envelope release time' },
+      { name: 'freqMin', type: 'number', optional: true, defaultValue: 100, description: 'Minimum frequency' },
+      { name: 'freqMax', type: 'number', optional: true, defaultValue: 8000, description: 'Maximum frequency' },
+    ],
+    returnType: 'number',
+    description: 'Vocoder effect using bandpass filters and envelope following.',
+    examples: [
+      'vocoder(carrier:saw(220), modulator:sine(110)) |> out($)',
+    ],
+  },
+  karplus: {
+    name: 'karplus',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
+      { name: 'pluck', type: 'function', optional: true, defaultValue: 'pink', description: 'Pluck function' },
+      { name: 'seed', type: 'number', optional: true, defaultValue: 334, description: 'Random seed' },
+      { name: 'attack', type: 'number', optional: true, defaultValue: 0.0001, description: 'Attack time' },
+      { name: 'decay', type: 'number', optional: true, defaultValue: 0.1, description: 'Decay time' },
+      { name: 'exponent', type: 'number', optional: true, defaultValue: 40, description: 'Envelope exponent' },
+      { name: 'damping', type: 'number', optional: true, defaultValue: 0.5, description: 'Damping amount' },
+      { name: 'trig', type: 'number', description: 'Trigger signal' },
+    ],
+    returnType: 'number',
+    description: 'Karplus-Strong plucked string synthesis algorithm.',
+    examples: [
+      'karplus(220, trig:every(1/2)) |> out($)',
+    ],
+  },
+  metronome: {
+    name: 'metronome',
+    parameters: [],
+    returnType: 'number',
+    description: 'Generates a metronome sound with major/minor chord progression.',
+    examples: [
+      'metronome() |> out($)',
+    ],
+  },
+  harmonics: {
+    name: 'harmonics',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
+      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 3, description: 'Number of harmonics' },
+      { name: 'tilt', type: 'number', optional: true, defaultValue: 3, description: 'Spectral tilt' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset' },
+      { name: 'trig', type: 'number', description: 'Trigger signal' },
+    ],
+    returnType: 'number',
+    description: 'Additive synthesis with harmonic series and tilt control.',
+    examples: [
+      'harmonics(110, numHarmonics:5, tilt:2, trig:every(1/4)) |> out($)',
+    ],
+  },
+  folded: {
+    name: 'folded',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
+      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 2, description: 'Number of harmonics' },
+      { name: 'amount', type: 'number', optional: true, defaultValue: 2, description: 'Folding amount' },
+    ],
+    returnType: 'number',
+    description: 'Wave folding synthesis with harmonic enhancement.',
+    examples: [
+      'folded(220, numHarmonics:4, amount:3) |> out($)',
+    ],
+  },
+  pulsar: {
+    name: 'pulsar',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency' },
+      { name: 'density', type: 'number', optional: true, defaultValue: 1, description: 'Pulse density' },
+    ],
+    returnType: 'number',
+    description: 'Pulsar synthesis with phasor-controlled envelope.',
+    examples: [
+      'pulsar(110, density:2) |> out($)',
+    ],
+  },
+  supersaw: {
+    name: 'supersaw',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
+      { name: 'voices', type: 'number', optional: true, defaultValue: 5, description: 'Number of detuned voices' },
+      { name: 'spread', type: 'number', optional: true, defaultValue: 0.05, description: 'Detuning spread' },
+    ],
+    returnType: 'number',
+    description: 'Supersaw oscillator with multiple detuned sawtooth voices.',
+    examples: [
+      'supersaw(110, voices:7, spread:0.1) |> out($)',
+    ],
+  },
+  drawbar: {
+    name: 'drawbar',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
+      { name: 'bars', type: 'array', description: 'Drawbar settings array' },
+    ],
+    returnType: 'number',
+    description: 'Hammond organ-style drawbar oscillator.',
+    examples: [
+      'drawbar(110, bars:[1,0.7,0.5,0.3,0.2]) |> out($)',
+    ],
+  },
+  drum: {
+    name: 'drum',
+    parameters: [
+      { name: 'noise', type: 'function', optional: true, defaultValue: 'white', description: 'Noise function' },
+      { name: 'seed', type: 'number', optional: true, defaultValue: 42, description: 'Random seed' },
+      { name: 'freqs', type: 'array', description: 'Filter frequencies' },
+      { name: 'trig', type: 'number', description: 'Trigger signal' },
+    ],
+    returnType: 'number',
+    description: 'Drum synthesis using filtered noise excitation.',
+    examples: [
+      'drum(trig:every(1/2)) |> out($)',
+    ],
+  },
+  vowel: {
+    name: 'vowel',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'vowelName', type: 'number', description: 'Vowel index (0=a, 1=e, 2=i, 3=o, 4=u)' },
+    ],
+    returnType: 'number',
+    description: 'Formant filter for vowel sounds.',
+    examples: [
+      'sine(110) |> vowel($, va) |> out($)',
+    ],
+  },
+  ring: {
+    name: 'ring',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'hz', type: 'number', description: 'Modulation frequency' },
+    ],
+    returnType: 'number',
+    description: 'Ring modulation effect.',
+    examples: [
+      'saw(220) |> ring($, 330) |> out($)',
+    ],
+  },
+  tube: {
+    name: 'tube',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'drive', type: 'number', optional: true, defaultValue: 3, description: 'Drive amount' },
+      { name: 'bias', type: 'number', optional: true, defaultValue: 0.2, description: 'Bias offset' },
+    ],
+    returnType: 'number',
+    description: 'Tube saturation/distortion using hyperbolic tangent.',
+    examples: [
+      'saw(220) |> tube($, drive:5, bias:0.1) |> out($)',
+    ],
+  },
+  clip: {
+    name: 'clip',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'x', type: 'number', optional: true, defaultValue: 1, description: 'Clipping threshold' },
+    ],
+    returnType: 'number',
+    description: 'Hard clipping distortion.',
+    examples: [
+      'saw(220) * 2 |> clip($, 0.5) |> out($)',
+    ],
+  },
+  bitcrush: {
+    name: 'bitcrush',
+    parameters: [
+      { name: 'in', type: 'number', description: 'Input signal' },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 8000, description: 'Sample rate' },
+    ],
+    returnType: 'number',
+    description: 'Bit crushing effect using sample and hold.',
+    examples: [
+      'saw(220) |> bitcrush($, rate:1000) |> out($)',
+    ],
+  },
+  mix: {
+    name: 'mix',
+    parameters: [{ name: 'signal', type: 'number', description: 'Input signal' }],
+    returnType: 'number',
+    description: 'Mix operator that passes through signal unchanged.',
+    examples: [
+      'signal |> mix($)',
     ],
   },
 }

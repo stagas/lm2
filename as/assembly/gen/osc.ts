@@ -311,6 +311,48 @@ export class Osc extends Gen {
   }
 
   @inline
+  impulse(out$: usize, length: i32): void {
+    let hz$ = this.hz$
+    let offset$ = this.offset$
+    let trig$ = this.trig$
+
+    let phase: f32 = this.phase
+    let lastTrig: f32 = this.lastTrig
+
+    for (let i = 0; i < length; i++) {
+      const hz: f32 = clampNyquist(load<f32>(hz$))
+      const trig: f32 = load<f32>(trig$)
+
+      if (trig > 0.0 && lastTrig <= 0.0) {
+        const offsetSeconds: f32 = load<f32>(offset$)
+        let phaseOffset: f32 = (offsetSeconds * hz) % 1.0
+        if (phaseOffset < 0.0) phaseOffset += 1.0
+        phase = phaseOffset
+      }
+      lastTrig = trig
+
+      const phaseInc: f32 = hz / sampleRate
+
+      if (phase === 0 || phase >= 1.0) {
+        if (phase > 1.0) phase -= 1.0
+        store<f32>(out$, 1.0)
+      }
+      else {
+        store<f32>(out$, 0.0)
+      }
+      phase += phaseInc
+
+      out$ += 4
+      hz$ += 4
+      trig$ += 4
+      offset$ += 4
+    }
+
+    this.phase = phase
+    this.lastTrig = lastTrig
+  }
+
+  @inline
   phasor(out$: usize, length: i32): void {
     let hz$ = this.hz$
     let offset$ = this.offset$
@@ -381,5 +423,49 @@ export class Pwm extends Osc {
 export class Phasor extends Osc {
   process(out$: usize, length: i32): void {
     this.phasor(out$, length)
+  }
+}
+
+export class Impulse extends Osc {
+  process(out$: usize, length: i32): void {
+    this.impulse(out$, length)
+  }
+}
+
+export class Zerox extends Gen {
+  in$: usize = 0
+  lastInput: f32 = 0.0
+
+  reset(): void {
+    this.lastInput = 0.0
+  }
+
+  copyFrom(other: Gen): void {
+    const src = other as Zerox
+    this.lastInput = src.lastInput
+  }
+
+  process(out$: usize, length: i32): void {
+    let in$ = this.in$
+    let lastInput: f32 = this.lastInput
+
+    for (let i = 0; i < length; i++) {
+      const currentInput: f32 = load<f32>(in$)
+
+      // Detect zero crossing: from <=0 to >0
+      if (lastInput <= 0.0 && currentInput > 0.0) {
+        store<f32>(out$, 1.0)
+      }
+      else {
+        store<f32>(out$, 0.0)
+      }
+
+      lastInput = currentInput
+
+      out$ += 4
+      in$ += 4
+    }
+
+    this.lastInput = lastInput
   }
 }

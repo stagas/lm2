@@ -120,6 +120,7 @@ export enum VmSym {
   Pattern,
   Peak,
   Phasor,
+  Impulse,
   Pingpong,
   Pink,
   Play,
@@ -142,6 +143,7 @@ export enum VmSym {
   Sample,
   Sampler,
   Sap,
+  Sah,
   Saturation,
   Saw,
   Sbp,
@@ -196,5 +198,6 @@ export enum VmSym {
   Wrap,
   X,
   Y,
+  Zerox,
   PitchShift,
 }
