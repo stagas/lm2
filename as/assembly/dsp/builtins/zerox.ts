@@ -1,5 +1,5 @@
 // dprint-ignore-file
-import { Zerox } from '../../gen/osc'
+import { Zerox } from '../../gen/zerox'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmSym } from '../vm-sym'

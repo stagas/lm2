@@ -1,10 +1,41 @@
 import type { FunctionSignature } from 'mini-code'
 
 export const functionDefinitions: Record<string, FunctionSignature> = {
+  't': {
+    name: 't',
+    parameters: [],
+    returnType: 'number',
+    description: 'Time in seconds (BPM adjusted)',
+    examples: [
+      'saw([c4,a4,f4,e4][t]) |> out($)',
+    ],
+    type: 'variable',
+  },
+  'scale': {
+    name: 'scale',
+    type: 'variable',
+    parameters: [],
+    returnType: 'string',
+    description: 'The scale to use.',
+    examples: [
+      'scale = \'dorian\'',
+      'scale = \'pentatonic\'',
+    ],
+  },
+  '#scale': {
+    name: '#scale',
+    parameters: [],
+    returnType: 'array',
+    description: 'The current scale in an array of frequencies.',
+    examples: [
+      'saw(#scale.step(every(1/8))) |> out($)',
+    ],
+    type: 'variable',
+  },
   '.map': {
     name: '.map',
     parameters: [
-      { name: 'callback', type: 'function', description: 'Callback to be called for each element' },
+      { name: 'callback', type: 'function', description: 'Callback to be called for each element.' },
     ],
     returnType: 'array',
     description: 'Maps over an array and returns a new array with the results.',
@@ -15,13 +46,13 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   '.glide': {
     name: '.glide',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Step duration in bars (1 = 4 beats)' },
+      { name: 'bar', type: 'number', description: 'Step duration in bars (1 = 4 beats).' },
       {
         name: 'exponent',
         type: 'number',
         optional: true,
         defaultValue: 1,
-        description: 'Curve shape: 1=linear, >0 uses pow(t,exp), <0 uses logarithmic curve base=-exp',
+        description: 'Curve shape: 1=linear, >0 uses pow(t,exp), <0 uses logarithmic curve base=-exp.',
       },
     ],
     returnType: 'number',
@@ -34,7 +65,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   '.sum': {
     name: '.sum',
     parameters: [
-      { name: 'array', type: 'array', description: 'Array to be summed' },
+      { name: 'array', type: 'array', description: 'Array to be summed.' },
     ],
     returnType: 'number',
     description: 'Sums an array and returns the result.',
@@ -45,7 +76,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   '.avg': {
     name: '.avg',
     parameters: [
-      { name: 'array', type: 'array', description: 'Array to be averaged' },
+      { name: 'array', type: 'array', description: 'Array to be averaged.' },
     ],
     returnType: 'number',
     description: 'Averages an array and returns the result.',
@@ -54,9 +85,9 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     ],
   },
   '.step': {
-    name: '.step',
+    name: 'array.step',
     parameters: [
-      { name: 'trig', type: 'number', description: 'Trigger impulse that advances to next array element' },
+      { name: 'trig', type: 'number', description: 'Trigger impulse that advances to next array element.' },
     ],
     returnType: 'number',
     description: 'Steps through array elements on trigger impulses, wrapping around when reaching the end.',
@@ -68,8 +99,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   '.random': {
     name: '.random',
     parameters: [
-      { name: 'trig', type: 'number', description: 'Trigger impulse that selects a random array element' },
-      { name: 'seed', type: 'number', description: 'Random seed (optional, default: 0)', optional: true },
+      { name: 'trig', type: 'number', description: 'Trigger impulse that selects a random array element.' },
+      { name: 'seed', type: 'number', description: 'Random seed (optional, default: 0).', optional: true },
     ],
     returnType: 'number',
     description: 'Selects random array elements on trigger impulses.',
@@ -81,8 +112,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   oversample: {
     name: 'oversample',
     parameters: [
-      { name: 'times', type: 'number', description: 'Oversampling factor (1..16)' },
-      { name: 'callback', type: '() -> number | [L:number, R:number]', description: 'Signal generator callback' },
+      { name: 'times', type: 'number', description: 'Oversampling factor (1..16).' },
+      { name: 'callback', type: '() -> number | [L:number, R:number]', description: 'Signal generator callback.' },
     ],
     returnType: 'number | [L:number, R:number]',
     description:
@@ -131,7 +162,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         name: 'R',
         type: 'number',
         optional: true,
-        description: 'Audio-rate signal to be mixed into the right output channel (defaults to L)',
+        description: 'Audio-rate signal to be mixed into the right output channel (defaults to L).',
       },
     ],
     returnType: 'number',
@@ -148,7 +179,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       {
         name: 'callback',
         type: '([L:number, R:number]) -> [L,R]',
-        description: 'Post-processing callback',
+        description: 'Post-processing callback.',
       },
     ],
     returnType: 'number',
@@ -162,19 +193,19 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   sine: {
     name: 'sine',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
-        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0.',
       },
     ],
     returnType: 'number',
@@ -188,23 +219,23 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   tri: {
     name: 'tri',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
-        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0.',
       },
     ],
     returnType: 'number',
-    description: 'Band-limited triangle oscillator (polyBLEP).',
+    description: 'Triangle wave oscillator.',
     examples: [
       'tri(220) |> out($)',
       'tri(hz, .01, trig) * .2 |> out($)',
@@ -213,23 +244,23 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   saw: {
     name: 'saw',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
-        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0.',
       },
     ],
     returnType: 'number',
-    description: 'Band-limited saw oscillator (polyBLEP).',
+    description: 'Sawtooth wave oscillator.',
     examples: [
       'saw(110) |> out($)',
       'saw(hz, .02, trig) * .2 |> out($)',
@@ -238,23 +269,23 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   ramp: {
     name: 'ramp',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
-        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0.',
       },
     ],
     returnType: 'number',
-    description: 'Band-limited ramp oscillator (inverted saw, polyBLEP).',
+    description: 'Ramp wave oscillator (inverted sawtooth).',
     examples: [
       'ramp(110) |> out($)',
       'ramp(hz, .02, trig) * .2 |> out($)',
@@ -263,23 +294,23 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   sqr: {
     name: 'sqr',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
-        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0.',
       },
     ],
     returnType: 'number',
-    description: 'Band-limited square oscillator (polyBLEP).',
+    description: 'Square wave oscillator.',
     examples: [
       'sqr(55) |> out($)',
       'sqr(hz, .01, trig) * .2 |> out($)',
@@ -288,55 +319,55 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   pwm: {
     name: 'pwm',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz.' },
       {
         name: 'width',
         type: 'number',
         optional: true,
-        defaultValue: 0,
-        description: 'Pulse width control (-1..1); 0 is centered, positive shifts the duty cycle',
+        defaultValue: 0.5,
+        description: 'Pulse width control (0..1).',
       },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
-        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger that resets the phase back to 0 when it crosses from ≤0 to >0',
+        description: 'Trigger that resets the phase back to 0 when it crosses from ≤0 to >0.',
       },
     ],
     returnType: 'number',
-    description: 'Band-limited PWM oscillator (polyBLEP).',
+    description: 'Pulse width modulation oscillator.',
     examples: [
-      'pwm(110, width:.2) * .2 |> out($)',
-      'pwm(hz, 0, 0, saw(.1)) * .2 |> out($)',
+      'pwm(110, width:.2) |> out($)',
+      'pwm(hz, lfotri(1)) |> out($)',
     ],
   },
   phasor: {
     name: 'phasor',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
-        description: 'Start offset in seconds applied when the trigger fires (0 = start at 0)',
+        description: 'Start offset in seconds applied when the trigger fires (0 = start at 0).',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger that resets the ramp and starts it again when it crosses from ≤0 to >0',
+        description: 'Trigger that resets the ramp and starts it again when it crosses from ≤0 to >0.',
       },
     ],
     returnType: 'number',
-    description: 'One-shot 0..1 ramp that stops at 1.0 after it completes (retriggerable).',
+    description: 'Ramp oscillator that goes from 0 to 1 and can be retriggered.',
     examples: [
       'phasor(1, 0, trig) |> out($)',
       'phasor(1, .25, trig) |> out($)',
@@ -345,23 +376,24 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   impulse: {
     name: 'impulse',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero)' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
-        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset)',
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0',
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0.',
       },
     ],
     returnType: 'number',
-    description: 'Impulse oscillator that produces steady impulses (1 sample of value 1, rest 0) at the given frequency.',
+    description:
+      'Impulse oscillator that produces steady impulses (1 sample of value 1, rest 0) at the given frequency.',
     examples: [
       'impulse(440) |> out($)',
       'impulse(hz, 0, trig) |> out($)',
@@ -370,10 +402,10 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   zerox: {
     name: 'zerox',
     parameters: [
-      { name: 'in', type: 'number', description: 'Input signal to detect zero crossings' },
+      { name: 'in', type: 'number', description: 'Input signal to detect zero crossings.' },
     ],
     returnType: 'number',
-    description: 'Zero crossing detector that outputs 1.0 for one sample when the signal crosses from ≤0 to >0, otherwise outputs 0.',
+    description: 'Zero crossing detector that outputs a trigger impulse when the signal crosses from ≤0 to >0.',
     examples: [
       'sine(1) |> zerox($) |> out($)',
       'saw(0.1) |> zerox($) |> ad(0.01, 0.1, trig:$) |> sine(440) |> out($)',
@@ -382,11 +414,11 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   pitchshift: {
     name: 'pitchshift',
     parameters: [
-      { name: 'in', type: 'number', description: 'Input signal to pitch shift' },
+      { name: 'in', type: 'number', description: 'Input signal to pitch shift.' },
       {
         name: 'ratio',
         type: 'number',
-        description: 'Pitch shift ratio (0.5 = octave down, 2 = octave up, 1 = same)',
+        description: 'Pitch shift ratio (0.5 = octave down, 2 = octave up, 1 = same).',
       },
     ],
     returnType: 'number',
@@ -399,20 +431,20 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   ad: {
     name: 'ad',
     parameters: [
-      { name: 'attack', type: 'number', description: 'Time in seconds to ramp from 0 up to 1' },
-      { name: 'decay', type: 'number', description: 'Time in seconds to fall back from 1 to 0' },
+      { name: 'attack', type: 'number', description: 'Time in seconds to ramp from 0 up to 1.' },
+      { name: 'decay', type: 'number', description: 'Time in seconds to fall back from 1 to 0.' },
       {
         name: 'exponent',
         type: 'number',
         optional: true,
         defaultValue: 1,
-        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic',
+        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic.',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger input (defaults to 0) that restarts the attack phase when it fires',
+        description: 'Trigger input (defaults to 0) that restarts the attack phase when it fires.',
       },
     ],
     returnType: 'number',
@@ -426,22 +458,22 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   adsr: {
     name: 'adsr',
     parameters: [
-      { name: 'attack', type: 'number', description: 'Time to ramp from 0 to 1' },
-      { name: 'decay', type: 'number', description: 'Time to fall from 1 to the sustain level' },
-      { name: 'sustain', type: 'number', description: 'Level (0–1) held while the trigger is high' },
-      { name: 'release', type: 'number', description: 'Time to fall from sustain back to 0 once the trigger drops' },
+      { name: 'attack', type: 'number', description: 'Time to ramp from 0 to 1.' },
+      { name: 'decay', type: 'number', description: 'Time to fall from 1 to the sustain level.' },
+      { name: 'sustain', type: 'number', description: 'Level (0–1) held while the trigger is high.' },
+      { name: 'release', type: 'number', description: 'Time to fall from sustain back to 0 once the trigger drops.' },
       {
         name: 'exponent',
         type: 'number',
         optional: true,
         defaultValue: 1,
-        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic',
+        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic.',
       },
       {
         name: 'trig',
         type: 'number',
         optional: true,
-        description: 'Trigger signal that keeps the envelope in sustain until it goes back to 0',
+        description: 'Trigger signal that keeps the envelope in sustain until it goes back to 0.',
       },
     ],
     returnType: 'number',
@@ -456,20 +488,20 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   envfollow: {
     name: 'envfollow',
     parameters: [
-      { name: 'in', type: 'number', description: 'Signal to envelope-follow' },
+      { name: 'in', type: 'number', description: 'Signal to envelope-follow.' },
       {
         name: 'attack',
         type: 'number',
         optional: true,
         defaultValue: 0.01,
-        description: 'Attack time in seconds (how quickly it responds to signal increases)',
+        description: 'Attack time in seconds (how quickly it responds to signal increases).',
       },
       {
         name: 'release',
         type: 'number',
         optional: true,
         defaultValue: 0.1,
-        description: 'Release time in seconds (how quickly it responds to signal decreases)',
+        description: 'Release time in seconds (how quickly it responds to signal decreases).',
       },
     ],
     returnType: 'number',
@@ -484,7 +516,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   analyser: {
     name: 'analyser',
     parameters: [
-      { name: 'signal', type: 'number', description: 'Signal to create an analyser' },
+      { name: 'signal', type: 'number', description: 'Signal to create an analyser.' },
     ],
     returnType: 'number',
     description: 'Creates an analyser for the signal. Returns the original signal.',
@@ -495,7 +527,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   amplitude: {
     name: 'amplitude',
     parameters: [
-      { name: 'signal', type: 'number', description: 'Signal to create an amplitude analyser' },
+      { name: 'signal', type: 'number', description: 'Signal to create an amplitude analyser.' },
     ],
     returnType: 'number',
     description: 'Creates an amplitude analyser widget for the signal. Returns the original signal.',
@@ -506,7 +538,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   waveform: {
     name: 'waveform',
     parameters: [
-      { name: 'signal', type: 'number', description: 'Signal to create a waveform analyser' },
+      { name: 'signal', type: 'number', description: 'Signal to create a waveform analyser.' },
     ],
     returnType: 'number',
     description: 'Creates a waveform analyser widget for the signal. Returns the original signal.',
@@ -517,7 +549,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   spectrum: {
     name: 'spectrum',
     parameters: [
-      { name: 'signal', type: 'number', description: 'Signal to create a spectrum analyser' },
+      { name: 'signal', type: 'number', description: 'Signal to create a spectrum analyser.' },
     ],
     returnType: 'number',
     description: 'Creates a spectrum analyser widget for the signal. Returns the original signal.',
@@ -528,7 +560,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   level: {
     name: 'level',
     parameters: [
-      { name: 'signal', type: 'number', description: 'Signal to create a level meter analyser' },
+      { name: 'signal', type: 'number', description: 'Signal to create a level meter analyser.' },
     ],
     returnType: 'number',
     description: 'Creates a level meter (VU) analyser widget for the signal. Returns the original signal.',
@@ -539,7 +571,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   print: {
     name: 'print',
     parameters: [
-      { name: 'signal', type: 'number', description: 'Signal to print/inspect' },
+      { name: 'signal', type: 'number', description: 'Signal to print/inspect.' },
     ],
     returnType: 'number',
     description: 'Creates a print analyser widget that shows the values it receives. Returns the original signal.',
@@ -898,7 +930,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         type: 'number',
         optional: true,
         defaultValue: 1,
-        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic',
+        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic.',
       },
     ],
     returnType: 'number',
@@ -946,83 +978,6 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'sine(440) |> delay($, seconds:.25) |> out($)',
       'sine(220) |> delay($, seconds:.35, feedback:.4, cb:x -> lp(x, cutoff:1000, q:.8)) |> out($)',
-    ],
-  },
-  pan: {
-    name: 'pan',
-    parameters: [
-      { name: 'in', type: '[L:number, R:number]', description: 'Stereo signal to be panned' },
-      {
-        name: 'balance',
-        type: 'number',
-        optional: true,
-        defaultValue: 0.5,
-        description: 'Pan position (0=left, 0.5=center, 1=right)',
-      },
-    ],
-    returnType: '[L:number, R:number]',
-    description:
-      'Pans a stereo signal left or right. Balance of 0 sends fully to left, 0.5 is center, 1 is fully right.',
-    examples: [
-      'stereo(saw(hz)) |> pan($, balance:0.2) |> out($)',
-      '[saw(220), saw(221)] |> pan($, balance:0.8) |> out($)',
-    ],
-  },
-  stereo: {
-    name: 'stereo',
-    parameters: [
-      { name: 'in', type: 'number', description: 'Mono signal to convert to stereo' },
-      {
-        name: 'width',
-        type: 'number',
-        optional: true,
-        defaultValue: 0,
-        description: 'Stereo width in seconds (0 = mono, >0 = delayed right channel)',
-      },
-    ],
-    returnType: '[L:number, R:number]',
-    description:
-      'Converts a mono signal to stereo by duplicating to both channels, optionally with delay-based widening.',
-    examples: [
-      'sine(440) |> stereo($) |> out($)',
-      'saw(hz) |> stereo($, width:0.01) |> out($)',
-    ],
-  },
-  stereowidth: {
-    name: 'stereowidth',
-    parameters: [
-      { name: 'in', type: '[L:number, R:number]', description: 'Stereo signal to modify' },
-      {
-        name: 'width',
-        type: 'number',
-        optional: true,
-        defaultValue: 1,
-        description: 'Width multiplier (0 = mono, 1 = normal, >1 = wider)',
-      },
-    ],
-    returnType: '[L:number, R:number]',
-    description: 'Changes the stereo width of a signal using mid-side processing.',
-    examples: [
-      '[saw(220), saw(221)] |> stereowidth($, width:2) |> out($)',
-      'stereo(saw(hz)) |> stereowidth($, width:0.5) |> out($)',
-    ],
-  },
-  widen: {
-    name: 'widen',
-    parameters: [
-      { name: 'in', type: '[L:number, R:number]', description: 'Stereo signal to widen' },
-      {
-        name: 'seconds',
-        type: 'number',
-        optional: true,
-        defaultValue: 0.0001,
-        description: 'Delay time for widening effect in seconds',
-      },
-    ],
-    returnType: '[L:number, R:number]',
-    description: 'Widens a stereo signal by delaying high frequencies in the right channel.',
-    examples: [
-      '[saw(220), saw(221)] |> widen($, seconds:0.005) |> out($)',
     ],
   },
   freeverb: {
@@ -1280,7 +1235,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Low-passes a signal with a biquad filter.',
+    description: 'Low-pass filter that attenuates high frequencies.',
     examples: [
       'saw(hz) |> lp($, cutoff:500, q:0.75) |> out($)',
     ],
@@ -1293,7 +1248,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'High-passes a signal with a biquad filter.',
+    description: 'High-pass filter that attenuates low frequencies.',
     examples: [
       'saw(hz) |> hp($, cutoff:200, q:0.75) |> out($)',
     ],
@@ -1306,7 +1261,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Band-passes a signal with a biquad filter.',
+    description: 'Band-pass filter that attenuates frequencies outside a specific range.',
     examples: [
       'saw(hz) |> bp($, cutoff:1000, q:2) |> out($)',
     ],
@@ -1319,7 +1274,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Band-stops (notches) a signal with a biquad filter.',
+    description: 'Band-stop filter that attenuates frequencies within a specific range.',
     examples: [
       'saw(hz) |> bs($, cutoff:1000, q:5) |> out($)',
     ],
@@ -1332,7 +1287,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'gain', type: 'number', description: 'Gain in decibels' },
     ],
     returnType: 'number',
-    description: 'Applies a low-shelf filter with adjustable gain.',
+    description: 'Low-shelf filter that boosts or cuts low frequencies.',
     examples: [
       'saw(hz) |> ls($, cutoff:200, gain:6) |> out($)',
     ],
@@ -1345,7 +1300,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'gain', type: 'number', description: 'Gain in decibels' },
     ],
     returnType: 'number',
-    description: 'Applies a high-shelf filter with adjustable gain.',
+    description: 'High-shelf filter that boosts or cuts high frequencies.',
     examples: [
       'saw(hz) |> hs($, cutoff:3000, gain:-3) |> out($)',
     ],
@@ -1359,7 +1314,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'gain', type: 'number', description: 'Gain in decibels' },
     ],
     returnType: 'number',
-    description: 'Applies a peaking filter with adjustable gain and Q.',
+    description: 'Peaking filter that boosts or cuts frequencies around a center point.',
     examples: [
       'saw(hz) |> peak($, cutoff:1000, q:5, gain:6) |> out($)',
     ],
@@ -1372,7 +1327,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Applies an all-pass filter for phase shifting.',
+    description: 'All-pass filter that changes phase without affecting frequency response.',
     examples: [
       'saw(hz) |> ap($, cutoff:1000, q:1) |> out($)',
     ],
@@ -1385,7 +1340,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Low-passes a signal with an SVF (State Variable Filter).',
+    description: 'Low-pass filter with resonance.',
     examples: [
       'saw(hz) |> slp($, cutoff:500) |> out($)',
     ],
@@ -1398,7 +1353,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'High-passes a signal with an SVF (State Variable Filter).',
+    description: 'High-pass filter with resonance.',
     examples: [
       'saw(hz) |> shp($, cutoff:200) |> out($)',
     ],
@@ -1411,7 +1366,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Band-passes a signal with an SVF (State Variable Filter).',
+    description: 'Band-pass filter with resonance.',
     examples: [
       'saw(hz) |> sbp($, cutoff:1000, q:2) |> out($)',
     ],
@@ -1424,7 +1379,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Band-stops (notches) a signal with an SVF (State Variable Filter).',
+    description: 'Band-stop filter with resonance.',
     examples: [
       'saw(hz) |> sbs($, cutoff:1000, q:5) |> out($)',
     ],
@@ -1437,7 +1392,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Applies a peaking filter with an SVF (State Variable Filter).',
+    description: 'Peaking filter with resonance.',
     examples: [
       'saw(hz) |> speak($, cutoff:1000, q:5) |> out($)',
     ],
@@ -1450,7 +1405,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Q factor' },
     ],
     returnType: 'number',
-    description: 'Applies an all-pass filter with an SVF (State Variable Filter) for phase shifting.',
+    description: 'All-pass filter with resonance for phase shifting.',
     examples: [
       'saw(hz) |> sap($, cutoff:1000, q:1) |> out($)',
     ],
@@ -1478,7 +1433,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'saturation', type: 'number', description: 'Input saturation amount' },
     ],
     returnType: 'number',
-    description: 'Applies a diode ladder filter.',
+    description: 'Low-pass filter with diode-style saturation and resonance.',
     examples: [
       'saw(hz) |> diodeladder($, cutoff:1000, q:0.5, k:0.2) |> out($)',
     ],
@@ -1490,7 +1445,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
     ],
     returnType: 'number',
-    description: 'Applies a simple one-pole low-pass filter.',
+    description: 'Simple low-pass filter.',
     examples: [
       'saw(hz) |> olp($, cutoff:1000) |> out($)',
     ],
@@ -1502,7 +1457,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
     ],
     returnType: 'number',
-    description: 'Applies a simple one-pole high-pass filter.',
+    description: 'Simple high-pass filter.',
     examples: [
       'saw(hz) |> ohp($, cutoff:1000) |> out($)',
     ],
@@ -1515,7 +1470,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Resonance factor' },
     ],
     returnType: 'number',
-    description: 'Low-passes a signal with a Moog ladder filter.',
+    description: 'Low-pass filter with Moog-style resonance.',
     examples: [
       'saw(hz) |> mlp($, cutoff:1000) |> out($)',
     ],
@@ -1528,7 +1483,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       { name: 'q', type: 'number', description: 'Resonance factor' },
     ],
     returnType: 'number',
-    description: 'High-passes a signal with a Moog ladder filter.',
+    description: 'High-pass filter with Moog-style resonance.',
     examples: [
       'saw(hz) |> mhp($, cutoff:200) |> out($)',
     ],
@@ -2168,7 +2123,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     name: 'pan',
     parameters: [
       { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
-      { name: 'balance', type: 'number', optional: true, defaultValue: 0.5, description: 'Pan position (0=left, 1=right)' },
+      { name: 'balance', type: 'number', optional: true, defaultValue: 0.5,
+        description: 'Pan position (0=left, 1=right)' },
     ],
     returnType: '[L:number, R:number]',
     description: 'Pans stereo signal left or right.',
@@ -2470,6 +2426,82 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description: 'Mix operator that passes through signal unchanged.',
     examples: [
       'signal |> mix($)',
+    ],
+  },
+  uni: {
+    name: 'uni',
+    parameters: [{ name: 'x', type: 'number', description: 'Input signal' }],
+    returnType: 'number',
+    description: 'Convert bipolar signal to unipolar ([-1,1] to [0,1]).',
+    examples: [
+      'sine(440) |> uni($) |> out($)',
+    ],
+  },
+  bi: {
+    name: 'bi',
+    parameters: [{ name: 'x', type: 'number', description: 'Input signal' }],
+    returnType: 'number',
+    description: 'Convert unipolar signal to bipolar ([0,1] to [-1,1]).',
+    examples: [
+      'random() |> bi($) |> out($)',
+    ],
+  },
+  crossfade: {
+    name: 'crossfade',
+    parameters: [
+      { name: 'a', type: 'number', description: 'First signal' },
+      { name: 'b', type: 'number', description: 'Second signal' },
+      { name: 't', type: 'number', description: 'Crossfade position (0 = all A, 1 = all B)' },
+    ],
+    returnType: 'number',
+    description: 'Crossfade between two signals.',
+    examples: [
+      'crossfade(sine(220), saw(220), 0.5) |> out($)',
+    ],
+  },
+  va: {
+    name: 'va',
+    parameters: [],
+    returnType: 'number',
+    description: 'Vowel constant for "a" sound (used with vowel function).',
+    examples: [
+      'sine(110) |> vowel($, va) |> out($)',
+    ],
+  },
+  ve: {
+    name: 've',
+    parameters: [],
+    returnType: 'number',
+    description: 'Vowel constant for "e" sound (used with vowel function).',
+    examples: [
+      'sine(110) |> vowel($, ve) |> out($)',
+    ],
+  },
+  vi: {
+    name: 'vi',
+    parameters: [],
+    returnType: 'number',
+    description: 'Vowel constant for "i" sound (used with vowel function).',
+    examples: [
+      'sine(110) |> vowel($, vi) |> out($)',
+    ],
+  },
+  vo: {
+    name: 'vo',
+    parameters: [],
+    returnType: 'number',
+    description: 'Vowel constant for "o" sound (used with vowel function).',
+    examples: [
+      'sine(110) |> vowel($, vo) |> out($)',
+    ],
+  },
+  vu: {
+    name: 'vu',
+    parameters: [],
+    returnType: 'number',
+    description: 'Vowel constant for "u" sound (used with vowel function).',
+    examples: [
+      'sine(110) |> vowel($, vu) |> out($)',
     ],
   },
 }

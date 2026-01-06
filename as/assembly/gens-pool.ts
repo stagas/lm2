@@ -21,10 +21,10 @@ import { Mini } from './gen/mini'
 import { Mhp, Mlp } from './gen/moog'
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from './gen/noise'
 import { Ohp, Olp } from './gen/onepole'
+import { Impulse, Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
+import { PitchShift } from './gen/pitch-shift'
 import { Random } from './gen/random'
 import { Sah } from './gen/sah'
-import { Impulse, Phasor, Pwm, Ramp, Saw, Sqr, Tri, Zerox } from './gen/osc'
-import { PitchShift } from './gen/pitch-shift'
 import { Sampler } from './gen/sampler'
 import { Sine } from './gen/sine'
 import { Slew } from './gen/slew'
@@ -33,6 +33,7 @@ import { Step } from './gen/step'
 import { Sap, Sbp, Sbs, Shp, Slp, Speak } from './gen/svf'
 import { Timeline } from './gen/timeline'
 import { Velvet } from './gen/velvet'
+import { Zerox } from './gen/zerox'
 import { Op } from './shared'
 
 export class GenPool<T extends Gen> {
@@ -146,7 +147,7 @@ export class GensPool {
   private sahs: GenPool<Sah> = new GenPool<Sah>(() => new Sah())
 
   // Keep in sync with `saveIndices()`/`restoreIndices()`.
-  static readonly INDICES_COUNT: i32 = 63
+  static readonly INDICES_COUNT: i32 = 64
 
   @inline
   saveIndices(out: StaticArray<i32>): void {
@@ -159,6 +160,7 @@ export class GensPool {
     out[i++] = this.pwms.getIndex()
     out[i++] = this.phasors.getIndex()
     out[i++] = this.impulses.getIndex()
+    out[i++] = this.zeroxes.getIndex()
     out[i++] = this.ads.getIndex()
     out[i++] = this.adsrs.getIndex()
     out[i++] = this.envfollows.getIndex()
@@ -227,6 +229,7 @@ export class GensPool {
     this.pwms.setIndex(src[i++])
     this.phasors.setIndex(src[i++])
     this.impulses.setIndex(src[i++])
+    this.zeroxes.setIndex(src[i++])
     this.ads.setIndex(src[i++])
     this.adsrs.setIndex(src[i++])
     this.envfollows.setIndex(src[i++])
@@ -292,6 +295,7 @@ export class GensPool {
     this.pwms.resetIndex()
     this.phasors.resetIndex()
     this.impulses.resetIndex()
+    this.zeroxes.resetIndex()
     this.ads.resetIndex()
     this.adsrs.resetIndex()
     this.envfollows.resetIndex()
@@ -357,6 +361,7 @@ export class GensPool {
     this.pwms.reset()
     this.phasors.reset()
     this.impulses.reset()
+    this.zeroxes.reset()
     this.ads.reset()
     this.adsrs.reset()
     this.envfollows.reset()
@@ -563,6 +568,7 @@ export class GensPool {
     this.pwms.copyFrom(source.pwms)
     this.phasors.copyFrom(source.phasors)
     this.impulses.copyFrom(source.impulses)
+    this.zeroxes.copyFrom(source.zeroxes)
     this.ads.copyFrom(source.ads)
     this.adsrs.copyFrom(source.adsrs)
     this.envfollows.copyFrom(source.envfollows)
