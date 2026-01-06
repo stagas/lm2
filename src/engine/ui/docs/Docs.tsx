@@ -102,7 +102,6 @@ export function Docs() {
         searchText: `${t.title}\n${t.markdown}`,
         render: () => (
           <>
-            <h2 className="text-2xl font-semibold text-white">{t.title}</h2>
             <div className="mt-4">
               <MarkdownDoc idPrefix={id} markdown={t.markdown} />
             </div>
@@ -296,9 +295,6 @@ export function Docs() {
                   className="flex-1 bg-transparent outline-none text-white placeholder:text-neutral-500"
                 />
               </div>
-              <div className="text-xs text-neutral-500 mb-2">
-                {query.trim() ? `${filtered.list.length} matches` : `${items.length} sections`}
-              </div>
               <div className="text-xs uppercase tracking-wide text-neutral-500">Navigation</div>
               {tutorialError && (
                 <div className="mt-2 text-xs text-red-300">
@@ -325,14 +321,14 @@ export function Docs() {
                 </div>
               )}
 
-              {sidebarGroups.api.length > 0 && (
+              {sidebarGroups.about.length > 0 && (
                 <div className="mt-5">
-                  <div className="text-sm font-semibold text-white">API</div>
+                  <div className="text-sm font-semibold text-white">About</div>
                   <div className="mt-2 flex flex-col gap-1">
-                    {sidebarGroups.api.map(it => (
+                    {sidebarGroups.about.map(it => (
                       <button
                         key={it.id}
-                        className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                        className={`text-left text-sm hover:text-white whitespace-nowrap ${
                           it.id === selectedId ? 'text-white' : 'text-neutral-300'
                         }`}
                         onClick={() => setSelectedId(it.id)}
@@ -344,14 +340,14 @@ export function Docs() {
                 </div>
               )}
 
-              {sidebarGroups.about.length > 0 && (
+              {sidebarGroups.api.length > 0 && (
                 <div className="mt-5">
-                  <div className="text-sm font-semibold text-white">About</div>
+                  <div className="text-sm font-semibold text-white">API</div>
                   <div className="mt-2 flex flex-col gap-1">
-                    {sidebarGroups.about.map(it => (
+                    {sidebarGroups.api.map(it => (
                       <button
                         key={it.id}
-                        className={`text-left text-sm hover:text-white whitespace-nowrap ${
+                        className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
                           it.id === selectedId ? 'text-white' : 'text-neutral-300'
                         }`}
                         onClick={() => setSelectedId(it.id)}
@@ -394,9 +390,6 @@ export function Docs() {
 
                 {selected && (
                   <div className="border border-[#222] bg-neutral-950 rounded-lg p-5">
-                    <div className="text-xs uppercase tracking-wide text-neutral-500">
-                      {selected.group}
-                    </div>
                     <div className="mt-3">
                       {selected.render()}
                     </div>

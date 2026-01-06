@@ -41,6 +41,40 @@ type SigInfo = {
   idxOf: Map<string, number>
 }
 
+// Extract callback parameter arity from type signature like "(x: any, i: number) -> any"
+function extractCallbackArity(typeStr: string): number | null {
+  const match = typeStr.match(/^\s*\(([^)]*)\)\s*->/)
+  if (!match) return null
+  const params = match[1]!.trim()
+  if (!params) return 0
+  // Count commas + 1, but handle empty case
+  return params.split(',').filter(p => p.trim()).length
+}
+
+// Check if a parameter type indicates it's a callback/function
+function isCallbackParameter(typeStr: string): boolean {
+  return typeStr.includes('->') || typeStr.includes('function')
+}
+
+// Get callback parameter info for a function
+const builtinCallbackParams: Record<string, Array<{ index: number; arity: number }>> = (() => {
+  const result: Record<string, Array<{ index: number; arity: number }>> = {}
+  for (const [name, sig] of Object.entries(functionDefinitions)) {
+    const callbacks: Array<{ index: number; arity: number }> = []
+    for (let i = 0; i < sig.parameters.length; i++) {
+      const param = sig.parameters[i]!
+      if (isCallbackParameter(param.type ?? '')) {
+        const arity = extractCallbackArity(param.type ?? '') ?? 1
+        callbacks.push({ index: i, arity })
+      }
+    }
+    if (callbacks.length > 0) {
+      result[name] = callbacks
+    }
+  }
+  return result
+})()
+
 function resolveParamName(raw: string, paramNames: string[]): { ok: true; name: string } | {
   ok: false
   message: string
@@ -258,6 +292,42 @@ class Compiler {
       length: Math.max(1, loc.length),
       code: '', // Will be filled in by mapError in encodeLangToVmOps
     })
+  }
+
+  // Auto-wrap an identifier into a lambda that passes arguments through
+  // e.g., for map callback with arity 3, `note` becomes `(x, i, arr) -> note(x)`
+  // The lambda accepts `arity` parameters but only passes the first one (or however many the target function needs)
+  private wrapIdentifierAsCallback(identName: string, arity: number, loc: Loc): Expr {
+    const params: Array<{ name: string; isRest: boolean }> = []
+    const paramNames = ['x', 'i', 'arr', 'a', 'b', 'c', 'd', 'e', 'f', 'g'] // Generic param names
+
+    // Create parameters for all callback arguments
+    for (let i = 0; i < arity; i++) {
+      const paramName = paramNames[i] ?? `p${i}`
+      params.push({ name: paramName, isRest: false })
+    }
+
+    // Only pass the first parameter to the wrapped function
+    // This matches the behavior of `x -> note(x)` where only x is passed
+    const args: Arg[] = arity > 0
+      ? [{
+        kind: 'pos',
+        value: { kind: 'ident', name: paramNames[0]!, loc },
+        loc,
+      }]
+      : []
+
+    return {
+      kind: 'func',
+      params: params.map(p => ({ name: p.name, loc, isRest: p.isRest })),
+      body: {
+        kind: 'call',
+        callee: { kind: 'ident', name: identName, loc },
+        args,
+        loc,
+      },
+      loc,
+    }
   }
 
   compileProgram(program: Program): void {
@@ -738,18 +808,40 @@ class Compiler {
       const temps: TempArg[] = []
       const tmp = () => `%arg${this.callTempId++}`
 
+      // Auto-wrap identifiers passed as callbacks (.map method has callback at index 0)
+      const callbackInfo = builtinCallbackParams['.map']
+
       // Evaluate args left-to-right, storing each into a temp so we can reorder stack layout later.
-      for (const a of expr.args) {
+      for (let argIdx = 0; argIdx < expr.args.length; argIdx++) {
+        const a = expr.args[argIdx]!
         const t = tmp()
+
+        // Check if this argument position is a callback parameter
+        const isCallbackArg = callbackInfo?.some(cb => cb.index === argIdx)
+
         if (a.kind === 'pos') {
-          this.compileExpr(a.value)
+          // Auto-wrap bare identifiers into lambdas for callback parameters
+          let valueToCompile = a.value
+          if (isCallbackArg && a.value.kind === 'ident') {
+            const cbInfo = callbackInfo!.find(cb => cb.index === argIdx)!
+            valueToCompile = this.wrapIdentifierAsCallback(a.value.name, cbInfo.arity, a.value.loc)
+          }
+
+          this.compileExpr(valueToCompile)
           this.emit({ op: 'STORE', name: this.nameConst(t) })
           this.emit({ op: 'POP' })
           temps.push({ kind: 'pos', temp: t })
           continue
         }
         if (a.kind === 'named') {
-          this.compileExpr(a.value)
+          // Auto-wrap bare identifiers into lambdas for callback parameters
+          let valueToCompile = a.value
+          if (isCallbackArg && a.value.kind === 'ident') {
+            const cbInfo = callbackInfo!.find(cb => cb.index === argIdx)!
+            valueToCompile = this.wrapIdentifierAsCallback(a.value.name, cbInfo.arity, a.value.loc)
+          }
+
+          this.compileExpr(valueToCompile)
           this.emit({ op: 'STORE', name: this.nameConst(t) })
           this.emit({ op: 'POP' })
           temps.push({ kind: 'named', temp: t, name: a.name })
@@ -807,6 +899,7 @@ class Compiler {
       const sigInfo = this.findSigInfo(builtinName)
       const sigNames = sigInfo?.names ?? null
       const idxOf = sigInfo?.idxOf
+      const callbackInfo = builtinCallbackParams[builtinName]
 
       if (sigNames) {
         for (const a of expr.args) {
@@ -963,6 +1056,7 @@ class Compiler {
 
     const sigInfo = calleeName ? this.findSigInfo(calleeName) : null
     const sigNames = sigInfo?.names ?? null
+    const callbackInfo = calleeName ? builtinCallbackParams[calleeName] : null
 
     if (sigNames) {
       // Validate and normalize named keys against the signature (exact, case-insensitive, then unique prefix).
@@ -986,10 +1080,22 @@ class Compiler {
     }
 
     // Evaluate args left-to-right, storing each into a temp so we can reorder stack layout later.
-    for (const a of expr.args) {
+    for (let argIdx = 0; argIdx < expr.args.length; argIdx++) {
+      const a = expr.args[argIdx]!
       const t = tmp()
+
+      // Check if this argument position is a callback parameter
+      const isCallbackArg = callbackInfo?.some(cb => cb.index === argIdx)
+
       if (a.kind === 'pos') {
-        this.compileExpr(a.value)
+        // Auto-wrap bare identifiers into lambdas for callback parameters
+        let valueToCompile = a.value
+        if (isCallbackArg && a.value.kind === 'ident') {
+          const cbInfo = callbackInfo!.find(cb => cb.index === argIdx)!
+          valueToCompile = this.wrapIdentifierAsCallback(a.value.name, cbInfo.arity, a.value.loc)
+        }
+
+        this.compileExpr(valueToCompile)
         this.emit({ op: 'STORE', name: this.nameConst(t) })
         this.emit({ op: 'POP' })
         if (posSeen === 0) firstPosTemp = t
@@ -1005,7 +1111,14 @@ class Compiler {
         continue
       }
       if (a.kind === 'named') {
-        this.compileExpr(a.value)
+        // Auto-wrap bare identifiers into lambdas for callback parameters
+        let valueToCompile = a.value
+        if (isCallbackArg && a.value.kind === 'ident') {
+          const cbInfo = callbackInfo!.find(cb => cb.index === argIdx)!
+          valueToCompile = this.wrapIdentifierAsCallback(a.value.name, cbInfo.arity, a.value.loc)
+        }
+
+        this.compileExpr(valueToCompile)
         this.emit({ op: 'STORE', name: this.nameConst(t) })
         this.emit({ op: 'POP' })
         temps.push({ kind: 'named', temp: t, name: a.name })

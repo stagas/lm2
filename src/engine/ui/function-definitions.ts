@@ -34,11 +34,15 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
   },
   '.map': {
     name: '[].map',
-    parameters: [],
+    parameters: [
+      { name: 'cb', type: '(x: any, i: number, arr: array) -> any',
+        description: 'Callback function that transforms each element.' },
+    ],
     returnType: 'array',
     description: 'Maps over an array and returns a new array with the results.',
     examples: [
       '[60,62,65].map(x->note(x)) |> tri($.step(every(1/8))) |> out($)',
+      '[60,62,65].map(x->saw(note(x))).avg() |> out($)',
     ],
   },
   '.glide': {
@@ -76,6 +80,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description: 'Averages an array and returns the result.',
     examples: [
       '[1,2,3].avg() |> print($)',
+      '[60,62,65].map(x->saw(note(x))).avg() |> out($)',
     ],
   },
   '.step': {
@@ -444,9 +449,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Attack/decay envelope that emits a single bump per trigger pulse.',
     examples: [
-      'env = ad(.005, .2, trig)',
-      'sine(440, trig) * ad(.01, .3, trig) |> out($)',
-      'env = ad(.1, .5, exponent:2, trig)',
+      'trig=every(1/8) sine(440, trig) * ad(.01, .3, 2, trig) |> out($)',
     ],
   },
   adsr: {
