@@ -235,7 +235,7 @@ export function useCurrentLoop(): Loop | null {
 
   const setCurrentLoop = useEngineRuntimeStore(state => state.setCurrentLoop)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setCurrentLoop(loop)
   }, [loop, setCurrentLoop])
 

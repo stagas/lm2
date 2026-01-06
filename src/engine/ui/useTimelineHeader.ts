@@ -1,5 +1,5 @@
 import type { EditorHeader } from 'mini-code'
-import { useEffect, useMemo, useRef } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 import { MouseButtons } from 'utils/mouse-buttons'
 import { FUTURE_BARS, PAST_BARS, TIME_WINDOW_BARS } from '../../../as/assembly/constants.ts'
 import { PIANOROLL_KEY_WIDTH } from '../constants.ts'
@@ -23,6 +23,31 @@ export function useTimelineHeader(currentLoopId: string | null) {
     isPlaybackRunningForView,
   } = usePlayingState(currentLoopId)
 
+  // Keep latest dynamic values available to a stable header object (avoids stale closures).
+  const currentLoopIdRef = useRef<string | null>(currentLoopId)
+  currentLoopIdRef.current = currentLoopId
+  const audioContextRef = useRef(audioContext)
+  audioContextRef.current = audioContext
+  const bpmValueRef = useRef(bpmValue)
+  bpmValueRef.current = bpmValue
+  const loopRef = useRef(loop)
+  loopRef.current = loop
+  const setLoopRef = useRef(setLoop)
+  setLoopRef.current = setLoop
+  const clearLoopRef = useRef(clearLoop)
+  clearLoopRef.current = clearLoop
+  const uiZeroBasedRef = useRef(uiZeroBased)
+  uiZeroBasedRef.current = uiZeroBased
+
+  const globalSampleCountRef = useRef(globalSampleCount)
+  globalSampleCountRef.current = globalSampleCount
+  const seekToSampleRef = useRef(seekToSample)
+  seekToSampleRef.current = seekToSample
+  const canControlPlaybackRef = useRef(canControlPlayback)
+  canControlPlaybackRef.current = canControlPlayback
+  const isPlaybackRunningForViewRef = useRef(isPlaybackRunningForView)
+  isPlaybackRunningForViewRef.current = isPlaybackRunningForView
+
   const timelineTimeRef = useRef<number | null>(null)
   const timelineLayoutRef = useRef({ viewX: 0, viewWidth: 0 })
   const timelineWindowRef = useRef<TimelineWindow>({
@@ -32,20 +57,21 @@ export function useTimelineHeader(currentLoopId: string | null) {
   })
   const isTimelineDraggingRef = useRef(false)
   const timelineDragRef = useRef<{ x: number; timeSeconds: number } | null>(null)
-  const predictedSampleCountRef = useRef<number | null>(null)
-  const lastWallTimeRef = useRef<number | null>(null)
-  const isFirstFrameRef = useRef(true)
   const labelsRef = useRef(useEngineDspStore.getState().uiTimelineLabels ?? [])
 
-  // Reset synchronously on loop switch so we don't interpolate from the previous loop's playhead.
-  const lastLoopIdRef = useRef<string | null>(null)
-  if (lastLoopIdRef.current !== currentLoopId) {
-    lastLoopIdRef.current = currentLoopId
+  // One-frame dead-zone: on loop/mode/sample-buffer switch, snap instantly once,
+  // then resume smoothing on subsequent frames.
+  const didJustResetRef = useRef(true)
+  const lastResetKeyRef = useRef<string>('')
+  const lastSampleCounterRef = useRef<Int32Array<SharedArrayBuffer> | undefined>(undefined)
+  const resetKey = `${currentLoopId ?? ''}:${isPlaybackRunningForView ? 'live' : 'view'}`
+
+  if (lastResetKeyRef.current !== resetKey || lastSampleCounterRef.current !== globalSampleCount) {
+    lastResetKeyRef.current = resetKey
+    lastSampleCounterRef.current = globalSampleCount
     timelineTimeRef.current = null
     timelineDragRef.current = null
-    predictedSampleCountRef.current = null
-    lastWallTimeRef.current = null
-    isFirstFrameRef.current = true
+    didJustResetRef.current = true
   }
 
   useEffect(() => {
@@ -57,11 +83,14 @@ export function useTimelineHeader(currentLoopId: string | null) {
     return unsub
   }, [])
 
-  const timelineHeader = useMemo((): EditorHeader => {
+  const timelineHeaderRef = useRef<EditorHeader | null>(null)
+  if (!timelineHeaderRef.current) {
     const defaultLabelColor = 'rgba(255, 220, 0, 0.9)'
 
     const getPointerTimeSeconds = (pointerX: number) => {
-      if (!audioContext) return
+      const audioContext = audioContextRef.current
+      const bpmValue = bpmValueRef.current
+      if (!audioContext || !bpmValue) return
 
       const layout = timelineLayoutRef.current
       const timelineWidth = Math.max(1, layout.viewWidth - PIANOROLL_KEY_WIDTH)
@@ -69,7 +98,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
       const relativeX = pointerX - timelineStartX
       const clampedX = Math.max(0, Math.min(timelineWidth, relativeX))
 
-      const bpm = bpmValue?.[0] || 60
+      const bpm = bpmValue[0] || 60
       const barLengthSeconds = (4 * 60) / bpm
       const timeWindowSeconds = TIME_WINDOW_BARS * barLengthSeconds
       const windowStartTime = timelineWindowRef.current.windowStartTime
@@ -79,16 +108,22 @@ export function useTimelineHeader(currentLoopId: string | null) {
     }
 
     const seekToTimeSeconds = (targetTimeSeconds: number) => {
+      const audioContext = audioContextRef.current
       if (!audioContext) return
       const targetSampleCount = Math.max(0, Math.floor(targetTimeSeconds * audioContext.sampleRate))
-      seekToSample(targetSampleCount)
+      seekToSampleRef.current(targetSampleCount)
     }
 
     const handleLoopBar = (pointerX: number) => {
-      const targetTimeSeconds = getPointerTimeSeconds(pointerX)
-      if (targetTimeSeconds == null || !audioContext) return
+      const audioContext = audioContextRef.current
+      const bpmValue = bpmValueRef.current
+      const loop = loopRef.current
+      if (!audioContext || !bpmValue) return
 
-      const bpm = bpmValue?.[0] || 60
+      const targetTimeSeconds = getPointerTimeSeconds(pointerX)
+      if (targetTimeSeconds == null) return
+
+      const bpm = bpmValue[0] || 60
       const barLengthSeconds = (4 * 60) / bpm
       const barIndex = Math.max(0, Math.floor(targetTimeSeconds / barLengthSeconds))
 
@@ -104,14 +139,15 @@ export function useTimelineHeader(currentLoopId: string | null) {
       const currEnd = isEnabled && loop ? Atomics.load(loop, 2) : 0
 
       if (isEnabled && currStart === startSample && currEnd === endSample) {
-        clearLoop()
+        clearLoopRef.current()
         return
       }
 
-      setLoop(startSample, endSample)
-      const currentSample = globalSampleCount ? Math.max(0, Atomics.load(globalSampleCount, 0)) : 0
+      setLoopRef.current(startSample, endSample)
+      const sampleCounter = globalSampleCountRef.current
+      const currentSample = sampleCounter ? Math.max(0, Atomics.load(sampleCounter, 0)) : 0
       if (currentSample >= endSample) {
-        seekToSample(startSample)
+        seekToSampleRef.current(startSample)
       }
     }
 
@@ -129,18 +165,20 @@ export function useTimelineHeader(currentLoopId: string | null) {
       c.restore()
     }
 
-    return {
+    timelineHeaderRef.current = {
       height: 40,
       pointerDown: (e, x) => {
         if (e.buttons & MouseButtons.Right) {
-          if (canControlPlayback) handleLoopBar(x)
+          if (canControlPlaybackRef.current) handleLoopBar(x)
           return
         }
         isTimelineDraggingRef.current = true
 
         let timeSeconds = timelineWindowRef.current.timeSeconds
-        if (audioContext && globalSampleCount) {
-          const sample = Math.max(0, Atomics.load(globalSampleCount, 0))
+        const audioContext = audioContextRef.current
+        const sampleCounter = globalSampleCountRef.current
+        if (audioContext && sampleCounter) {
+          const sample = Math.max(0, Atomics.load(sampleCounter, 0))
           timeSeconds = sample / audioContext.sampleRate
         }
         timelineDragRef.current = { x, timeSeconds }
@@ -148,12 +186,14 @@ export function useTimelineHeader(currentLoopId: string | null) {
       pointerMove: x => {
         if (!isTimelineDraggingRef.current) return
         const start = timelineDragRef.current
-        if (!start || !audioContext) return
+        const audioContext = audioContextRef.current
+        const bpmValue = bpmValueRef.current
+        if (!start || !audioContext || !bpmValue) return
 
         const layout = timelineLayoutRef.current
         if (layout.viewWidth <= 0) return
 
-        const bpm = bpmValue?.[0] || 60
+        const bpm = bpmValue[0] || 60
         const barLengthSeconds = (4 * 60) / bpm
         const timeWindowSeconds = TIME_WINDOW_BARS * barLengthSeconds
         const timelineWidth = Math.max(1, layout.viewWidth - PIANOROLL_KEY_WIDTH)
@@ -171,7 +211,10 @@ export function useTimelineHeader(currentLoopId: string | null) {
         c.fillRect(x, y, w, h)
         timelineLayoutRef.current = { viewX: vx, viewWidth: vw }
 
-        if (!audioContext || !bpmValue || !globalSampleCount) return
+        const audioContext = audioContextRef.current
+        const bpmValue = bpmValueRef.current
+        const sampleCounter = globalSampleCountRef.current
+        if (!audioContext || !bpmValue || !sampleCounter) return
 
         const labels = [...(labelsRef.current ?? [])].sort((a, b) => a.bar - b.bar)
 
@@ -179,17 +222,27 @@ export function useTimelineHeader(currentLoopId: string | null) {
         const viewW = vw
         const timelineW = Math.max(1, viewW - PIANOROLL_KEY_WIDTH)
 
-        // Use centralized predicted sample count result
-        const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
-        if (!pred) return
+        const sampleRate = audioContext.sampleRate
+        const sampleCount = (Atomics.load(sampleCounter, 0) >>> 0) as number
+        const sampleSeconds = sampleRate > 0 ? (sampleCount / sampleRate) : 0
 
-        const nowSeconds = pred.timeSeconds
-        // console.log('timeline header', nowSeconds)
-        let smoothed = timelineTimeRef.current
-        if (smoothed == null) smoothed = nowSeconds
-        else smoothed = applySmoothing(smoothed, nowSeconds)
-        timelineTimeRef.current = smoothed
-        const timeSeconds = smoothed
+        const runtime = useEngineRuntimeStore.getState()
+        const isPredValidForLoop = isPlaybackRunningForViewRef.current
+          && runtime.currentLoopId === currentLoopIdRef.current
+        const predSeconds = isPredValidForLoop ? runtime.predictedSampleCountResult?.timeSeconds : undefined
+        const targetSeconds = predSeconds ?? sampleSeconds
+
+        let timeSeconds = timelineTimeRef.current
+        if (timeSeconds == null || didJustResetRef.current) {
+          // First frame after loop/mode/sample-buffer switch: snap instantly (dead zone)
+          didJustResetRef.current = false
+          timeSeconds = targetSeconds
+        }
+        else {
+          // Subsequent frames: apply smoothing
+          timeSeconds = applySmoothing(timeSeconds, targetSeconds)
+        }
+        timelineTimeRef.current = timeSeconds
 
         const bpm = bpmValue[0] || 60
         const barLengthSeconds = (4 * 60) / bpm
@@ -255,8 +308,9 @@ export function useTimelineHeader(currentLoopId: string | null) {
           }
         }
 
+        const loop = loopRef.current
         const isLooping = loop ? Atomics.load(loop, 0) === 1 : false
-        if (canControlPlayback && isLooping && loop) {
+        if (canControlPlaybackRef.current && isLooping && loop) {
           const loopStart = Atomics.load(loop, 1)
           const loopEnd = Atomics.load(loop, 2)
           if (loopEnd > loopStart) {
@@ -294,7 +348,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
           c.font = isPhraseStart ? 'bold 9pt Outfit' : 'normal 8pt Outfit'
           c.textAlign = 'left'
           c.textBaseline = 'middle'
-          c.fillText(String(uiZeroBased ? barNumber - 1 : barNumber), barX + 4, y + 10)
+          c.fillText(String(uiZeroBasedRef.current ? barNumber - 1 : barNumber), barX + 4, y + 10)
 
           // Show time below the phrase number (formatted MM:SS) calculated from bar start seconds
           const t = Math.max(0, barStart)
@@ -379,18 +433,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
         c.restore()
       },
     }
-  }, [
-    audioContext,
-    bpmValue,
-    canControlPlayback,
-    clearLoop,
-    globalSampleCount,
-    isPlaybackRunningForView,
-    loop,
-    seekToSample,
-    setLoop,
-    uiZeroBased,
-  ])
+  }
 
-  return { timelineHeader, timelineWindowRef }
+  return { timelineHeader: timelineHeaderRef.current!, timelineWindowRef }
 }

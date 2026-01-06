@@ -87,9 +87,18 @@ export function usePianorollWidget({
 }: UsePianorollParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const pianorollStateRef = useRef<Map<number, PianorollState>>(new Map())
   const lastResetKeyRef = useRef<string | number | null | undefined>(undefined)
-  if (lastResetKeyRef.current !== resetKey) {
+  const lastIsPlayingRef = useRef(isPlaying)
+
+  // Use a version counter to track state clears. Snap if version differs from last consumed.
+  const switchVersionRef = useRef(0)
+  const lastConsumedVersionRef = useRef(-1)
+
+  // Clear state on loop switch OR when isPlaying changes (view <-> live mode switch)
+  if (lastResetKeyRef.current !== resetKey || lastIsPlayingRef.current !== isPlaying) {
     lastResetKeyRef.current = resetKey
+    lastIsPlayingRef.current = isPlaying
     pianorollStateRef.current.clear()
+    switchVersionRef.current++
   }
 
   const theme = useTheme()
@@ -100,7 +109,9 @@ export function usePianorollWidget({
     return extracted.scale
   }, [dspSource])
 
-  const onBeforeDraw = useCallback(() => {
+  // onBeforeDraw is called every frame, so no need for useCallback memoization.
+  // Using a regular function ensures we always see the latest stateRef.current after clearing.
+  const onBeforeDraw = () => {
     if (!showWidgets) return
     // const playbackState = useEngineRuntimeStore.getState().playbackState
     // if (playbackState === 'paused') return
@@ -108,9 +119,22 @@ export function usePianorollWidget({
     if (!visualWasm) return
     // visualWasm is required only when we're generating a static window (non-live).
 
-    const pred = useEngineRuntimeStore.getState().predictedSampleCountResult
-    if (!pred) return
-    const { sampleRate, sampleCount, timeSeconds } = pred
+    const runtime = useEngineRuntimeStore.getState()
+    const pred = runtime.predictedSampleCountResult
+    const sampleRate = audioContext?.sampleRate || pred?.sampleRate || 0
+    if (!sampleRate) return
+
+    const rawSampleCount = globalSampleCount
+      ? ((Atomics.load(globalSampleCount, 0) >>> 0) as number)
+      : undefined
+    const sampleCount = (isPlaying && pred)
+      ? pred.sampleCount
+      : (rawSampleCount ?? pred?.sampleCount)
+    if (sampleCount == null) return
+
+    const timeSeconds = (isPlaying && pred)
+      ? pred.timeSeconds
+      : (sampleCount / sampleRate)
     // console.log('pianoroll', timeSeconds)
     const seenSeqs = new Set<number>()
     for (const ref of miniRefs) {
@@ -136,11 +160,14 @@ export function usePianorollWidget({
         activeList: [],
       }
 
-      if (st.timeSeconds == null) {
+      const needsSnap = switchVersionRef.current !== lastConsumedVersionRef.current
+      if (st.timeSeconds == null || needsSnap) {
+        // First frame after clear: snap instantly (dead zone)
         st.timeSeconds = timeSeconds
         st.sampleCount = sampleCount
       }
       else {
+        // Subsequent frames: apply smoothing
         st.timeSeconds = applySmoothing(st.timeSeconds, timeSeconds)
         st.sampleCount = Math.round(applySmoothing(st.sampleCount, sampleCount, 100 * sampleRate))
       }
@@ -235,8 +262,10 @@ export function usePianorollWidget({
 
       pianorollStateRef.current.set(seqIndex, st)
     }
-  }, [showWidgets, program1, audioContext, bpmValue, globalSampleCount, isPlaying, sequences, miniRefs, miniSourceMaps,
-    miniPlayBars])
+
+    // Mark version as consumed after processing all sequences
+    lastConsumedVersionRef.current = switchVersionRef.current
+  }
 
   const drawPianoroll = useCallback((
     c: CanvasRenderingContext2D,
@@ -539,7 +568,7 @@ export function usePianorollWidget({
     c.restore()
     // restore the initial context saved before translating by x
     c.restore()
-  }, [audioContext, bpmValue, timelineLabels, theme.colors.argument, miniPlayBars])
+  }, [audioContext, bpmValue, timelineLabels, theme.colors.argument, miniPlayBars, resetKey, isPlaying])
 
   const widgets = useMemo(() => {
     if (!showWidgets) return []
