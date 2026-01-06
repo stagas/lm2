@@ -232,7 +232,7 @@ export function Docs() {
     const currentSelected = items.find(i => i.id === selectedId)
     if (currentSelected?.group === 'tutorial') return
     setSelectedId(items[0]?.id ?? null)
-  }, [items, selectedId])
+  }, [items])
 
   const filtered = useMemo(() => {
     const q = query.trim()
