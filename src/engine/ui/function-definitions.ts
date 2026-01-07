@@ -28,7 +28,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'array',
     description: 'The current scale in an array of frequencies.',
     examples: [
-      'saw(#scale.step(every(1/8))) |> out($)',
+      'saw(#scale.step(every(1/8))*o4) |> out($)',
     ],
     type: 'variable',
   },

@@ -283,6 +283,44 @@ export function Docs() {
         contentClassName="h-full"
       >
         <div className="h-full w-full flex" onKeyDown={e => e.stopPropagation()}>
+          <main className="flex-1 min-h-0 flex flex-col bg-black">
+            <div className="sticky top-0 z-10 px-6 py-2 bg-black border-b border-[#333]">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <Logo size="3em" text="loopmaster" />
+                  <div className="text-neutral-300">
+                    Audio programming — docs, tutorials, and playable examples.
+                  </div>
+                </div>
+                <button
+                  className="w-9 h-9 flex items-center justify-center text-neutral-300 hover:text-white bg-neutral-900 border border-[#333] rounded-full"
+                  onClick={() => setIsOpen(false)}
+                  aria-label="Close documentation"
+                  title="Close"
+                >
+                  <XIcon weight="light" size={20} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto">
+              <div className="max-w-[68rem] mx-auto px-6 py-8 flex flex-col gap-8">
+                {filtered.list.length === 0 && query.trim() && (
+                  <div className="text-neutral-300">
+                    No matches for <span className="text-white font-mono">{query.trim()}</span>.
+                  </div>
+                )}
+
+                {selected && (
+                  <div className="border border-[#222] bg-neutral-950 rounded-lg p-5">
+                    <div className="mt-3">
+                      {selected.render()}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </main>
+
           <aside className="w-auto border-r border-[#333] bg-neutral-950 overflow-auto">
             <div className="p-4">
               <div className="flex items-center gap-3 mb-4">
@@ -361,44 +399,6 @@ export function Docs() {
               )}
             </div>
           </aside>
-
-          <main className="flex-1 min-h-0 flex flex-col bg-black">
-            <div className="sticky top-0 z-10 px-6 py-2 bg-black border-b border-[#333]">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <Logo size="3em" text="loopmaster" />
-                  <div className="text-neutral-300">
-                    Audio programming — docs, tutorials, and playable examples.
-                  </div>
-                </div>
-                <button
-                  className="w-9 h-9 flex items-center justify-center text-neutral-300 hover:text-white bg-neutral-900 border border-[#333] rounded-full"
-                  onClick={() => setIsOpen(false)}
-                  aria-label="Close documentation"
-                  title="Close"
-                >
-                  <XIcon weight="light" size={20} />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 min-h-0 overflow-auto">
-              <div className="max-w-[68rem] mx-auto px-6 py-8 flex flex-col gap-8">
-                {filtered.list.length === 0 && query.trim() && (
-                  <div className="text-neutral-300">
-                    No matches for <span className="text-white font-mono">{query.trim()}</span>.
-                  </div>
-                )}
-
-                {selected && (
-                  <div className="border border-[#222] bg-neutral-950 rounded-lg p-5">
-                    <div className="mt-3">
-                      {selected.render()}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </main>
         </div>
       </Modal>
     </>

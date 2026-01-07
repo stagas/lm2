@@ -718,32 +718,32 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
 
   return (
     <div className="my-3 w-full border border-[#333] bg-neutral-950 rounded-md overflow-hidden">
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-[#333]">
-        <button
-          className={`h-8 w-8 flex items-center justify-center rounded text-white ${
-            canPlay ? 'bg-orange-600' : 'bg-neutral-800'
-          }`}
-          disabled={!canPlay}
-          onClick={() => {
-            const runtime = useEngineRuntimeStore.getState()
-            if (isPlaying) {
-              runtime.pause()
-              return
-            }
-            void useEngineDspStore.getState().playLoop(loopId, code, 0)
-          }}
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-          title={isPlaying ? 'Pause' : (canPlay ? 'Play' : 'Fix errors to play')}
-        >
-          {isPlaying ? <PauseIcon weight="fill" size={18} /> : <PlayIcon weight="fill" size={18} />}
-        </button>
-        {!canPlay && (
-          <div className="text-xs text-red-300 truncate">
-            {preview.errors[0]?.message ?? 'Compile error'}
-          </div>
-        )}
-      </div>
       <div className="w-full relative">
+        <div className="absolute bottom-0 right-0 flex items-center justify-end z-50 gap-2 px-2 py-1.5 border-b border-[#333]">
+          <button
+            className={`h-8 w-8 flex items-center justify-center rounded text-white ${
+              canPlay ? 'bg-orange-600' : 'bg-neutral-800'
+            }`}
+            disabled={!canPlay}
+            onClick={() => {
+              const runtime = useEngineRuntimeStore.getState()
+              if (isPlaying) {
+                runtime.pause()
+                return
+              }
+              void useEngineDspStore.getState().playLoop(loopId, code, 0)
+            }}
+            aria-label={isPlaying ? 'Pause' : 'Play'}
+            title={isPlaying ? 'Pause' : (canPlay ? 'Play' : 'Fix errors to play')}
+          >
+            {isPlaying ? <PauseIcon weight="fill" size={18} /> : <PlayIcon weight="fill" size={18} />}
+          </button>
+          {!canPlay && (
+            <div className="text-xs text-red-300 truncate">
+              {preview.errors[0]?.message ?? 'Compile error'}
+            </div>
+          )}
+        </div>
         <CodeEditor
           codeFile={codeFile}
           widgets={widgets}
