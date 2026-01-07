@@ -8,6 +8,16 @@ export function createGreyVerticalGradient(
   y0: number,
   y1: number,
 ): CanvasGradient {
+  // Guard against non-finite values that cause createLinearGradient to fail
+  if (!Number.isFinite(x) || !Number.isFinite(y0) || !Number.isFinite(y1)) {
+    // Fallback to a default gradient if coordinates are invalid
+    const grad = ctx.createLinearGradient(0, 0, 0, 100)
+    grad.addColorStop(0.2, 'rgba(150, 150, 150, 0.5)')
+    grad.addColorStop(0.5, 'rgba(180, 180, 180, 0.9)')
+    grad.addColorStop(0.8, 'rgba(150, 150, 150, 0.5)')
+    return grad
+  }
+
   const grad = ctx.createLinearGradient(x, y0, x, y1)
   grad.addColorStop(0.2, 'rgba(150, 150, 150, 0.5)')
   grad.addColorStop(0.5, 'rgba(180, 180, 180, 0.9)')
