@@ -96,6 +96,27 @@ eq3=(in,low=0,mid=0,high=0,lf=500,mf=2000,hf=8000)->{
   return lo+mi+hi
 }
 
+hp4=(in,cutoff,q)->hp(in,cutoff,q)|>hp($,cutoff,q)
+lp4=(in,cutoff,q)->lp(in,cutoff,q)|>lp($,cutoff,q)
+bp4=(in,cutoff,q)->bp(in,cutoff,q)|>bp($,cutoff,q)
+bs4=(in,cutoff,q)->bs(in,cutoff,q)|>bs($,cutoff,q)
+ls4=(in,cutoff,gain)->ls(in,cutoff,gain)|>ls($,cutoff,gain)
+hs4=(in,cutoff,gain)->hs(in,cutoff,gain)|>hs($,cutoff,gain)
+ap4=(in,cutoff,q)->ap(in,cutoff,q)|>ap($,cutoff,q)
+peak4=(in,cutoff,q,gain)->peak(in,cutoff,q,gain)|>peak($,cutoff,q,gain)
+
+slp4=(in,cutoff,q)->slp(in,cutoff,q)|>slp($,cutoff,q)
+shp4=(in,cutoff,q)->shp(in,cutoff,q)|>shp($,cutoff,q)
+sbp4=(in,cutoff,q)->sbp(in,cutoff,q)|>sbp($,cutoff,q)
+sbs4=(in,cutoff,q)->sbs(in,cutoff,q)|>sbs($,cutoff,q)
+sap4=(in,cutoff,q)->sap(in,cutoff,q)|>sap($,cutoff,q)
+speak4=(in,cutoff,q)->speak(in,cutoff,q)|>speak($,cutoff,q)
+
+mlp4=(in,cutoff,q)->mlp(in,cutoff,q)|>mlp($,cutoff,q)
+mhp4=(in,cutoff,q)->mhp(in,cutoff,q)|>mhp($,cutoff,q)
+ohp4=(in,cutoff)->ohp(in,cutoff)|>ohp($,cutoff)
+
+
 // Granular synthesis-inspired trigger generator based on speed
 grain=(speed=1,seed)->step(random(seed),.999+.001*((1-clamp(speed,0,1))**.293))
 

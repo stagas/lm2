@@ -145,8 +145,8 @@ export function callRecord(
     stack.push(VmTag.Num, f64(sampleIndex))
     return
   }
-  // If we already have a published sample and params didn't change, keep it.
-  if (existingLen > 0 && !paramsChanged) {
+  // If we already have a published sample, params didn't change, and we're not mid-recording, keep it.
+  if (existingLen > 0 && !paramsChanged && !recording) {
     stack.push(VmTag.Num, f64(sampleIndex))
     return
   }
