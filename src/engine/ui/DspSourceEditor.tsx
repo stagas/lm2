@@ -64,11 +64,13 @@ export function DspSourceEditor(
     currentLoop,
     dspError,
     onDspError,
+    docsIsOpen,
   }: {
     timelineHeader: EditorHeader
     currentLoop: Loop | null
     dspError: string | undefined
     onDspError: (error: string | undefined) => void
+    docsIsOpen: boolean
   },
 ) {
   const isEditorBusy = useIsEditorBusy()
@@ -87,6 +89,7 @@ export function DspSourceEditor(
       currentLoop={currentLoop}
       dspError={dspError}
       onDspError={onDspError}
+      docsIsOpen={docsIsOpen}
     />
   )
 }
@@ -97,11 +100,13 @@ function DspSourceEditorReady(
     currentLoop,
     dspError,
     onDspError,
+    docsIsOpen,
   }: {
     timelineHeader: EditorHeader
     currentLoop: Loop
     dspError: string | undefined
     onDspError: (error: string | undefined) => void
+    docsIsOpen: boolean
   },
 ) {
   const { navigate } = useRouter()
@@ -1122,6 +1127,11 @@ function DspSourceEditorReady(
       return false
     }
     if (e.key === ' ' && metaKey) {
+      // Don't handle keyboard shortcuts when docs are open
+      if (docsIsOpen) {
+        return true
+      }
+
       const runtime = useEngineRuntimeStore.getState()
       const isSameLoop = runtime.playingLoopId === currentLoop?.data.id
       if (runtime.playbackState === 'running' && isSameLoop) {
@@ -1145,7 +1155,7 @@ function DspSourceEditorReady(
       return false
     }
     return true
-  }, [currentLoop])
+  }, [currentLoop, docsIsOpen])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)

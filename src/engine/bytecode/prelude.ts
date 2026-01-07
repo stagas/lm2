@@ -1,6 +1,9 @@
 export const PRELUDE = `
 // Set the global BPM (beats per minute) for timing calculations
-bpm=60
+bpm=120
+
+// Decay envelope
+decay=(seconds=1,exponent=3,trig)->ad(.0001,seconds,exponent,trig)
 
 // Convert decibels to linear gain multiplier (10^(dB/20))
 db=x->10**(x/20)
@@ -443,7 +446,7 @@ tube=(in,drive=3,bias=.2)->{
 }
 
 // Hard clipping distortion
-clip=(in,x=1)->clamp(in,-x,x)
+clip=(in,x=1)->clamp(in,lo:-x,hi:x)
 
 // Bit crushing effect using sample and hold
 bitcrush=(in,rate=8000)->{

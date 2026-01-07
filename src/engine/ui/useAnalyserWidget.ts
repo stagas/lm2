@@ -17,6 +17,8 @@ type UseAnalyserWidgetParams = {
   isLive: boolean
   playbackState: 'stopped' | 'running' | 'paused'
   sampleRate: number | undefined
+  loopId: string
+  playingLoopId: string | null
 }
 
 type AnalyserState = {
@@ -509,6 +511,8 @@ export function useAnalyserWidget({
   isLive,
   playbackState,
   sampleRate,
+  loopId,
+  playingLoopId,
 }: UseAnalyserWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const analyserStateRef = useRef<Array<AnalyserState | undefined>>([])
   const fftRef = useRef<FftState | null>(null)
@@ -572,13 +576,22 @@ export function useAnalyserWidget({
     // Reset the rendered set for this frame
     renderedThisFrameRef.current.clear()
 
-    // When not viewing the currently-loaded (playingLoopId) loop, keep analysers flat
-    // without destroying the last live analyser buffers.
-    if (!isLive) return
-
     const stArr = analyserStateRef.current
     const seen = seenRef.current
     seen.clear()
+
+    // When not viewing the currently-loaded (playingLoopId) loop, clear analyser floats
+    // so widgets show placeholders instead of stale data, unless nothing is currently playing
+    // (in which case we preserve the last data).
+    if (!isLive) {
+      const shouldClear = playingLoopId !== null && playingLoopId !== loopId
+      for (const ref of analyserRefs) {
+        const analyserIndex = ref.analyserIndex | 0
+        const st = stArr[analyserIndex]
+        if (st && shouldClear) st.floats = null
+      }
+      return
+    }
 
     const canRead = !!program1?.program?.analyserOuts && !!ringPos
     if (!canRead) return

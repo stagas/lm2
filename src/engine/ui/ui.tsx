@@ -280,6 +280,7 @@ function RouterContent({
             currentLoop={currentLoop}
             dspError={dspError}
             onDspError={onDspError}
+            docsIsOpen={docsIsOpen}
           />
         </div>
       </div>

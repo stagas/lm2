@@ -5,17 +5,15 @@ import { addAudio, clearAudio, copyAudio, mulAudioScalar } from './audio-ops'
 import { callAd } from './builtins/ad'
 import { callAdsr } from './builtins/adsr'
 import { callAnalyser } from './builtins/analyser'
+import { callReverse, callShuffle } from './builtins/array'
 import { callAt } from './builtins/at'
 import { callAvg } from './builtins/avg'
 import { callAp, callBp, callBs, callHp, callHs, callLp, callLs, callPeak } from './builtins/biquad'
-import { callImpulse } from './builtins/impulse'
-import { callZerox } from './builtins/zerox'
 import { callCompressor } from './builtins/compressor'
 import { callDattorro } from './builtins/dattorro'
 import { callDc } from './builtins/dc'
 import { callDegree } from './builtins/degree'
 import { callDelay } from './builtins/delay'
-import { callGetScale } from './builtins/get-scale'
 import { callDiodeLadder } from './builtins/diodeladder'
 import { callEnvfollow } from './builtins/envfollow'
 import { callEuclid } from './builtins/euclid'
@@ -24,7 +22,9 @@ import { callExpander } from './builtins/expander'
 import { callFdn } from './builtins/fdn'
 import { callFreeverb } from './builtins/freeverb'
 import { callGate } from './builtins/gate'
+import { callGetScale } from './builtins/get-scale'
 import { callGlide } from './builtins/glide'
+import { callImpulse } from './builtins/impulse'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLimiter } from './builtins/limiter'
 import { callMap } from './builtins/map'
@@ -84,6 +84,7 @@ import { callPlayPick } from './builtins/play-pick'
 import { callPost } from './builtins/post'
 import { callPwm } from './builtins/pwm'
 import { callRamp } from './builtins/ramp'
+import { callSah } from './builtins/sah'
 import { callSampler } from './builtins/sampler'
 import { callSaw } from './builtins/saw'
 import { callSine } from './builtins/sine'
@@ -93,11 +94,11 @@ import { callSolo } from './builtins/solo'
 import { callSqr } from './builtins/sqr'
 import { callArrayRandom, callArrayStep } from './builtins/step'
 import { callSum } from './builtins/sum'
-import { callSah } from './builtins/sah'
 import { callSap, callSbp, callSbs, callShp, callSlp, callSpeak } from './builtins/svf'
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { callVelvet } from './builtins/velvet'
+import { callZerox } from './builtins/zerox'
 import { Dsp } from './dsp'
 import { VM_FUNC_HEADER, VmBuiltin, VmTag } from './types'
 import { VmAudio } from './vm-audio'
@@ -307,14 +308,16 @@ export class VmBuiltins {
       && calleeAux !== VmBuiltin.Avg
       && calleeAux !== VmBuiltin.ArrayStep
       && calleeAux !== VmBuiltin.ArrayRandom
+      && calleeAux !== VmBuiltin.Reverse
+      && calleeAux !== VmBuiltin.Shuffle
       && calleeAux !== VmBuiltin.Glide
       && calleeAux !== VmBuiltin.Out
       && calleeAux !== VmBuiltin.Solo
       && calleeAux !== VmBuiltin.Analyser
-      // && calleeAux !== VmBuiltin.Freeverb
-      // && calleeAux !== VmBuiltin.Dattorro
-      // && calleeAux !== VmBuiltin.Fdn
-      // && calleeAux !== VmBuiltin.Velvet
+      && calleeAux !== VmBuiltin.Freeverb
+      && calleeAux !== VmBuiltin.Dattorro
+      && calleeAux !== VmBuiltin.Fdn
+      && calleeAux !== VmBuiltin.Velvet
     ) {
       for (let i: i32 = 0; i < posCount; i++) {
         this.coerceArrayToScalar(posTags, posNums, posAux, i, audio, program, length, dsp)
@@ -1093,6 +1096,18 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.ArrayRandom) {
       callArrayRandom(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
         audio, program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Reverse) {
+      callReverse(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Shuffle) {
+      callShuffle(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
       return
     }
 

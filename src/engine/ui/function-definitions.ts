@@ -1,4 +1,5 @@
 import type { FunctionSignature } from 'mini-code'
+import { SCALE_INTERVALS } from '../../mini/scales.ts'
 
 export const functionDefinitions: Record<string, FunctionSignature> = {
   't': {
@@ -16,19 +17,19 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     type: 'variable',
     parameters: [],
     returnType: 'string',
-    description: 'The scale to use.',
+    description: 'The scale to use.\n\nAvailable scales:\n\n' + Object.keys(SCALE_INTERVALS).join(', '),
     examples: [
-      'scale = \'dorian\'',
-      'scale = \'pentatonic\'',
+      `scale='minor' trig=every(1/8) drawbar(#scale.step(trig)*o4)*ad(.01,.5,4,trig) |> out($)`,
     ],
   },
   '#scale': {
     name: '#scale',
     parameters: [],
     returnType: 'array',
-    description: 'The current scale in an array of frequencies.',
+    description: 'The current scale in an array of frequencies.\n\nAvailable scales:\n\n'
+      + Object.keys(SCALE_INTERVALS).join(', '),
     examples: [
-      'saw(#scale.step(every(1/8))*o4) |> out($)',
+      `scale='minor' trig=every(1/8) drawbar(#scale.step(trig)*o4)*ad(.01,.5,4,trig) |> out($)`,
     ],
     type: 'variable',
   },
@@ -41,8 +42,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'array',
     description: 'Maps over an array and returns a new array with the results.',
     examples: [
-      '[60,62,65].map(x->note(x)) |> tri($.step(every(1/8))) |> out($)',
-      '[60,62,65].map(x->saw(note(x))).avg() |> out($)',
+      '[60,62,65].map((x,i)->rhodes2(note(x*(1.03**i)))).avg() |> out($)',
     ],
   },
   '.glide': {
@@ -60,8 +60,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Iterates numeric array values on a beat-locked bar division and glides between them.',
     examples: [
-      '[#1,#3,#5].glide(1/4) |> tri($*o4) |> out($)',
-      '#scale.glide(1/4) |> tri($*o4) |> out($)',
+      `scale='aeolian' trig=euclid(3,8,bar:.25)
+;[#1,#3,#5].glide(1/4,exponent:.2) |> cs80($*o3,trig) |> $+velvet($,.8) |> limiter($) |> out($)`,
     ],
   },
   '.sum': {
@@ -79,8 +79,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Averages an array and returns the result.',
     examples: [
-      '[1,2,3].avg() |> print($)',
-      '[60,62,65].map(x->saw(note(x))).avg() |> out($)',
+      '[60,62,65].map(x->rhodes2(note(x))).avg() |> out($)',
     ],
   },
   '.step': {
@@ -91,8 +90,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Steps through array elements on trigger impulses, wrapping around when reaching the end.',
     examples: [
-      '[#1,#3,#5].step(every(1/8)) |> tri($*o4) |> out($)',
-      '#scale.step(every(1/8)) |> tri($*o4) |> out($)',
+      `scale='pentatonic' trig=euclid(5,8,bar:.25) env=ad(.01,.5,5,trig)
+#scale.step(trig) |> rhodes2($*o4)*env |> out($)`,
     ],
   },
   '.random': {
@@ -104,8 +103,43 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Selects random array elements on trigger impulses.',
     examples: [
-      '[#1,#3,#5].random(every(1/8)) |> tri($*o4) |> out($)',
-      '#scale.random(every(1/8)) |> tri($*o4) |> out($)',
+      `scale='yu' trig=euclid(5,8,bar:.25) env=ad(.01,.5,5,trig)
+#scale.random(trig) |> drawbar($*[o3,o4,o5].random(trig))*env |> out($)`,
+    ],
+  },
+  '.reverse': {
+    name: '[].reverse',
+    parameters: [],
+    returnType: 'array',
+    description: 'Reverses the array in place and returns the reversed array.',
+    examples: [
+      `scale='aeolian' trig=euclid(3,8,bar:.25) env=ad(.01,.75 ,5,trig)
+;((t+2)%4>2?#scale:#scale.reverse()).step(trig) |> rhodes($*o3)*env |> limiter($) |> out($)`,
+    ],
+  },
+  '.shuffle': {
+    name: '[].shuffle',
+    parameters: [
+      { name: 'seed', type: 'number', description: 'Random seed (optional, default: random).', optional: true },
+    ],
+    returnType: 'array',
+    description: 'Shuffles the array elements randomly and returns the shuffled array.',
+    examples: [
+      `scale='yu' trig=euclid(3,8,bar:.25) env=ad(.01,.5,5,trig)
+#scale.shuffle(42).step(trig) |> drawbar($*o4)*env |> out($)`,
+    ],
+  },
+  'shuffle': {
+    name: 'shuffle',
+    parameters: [
+      { name: 'array', type: 'array', description: 'Array to shuffle.' },
+      { name: 'seed', type: 'number', description: 'Random seed (optional, default: random).', optional: true },
+    ],
+    returnType: 'array',
+    description: 'Shuffles the array elements randomly and returns the shuffled array.',
+    examples: [
+      'shuffle([1,2,3,4]) |> print($)',
+      'shuffle([1,2,3,4], 42) |> print($)',
     ],
   },
   oversample: {
@@ -437,7 +471,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         type: 'number',
         optional: true,
         defaultValue: 1,
-        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic.',
+        description:
+          'Curve shape: 0/1/-1=linear, >1=exponential, 0>..<1=subexponential <-1=logarithmic -0>..<-1=sublogarithmic.',
       },
       {
         name: 'trig',
@@ -449,7 +484,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Attack/decay envelope that emits a single bump per trigger pulse.',
     examples: [
-      'trig=every(1/8) sine(440, trig) * ad(.01, .3, 2, trig) |> out($)',
+      'drawbar(a4) * ad(.01,.3,2,trig:every(1/8)) |> out($)',
     ],
   },
   adsr: {
@@ -464,7 +499,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
         type: 'number',
         optional: true,
         defaultValue: 1,
-        description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic.',
+        description:
+          'Curve shape: 0/1/-1=linear, >1=exponential, 0>..<1=subexponential <-1=logarithmic -0>..<-1=sublogarithmic.',
       },
       {
         name: 'trig',
@@ -477,9 +513,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     description:
       'Full attack/decay/sustain/release envelope. Always reaches 1, settles at sustain while trig is high, then decays to 0.',
     examples: [
-      'env = adsr(attack:.01, decay:.1, sustain:.3, release:.7, trig)',
-      'adsr(attack:.01, decay:.05, sustain:.5, release:.2, trig) * sine(hz, trig) |> out($)',
-      'env = adsr(attack:.1, decay:.2, sustain:.8, release:.3, exponent:0.5, trig)',
+      `trig=step(lfosaw(1/2),.5) supersaw(a4) * adsr(.1,.2,.3,.75,trig) |> out($)`,
     ],
   },
   envfollow: {
@@ -518,7 +552,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Creates an analyser for the signal. Returns the original signal.',
     examples: [
-      'signal |> analyser($) |> out($)',
+      `saw(330)*ad(.01,.2,trig:every(1/8)) |> analyser($)
+|> out($)`,
     ],
   },
   amplitude: {
@@ -529,7 +564,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Creates an amplitude analyser widget for the signal. Returns the original signal.',
     examples: [
-      'signal |> amplitude($) |> out($)',
+      `saw(330)*ad(.01,.2,trig:every(1/8)) |> amplitude($)
+|> out($)`,
     ],
   },
   waveform: {
@@ -540,7 +576,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Creates a waveform analyser widget for the signal. Returns the original signal.',
     examples: [
-      'signal |> waveform($) |> out($)',
+      `saw(330)*ad(.01,.2,trig:every(1/8)) |> waveform($)
+|> out($)`,
     ],
   },
   spectrum: {
@@ -551,7 +588,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Creates a spectrum analyser widget for the signal. Returns the original signal.',
     examples: [
-      'signal |> spectrum($) |> out($)',
+      `saw(330)*ad(.01,.2,trig:every(1/8)) |> spectrum($)
+|> out($)`,
     ],
   },
   level: {
@@ -562,7 +600,8 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Creates a level meter (VU) analyser widget for the signal. Returns the original signal.',
     examples: [
-      'signal |> level($) |> out($)',
+      `saw(330)*ad(.01,.2,trig:every(1/8)) |> level($)
+|> out($)`,
     ],
   },
   print: {
@@ -573,7 +612,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Creates a print analyser widget that shows the values it receives. Returns the original signal.',
     examples: [
-      'signal |> print($) |> out($)',
+      '[1,2,3,4,5].random(every(1/8)) |> print($)',
     ],
   },
   compressor: {
@@ -872,7 +911,15 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Fires a gate at an absolute bar and optionally every N bars after that, with probability control.',
     examples: [
-      'if (at(bar: 16, every: 8)) sine(880) |> analyser($) |> out($)',
+      `bpm=144
+perc=(seed,trig)->pink(seed,trig)*ad(.01,.08,15,trig)
+every=1/2 q=.5
+ perc(23,at(0,   every,prob:.9,seed:123))
++perc(45,at(1/12,every,prob:.9,seed:456))
++perc(67,at(3/12,every,prob:.9,seed:789))
+|> bp($,70,q)+bp($,720,q)+bp($,1300,q) |> $+freeverb($,.796)
+|> out($)
+`,
     ],
   },
   euclid: {
@@ -1326,7 +1373,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'All-pass filter that changes phase without affecting frequency response.',
     examples: [
-      'saw(hz) |> ap($, cutoff:1000, q:1) |> out($)',
+      'saw(220) |> ap($, cutoff:1000, q:1) |> out($)',
     ],
   },
   slp: {
@@ -1750,7 +1797,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     parameters: [{ name: 'x', type: 'number', description: 'Input value (-1..1)' }],
     returnType: 'number',
     description: 'Arccosine function.',
-    examples: ['acos(sine(440)) |> out($)'],
+    examples: ['sine(110) |> acos($) |> out($)'],
   },
   tanh: {
     name: 'tanh',
@@ -1771,7 +1818,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
     description: 'Absolute value.',
-    examples: ['sine(220) |> abs($) |> out($)'],
+    examples: ['sine(110) |> abs($) |> out($)'],
   },
   sqrt: {
     name: 'sqrt',
