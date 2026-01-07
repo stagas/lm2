@@ -87,6 +87,9 @@ export class Program {
   recordPos: StaticArray<i32> = new StaticArray<i32>(1024)
   recordBuf$: StaticArray<usize> = new StaticArray<usize>(1024)
 
+  // Set to 1 by record() when it performs work in the current audio block.
+  recordActive: i32 = 0
+
   // Callback scope stack for remapped buffers and bound inputs
   private callbackDepth: i32 = 0
   private callbackBodyBase: StaticArray<i32> = new StaticArray<i32>(CALLBACK_SCOPE_MAX_DEPTH)
