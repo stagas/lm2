@@ -8,6 +8,7 @@ import { INTRO_PROGRAM } from '../intro-program.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { Docs } from './docs/Docs.tsx'
 import { DspSourceEditor } from './DspSourceEditor.tsx'
+import { functionDefinitions } from './function-definitions.ts'
 import type { Loop } from './loop.ts'
 import { Nav } from './Nav.tsx'
 import { RouterProvider, useRouter } from './router.tsx'
@@ -63,7 +64,7 @@ function SyncSampleCount({ currentLoop }: { currentLoop: Loop | null }) {
   return null
 }
 
-function RouterContent({
+function AppContent({
   showIntro,
   isFadingIn,
   isFadingOut,
@@ -73,6 +74,10 @@ function RouterContent({
   timelineHeader,
   hasHydrated,
   onDspError,
+  docsIsOpen,
+  setDocsIsOpen,
+  docsSelectedId,
+  setDocsSelectedId,
 }: {
   showIntro: boolean
   isFadingIn: boolean
@@ -83,6 +88,75 @@ function RouterContent({
   timelineHeader: any
   hasHydrated: boolean
   onDspError: (error: string | undefined) => void
+  docsIsOpen: boolean
+  setDocsIsOpen: (value: boolean) => void
+  docsSelectedId: string | null
+  setDocsSelectedId: (value: string | null) => void
+}) {
+  const { navigate } = useRouter()
+  const previousUrlRef = useRef<string>('/')
+
+  return (
+    <>
+      <RouterContent
+        showIntro={showIntro}
+        isFadingIn={isFadingIn}
+        isFadingOut={isFadingOut}
+        timelineWindowRef={timelineWindowRef}
+        currentLoop={currentLoop}
+        dspError={dspError}
+        timelineHeader={timelineHeader}
+        hasHydrated={hasHydrated}
+        onDspError={onDspError}
+        docsIsOpen={docsIsOpen}
+        setDocsIsOpen={setDocsIsOpen}
+        docsSelectedId={docsSelectedId}
+        setDocsSelectedId={setDocsSelectedId}
+        previousUrlRef={previousUrlRef}
+      />
+      <Docs
+        externalIsOpen={docsIsOpen}
+        externalSelectedId={docsSelectedId}
+        onClose={() => {
+          setDocsIsOpen(false)
+          setDocsSelectedId(null)
+          navigate(previousUrlRef.current, { replace: true })
+        }}
+      />
+    </>
+  )
+}
+
+function RouterContent({
+  showIntro,
+  isFadingIn,
+  isFadingOut,
+  timelineWindowRef,
+  currentLoop,
+  dspError,
+  timelineHeader,
+  hasHydrated,
+  onDspError,
+  docsIsOpen,
+  setDocsIsOpen,
+  docsSelectedId,
+  setDocsSelectedId,
+  previousUrlRef,
+}: {
+  showIntro: boolean
+  isFadingIn: boolean
+  isFadingOut: boolean
+  timelineWindowRef: preact.RefObject<any>
+  currentLoop: any
+  dspError: string | undefined
+  timelineHeader: any
+  hasHydrated: boolean
+  onDspError: (error: string | undefined) => void
+  docsIsOpen: boolean
+  setDocsIsOpen: (value: boolean) => void
+  docsSelectedId: string | null
+  setDocsSelectedId: (value: string | null) => void
+  previousUrlRef: preact.RefObject<string>
 }) {
   // Parse loop ID from URL path like /loop/<id>
   const { pathname, navigate } = useRouter()
@@ -91,7 +165,77 @@ function RouterContent({
     return match ? match[1] : null
   }, [pathname])
 
+  // Parse docs path like /docs/section-slug
+  const docsRoute = useMemo(() => {
+    const match = pathname.match(/^\/docs(?:\/(.+))?$/)
+    return match ? match[1] || '' : null
+  }, [pathname])
+
   const hasCheckedInitialNavigation = useRef(false)
+
+  // Track the last non-docs URL
+  useEffect(() => {
+    if (!pathname.startsWith('/docs')) {
+      previousUrlRef.current = pathname
+    }
+  }, [pathname, previousUrlRef])
+
+  // Handle docs routing
+  useEffect(() => {
+    if (docsRoute !== null) {
+      setDocsIsOpen(true)
+
+      if (docsRoute === '') {
+        // Default /docs to getting-started tutorial
+        setDocsSelectedId('tutorial-getting-started')
+        navigate('/docs/tutorials/getting-started', { replace: true })
+        return
+      }
+
+      // Parse the slug and map to doc ID
+      const decodedSlug = decodeURIComponent(docsRoute)
+      let targetId: string | null = null
+
+      if (decodedSlug.startsWith('tutorials/')) {
+        const tutorialSlug = decodedSlug.replace('tutorials/', '')
+        targetId = `tutorial-${tutorialSlug.replace(/[^a-z0-9]+/g, '-')}`
+      }
+      else if (decodedSlug.startsWith('api/')) {
+        const apiSlug = decodedSlug.replace('api/', '')
+        // Normalize URL slug back to function name
+        const normalizedSlug = apiSlug
+          .replace(/^array\./, '[].') // array.map -> [].map
+          .replace(/^hash-/, '#') // hash-scale -> #scale
+        // Find function by name property
+        const functionNames = Object.keys(functionDefinitions)
+        const matchingFunction = functionNames.find(key => {
+          const def = functionDefinitions[key]
+          return def.name === normalizedSlug
+        })
+
+        if (matchingFunction) {
+          // Generate the API ID the same way as in Docs.tsx
+          const funcSlug = matchingFunction.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+          let hash = 5381
+          for (let i = 0; i < matchingFunction.length; i++) hash = ((hash << 5) + hash) ^ matchingFunction.charCodeAt(i)
+          const hashStr = (hash >>> 0).toString(36)
+          targetId = `api-${funcSlug}-${hashStr}`
+        }
+      }
+      else if (decodedSlug.startsWith('about/')) {
+        const aboutSlug = decodedSlug.replace('about/', '')
+        targetId = `about-${aboutSlug}`
+      }
+
+      if (targetId) {
+        setDocsSelectedId(targetId)
+      }
+    }
+    else {
+      setDocsIsOpen(false)
+      setDocsSelectedId(null)
+    }
+  }, [docsRoute, navigate])
 
   // Initialize selected loop from URL if present
   useEffect(() => {
@@ -173,6 +317,9 @@ export function EngineUI() {
   const animationIntroTimeRef = useRef<number>(0)
   const didStartIntroExitRef = useRef(false)
 
+  const [docsIsOpen, setDocsIsOpen] = useState(false)
+  const [docsSelectedId, setDocsSelectedId] = useState<string | null>(null)
+
   const [dspError, setDspError] = useState<string>()
   const { timelineHeader, timelineWindowRef } = useTimelineHeader(currentLoop?.data.id ?? null)
 
@@ -242,7 +389,7 @@ export function EngineUI() {
 
   return (
     <RouterProvider>
-      <RouterContent
+      <AppContent
         showIntro={showIntro}
         isFadingIn={isFadingIn}
         isFadingOut={isFadingOut}
@@ -252,8 +399,11 @@ export function EngineUI() {
         timelineHeader={timelineHeader}
         hasHydrated={hasHydrated}
         onDspError={setDspError}
+        docsIsOpen={docsIsOpen}
+        setDocsIsOpen={setDocsIsOpen}
+        docsSelectedId={docsSelectedId}
+        setDocsSelectedId={setDocsSelectedId}
       />
-      <Docs />
     </RouterProvider>
   )
 }
