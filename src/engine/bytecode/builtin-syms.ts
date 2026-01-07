@@ -14,6 +14,7 @@ export const builtinSyms: Record<string, number> = {
   impulse: VmSym.Impulse,
   zerox: VmSym.Zerox,
   pitchshift: VmSym.PitchShift,
+  record: VmSym.Record,
   ad: VmSym.Ad,
   adsr: VmSym.Adsr,
   envfollow: VmSym.Envfollow,
@@ -148,6 +149,7 @@ export const builtinSyms: Record<string, number> = {
   // Named args for analyser (alternative)
   signal: VmSym.Signal,
   key: VmSym.Key,
+  '%key': VmSym.Key,
   // Named args for mini/play
   hz: VmSym.Hz,
   seq: VmSym.Seq,

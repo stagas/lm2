@@ -167,6 +167,18 @@ export class DspProcessor extends AudioWorkletProcessor {
               if (take < n) out.fill(0, take)
               return take | 0
             },
+            sampleSet: (sampleIndex: number, length: number, inPtr: number) => {
+              const idx = sampleIndex | 0
+              const n = length | 0
+              if (!memory?.buffer || inPtr === 0 || n <= 0) return
+
+              const src = new Float32Array(memory.buffer, inPtr >>> 0, n)
+              const copy = src.slice()
+
+              const prev = this.samples.get(idx)
+              const ver = ((prev?.ver ?? 0) + 1) | 0
+              this.samples.set(idx, { ver, sampleRate, len: copy.length | 0, ch0: copy })
+            },
             sampleSlices: (sampleIndex: number, threshold: number, outPtr: number, max: number) => {
               const s = this.samples.get(sampleIndex | 0)
               const m = max | 0
@@ -232,6 +244,30 @@ export class DspProcessor extends AudioWorkletProcessor {
     const prev = this.samples.get(index)
     const ver = ((prev?.ver ?? 0) + 1) | 0
     this.samples.set(index, { ver, sampleRate: sr, len: Math.min(len, ch0.length | 0), ch0 })
+  }
+
+  async getSample(sampleIndex: number): Promise<{
+    ver: number
+    sampleRate: number
+    length: number
+    ch0Buffer: ArrayBuffer
+  } | null> {
+    const s = this.samples.get(sampleIndex | 0)
+    if (!s) return null
+    if (s.len <= 0 || !s.ch0) return null
+
+    const copy = s.ch0.slice()
+    return {
+      ver: s.ver | 0,
+      sampleRate: s.sampleRate | 0,
+      length: s.len | 0,
+      ch0Buffer: copy.buffer,
+    }
+  }
+
+  async getSampleVersion(sampleIndex: number): Promise<number> {
+    const s = this.samples.get(sampleIndex | 0)
+    return s ? (s.ver | 0) : 0
   }
 
   async clearSamples() {

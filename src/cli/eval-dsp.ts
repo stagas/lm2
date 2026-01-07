@@ -34,6 +34,54 @@ async function evalDsp(programSource: string) {
     sourcemapUrl,
     config,
     imports: ({ memory }) => ({
+      host: (() => {
+        const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+        const samples = new Map<number, { ver: number; len: number; ch0: Float32Array }>()
+        return {
+          sampleVersion: (sampleIndex: number) => {
+            const s = samples.get(sampleIndex | 0)
+            return s ? (s.ver | 0) : 0
+          },
+          sampleLen: (sampleIndex: number) => {
+            const s = samples.get(sampleIndex | 0)
+            return s ? (s.len | 0) : 0
+          },
+          sampleRead: (sampleIndex: number, start: number, length: number, outPtr: number) => {
+            const s = samples.get(sampleIndex | 0)
+            const n = length | 0
+            if (!memory?.buffer || outPtr === 0 || n <= 0) return 0
+
+            const out = new Float32Array(memory.buffer, outPtr >>> 0, n)
+            if (!s || !s.ch0 || s.len <= 0) {
+              out.fill(0)
+              return 0
+            }
+
+            const src = s.ch0
+            const len = s.len | 0
+            const a = start | 0
+
+            const from = clamp(a, 0, len)
+            const to = clamp(a + n, 0, len)
+            const take = Math.max(0, to - from)
+
+            if (take > 0) out.set(src.subarray(from, from + take), 0)
+            if (take < n) out.fill(0, take)
+            return take | 0
+          },
+          sampleSet: (sampleIndex: number, length: number, inPtr: number) => {
+            const idx = sampleIndex | 0
+            const n = length | 0
+            if (!memory?.buffer || inPtr === 0 || n <= 0) return
+            const src = new Float32Array(memory.buffer, inPtr >>> 0, n)
+            const copy = src.slice()
+            const prev = samples.get(idx)
+            const ver = ((prev?.ver ?? 0) + 1) | 0
+            samples.set(idx, { ver, len: copy.length | 0, ch0: copy })
+          },
+          sampleSlices: (_sampleIndex: number, _threshold: number, _outPtr: number, _max: number) => 0,
+        }
+      })(),
       env: {
         'console.log': (textPtr: number) => {
           const text = liftString(memory, textPtr)

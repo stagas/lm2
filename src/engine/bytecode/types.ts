@@ -438,7 +438,15 @@ export type EnvfollowRef = {
 export type SampleDef = {
   sampleIndex: number
   url: string
-  provider: 'freesound'
-  id: number
   loc: Loc
-}
+} & (
+  | {
+    provider: 'freesound'
+    id: number
+  }
+  | {
+    provider: 'record'
+    /** Stable key used to preserve sampleIndex across recompiles. */
+    key: string
+  }
+)

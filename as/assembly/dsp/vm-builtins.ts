@@ -84,6 +84,7 @@ import { callPlayPick } from './builtins/play-pick'
 import { callPost } from './builtins/post'
 import { callPwm } from './builtins/pwm'
 import { callRamp } from './builtins/ramp'
+import { callRecord } from './builtins/record'
 import { callSah } from './builtins/sah'
 import { callSampler } from './builtins/sampler'
 import { callSaw } from './builtins/saw'
@@ -1213,6 +1214,12 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.Sampler) {
       callSampler(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.Record) {
+      callRecord(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, left$, right$, dsp, this.cbArgTags, this.cbArgNums, this.cbArgAux)
       return
     }
 

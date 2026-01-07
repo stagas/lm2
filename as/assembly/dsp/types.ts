@@ -195,6 +195,7 @@ export enum VmBuiltin {
   Oversample = VmSym.Oversample,
   Zerox = VmSym.Zerox,
   PitchShift = VmSym.PitchShift,
+  Record = VmSym.Record,
 }
 
 export const VM_FUNC_HEADER: i32 = -2

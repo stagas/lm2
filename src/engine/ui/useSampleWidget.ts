@@ -198,10 +198,12 @@ export function useSampleWidget({
   const lastWritePosRef = useRef<number>(0)
   const needleRef = useRef<Map<number, NeedleState>>(new Map())
   const waveRef = useRef<WeakMap<ArrayBuffer, Map<string, WaveCache>>>(new WeakMap())
+  const recordFetchRef = useRef<Map<number, { url: string; pending: boolean; nextAt: number }>>(new Map())
 
   useEffect(() => {
     lastWritePosRef.current = 0
     needleRef.current.clear()
+    recordFetchRef.current.clear()
   }, [dspSource])
 
   const onBeforeDraw = useCallback(() => {
@@ -287,7 +289,53 @@ export function useSampleWidget({
       const a = 1 - Math.exp(-deltaTime / tau)
       st.posFrames = st.posFrames + diff * a
     }
-  }, [showWidgets, program1, audioContext, globalSampleCount, playbackState])
+
+    const worklet = useEngineRuntimeStore.getState().worklet
+    if (!worklet) return
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    for (const def of sampleDefs) {
+      if (def.provider !== 'record') continue
+      const idx = def.sampleIndex
+
+      const loaded = useEngineDspStore.getState().loadedSamples[idx]
+      if (loaded?.url === def.url) continue
+
+      const st = recordFetchRef.current.get(idx)
+      if (st && st.url === def.url) {
+        if (st.pending) continue
+        if (now < st.nextAt) continue
+      }
+      recordFetchRef.current.set(idx, { url: def.url, pending: true, nextAt: now + 250 })
+
+      void worklet.getSample(idx).then((s) => {
+        const t = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        if (!s || s.length <= 0) {
+          const prev = recordFetchRef.current.get(idx)
+          if (prev && prev.url === def.url) recordFetchRef.current.set(idx, { url: def.url, pending: false, nextAt: t + 250 })
+          return
+        }
+        const ch0Buffer = s.ch0Buffer
+        const ch0 = new Float32Array(ch0Buffer) as unknown as Float32Array<ArrayBuffer>
+        useEngineDspStore.setState(prev => {
+          const next = prev.loadedSamples.slice()
+          next[idx] = {
+            url: def.url,
+            sampleRate: s.sampleRate,
+            length: s.length,
+            ch0,
+            ch0Buffer,
+          }
+          return { loadedSamples: next }
+        })
+        recordFetchRef.current.delete(idx)
+      }).catch(() => {
+        const t = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        const prev = recordFetchRef.current.get(idx)
+        if (prev && prev.url === def.url) recordFetchRef.current.set(idx, { url: def.url, pending: false, nextAt: t + 250 })
+      })
+    }
+  }, [showWidgets, program1, audioContext, globalSampleCount, playbackState, sampleDefs])
 
   const draw = useCallback((
     c: CanvasRenderingContext2D,
