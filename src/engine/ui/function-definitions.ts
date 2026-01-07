@@ -5,7 +5,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     name: 't',
     parameters: [],
     returnType: 'number',
-    description: 'Time in seconds (BPM adjusted)',
+    description: 'BPM adjusted time elapsed: 1 t = ¼ note.',
     examples: [
       'saw([c4,a4,f4,e4][t]) |> out($)',
     ],
@@ -2453,7 +2453,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Crossfade between two signals.',
     examples: [
-      'crossfade(sine(220), saw(220), 0.5) |> out($)',
+      'crossfade(sine(220), saw(220), lfosine(1)) |> out($)',
     ],
   },
   va: {

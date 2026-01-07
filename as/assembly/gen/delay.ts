@@ -25,6 +25,16 @@ export class Delay extends Gen {
     this.cap = f32BufArena.len(h)
   }
 
+  dispose(): void {
+    const h: i32 = this.bufHandle
+    if (h >= 0) f32BufArena.release(h)
+    this.bufHandle = -1
+    this.cap = 0
+    this.len = 1
+    this.writePos = 0
+    this.lastSampleRate = -1
+  }
+
   @inline
   private ensureBuffer(): void {
     const sr: i32 = i32(sampleRate)

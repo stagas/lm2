@@ -272,14 +272,17 @@ export function useEnvelopeWidget({
             let releaseW = 0
 
             if (adTotal > 0) {
-              // Release width: scales with release value
-              const remainingW = plotW - sustainW
-              const releaseRatio = release * 0.5
-              releaseW = releaseRatio * remainingW
-              const adW = remainingW - releaseW
+              // Calculate widths proportionally based on all time values
+              const totalTime = attack + decay + 0.5 + release // 0.5 is a nominal sustain duration
+              const attackRatio = attack / totalTime
+              const decayRatio = decay / totalTime
+              const sustainRatio = 0.5 / totalTime // nominal sustain duration
+              const releaseRatio = release / totalTime
 
-              attackW = (attack / adTotal) * adW
-              decayW = (decay / adTotal) * adW
+              attackW = attackRatio * plotW
+              decayW = decayRatio * plotW
+              sustainW = sustainRatio * plotW
+              releaseW = releaseRatio * plotW
 
               // Attack phase (curved)
               const attackX = attackW

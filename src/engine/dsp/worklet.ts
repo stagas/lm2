@@ -523,9 +523,10 @@ export class DspProcessor extends AudioWorkletProcessor {
             }
           }
 
-          this.signalSwapResult(1)
-
+          // Reset control BEFORE signaling, so main thread's subsequent writes
+          // (e.g. Start) aren't overwritten.
           Atomics.store(this.options.processorOptions.control, 0, this.lastControl)
+          this.signalSwapResult(1)
         }
         this.lastControl = control
       }

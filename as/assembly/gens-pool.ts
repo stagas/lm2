@@ -43,6 +43,12 @@ export class GenPool<T extends Gen> {
   resetIndex(): void {
     this.index = 0
   }
+  trimUnused(): void {
+    const used: i32 = this.index
+    for (let i: i32 = used; i < this.gens.length; i++) {
+      this.gens[i].dispose()
+    }
+  }
   @inline
   getIndex(): i32 {
     return this.index
@@ -287,6 +293,7 @@ export class GensPool {
     this.sahs.setIndex(src[i++])
   }
   resetIndices(): void {
+    this.delays.trimUnused()
     this.sines.resetIndex()
     this.tris.resetIndex()
     this.saws.resetIndex()

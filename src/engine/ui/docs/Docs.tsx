@@ -4,6 +4,7 @@ import { Logo } from '../../../components/Logo.tsx'
 import { Modal } from '../../../components/Modal.tsx'
 import { functionDefinitions } from '../function-definitions.ts'
 import { Link } from '../router.tsx'
+import { tokenizer } from '../tokenizer.ts'
 import { fuzzyScore } from './fuzzy.ts'
 import { InlineEditor } from './InlineEditor.tsx'
 import { MarkdownDoc } from './markdown.tsx'
@@ -67,6 +68,46 @@ async function fetchText(path: string): Promise<string> {
 function titleFromMarkdown(file: string, md: string): string {
   const m = md.match(/^#\s+(.+)\s*$/m)
   return m?.[1]?.trim() || file.replace(/\.md$/i, '')
+}
+
+function getTokenClass(type: string): string {
+  switch (type) {
+    case 'function':
+      return 'text-[#ea580c]' // orange-600 from duochrome theme
+    case 'parameter':
+      return 'text-[#dddddd]' // light gray for parameter names
+    case 'argument':
+      return 'text-[#dddddd]' // light gray for parameter names in complex signatures
+    case 'identifier':
+      return 'text-[#aaaaaa]' // darker gray for types
+    case 'number':
+      return 'text-[#ffff00]' // yellow from duochrome theme
+    case 'string':
+      return 'text-[#cccccc]' // light gray from duochrome theme
+    case 'keyword':
+      return 'text-white'
+    case 'operator':
+      return 'text-[#bbb]' // light gray from duochrome theme
+    case 'punctuation':
+      return 'text-[#bbbbbb]' // light gray from duochrome theme
+    case 'comment':
+      return 'text-[#666666]' // dark gray from duochrome theme
+    default:
+      return 'text-white'
+  }
+}
+
+function SignatureHighlight({ signature }: { signature: string }) {
+  const tokens = tokenizer(signature, true)
+  return (
+    <span className="text-sm font-[Space_Mono]">
+      {tokens.map((token, i) => (
+        <span key={i} className={getTokenClass(token.type)}>
+          {token.content}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 export function Docs({
@@ -150,7 +191,9 @@ export function Docs({
           `${p.name}:${p.type}${p.optional ? '?' : ''}${p.defaultValue !== undefined ? `=${p.defaultValue}` : ''}`
         )
         .join(', ')
-      const sig = `${def.name}(${params})${def.returnType ? ` -> ${def.returnType}` : ''}`
+      const sig = `${def.name}${def.type === 'variable' ? '' : `(${params})`}${
+        def.returnType ? `: ${def.returnType}` : ''
+      }`
       const examples = (def.examples ?? []).join('\n\n')
       const searchText = `${def.name}\n${sig}\n${def.description ?? ''}\n${params}\n${examples}`
       out.push({
@@ -160,34 +203,50 @@ export function Docs({
         searchText,
         functionName: def.name,
         render: () => (
-          <div className="flex flex-col gap-2">
-            <h3 className="text-xl font-semibold text-white">{def.name}</h3>
-            <div className="text-sm text-neutral-300 font-mono">{sig}</div>
+          <div className="flex flex-col gap-5">
+            <h3 className="text-2xl font-semibold text-white -mt-4">{def.name}</h3>
+            <SignatureHighlight signature={sig} />
             {def.description && <p className="text-neutral-200 leading-relaxed">{def.description}</p>}
             {params.length > 0 && (
               <div className="text-sm text-neutral-200">
-                <div className="font-semibold text-white">Parameters</div>
-                <ul className="mt-1 list-disc pl-6">
-                  {def.parameters.map((p, i) => (
-                    <li key={i}>
-                      <span className="font-mono text-white">{p.name}</span>
-                      <span className="text-neutral-400">:</span>
-                      <span className="font-mono text-neutral-300">{p.type}</span>
-                      {p.optional && <span className="text-neutral-400">(optional)</span>}
-                      {p.defaultValue !== undefined && (
-                        <span className="text-neutral-400">, default {String(p.defaultValue)}</span>
-                      )}
-                      {p.description && <span className="text-neutral-300">— {p.description}</span>}
-                    </li>
-                  ))}
-                </ul>
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-neutral-600">
+                      <th className="text-left py-2 px-2 font-semibold text-white">Parameter</th>
+                      <th className="text-left py-2 px-2 font-semibold text-white">Type</th>
+                      <th className="text-left py-2 px-2 font-semibold text-white">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {def.parameters.map((p, i) => (
+                      <tr key={i} className="border-b border-neutral-700">
+                        <td className="py-2 px-2">
+                          <span className="font-[Space_Mono] text-white">{p.name}</span>
+                          {p.optional && <span className="text-neutral-400 ml-1">(optional)</span>}
+                        </td>
+                        <td className="py-2 px-2">
+                          <span className="font-[Space_Mono] text-neutral-300">{p.type}</span>
+                          {p.defaultValue !== undefined && (
+                            <span className="text-neutral-400 ml-2">= {String(p.defaultValue)}</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-neutral-300">
+                          {p.description}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
             {(def.examples?.length ?? 0) > 0 && (
               <div className="mt-1">
                 <div className="font-semibold text-white">Examples</div>
                 <div className="mt-2 flex flex-col gap-3">
-                  {def.examples?.map((ex, i) => <InlineEditor key={i} id={`${id}:ex:${i}`} initialCode={`\n${ex}`} />)}
+                  {def.examples?.map((ex, i) => {
+                    const editorId = `${id}:ex:${i}`
+                    return <InlineEditor key={editorId} id={editorId} initialCode={`\n${ex}`} />
+                  })}
                 </div>
               </div>
             )}

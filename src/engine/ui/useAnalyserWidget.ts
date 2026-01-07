@@ -491,7 +491,7 @@ function drawPrintValues(
   c.translate(x, y)
 
   c.fillStyle = 'rgba(255, 255, 255, 0.75)'
-  c.font = '7pt "Space Mono"'
+  c.font = '10pt "Space Mono"'
   c.textAlign = 'right'
   c.textBaseline = 'bottom'
 
@@ -518,6 +518,15 @@ export function useAnalyserWidget({
   const spectrumCacheRef = useRef<Map<number, SpectrumCache>>(new Map())
   const seenRef = useRef<Set<number>>(new Set())
   const renderedThisFrameRef = useRef<Set<number>>(new Set())
+  const lastLiveProgramPtrRef = useRef<number | null>(null)
+  const lastLiveAnalyserKeyRef = useRef<string>('')
+
+  const analyserKey = useMemo(() => {
+    if (analyserRefs.length === 0) return ''
+    const set = new Set<number>()
+    for (const ref of analyserRefs) set.add(ref.analyserIndex | 0)
+    return [...set].sort((a, b) => a - b).join(',')
+  }, [analyserRefs])
 
   useEffect(() => {
     if (fftRef.current) return
@@ -539,27 +548,33 @@ export function useAnalyserWidget({
     }
   }, [])
 
-  // useEffect(() => {
-  //   // for (const st of analyserStateRef.current) {
-  //   //   st?.waveform.reset()
-  //   //   if (st) st.floats = null
-  //   // }
-  //   ampCanvasRef.current.length = 0
-  //   animatedSpectrumHeightsRef.current.length = 0
-  //   spectrumCacheRef.current.clear()
-  //   seenRef.current.clear()
-  // }, [dspSource])
+  useEffect(() => {
+    if (!isLive) return
+    const programPtr = program1?.program?.ptr$ ?? 0
+    if (lastLiveProgramPtrRef.current === programPtr && lastLiveAnalyserKeyRef.current === analyserKey) return
+    lastLiveProgramPtrRef.current = programPtr
+    lastLiveAnalyserKeyRef.current = analyserKey
+
+    // When switching programs (or analyser sets), reset ring readers so we don't display stale buffers.
+    analyserStateRef.current.length = 0
+    ampCanvasRef.current.length = 0
+    animatedSpectrumHeightsRef.current.length = 0
+    levelRef.current.length = 0
+    spectrumCacheRef.current.clear()
+    seenRef.current.clear()
+    renderedThisFrameRef.current.clear()
+  }, [analyserKey, isLive, program1])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (analyserRefs.length === 0) return
 
+    // Reset the rendered set for this frame
+    renderedThisFrameRef.current.clear()
+
     // When not viewing the currently-loaded (playingLoopId) loop, keep analysers flat
     // without destroying the last live analyser buffers.
     if (!isLive) return
-
-    // Reset the rendered set for this frame
-    renderedThisFrameRef.current.clear()
 
     const stArr = analyserStateRef.current
     const seen = seenRef.current
@@ -616,7 +631,7 @@ export function useAnalyserWidget({
     c.fillRect(0, 0, w, h)
 
     const st = analyserStateRef.current[analyserIndex]
-    const floats = isLive ? st?.floats : null
+    const floats = st?.floats
 
     if (!floats) {
       if (kind === 'analyser') {
@@ -727,7 +742,7 @@ export function useAnalyserWidget({
     }
 
     c.restore()
-  }, [isLive, playbackState, sampleRate])
+  }, [playbackState, sampleRate])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
