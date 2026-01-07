@@ -92,6 +92,8 @@ export enum Op {
   Step,
   ArrayStep,
   ArrayRandom,
+  Reverse,
+  Shuffle,
   PitchShift,
   Sah,
 }

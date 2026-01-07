@@ -176,6 +176,8 @@ export enum VmSym {
   Step,
   ArrayStep,
   ArrayRandom,
+  Reverse,
+  Shuffle,
   Sum,
   Sustain,
   Swing,

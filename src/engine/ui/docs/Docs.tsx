@@ -1,12 +1,13 @@
 import { MagnifyingGlassIcon, QuestionIcon, XIcon } from '@phosphor-icons/react'
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Logo } from '../../../components/Logo.tsx'
 import { Modal } from '../../../components/Modal.tsx'
+import { useEngineDspStore, useEngineRuntimeStore } from '../../store.ts'
 import { functionDefinitions } from '../function-definitions.ts'
 import { Link } from '../router.tsx'
 import { tokenizer } from '../tokenizer.ts'
 import { fuzzyScore } from './fuzzy.ts'
-import { InlineEditor } from './InlineEditor.tsx'
+import { InlineEditor, inlineEditorRegistry } from './InlineEditor.tsx'
 import { MarkdownDoc } from './markdown.tsx'
 
 type Tutorial = {
@@ -125,6 +126,7 @@ export function Docs({
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const lastPlayedExampleRef = useRef<string | null>(null)
 
   // Use external control if provided, otherwise use internal state
   const effectiveIsOpen = externalIsOpen !== undefined ? externalIsOpen : isOpen
@@ -159,6 +161,41 @@ export function Docs({
     const t = window.setTimeout(() => inputRef.current?.focus(), 0)
     return () => window.clearTimeout(t)
   }, [effectiveIsOpen])
+
+  const handleDocsKeyDown = useCallback((e: KeyboardEvent) => {
+    if (!effectiveIsOpen) return
+    const metaKey = e.ctrlKey || e.metaKey
+    if (e.key === ' ' && metaKey) {
+      e.preventDefault()
+      e.stopPropagation()
+
+      // Get all registered InlineEditors
+      const editors = Array.from(inlineEditorRegistry.entries())
+      if (editors.length === 0) return
+
+      // Find the last played example or use the first one
+      let targetEditor: [string, { play: () => void; stop: () => void }] | undefined
+      if (lastPlayedExampleRef.current) {
+        targetEditor = editors.find(([id]) => id === lastPlayedExampleRef.current)
+      }
+      if (!targetEditor) {
+        targetEditor = editors[0]
+      }
+
+      if (targetEditor) {
+        const [editorId, { play }] = targetEditor
+        play()
+        lastPlayedExampleRef.current = editorId
+      }
+    }
+  }, [effectiveIsOpen])
+
+  useEffect(() => {
+    if (effectiveIsOpen) {
+      window.addEventListener('keydown', handleDocsKeyDown)
+      return () => window.removeEventListener('keydown', handleDocsKeyDown)
+    }
+  }, [effectiveIsOpen, handleDocsKeyDown])
 
   const items = useMemo((): DocItem[] => {
     const out: DocItem[] = []
@@ -206,7 +243,9 @@ export function Docs({
           <div className="flex flex-col gap-5">
             <h3 className="text-2xl font-semibold text-white -mt-4">{def.name}</h3>
             <SignatureHighlight signature={sig} />
-            {def.description && <p className="text-neutral-200 leading-relaxed">{def.description}</p>}
+            {def.description && (
+              <p className="text-neutral-200 leading-relaxed whitespace-pre-line">{def.description}</p>
+            )}
             {params.length > 0 && (
               <div className="text-sm text-neutral-200">
                 <table className="w-full border-collapse">
@@ -245,7 +284,9 @@ export function Docs({
                 <div className="mt-2 flex flex-col gap-3">
                   {def.examples?.map((ex, i) => {
                     const editorId = `${id}:ex:${i}`
-                    return <InlineEditor key={editorId} id={editorId} initialCode={`\n${ex}`} />
+                    return (
+                      <InlineEditor key={editorId} id={editorId} initialCode={`\n${ex.split('\n').join('\n\n')}`} />
+                    )
                   })}
                 </div>
               </div>
@@ -393,7 +434,7 @@ export function Docs({
         className="h-[96dvh] rounded-lg overflow-hidden relative"
         contentClassName="h-full"
       >
-        <div className="h-full w-full flex" onKeyDown={e => e.stopPropagation()}>
+        <div className="h-full w-full flex" onKeyDown={e => e.stopPropagation()} data-docs-container>
           <main className="flex-1 min-h-0 flex flex-col bg-black">
             <div className="sticky top-0 z-10 px-6 py-2 bg-black border-b border-[#333]">
               <div className="flex items-center justify-between gap-4">

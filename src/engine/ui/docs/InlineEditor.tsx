@@ -1,6 +1,9 @@
 import { PauseIcon, PlayIcon, StopIcon } from '@phosphor-icons/react'
 import { CodeEditor, CodeFile, type EditorError, type EditorHeader, type EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
+
+// Global registry of InlineEditors for keyboard shortcut access
+export const inlineEditorRegistry = new Map<string, { play: () => void; stop: () => void }>()
 import { LITERALS_COUNT, OPS_COUNT } from '../../../../as/assembly/constants.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../../../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../../../mini/compiler.ts'
@@ -37,6 +40,7 @@ import { useTrigWidget } from '../useTrigWidget.ts'
 type InlineEditorProps = {
   id: string
   initialCode: string
+  onPlayRequest?: () => void
 }
 
 const inlineHeader: EditorHeader = {
@@ -307,6 +311,29 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
 
   const canPlay = preview.errors.length === 0
 
+  const playFunction = useCallback(() => {
+    const runtime = useEngineRuntimeStore.getState()
+    if (isPlaying) {
+      runtime.stop()
+    }
+    else {
+      void useEngineDspStore.getState().playLoop(loopId, code, 0)
+    }
+  }, [loopId, code, isPlaying])
+
+  const stopFunction = useCallback(() => {
+    const runtime = useEngineRuntimeStore.getState()
+    runtime.stop()
+  }, [])
+
+  // Register this editor in the global registry
+  useEffect(() => {
+    inlineEditorRegistry.set(id, { play: playFunction, stop: stopFunction })
+    return () => {
+      inlineEditorRegistry.delete(id)
+    }
+  }, [id, playFunction, stopFunction])
+
   useEffect(() => {
     if (!isPlaying) return
     if (!canPlay) return
@@ -453,6 +480,8 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     isLive: isPlaying,
     playbackState,
     sampleRate: audioContext?.sampleRate,
+    loopId,
+    playingLoopId,
   })
 
   const { widgets: compressorWidgets, onBeforeDraw: onBeforeDrawCompressor } = useCompressorWidget({
@@ -728,7 +757,7 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
   ])
 
   return (
-    <div className="my-3 w-full border border-[#333] bg-neutral-950 rounded-md overflow-hidden">
+    <div className="my-3 w-full border border-[#333] bg-neutral-950 rounded-md overflow-hidden" data-inline-editor={id}>
       <div className="w-full relative">
         <div className="absolute bottom-0 right-0 flex items-center justify-end z-50 gap-2 px-2 py-1.5 border-b border-[#333]">
           {!canPlay && (
@@ -771,6 +800,11 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
           autoHeight={true}
           wordWrap={true}
           keyOverride={e => {
+            const metaKey = e.ctrlKey || e.metaKey
+            if (e.key === ' ' && metaKey) {
+              // Allow Cmd/Ctrl+Space to propagate for docs keyboard shortcuts
+              return true
+            }
             e.stopPropagation()
             return true
           }}

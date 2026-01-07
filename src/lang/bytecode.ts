@@ -1038,6 +1038,10 @@ class Compiler {
     if (compileMemberCallAsBuiltin('step', 'arrayStep')) return
     // `array.random(trig)` is compiled as `arrayRandom(array, trig)` to avoid GET_PROP in the VM encoder.
     if (compileMemberCallAsBuiltin('random', 'arrayRandom')) return
+    // `array.reverse()` is compiled as `reverse(array)` to avoid GET_PROP in the VM encoder.
+    if (compileMemberCallAsBuiltin('reverse')) return
+    // `array.shuffle(seed?)` is compiled as `shuffle(array, seed?)` to avoid GET_PROP in the VM encoder.
+    if (compileMemberCallAsBuiltin('shuffle')) return
     // `signal.delay(seconds, feedback?, cb?)` is compiled as `delay(signal, seconds, feedback?, cb?)`.
     if (compileMemberCallAsBuiltin('delay')) return
 

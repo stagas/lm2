@@ -108,6 +108,8 @@ export enum VmBuiltin {
   Avg = VmSym.Avg,
   ArrayStep = VmSym.ArrayStep,
   ArrayRandom = VmSym.ArrayRandom,
+  Reverse = VmSym.Reverse,
+  Shuffle = VmSym.Shuffle,
   Glide = VmSym.Glide,
   Slew = VmSym.Slew,
   Lp = VmSym.Lp,
@@ -204,7 +206,9 @@ export class NamedArgs {
   aux: StaticArray<i32>
   count: i32
 
-  constructor(syms: StaticArray<i32>, tags: StaticArray<i32>, nums: StaticArray<f64>, aux: StaticArray<i32>, count: i32) {
+  constructor(syms: StaticArray<i32>, tags: StaticArray<i32>, nums: StaticArray<f64>, aux: StaticArray<i32>,
+    count: i32)
+  {
     this.syms = syms
     this.tags = tags
     this.nums = nums
