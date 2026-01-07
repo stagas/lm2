@@ -45,6 +45,14 @@ type WaveCache = {
   canvas: WidgetCanvas
 }
 
+type RecordFetchState = {
+  targetUrl: string
+  pending: boolean
+  nextAt: number
+  lastAppliedVer: number
+  waitForVer: number | null
+}
+
 function renderWaveformToCanvas(
   canvas: WidgetCanvas,
   ch0: Float32Array<ArrayBuffer>,
@@ -198,7 +206,7 @@ export function useSampleWidget({
   const lastWritePosRef = useRef<number>(0)
   const needleRef = useRef<Map<number, NeedleState>>(new Map())
   const waveRef = useRef<WeakMap<ArrayBuffer, Map<string, WaveCache>>>(new WeakMap())
-  const recordFetchRef = useRef<Map<number, { url: string; pending: boolean; nextAt: number }>>(new Map())
+  const recordFetchRef = useRef<Map<number, RecordFetchState>>(new Map())
 
   useEffect(() => {
     lastWritePosRef.current = 0
@@ -298,41 +306,76 @@ export function useSampleWidget({
       if (def.provider !== 'record') continue
       const idx = def.sampleIndex
 
-      const loaded = useEngineDspStore.getState().loadedSamples[idx]
-      if (loaded?.url === def.url) continue
-
       const st = recordFetchRef.current.get(idx)
-      if (st && st.url === def.url) {
-        if (st.pending) continue
-        if (now < st.nextAt) continue
+      if (!st) {
+        recordFetchRef.current.set(idx, {
+          targetUrl: def.url,
+          pending: false,
+          nextAt: 0,
+          lastAppliedVer: 0,
+          waitForVer: null,
+        })
       }
-      recordFetchRef.current.set(idx, { url: def.url, pending: true, nextAt: now + 250 })
+      const cur = recordFetchRef.current.get(idx)!
+      if (cur.targetUrl !== def.url) {
+        cur.targetUrl = def.url
+        cur.waitForVer = cur.lastAppliedVer
+      }
 
-      void worklet.getSample(idx).then((s) => {
+      if (cur.pending) continue
+      if (now < cur.nextAt) continue
+      cur.pending = true
+      cur.nextAt = now + 250
+
+      void worklet.getSampleVersion(idx).then((ver) => {
         const t = typeof performance !== 'undefined' ? performance.now() : Date.now()
-        if (!s || s.length <= 0) {
-          const prev = recordFetchRef.current.get(idx)
-          if (prev && prev.url === def.url) recordFetchRef.current.set(idx, { url: def.url, pending: false, nextAt: t + 250 })
+        cur.pending = false
+        cur.nextAt = t + 250
+        const v = (ver ?? 0) | 0
+        if (v <= 0) return
+
+        if (cur.lastAppliedVer === 0) {
+          cur.waitForVer = null
+        }
+        else if (cur.waitForVer !== null) {
+          if (v === cur.waitForVer) return
+          cur.waitForVer = null
+        }
+        else if (v === cur.lastAppliedVer) {
           return
         }
-        const ch0Buffer = s.ch0Buffer
-        const ch0 = new Float32Array(ch0Buffer) as unknown as Float32Array<ArrayBuffer>
-        useEngineDspStore.setState(prev => {
-          const next = prev.loadedSamples.slice()
-          next[idx] = {
-            url: def.url,
-            sampleRate: s.sampleRate,
-            length: s.length,
-            ch0,
-            ch0Buffer,
-          }
-          return { loadedSamples: next }
+
+        cur.pending = true
+        void worklet.getSample(idx).then((s) => {
+          const tt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+          cur.pending = false
+          cur.nextAt = tt + 250
+          if (!s || s.length <= 0) return
+          if ((s.ver | 0) <= 0) return
+          cur.lastAppliedVer = s.ver | 0
+
+          const ch0Buffer = s.ch0Buffer
+          const ch0 = new Float32Array(ch0Buffer) as unknown as Float32Array<ArrayBuffer>
+          useEngineDspStore.setState(prev => {
+            const next = prev.loadedSamples.slice()
+            next[idx] = {
+              url: cur.targetUrl,
+              sampleRate: s.sampleRate,
+              length: s.length,
+              ch0,
+              ch0Buffer,
+            }
+            return { loadedSamples: next }
+          })
+        }).catch(() => {
+          const tt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+          cur.pending = false
+          cur.nextAt = tt + 250
         })
-        recordFetchRef.current.delete(idx)
       }).catch(() => {
         const t = typeof performance !== 'undefined' ? performance.now() : Date.now()
-        const prev = recordFetchRef.current.get(idx)
-        if (prev && prev.url === def.url) recordFetchRef.current.set(idx, { url: def.url, pending: false, nextAt: t + 250 })
+        cur.pending = false
+        cur.nextAt = t + 250
       })
     }
   }, [showWidgets, program1, audioContext, globalSampleCount, playbackState, sampleDefs])

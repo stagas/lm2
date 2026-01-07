@@ -77,6 +77,9 @@ export class Program {
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
   outsPool: OutsPool = new OutsPool()
 
+  // Gens pool used only while recording (so callback DSP state is isolated from the main graph).
+  recordGensPool: GensPool = new GensPool()
+
   // record() sample capture state (per sampleIndex; indices are stable across recompiles on the TS side)
   recordKey: StaticArray<u32> = new StaticArray<u32>(1024)
   recordSeconds: StaticArray<f32> = new StaticArray<f32>(1024)
@@ -279,6 +282,7 @@ export class Program {
     }
 
     this.gensPool.copyFrom(source.gensPool)
+    this.recordGensPool.copyFrom(source.recordGensPool)
 
     // Keep record() state stable across crossfade swaps so it doesn't re-trigger unless the callback changes.
     for (let i = 0; i < this.recordKey.length; i++) {
