@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Logo } from '../../../components/Logo.tsx'
 import { Modal } from '../../../components/Modal.tsx'
 import { functionDefinitions } from '../function-definitions.ts'
+import { Link } from '../router.tsx'
 import { fuzzyScore } from './fuzzy.ts'
 import { InlineEditor } from './InlineEditor.tsx'
 import { MarkdownDoc } from './markdown.tsx'
@@ -18,6 +19,8 @@ type DocItem = {
   title: string
   group: 'tutorial' | 'api' | 'about'
   searchText: string
+  fileSlug?: string
+  functionName?: string
   render: () => preact.ComponentChild
 }
 
@@ -33,6 +36,20 @@ function hashId(s: string): string {
 
 function apiId(name: string): string {
   return `api-${slug(name)}-${hashId(name)}`
+}
+
+function functionNameToUrlSlug(name: string): string {
+  // Replace special characters with URL-friendly words
+  return name
+    .replace(/^\[\]\./, 'array.') // [].map -> array.map
+    .replace(/^#/, 'hash-') // #scale -> hash-scale
+}
+
+function urlSlugToFunctionName(slug: string): string {
+  // Reverse the URL slug transformation
+  return slug
+    .replace(/^array\./, '[].') // array.map -> [].map
+    .replace(/^hash-/, '#') // hash-scale -> #scale
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -52,13 +69,25 @@ function titleFromMarkdown(file: string, md: string): string {
   return m?.[1]?.trim() || file.replace(/\.md$/i, '')
 }
 
-export function Docs() {
+export function Docs({
+  externalIsOpen = false,
+  externalSelectedId = null,
+  onClose = () => {},
+}: {
+  externalIsOpen?: boolean
+  externalSelectedId?: string | null
+  onClose?: () => void
+} = {}) {
   const [isOpen, setIsOpen] = useState(false)
   const [tutorials, setTutorials] = useState<Tutorial[]>([])
   const [tutorialError, setTutorialError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+
+  // Use external control if provided, otherwise use internal state
+  const effectiveIsOpen = externalIsOpen !== undefined ? externalIsOpen : isOpen
+  const effectiveSelectedId = externalSelectedId !== null ? externalSelectedId : selectedId
 
   useEffect(() => {
     let isCancelled = false
@@ -85,21 +114,23 @@ export function Docs() {
   }, [])
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!effectiveIsOpen) return
     const t = window.setTimeout(() => inputRef.current?.focus(), 0)
     return () => window.clearTimeout(t)
-  }, [isOpen])
+  }, [effectiveIsOpen])
 
   const items = useMemo((): DocItem[] => {
     const out: DocItem[] = []
 
     for (const t of tutorials) {
-      const id = `tutorial-${slug(t.file)}`
+      const fileSlug = t.file.replace(/\.md$/i, '')
+      const id = `tutorial-${slug(fileSlug)}`
       out.push({
         id,
         title: t.title,
         group: 'tutorial',
         searchText: `${t.title}\n${t.markdown}`,
+        fileSlug,
         render: () => (
           <>
             <div className="mt-4">
@@ -127,6 +158,7 @@ export function Docs() {
         title: def.name,
         group: 'api',
         searchText,
+        functionName: def.name,
         render: () => (
           <div className="flex flex-col gap-2">
             <h3 className="text-xl font-semibold text-white">{def.name}</h3>
@@ -229,10 +261,11 @@ export function Docs() {
   }, [tutorials])
 
   useEffect(() => {
-    const currentSelected = items.find(i => i.id === selectedId)
+    const currentSelected = items.find(i => i.id === effectiveSelectedId)
     if (currentSelected?.group === 'tutorial') return
+    if (externalSelectedId !== null) return // Don't auto-select if externally controlled
     setSelectedId(items[0]?.id ?? null)
-  }, [items])
+  }, [items, effectiveSelectedId, externalSelectedId])
 
   const filtered = useMemo(() => {
     const q = query.trim()
@@ -259,24 +292,43 @@ export function Docs() {
   }, [filtered.list])
 
   const selected = useMemo(() => {
-    if (!selectedId) return null
-    return items.find(i => i.id === selectedId) ?? null
-  }, [items, selectedId])
+    if (!effectiveSelectedId) return null
+    return items.find(i => i.id === effectiveSelectedId) ?? null
+  }, [items, effectiveSelectedId])
 
   return (
     <>
-      <button
-        className="fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full bg-neutral-900 border border-[#333] flex items-center justify-center text-white"
-        onClick={() => setIsOpen(true)}
-        aria-label="Open documentation"
-        title="Help & Documentation"
-      >
-        <QuestionIcon weight="regular" size={22} />
-      </button>
+      {!effectiveIsOpen && externalIsOpen === undefined && (
+        <button
+          className="fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full bg-neutral-900 border border-[#333] flex items-center justify-center text-white"
+          onClick={() => setIsOpen(true)}
+          aria-label="Open documentation"
+          title="Help & Documentation"
+        >
+          <QuestionIcon weight="regular" size={22} />
+        </button>
+      )}
+      {!effectiveIsOpen && externalIsOpen !== undefined && (
+        <Link
+          to="/docs"
+          className="fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full bg-neutral-900 border border-[#333] flex items-center justify-center text-white"
+          aria-label="Open documentation"
+          title="Help & Documentation"
+        >
+          <QuestionIcon weight="regular" size={22} />
+        </Link>
+      )}
 
       <Modal
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
+        isOpen={effectiveIsOpen}
+        onClose={() => {
+          if (externalIsOpen !== undefined) {
+            onClose()
+          }
+          else {
+            setIsOpen(false)
+          }
+        }}
         width="w-[96dvw]"
         maxWidth="max-w-none"
         className="h-[96dvh] rounded-lg overflow-hidden relative"
@@ -294,7 +346,14 @@ export function Docs() {
                 </div>
                 <button
                   className="w-9 h-9 flex items-center justify-center text-neutral-300 hover:text-white bg-neutral-900 border border-[#333] rounded-full"
-                  onClick={() => setIsOpen(false)}
+                  onClick={() => {
+                    if (externalIsOpen !== undefined) {
+                      onClose()
+                    }
+                    else {
+                      setIsOpen(false)
+                    }
+                  }}
                   aria-label="Close documentation"
                   title="Close"
                 >
@@ -346,15 +405,29 @@ export function Docs() {
                   <div className="text-sm font-semibold text-white">Tutorials</div>
                   <div className="mt-2 flex flex-col gap-1">
                     {sidebarGroups.tutorials.map(it => (
-                      <button
-                        key={it.id}
-                        className={`text-left text-sm hover:text-white whitespace-nowrap ${
-                          it.id === selectedId ? 'text-white' : 'text-neutral-300'
-                        }`}
-                        onClick={() => setSelectedId(it.id)}
-                      >
-                        {it.title}
-                      </button>
+                      externalIsOpen !== undefined && it.fileSlug
+                        ? (
+                          <Link
+                            key={it.id}
+                            to={`/docs/tutorials/${it.fileSlug}`}
+                            className={`block text-left text-sm hover:text-white whitespace-nowrap ${
+                              it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                            }`}
+                          >
+                            {it.title}
+                          </Link>
+                        )
+                        : (
+                          <button
+                            key={it.id}
+                            className={`text-left text-sm hover:text-white whitespace-nowrap ${
+                              it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                            }`}
+                            onClick={() => setSelectedId(it.id)}
+                          >
+                            {it.title}
+                          </button>
+                        )
                     ))}
                   </div>
                 </div>
@@ -364,17 +437,32 @@ export function Docs() {
                 <div className="mt-5">
                   <div className="text-sm font-semibold text-white">About</div>
                   <div className="mt-2 flex flex-col gap-1">
-                    {sidebarGroups.about.map(it => (
-                      <button
-                        key={it.id}
-                        className={`text-left text-sm hover:text-white whitespace-nowrap ${
-                          it.id === selectedId ? 'text-white' : 'text-neutral-300'
-                        }`}
-                        onClick={() => setSelectedId(it.id)}
-                      >
-                        {it.title}
-                      </button>
-                    ))}
+                    {sidebarGroups.about.map(it => {
+                      const aboutSlug = it.id.replace('about-', '')
+                      return externalIsOpen !== undefined
+                        ? (
+                          <Link
+                            key={it.id}
+                            to={`/docs/about/${aboutSlug}`}
+                            className={`block text-left text-sm hover:text-white whitespace-nowrap ${
+                              it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                            }`}
+                          >
+                            {it.title}
+                          </Link>
+                        )
+                        : (
+                          <button
+                            key={it.id}
+                            className={`text-left text-sm hover:text-white whitespace-nowrap ${
+                              it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                            }`}
+                            onClick={() => setSelectedId(it.id)}
+                          >
+                            {it.title}
+                          </button>
+                        )
+                    })}
                   </div>
                 </div>
               )}
@@ -383,17 +471,32 @@ export function Docs() {
                 <div className="mt-5">
                   <div className="text-sm font-semibold text-white">API</div>
                   <div className="mt-2 flex flex-col gap-1">
-                    {sidebarGroups.api.map(it => (
-                      <button
-                        key={it.id}
-                        className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
-                          it.id === selectedId ? 'text-white' : 'text-neutral-300'
-                        }`}
-                        onClick={() => setSelectedId(it.id)}
-                      >
-                        {it.title}
-                      </button>
-                    ))}
+                    {sidebarGroups.api.map(it => {
+                      const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : ''
+                      return externalIsOpen !== undefined && it.functionName
+                        ? (
+                          <Link
+                            key={it.id}
+                            to={`/docs/api/${urlSlug}`}
+                            className={`block text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                              it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                            }`}
+                          >
+                            {it.title}
+                          </Link>
+                        )
+                        : (
+                          <button
+                            key={it.id}
+                            className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                              it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                            }`}
+                            onClick={() => setSelectedId(it.id)}
+                          >
+                            {it.title}
+                          </button>
+                        )
+                    })}
                   </div>
                 </div>
               )}

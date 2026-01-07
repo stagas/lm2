@@ -55,3 +55,34 @@ export function useRouter() {
   if (!value) throw new Error('useRouter must be used within RouterProvider')
   return value
 }
+
+export function Link({
+  to,
+  children,
+  className,
+  replace,
+  ...props
+}: {
+  to: string
+  children: preact.ComponentChildren
+  className?: string
+  replace?: boolean
+} & preact.JSX.HTMLAttributes<HTMLAnchorElement>) {
+  const { navigate } = useRouter()
+
+  const handleClick = (e: MouseEvent) => {
+    // Allow default behavior for modified clicks (ctrl, cmd, shift, middle click)
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) {
+      return
+    }
+
+    e.preventDefault()
+    navigate(to, { replace })
+  }
+
+  return (
+    <a href={to} className={className} onClick={handleClick} {...props}>
+      {children}
+    </a>
+  )
+}

@@ -35,7 +35,10 @@ const SidebarTitles: Record<SidebarTab, string> = {
   settings: 'Tools and Settings',
 } as const
 
-const sidebarTabFromPathname = (pathname: string): SidebarTab => {
+const sidebarTabFromPathname = (pathname: string): SidebarTab | null => {
+  // Ignore docs routes - don't change sidebar state
+  if (pathname.startsWith('/docs')) return null
+
   if (pathname === '/settings') return 'settings'
   if (pathname === '/my') return 'loops'
   if (pathname === '/compiled') return DEBUG ? 'compiled' : 'browse'
@@ -57,7 +60,7 @@ export function Sidebar() {
   const activeTab = sidebarTabFromPathname(pathname)
 
   useEffect(() => {
-    if (sidebarTab !== activeTab) setSidebarTab(activeTab)
+    if (activeTab !== null && sidebarTab !== activeTab) setSidebarTab(activeTab)
   }, [activeTab, setSidebarTab, sidebarTab])
 
   const toggleSidebar = () => {
@@ -81,7 +84,7 @@ export function Sidebar() {
                   else if (t === 'compiled') navigate('/compiled')
                 }}
                 className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
-                  activeTab === tab
+                  (activeTab ?? sidebarTab) === tab
                     ? 'bg-black text-white'
                     : 'bg-gradient-to-b from-black to-neutral-800 text-neutral-500 hover:text-white'
                 }`}
@@ -91,12 +94,12 @@ export function Sidebar() {
             ))}
           </div>
           <div className="flex flex-1 flex-col w-full h-full overflow-y-auto" ref={scrollContainerRef}>
-            {activeTab === 'loops' && (
+            {(activeTab ?? sidebarTab) === 'loops' && (
               <SidebarLoops scrollContainerRef={scrollContainerRef} apiError={apiError} setApiError={setApiError} />
             )}
-            {activeTab === 'browse' && <SidebarBrowse />}
-            {activeTab === 'compiled' && <BytecodeInspector />}
-            {activeTab === 'settings' && <SidebarSettings apiError={apiError} setApiError={setApiError} />}
+            {(activeTab ?? sidebarTab) === 'browse' && <SidebarBrowse />}
+            {(activeTab ?? sidebarTab) === 'compiled' && <BytecodeInspector />}
+            {(activeTab ?? sidebarTab) === 'settings' && <SidebarSettings apiError={apiError} setApiError={setApiError} />}
           </div>
         </div>
       )}
