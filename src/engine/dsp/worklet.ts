@@ -78,7 +78,7 @@ export interface DspProcessorOptions extends AudioWorkletNodeOptions {
 }
 
 export class DspProcessor extends AudioWorkletProcessor {
-  private state: 'stopped' | 'fade-in' | 'running' | 'fade-out' = 'stopped'
+  private state: 'stopped' | 'preparing' | 'fade-in' | 'running' | 'fade-out' = 'stopped'
   private core: WasmSetup<typeof WasmExports> | undefined
   private dsps: DspInstance[] = []
   private samples: Map<number, {
@@ -99,6 +99,7 @@ export class DspProcessor extends AudioWorkletProcessor {
   private lastBpm = 60
   private shouldReset = false
   private lastControl = ControlOp.Pause
+  private prepareStableBlocks = 0
   private fadeLeft$ = 0
   private fadeRight$ = 0
   private fadeLeft: Float32Array | undefined
@@ -115,6 +116,35 @@ export class DspProcessor extends AudioWorkletProcessor {
     Atomics.store(this.swapStatus, 0, value)
     Atomics.store(this.swapStatus, 1, 1)
     Atomics.notify(this.swapStatus, 1, 1)
+  }
+
+  private hasActiveRecord(): boolean {
+    const core = this.core
+    if (!core) return false
+    const wasm = core.wasm
+    const seen = new Set<number>()
+    for (const dsp of this.dsps) {
+      if (!dsp.view.program) continue
+      const program$ = dsp.view.program
+      if (!seen.has(program$)) {
+        seen.add(program$)
+        if ((wasm.getProgramRecordActive(program$) | 0) !== 0) return true
+      }
+      const swap = this.crossfadeState.get(dsp.dsp$)
+      if (swap) {
+        const a = swap.oldProgram$ | 0
+        const b = swap.newProgram$ | 0
+        if (a && !seen.has(a)) {
+          seen.add(a)
+          if ((wasm.getProgramRecordActive(a) | 0) !== 0) return true
+        }
+        if (b && !seen.has(b)) {
+          seen.add(b)
+          if ((wasm.getProgramRecordActive(b) | 0) !== 0) return true
+        }
+      }
+    }
+    return false
   }
 
   constructor(private options: DspProcessorOptions) {
@@ -518,8 +548,9 @@ export class DspProcessor extends AudioWorkletProcessor {
       if (!isRestartWithProgram && control !== this.lastControl) {
         if (control === ControlOp.Start) {
           if (this.state === 'stopped') {
-            this.state = 'fade-in'
+            this.state = 'preparing'
             this.shouldReset = false
+            this.prepareStableBlocks = 0
           }
           else if (this.state === 'fade-out') {
             // If play is pressed while we're fading out, resume immediately so
@@ -528,7 +559,7 @@ export class DspProcessor extends AudioWorkletProcessor {
             this.shouldReset = false
           }
         }
-        else if (control === ControlOp.Pause && (this.state === 'running' || this.state === 'fade-in')) {
+        else if (control === ControlOp.Pause && (this.state === 'running' || this.state === 'fade-in' || this.state === 'preparing')) {
           this.state = 'fade-out'
           this.shouldReset = false
         }
@@ -634,28 +665,6 @@ export class DspProcessor extends AudioWorkletProcessor {
           control = ControlOp.Start
         }
         else {
-          // Render the current program, then fade it out across this chunk.
-          this.renderChunk(
-            sampleBefore,
-            begin,
-            length,
-            rangeEnabled,
-            rangeStart,
-            rangeEnd,
-            rangeLength,
-            this.seekLeft,
-            this.seekRight,
-            false,
-          )
-
-          this.crossfadeState.clear()
-
-          for (let i = 0; i < length; i++) {
-            const gain = 1 - i / (length - 1)
-            this.seekLeft[i] *= gain
-            this.seekRight[i] *= gain
-          }
-
           // Restart the timeline and reset DSP state before rendering the new program.
           this.applySeekSample(restartSample)
           if (bpmBits) {
@@ -666,60 +675,20 @@ export class DspProcessor extends AudioWorkletProcessor {
           }
           target.view.program = newProgram$
 
-          // Ensure we keep running and clear the one-shot op.
-          this.state = 'running'
+          // Enter preroll so record() can finish before we emit audio for the new program.
+          this.state = 'preparing'
+          this.prepareStableBlocks = 0
           this.lastControl = ControlOp.Start
           Atomics.store(this.options.processorOptions.control, 0, ControlOp.Start)
           control = ControlOp.Start
-
-          const L = this.outLeft
-          const R = this.outRight
-
-          this.renderChunk(
-            restartSample,
-            begin,
-            length,
-            rangeEnabled,
-            rangeStart,
-            rangeEnd,
-            rangeLength,
-            L,
-            R,
-            false,
-          )
-
-          for (let i = 0; i < length; i++) {
-            L[i] += this.seekLeft[i]
-            R[i] += this.seekRight[i]
-          }
-
-          let sampleAfter = restartSample + length
-          if (rangeEnabled && rangeLength > 0 && sampleAfter >= rangeEnd) {
-            const over = sampleAfter - rangeEnd
-            sampleAfter = rangeStart + (over % rangeLength)
-          }
-          this.core.wasm.globalSampleCount.value = sampleAfter
-
-          let playingCount = 0
-          for (const dsp of this.dsps) {
-            if (!dsp.view.program) continue
-            playingCount++
-          }
-          if (playingCount > 1) {
-            this.limiter.process(L, R)
-          }
-
           Atomics.store(
             this.options.processorOptions.ringPos,
             0,
             (ringPos + 1) % (RING_BUFFER_SIZE / CHUNK_SIZE),
           )
 
-          outputs[0][0].set(L)
-          outputs[0][1].set(R)
-
-          // Publish the new playhead immediately.
-          Atomics.store(this.options.processorOptions.globalSampleCount, 0, restartSample)
+          outputs[0][0].fill(0)
+          outputs[0][1].fill(0)
 
           // Clear the loops if any
           if (this.loop) Atomics.store(this.loop, 0, 0)
@@ -759,8 +728,9 @@ export class DspProcessor extends AudioWorkletProcessor {
         // still begin playback. The state machine usually transitions on control
         // changes, but this makes `Start` idempotent when fully stopped.
         if (control === ControlOp.Start) {
-          this.state = 'fade-in'
+          this.state = 'preparing'
           this.shouldReset = false
+          this.prepareStableBlocks = 0
         }
         else {
           return true
@@ -872,8 +842,34 @@ export class DspProcessor extends AudioWorkletProcessor {
 
       Atomics.store(this.options.processorOptions.ringPos, 0, (ringPos + 1) % (RING_BUFFER_SIZE / CHUNK_SIZE))
 
-      outputs[0][0].set(L)
-      outputs[0][1].set(R)
+      if (this.state === 'preparing') {
+        const active = this.hasActiveRecord()
+        if (active) {
+          this.prepareStableBlocks = 0
+        }
+        else {
+          this.prepareStableBlocks++
+        }
+
+        // Freeze the transport while recording samples so triggers line up once playback begins.
+        this.core.wasm.globalSampleCount.value = sampleBefore
+        Atomics.store(this.options.processorOptions.globalSampleCount, 0, sampleBefore | 0)
+
+        // Mute output while preparing.
+        outputs[0][0].fill(0)
+        outputs[0][1].fill(0)
+
+        // Once stable (no active recordings), reset DSP state and begin normal playback next block.
+        if (this.prepareStableBlocks >= 2) {
+          this.applySeekSample(sampleBefore)
+          this.state = 'fade-in'
+          this.prepareStableBlocks = 0
+        }
+      }
+      else {
+        outputs[0][0].set(L)
+        outputs[0][1].set(R)
+      }
 
       if (this.state === 'fade-in') {
         if (sampleBefore > 0) {

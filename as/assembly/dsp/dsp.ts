@@ -820,6 +820,9 @@ export class Dsp {
     //   // atomic.wait<i32>(lockPtr, observed, -1)
     // }
 
+    // Reset per-block flags.
+    this.program.recordActive = 0
+
     const ops = this.program.data.ops
     if (ops[0] !== VM_MAGIC) {
       clearAudio(left$, length)

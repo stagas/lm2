@@ -145,8 +145,8 @@ export function callRecord(
     stack.push(VmTag.Num, f64(sampleIndex))
     return
   }
-  // If we already have a published sample, keep it unless we're actively (re)recording.
-  if (existingLen > 0 && !paramsChanged && !recording) {
+  // If we already have a published sample and params didn't change, keep it.
+  if (existingLen > 0 && !paramsChanged) {
     stack.push(VmTag.Num, f64(sampleIndex))
     return
   }
@@ -160,7 +160,9 @@ export function callRecord(
     program.recordLen[sampleIndex] = frames
   }
 
-  // Record progressively across blocks
+  // Record progressively across blocks (never blocks the audio thread).
+  program.recordActive = 1
+
   const remaining: i32 = curLen - pos
   if (remaining <= 0) {
     stack.push(VmTag.Num, f64(sampleIndex))
@@ -169,35 +171,24 @@ export function callRecord(
   const take: i32 = remaining < length ? remaining : length
 
   program.pushHistoryWriteEnabled(0)
-  const savedPool = program.gensPool
   const savedSampleCount: i32 = globalSampleCount
   const savedTHas: i32 = audio.tHas
   const savedTOutIndex: i32 = audio.tOutIndex
 
-  // If we're (re)starting a recording, reset callback DSP state so triggers are stable.
-  if (paramsChanged || (!recording && pos === 0)) {
-    program.recordGensPool.reset()
-  }
-  else {
-    // Reset pool index so same generators are reused across blocks (preserving their state).
-    program.recordGensPool.resetIndices()
-  }
-
-  program.gensPool = program.recordGensPool
   audio.tHas = 0
   globalSampleCount = pos
-
-  dsp.vmInvokeFunc(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
+  dsp.vmInvokeFunc(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, take, left$, right$)
 
   globalSampleCount = savedSampleCount
   audio.tHas = savedTHas
   audio.tOutIndex = savedTOutIndex
-  program.gensPool = savedPool
   program.popHistoryWriteEnabled()
+
   if (vmErrorCode !== 0) {
     stack.push(VmTag.Num, f64(sampleIndex))
     return
   }
+
   const resIdx = stack.pop()
   const rTag = stack.tag[resIdx] as VmTag
 

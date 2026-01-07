@@ -143,6 +143,12 @@ export function processAudio(dsp$: usize, left$: usize, right$: usize, begin: i3
   dsp.process(left$, right$, begin, length)
 }
 
+export function getProgramRecordActive(program$: usize): i32 {
+  if (program$ === 0) return 0
+  const program = changetype<Program>(program$)
+  return program.recordActive
+}
+
 export function updateBpm(oldBpm: f32, newBpm: f32): void {
   if (oldBpm <= 0 || newBpm <= 0) return
 
