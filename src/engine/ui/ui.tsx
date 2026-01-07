@@ -215,7 +215,7 @@ export function EngineUI() {
         setShowIntro(false)
       }, 2000)
       return () => window.clearTimeout(t2)
-    }, deltaTime < 700 ? (700 - deltaTime) + (5000 - 700) : 5000)
+    }, deltaTime < 700 ? (700 - deltaTime) + (3000 - 700) : 3000)
     ;(async () => {
       for (let i = 0; i < 100; i++) {
         const audioContext = useEngineRuntimeStore.getState().audioContext
