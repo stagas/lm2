@@ -133,7 +133,14 @@ function noteIdentToMidi(name: string): number | null {
 
 export { Op, SEQ_VOICES, SeqOp }
 
-function extractEarlyDataFromProgram(src: string, program: Program, errors: LangError[]) {
+const persistentSampleKeyToIndex = new Map<string, number>()
+
+function extractEarlyDataFromProgram(
+  src: string,
+  program: Program,
+  errors: LangError[],
+  sampleKeyToIndex: Map<string, number> = persistentSampleKeyToIndex,
+) {
   // Initialize result collections
   const sequences: string[] = []
   const miniRefs: MiniSequenceRef[] = []
@@ -156,7 +163,7 @@ function extractEarlyDataFromProgram(src: string, program: Program, errors: Lang
     createMiniSequencesVisitor(src, sequences, miniRefs, miniPlayBars),
     createTimelineSequencesVisitor(src, timelineSequences, timelineRefs),
     createTimelineLabelsVisitor(timelineLabels),
-    createSamplesVisitor(src, samples, errors),
+    createSamplesVisitor(src, samples, errors, sampleKeyToIndex),
     createNumberParamsVisitor(numberParams),
     createFilterNumberLiteralsVisitor(filterNumberLiterals),
     createNumberLiteralsVisitor(numberLiterals),
@@ -462,7 +469,75 @@ export function encodeLangToVmOps(
     const miniCount = sequences.length
     const sampleKeyToIndex = new Map<string, number>()
     for (const s of samples) {
-      sampleKeyToIndex.set(`freesound:${s.id}`, s.sampleIndex)
+      if (s.provider === 'freesound') sampleKeyToIndex.set(`freesound:${s.id}`, s.sampleIndex)
+      else if (s.provider === 'record') sampleKeyToIndex.set(s.key, s.sampleIndex)
+    }
+
+    const fnv1a32 = (str: string): number => {
+      let h = 0x811c9dc5
+      for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i)
+        h = Math.imul(h, 0x01000193) >>> 0
+      }
+      return h >>> 0
+    }
+
+    const stableAstString = (v: any): string => JSON.stringify(v, (k, val) => {
+      if (
+        k === 'loc'
+        || k === 'ifLoc'
+        || k === 'elseLoc'
+        || k === 'questionLoc'
+        || k === 'colonLoc'
+        || k === 'slider'
+        || k === 'kernel'
+      ) return undefined
+      return val
+    }) ?? ''
+
+    const getPosArgValue = (call: any, posIndex: number): any | null => {
+      let pos = 0
+      for (const arg of call.args ?? []) {
+        if (arg?.kind !== 'pos') continue
+        if (pos === posIndex) return arg.value ?? null
+        pos++
+      }
+      return null
+    }
+
+    const getNamedArgValue = (call: any, name: string): any | null => {
+      for (const arg of call.args ?? []) {
+        if (arg?.kind !== 'named') continue
+        if (arg.name === name) return arg.value ?? null
+      }
+      return null
+    }
+
+    const getRecordCbKey = (call: any): number => {
+      const secondsExpr = getNamedArgValue(call, 'seconds') ?? getPosArgValue(call, 0)
+      const cbExpr = getNamedArgValue(call, 'cb') ?? getNamedArgValue(call, 'callback') ?? getPosArgValue(call, 1)
+      return fnv1a32(stableAstString({ seconds: secondsExpr, cb: cbExpr }))
+    }
+
+    const recordKeyFromAssign = (targetName: string): string => `record:${targetName}`
+    const recordKeyFallback = (loc: Loc): string => `record@${loc.line}:${loc.column}`
+
+    const injectRecordArgs = (call: any, callee: any, args: any[], recordKey: string): any => {
+      const idx = sampleKeyToIndex.get(recordKey)
+      if (idx === undefined) return { ...call, callee, args }
+      const cbKey = getRecordCbKey(call)
+      const filtered = args.filter((a: any) => !(
+        a?.kind === 'named' && (a.name === '%index' || a.name === 'index' || a.name === '%key')
+      ))
+      return {
+        ...call,
+        callee,
+        args: [
+          ...filtered,
+          { kind: 'named', name: '%index', value: toSeqIndexExpr(call.loc, idx), loc: call.loc },
+          { kind: 'named', name: '%key', value: toSeqIndexExpr(call.loc, cbKey >>> 0), loc: call.loc },
+        ],
+      }
     }
 
     const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
@@ -696,6 +771,7 @@ export function encodeLangToVmOps(
         const isOut = calleeName === 'out' || calleeName === 'solo'
         const isLabel = calleeName === 'label'
         const isFreesound = calleeName === 'freesound'
+        const isRecord = calleeName === 'record'
 
         if (isLabel) {
           return { kind: 'undefined', loc: expr.loc }
@@ -711,6 +787,10 @@ export function encodeLangToVmOps(
             if (idx !== undefined) return toSeqIndexExpr(expr.loc, idx)
           }
           return { kind: 'undefined', loc: expr.loc }
+        }
+
+        if (isRecord) {
+          return injectRecordArgs(expr, callee, args, recordKeyFallback(expr.loc))
         }
 
         const stripNamedIndex = (aa: any[]) => aa.filter((a: any) => !(a?.kind === 'named' && a.name === 'index'))
@@ -941,6 +1021,23 @@ export function encodeLangToVmOps(
             return { ...expr, target: transformExpr(expr.target),
               value: { kind: 'number', value: idx, raw: String(idx), loc: v?.loc ?? expr.loc } }
           }
+        }
+        if (
+          expr.op === '='
+          && expr.target?.kind === 'ident'
+          && expr.value?.kind === 'call'
+          && expr.value.callee?.kind === 'ident'
+          && expr.value.callee.name === 'record'
+        ) {
+          const target = transformExpr(expr.target)
+          const call = expr.value
+          const callee = transformExpr(call.callee)
+          const args = (call.args ?? []).map((a: any) => {
+            if (a.kind === 'pos' || a.kind === 'named') return { ...a, value: transformExpr(a.value) }
+            return a
+          })
+          const key = recordKeyFromAssign(expr.target.name)
+          return { ...expr, target, value: injectRecordArgs(call, callee, args, key) }
         }
         return { ...expr, target: transformExpr(expr.target), value: transformExpr(expr.value) }
       }

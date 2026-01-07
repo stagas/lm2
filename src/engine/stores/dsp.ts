@@ -219,6 +219,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     return (async () => {
       for (const d of defs) {
         if (isStale()) return
+        if (d.provider === 'record') continue
 
         const alreadyUploaded = sampleUrlByIndex.get(d.sampleIndex) === d.url
         const alreadyDecoded = updateStore ? get().loadedSamples[d.sampleIndex]?.url === d.url : false

@@ -202,4 +202,5 @@ export enum VmSym {
   Y,
   Zerox,
   PitchShift,
+  Record,
 }

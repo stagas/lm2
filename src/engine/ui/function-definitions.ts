@@ -997,6 +997,21 @@ every=1/2 q=.5
       'sampler(sample: kick, trig)',
     ],
   },
+  record: {
+    name: 'record',
+    parameters: [
+      { name: 'seconds', type: 'number', description: 'Duration to record in seconds (clamped to 0..1)' },
+      { name: 'cb', type: '() -> number',
+        description: 'Callback to generate the sample signal (called at audio rate)' },
+    ],
+    returnType: 'number',
+    description:
+      'Records `seconds` of the callback output into an in-memory sample (once on playback start, then cached until the callback changes). Returns a sample reference for `sampler`.',
+    examples: [
+      'tone = record(.5, () -> sine(220))',
+      'sampler(sample: tone, trig)',
+    ],
+  },
   delay: {
     name: 'delay',
     parameters: [

@@ -63,6 +63,7 @@ export async function wasmSetup<T>({ binary, sourcemapUrl, config, imports }: Se
       sampleVersion: (_sampleIndex: number) => 0,
       sampleLen: (_sampleIndex: number) => 0,
       sampleRead: (_sampleIndex: number, _start: number, _length: number, _outPtr: number) => 0,
+      sampleSet: (_sampleIndex: number, _length: number, _inPtr: number) => {},
       sampleSlices: (_sampleIndex: number, _threshold: number, _outPtr: number, _max: number) => 0,
     },
   }

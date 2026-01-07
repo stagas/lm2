@@ -604,6 +604,7 @@ function DspSourceEditorReady(
     const defs = widgetCompileState.sampleDefs ?? []
     if (defs.length === 0) return false
     for (const d of defs) {
+      if (d.provider !== 'freesound') continue
       if (loadedSamples[d.sampleIndex]?.url !== d.url) return true
     }
     return false

@@ -77,6 +77,13 @@ export class Program {
   literalsSmoothed: StaticArray<Smoothed> = new StaticArray<Smoothed>(LITERALS_COUNT)
   outsPool: OutsPool = new OutsPool()
 
+  // record() sample capture state (per sampleIndex; indices are stable across recompiles on the TS side)
+  recordKey: StaticArray<u32> = new StaticArray<u32>(1024)
+  recordSeconds: StaticArray<f32> = new StaticArray<f32>(1024)
+  recordLen: StaticArray<i32> = new StaticArray<i32>(1024)
+  recordPos: StaticArray<i32> = new StaticArray<i32>(1024)
+  recordBuf$: StaticArray<usize> = new StaticArray<usize>(1024)
+
   // Callback scope stack for remapped buffers and bound inputs
   private callbackDepth: i32 = 0
   private callbackBodyBase: StaticArray<i32> = new StaticArray<i32>(CALLBACK_SCOPE_MAX_DEPTH)
@@ -272,5 +279,14 @@ export class Program {
     }
 
     this.gensPool.copyFrom(source.gensPool)
+
+    // Keep record() state stable across crossfade swaps so it doesn't re-trigger unless the callback changes.
+    for (let i = 0; i < this.recordKey.length; i++) {
+      this.recordKey[i] = source.recordKey[i]
+      this.recordSeconds[i] = source.recordSeconds[i]
+      this.recordLen[i] = source.recordLen[i]
+      this.recordPos[i] = source.recordPos[i]
+      this.recordBuf$[i] = source.recordBuf$[i]
+    }
   }
 }
