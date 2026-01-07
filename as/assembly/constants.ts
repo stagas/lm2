@@ -65,8 +65,8 @@ export const ENVELOPE_WRITE_POS_OFFSET = 0
 export const ENVELOPE_DATA_OFFSET = 1
 
 export const ARRAYS_COUNT = 1024
-export const LITERALS_COUNT = 1024
-export const OPS_COUNT = 8192
+export const LITERALS_COUNT = 4096
+export const OPS_COUNT = 16384
 export const SEQ_VOICES = 16
 export const MAX_DSP_INSTANCES = 128
 export const CALLBACK_SCOPE_BASE = 500

@@ -199,7 +199,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
         const timelineWidth = Math.max(1, layout.viewWidth - PIANOROLL_KEY_WIDTH)
         const secondsPerPixel = timeWindowSeconds / timelineWidth
 
-        const dx = (x - start.x) * 7
+        const dx = (start.x - x) * 7
         seekToTimeSeconds(start.timeSeconds + dx * secondsPerPixel)
       },
       pointerUp: () => {

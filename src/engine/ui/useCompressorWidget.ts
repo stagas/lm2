@@ -109,10 +109,42 @@ export function useCompressorWidget({
   const stRef = useRef<Array<CompressorState | undefined>>([])
   const seenRef = useRef<Set<number>>(new Set())
   const playheadRef = useRef(new Map<number, { db: number; ts: number }>())
+  const lastLiveProgramPtrRef = useRef<number | null>(null)
+  const lastLiveRefsKeyRef = useRef<string>('')
+
+  const refsKey = useMemo(() => {
+    if (refs.length === 0) return ''
+    const set = new Set<number>()
+    for (const { type, ref } of refs) {
+      const baseIdx = (type === 'compressor'
+        ? ref.compressorIndex
+        : type === 'expander'
+        ? ref.expanderIndex
+        : type === 'gate'
+        ? ref.gateIndex
+        : ref.limiterIndex) | 0
+      const idx = baseIdx + (type === 'compressor' ? 0 : type === 'expander' ? 64 : type === 'gate' ? 128 : 192)
+      set.add(idx)
+    }
+    return [...set].sort((a, b) => a - b).join(',')
+  }, [refs])
 
   useEffect(() => {
     return () => {}
   }, [])
+
+  useEffect(() => {
+    if (!isLive) return
+    const programPtr = program1?.program?.ptr$ ?? 0
+    if (lastLiveProgramPtrRef.current === programPtr && lastLiveRefsKeyRef.current === refsKey) return
+    lastLiveProgramPtrRef.current = programPtr
+    lastLiveRefsKeyRef.current = refsKey
+
+    // Reset ring readers on program/graph switches to avoid displaying stale buffers.
+    stRef.current.length = 0
+    seenRef.current.clear()
+    playheadRef.current.clear()
+  }, [isLive, program1, refsKey])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return

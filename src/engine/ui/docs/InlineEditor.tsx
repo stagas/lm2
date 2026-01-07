@@ -1,4 +1,4 @@
-import { PauseIcon, PlayIcon } from '@phosphor-icons/react'
+import { PauseIcon, PlayIcon, StopIcon } from '@phosphor-icons/react'
 import { CodeEditor, CodeFile, type EditorError, type EditorHeader, type EditorWidget } from 'mini-code'
 import { useCallback, useEffect, useMemo, useRef } from 'preact/hooks'
 import { LITERALS_COUNT, OPS_COUNT } from '../../../../as/assembly/constants.ts'
@@ -334,11 +334,11 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
       }
 
       const t = window.setTimeout(() => {
-        void useEngineDspStore.getState().applyDocsSource(code, vm)
+        void useEngineDspStore.getState().applyDocsSource(loopId, code, vm)
       }, 175)
       return () => window.clearTimeout(t)
     }
-  }, [canPlay, code, isPlaying, preview, runtimeProgram])
+  }, [canPlay, code, isPlaying, loopId, preview, runtimeProgram])
 
   const editorErrors = useMemo((): EditorError[] => {
     const out: EditorError[] = []
@@ -356,16 +356,27 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     return out
   }, [preview.errors])
 
-  const widgetCompileStateRef = useRef<ReturnType<typeof buildWidgetCompileState> | null>(null)
+  const lastGoodWidgetCompileStateRef = useRef<ReturnType<typeof buildWidgetCompileState> | null>(null)
 
   const widgetCompileState = useMemo(() => {
-    // For literal-only changes, return cached state to avoid triggering downstream updates
-    if (wasLiteralOnlyRef.current && widgetCompileStateRef.current) {
-      return widgetCompileStateRef.current
+    const lastGood = lastGoodWidgetCompileStateRef.current
+
+    // Keep the last successful widget graph while the editor has compile errors.
+    // Why: the running program is still the last successful one, so rebuilding widgets from
+    // an errored preview can mismatch refs/ring buffers and corrupt widget state.
+    if (preview.errors.length > 0 && lastGood) {
+      return lastGood
+    }
+
+    // For literal-only changes, reuse the last successful widget graph to avoid downstream churn.
+    if (wasLiteralOnlyRef.current && lastGood) {
+      return lastGood
     }
 
     const result = buildWidgetCompileState(code, preview)
-    widgetCompileStateRef.current = result
+    if (preview.errors.length === 0) {
+      lastGoodWidgetCompileStateRef.current = result
+    }
     return result
   }, [code, preview])
 
@@ -720,29 +731,29 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     <div className="my-3 w-full border border-[#333] bg-neutral-950 rounded-md overflow-hidden">
       <div className="w-full relative">
         <div className="absolute bottom-0 right-0 flex items-center justify-end z-50 gap-2 px-2 py-1.5 border-b border-[#333]">
-          <button
-            className={`h-8 w-8 flex items-center justify-center rounded text-white ${
-              canPlay ? 'bg-orange-600' : 'bg-neutral-800'
-            }`}
-            disabled={!canPlay}
-            onClick={() => {
-              const runtime = useEngineRuntimeStore.getState()
-              if (isPlaying) {
-                runtime.pause()
-                return
-              }
-              void useEngineDspStore.getState().playLoop(loopId, code, 0)
-            }}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
-            title={isPlaying ? 'Pause' : (canPlay ? 'Play' : 'Fix errors to play')}
-          >
-            {isPlaying ? <PauseIcon weight="fill" size={18} /> : <PlayIcon weight="fill" size={18} />}
-          </button>
           {!canPlay && (
             <div className="text-xs text-red-300 truncate">
               {preview.errors[0]?.message ?? 'Compile error'}
             </div>
           )}
+          <button
+            className={`h-8 w-8 flex items-center justify-center rounded text-white ${
+              (canPlay || isPlaying) ? 'bg-gradient-to-br from-orange-400 to-red-600' : 'bg-neutral-800'
+            }`}
+            disabled={!canPlay && !isPlaying}
+            onClick={() => {
+              const runtime = useEngineRuntimeStore.getState()
+              if (isPlaying) {
+                runtime.stop()
+                return
+              }
+              void useEngineDspStore.getState().playLoop(loopId, code, 0)
+            }}
+            aria-label={isPlaying ? 'Stop' : 'Play'}
+            title={isPlaying ? 'Stop' : (canPlay ? 'Play' : 'Fix errors to play')}
+          >
+            {isPlaying ? <StopIcon weight="fill" size={18} /> : <PlayIcon weight="fill" size={18} />}
+          </button>
         </div>
         <CodeEditor
           codeFile={codeFile}

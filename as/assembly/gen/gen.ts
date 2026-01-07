@@ -3,4 +3,5 @@ export abstract class Gen {
   processStereo(outL$: usize, outR$: usize, length: i32): void {}
   reset(): void {}
   copyFrom(other: Gen): void {}
+  dispose(): void {}
 }
