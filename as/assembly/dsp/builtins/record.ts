@@ -1,6 +1,6 @@
 // dprint-ignore-file
 import { hostSampleLen, hostSampleSet } from '../../sample-host'
-import { sampleRate, vmErrorCode } from '../../globals'
+import { globalSampleCount, sampleRate, vmErrorCode } from '../../globals'
 import { Program } from '../../program'
 import { VmTag } from '../types'
 import { VmSym } from '../vm-sym'
@@ -169,7 +169,30 @@ export function callRecord(
   const take: i32 = remaining < length ? remaining : length
 
   program.pushHistoryWriteEnabled(0)
+  const savedPool = program.gensPool
+  const savedSampleCount: i32 = globalSampleCount
+  const savedTHas: i32 = audio.tHas
+  const savedTOutIndex: i32 = audio.tOutIndex
+
+  // If we're (re)starting a recording, reset callback DSP state so triggers are stable.
+  if (paramsChanged || (!recording && pos === 0)) {
+    program.recordGensPool.reset()
+  }
+  else {
+    // Reset pool index so same generators are reused across blocks (preserving their state).
+    program.recordGensPool.resetIndices()
+  }
+
+  program.gensPool = program.recordGensPool
+  audio.tHas = 0
+  globalSampleCount = pos
+
   dsp.vmInvokeFunc(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
+
+  globalSampleCount = savedSampleCount
+  audio.tHas = savedTHas
+  audio.tOutIndex = savedTOutIndex
+  program.gensPool = savedPool
   program.popHistoryWriteEnabled()
   if (vmErrorCode !== 0) {
     stack.push(VmTag.Num, f64(sampleIndex))
