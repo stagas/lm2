@@ -745,10 +745,11 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       void scheduleSampleLoad(primaryResult.sampleDefs, { uploadToWorklet: true, updateStore: false })
     }
 
-    if (primaryResult.bpm !== undefined && runtime.bpmValue) {
+    if (runtime.bpmValue) {
       const oldBpm = runtime.bpmValue[0]
-      runtime.bpmValue[0] = primaryResult.bpm
-      runtime.worklet?.syncBpm(oldBpm, primaryResult.bpm)
+      const newBpm = primaryResult.bpm ?? 60 // Default to prelude BPM
+      runtime.bpmValue[0] = newBpm
+      runtime.worklet?.syncBpm(oldBpm, newBpm)
     }
 
     if (!primaryResult.diff.significantChange) {
@@ -780,10 +781,11 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       void scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true, updateStore: false })
     }
 
-    if (stagingResult.bpm !== undefined && runtime.bpmValue) {
+    if (runtime.bpmValue) {
       const oldBpm = runtime.bpmValue[0]
-      runtime.bpmValue[0] = stagingResult.bpm
-      runtime.worklet?.syncBpm(oldBpm, stagingResult.bpm)
+      const newBpm = stagingResult.bpm ?? 60 // Default to prelude BPM
+      runtime.bpmValue[0] = newBpm
+      runtime.worklet?.syncBpm(oldBpm, newBpm)
     }
 
     const control = runtime.control
@@ -1256,8 +1258,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
             void scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true })
           }
 
-          if (stagingResult.bpm !== undefined && runtime.bpmValue) {
-            runtime.bpmValue[0] = stagingResult.bpm
+          if (runtime.bpmValue) {
+            runtime.bpmValue[0] = stagingResult.bpm ?? 60 // Default to prelude BPM
           }
 
           const sequences = stagingResult.sequences
