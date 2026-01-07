@@ -4,7 +4,9 @@ import { Logo } from '../../components/Logo.tsx'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
 import { SpinnerLarge } from '../../components/Spinner.tsx'
 import { useEngine } from '../dsp/program.ts'
+import { INTRO_PROGRAM } from '../intro-program.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
+import { Docs } from './docs/Docs.tsx'
 import { DspSourceEditor } from './DspSourceEditor.tsx'
 import type { Loop } from './loop.ts'
 import { Nav } from './Nav.tsx'
@@ -14,8 +16,8 @@ import { useCurrentLoop } from './useCurrentLoop.ts'
 import { useFontsLoaded } from './useFontsLoaded.ts'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { useLoopView } from './useLoopView.ts'
+import { useSeekToSampleImmediate } from './useSeekToSample.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
-import { Docs } from './docs/Docs.tsx'
 
 function Intro(
   { isFadingOut = false, isFadingIn = true }: { isFadingOut?: boolean; isFadingIn?: boolean },
@@ -151,6 +153,7 @@ export function EngineUI() {
   const currentLoop = useCurrentLoop()
   const isEditorBusy = useIsEditorBusy()
   const fontsLoaded = useFontsLoaded()
+  const seekToSampleImmediate = useSeekToSampleImmediate()
 
   const routeLoopId = useMemo(() => {
     const pathname = window.location.pathname || '/'
@@ -212,7 +215,7 @@ export function EngineUI() {
         setShowIntro(false)
       }, 2000)
       return () => window.clearTimeout(t2)
-    }, deltaTime < 700 ? (700 - deltaTime) + (1700 - 700) : 1700)
+    }, deltaTime < 700 ? (700 - deltaTime) + (5000 - 700) : 5000)
     ;(async () => {
       for (let i = 0; i < 100; i++) {
         const audioContext = useEngineRuntimeStore.getState().audioContext
@@ -221,16 +224,16 @@ export function EngineUI() {
           await new Promise<void>(resolve => setTimeout(resolve, 100))
           continue
         }
-        const resPromise = fetch('/cowbell.ogg')
-        // await useEngineDspStore.getState().playLoop('1', '.001 |> out($)')
-        await new Promise<void>(resolve => setTimeout(resolve, 1500))
-        const res = await resPromise
-        const arrayBuffer = await res.arrayBuffer()
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-        const source = audioContext.createBufferSource()
-        source.buffer = audioBuffer
-        source.connect(audioContext.destination)
-        source.start()
+        await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_PROGRAM)
+        // const resPromise = fetch('/cowbell.ogg')
+        // await new Promise<void>(resolve => setTimeout(resolve, 1500))
+        // const res = await resPromise
+        // const arrayBuffer = await res.arrayBuffer()
+        // const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+        // const source = audioContext.createBufferSource()
+        // source.buffer = audioBuffer
+        // source.connect(audioContext.destination)
+        // source.start()
         break
       }
     })()
