@@ -17,7 +17,6 @@ import { compileMiniNotation } from '../../mini/compiler.ts'
 import { isLocalId, makeLocalId } from '../../utils/id.ts'
 import {
   encodeLangToVmOps,
-  extractEarlyDataFromSource,
   getKnobConfig,
   getKnobParamConfig,
 } from '../bytecode/bytecode.ts'
@@ -534,24 +533,37 @@ function DspSourceEditorReady(
     previewCompile,
   ])
 
+  const earlyDataForView = useMemo(() => {
+    // Reuse early-data computed in `previewCompile` (via `encodeLangToVmOps`).
+    if (code === dspSource || hasCompileErrors) return { timelineLabels, bars }
+
+    const previewBars = previewCompile.bars
+    const previewLabels = previewCompile.timelineLabels ?? []
+    return {
+      timelineLabels: buildTimelineLabels(previewLabels, previewBars),
+      bars: previewBars,
+    }
+  }, [
+    bars,
+    code,
+    dspSource,
+    hasCompileErrors,
+    previewCompile.bars,
+    previewCompile.timelineLabels,
+    timelineLabels,
+  ])
+
   const timelineLabelsForView = useMemo(() => {
     if (code === dspSource) return timelineLabels
     if (hasCompileErrors) return lastGoodPreviewRef.current?.timelineLabelsForView ?? timelineLabels
-
-    const earlyData = extractEarlyDataFromSource(code)
-    if (earlyData.errors.length) return timelineLabels
-
-    return buildTimelineLabels(earlyData.timelineLabels, earlyData.bars)
-  }, [code, dspSource, hasCompileErrors, timelineLabels])
+    return earlyDataForView.timelineLabels
+  }, [code, dspSource, earlyDataForView.timelineLabels, hasCompileErrors, timelineLabels])
 
   const barsForView = useMemo(() => {
     if (code === dspSource) return bars
     if (hasCompileErrors) return lastGoodPreviewRef.current?.barsForView ?? bars
-
-    const earlyData = extractEarlyDataFromSource(code)
-    if (earlyData.errors.length) return bars
-    return earlyData.bars
-  }, [bars, code, dspSource, hasCompileErrors])
+    return earlyDataForView.bars
+  }, [bars, code, dspSource, earlyDataForView.bars, hasCompileErrors])
 
   useEffect(() => {
     if (code === dspSource) return

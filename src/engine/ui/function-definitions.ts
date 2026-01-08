@@ -1,7 +1,24 @@
 import type { FunctionSignature } from 'mini-code'
 import { SCALE_INTERVALS } from '../../mini/scales.ts'
 
-export const functionDefinitions: Record<string, FunctionSignature> = {
+type Category = 'globals' | 'math' | 'array' | 'generators' | 'filters' | 'reverbs' | 'effects' | 'mixing'
+  | 'sequencing' | 'utilities' | 'analysis'
+
+export const functionCategories: Record<Category, string> = {
+  globals: 'Globals',
+  math: 'Math',
+  array: 'Array',
+  generators: 'Generators',
+  filters: 'Filters',
+  reverbs: 'Reverbs',
+  effects: 'Effects',
+  mixing: 'Mixing',
+  sequencing: 'Sequencing',
+  utilities: 'Utilities',
+  analysis: 'Analysis',
+}
+
+export const functionDefinitions: Record<string, FunctionSignature & { category?: Category }> = {
   't': {
     name: 't',
     parameters: [],
@@ -11,6 +28,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'saw([c4,a4,f4,e4][t]) |> out($)',
     ],
     type: 'variable',
+    category: 'globals',
   },
   'scale': {
     name: 'scale',
@@ -21,6 +39,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       `scale='minor' trig=every(1/8) drawbar(#scale.step(trig)*o4)*ad(.01,.5,4,trig) |> out($)`,
     ],
+    category: 'globals',
   },
   '#scale': {
     name: '#scale',
@@ -32,6 +51,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `scale='minor' trig=every(1/8) drawbar(#scale.step(trig)*o4)*ad(.01,.5,4,trig) |> out($)`,
     ],
     type: 'variable',
+    category: 'globals',
   },
   '.map': {
     name: '[].map',
@@ -44,6 +64,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       '[60,62,65].map((x,i)->rhodes2(note(x*(1.03**i)))).avg() |> out($)',
     ],
+    category: 'array',
   },
   '.glide': {
     name: '[].glide',
@@ -63,6 +84,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `scale='aeolian' trig=euclid(3,8,bar:.25)
 ;[#1,#3,#5].glide(1/4,exponent:.2) |> cs80($*o3,trig) |> $+velvet($,.8) |> limiter($) |> out($)`,
     ],
+    category: 'array',
   },
   '.sum': {
     name: '[].sum',
@@ -72,6 +94,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       '[1,2,3].sum() |> print($)',
     ],
+    category: 'array',
   },
   '.avg': {
     name: '[].avg',
@@ -81,6 +104,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       '[60,62,65].map(x->rhodes2(note(x))).avg() |> out($)',
     ],
+    category: 'array',
   },
   '.step': {
     name: '[].step',
@@ -93,6 +117,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `scale='pentatonic' trig=euclid(5,8,bar:.25) env=ad(.01,.5,5,trig)
 #scale.step(trig) |> rhodes2($*o4)*env |> out($)`,
     ],
+    category: 'array',
   },
   '.random': {
     name: '[].random',
@@ -106,6 +131,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `scale='yu' trig=euclid(5,8,bar:.25) env=ad(.01,.5,5,trig)
 #scale.random(trig) |> drawbar($*[o3,o4,o5].random(trig))*env |> out($)`,
     ],
+    category: 'array',
   },
   '.reverse': {
     name: '[].reverse',
@@ -116,6 +142,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `scale='aeolian' trig=euclid(3,8,bar:.25) env=ad(.01,.75 ,5,trig)
 ;((t+2)%4>2?#scale:#scale.reverse()).step(trig) |> rhodes($*o3)*env |> limiter($) |> out($)`,
     ],
+    category: 'array',
   },
   '.shuffle': {
     name: '[].shuffle',
@@ -128,6 +155,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `scale='yu' trig=euclid(3,8,bar:.25) env=ad(.01,.5,5,trig)
 #scale.shuffle(42).step(trig) |> drawbar($*o4)*env |> out($)`,
     ],
+    category: 'array',
   },
   'shuffle': {
     name: 'shuffle',
@@ -141,6 +169,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'shuffle([1,2,3,4]) |> print($)',
       'shuffle([1,2,3,4], 42) |> print($)',
     ],
+    category: 'array',
   },
   oversample: {
     name: 'oversample',
@@ -155,6 +184,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'oversample(8, () -> saw(440)) |> out($)',
       'oversample(8, cb: () -> [saw(220), saw(221)]) |> out($)',
     ],
+    category: 'utilities',
   },
   out: {
     name: 'out',
@@ -181,6 +211,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'out(sine(440), sine(441))', // backward compatibility
       'play(seq, (trig, _, hz) -> sine(hz, trig)) |> analyser($) |> out($)',
     ],
+    category: 'mixing',
   },
   solo: {
     name: 'solo',
@@ -205,6 +236,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'sine(440) |> solo($)',
       'solo(sine(440), sine(441))',
     ],
+    category: 'mixing',
   },
   post: {
     name: 'post',
@@ -222,6 +254,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'post(([L, R]) -> [L, R])',
       'post(([L, R]) -> [L * .5, R * .5])',
     ],
+    category: 'mixing',
   },
   sine: {
     name: 'sine',
@@ -248,6 +281,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'env = adsr(attack:.01, decay:.1, sustain:.4, release:.3, trig)\nsine(hz, 0, trig) * env |> out($)',
       'sine(hz, .05, trig) * env |> out($)',
     ],
+    category: 'generators',
   },
   tri: {
     name: 'tri',
@@ -273,6 +307,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'tri(220) |> out($)',
       'tri(hz, .01, trig) * .2 |> out($)',
     ],
+    category: 'generators',
   },
   saw: {
     name: 'saw',
@@ -298,6 +333,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'saw(110) |> out($)',
       'saw(hz, .02, trig) * .2 |> out($)',
     ],
+    category: 'generators',
   },
   ramp: {
     name: 'ramp',
@@ -323,6 +359,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'ramp(110) |> out($)',
       'ramp(hz, .02, trig) * .2 |> out($)',
     ],
+    category: 'generators',
   },
   sqr: {
     name: 'sqr',
@@ -486,6 +523,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'drawbar(a3) * ad(attack:.01,decay:.3,exponent:2,trig:every(1/8)) |> out($)',
     ],
+    category: 'generators',
   },
   adsr: {
     name: 'adsr',
@@ -515,6 +553,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       `trig=step(lfosaw(1/2),.5) supersaw(a4) * adsr(.1,.2,.3,.75,trig) |> out($)`,
     ],
+    category: 'generators',
   },
   envfollow: {
     name: 'envfollow',
@@ -543,6 +582,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'envfollow(saw(hz), attack: 0.005, release: 0.2) |> out($)',
       'sine(220) * envfollow($, attack: 0.01, release: 0.05) |> out($)',
     ],
+    category: 'utilities',
   },
   analyser: {
     name: 'analyser',
@@ -555,6 +595,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `saw(330)*ad(.01,.2,trig:every(1/8)) |> analyser($)
 |> out($)`,
     ],
+    category: 'analysis',
   },
   amplitude: {
     name: 'amplitude',
@@ -567,6 +608,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `saw(330)*ad(.01,.2,trig:every(1/8)) |> amplitude($)
 |> out($)`,
     ],
+    category: 'analysis',
   },
   waveform: {
     name: 'waveform',
@@ -579,6 +621,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `saw(330)*ad(.01,.2,trig:every(1/8)) |> waveform($)
 |> out($)`,
     ],
+    category: 'analysis',
   },
   spectrum: {
     name: 'spectrum',
@@ -591,6 +634,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `saw(330)*ad(.01,.2,trig:every(1/8)) |> spectrum($)
 |> out($)`,
     ],
+    category: 'analysis',
   },
   level: {
     name: 'level',
@@ -603,6 +647,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       `saw(330)*ad(.01,.2,trig:every(1/8)) |> level($)
 |> out($)`,
     ],
+    category: 'analysis',
   },
   print: {
     name: 'print',
@@ -614,6 +659,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       '[1,2,3,4,5].random(every(1/8)) |> print($)',
     ],
+    category: 'analysis',
   },
   compressor: {
     name: 'compressor',
@@ -633,6 +679,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'compressor(saw(hz), .01, .1, -24, 4, 6) |> out($)',
       'compressor(in:$, attack:.005, release:.2, threshold:-18, ratio:6, knee:8) |> out($)',
     ],
+    category: 'mixing',
   },
   expander: {
     name: 'expander',
@@ -652,6 +699,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'expander(saw(hz), .01, .1, -24, 2, 6) |> out($)',
       'expander(in:$, attack:.005, release:.2, threshold:-18, ratio:4, knee:8) |> out($)',
     ],
+    category: 'mixing',
   },
   gate: {
     name: 'gate',
@@ -671,6 +719,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'gate(saw(hz), .001, .08, -24, 0, .02) |> out($)',
       'gate(in:$, attack:.0005, release:.12, threshold:-20, knee:0, hold:.03) |> out($)',
     ],
+    category: 'mixing',
   },
   limiter: {
     name: 'limiter',
@@ -686,6 +735,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'limiter(saw(hz), .1, -12) |> out($)',
       'limiter(in:$, release:.05, threshold:-6) |> out($)',
     ],
+    category: 'mixing',
   },
   mini: {
     name: 'mini',
@@ -704,6 +754,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'mel = mini(\'scale dorian [i ii v]$.5/2\', \'#05f\')',
       'play(mel, (trig, velocity, hz) -> sine(hz, trig) * velocity) |> out($)',
     ],
+    category: 'sequencing',
   },
   play: {
     name: 'play',
@@ -735,6 +786,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity, voices:4) |> out($)',
       'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity, bar:2) |> out($)',
     ],
+    category: 'sequencing',
   },
   timeline: {
     name: 'timeline',
@@ -755,6 +807,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'tl = timeline(\'1,0 3,1l2 8,0\', \'#f00\')',
       'tl * (0 1) |> out($)',
     ],
+    category: 'sequencing',
   },
   sampler: {
     name: 'sampler',
@@ -791,6 +844,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'kick = freesound(id: 123456)',
       'sampler(sample: kick, trig)',
     ],
+    category: 'generators',
   },
   slicer: {
     name: 'slicer',
@@ -833,6 +887,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     examples: [
       'slice = freesound(id: 123456)\nslicer(sample: slice, slice: .5, threshold: .4, trig)',
     ],
+    category: 'generators',
   },
   every: {
     name: 'every',
@@ -877,6 +932,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
       'pulse = every(1/4, prob:.6, swing:.1)',
       'pulse |> out($)',
     ],
+    category: 'sequencing',
   },
   at: {
     name: 'at',
@@ -921,6 +977,7 @@ every=1/2 q=.5
 |> out($)
 `,
     ],
+    category: 'sequencing',
   },
   euclid: {
     name: 'euclid',
@@ -957,6 +1014,7 @@ every=1/2 q=.5
       'trig = euclid(3, 8, 1)',
       'trig = euclid(5, 16, 0, 1/2)',
     ],
+    category: 'sequencing',
   },
   slew: {
     name: 'slew',
