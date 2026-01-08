@@ -852,9 +852,19 @@ function transformExpr(context: AstTransformContext, expr: any): any {
   if (expr.kind === 'func') {
     const inParams = expr.params ?? []
     const params = new Array<any>(inParams.length)
+
+    // Transform default expressions in parent scope before processing function body
+    // Deep clone each default to avoid shared references between functions
     for (let i = 0; i < inParams.length; i++) {
       const p = inParams[i]
-      params[i] = p?.default ? { ...p, default: transformExpr(context, p.default) } : p
+      if (p?.default) {
+        // Deep clone the default expression to prevent shared AST nodes
+        const clonedDefault = JSON.parse(JSON.stringify(p.default))
+        params[i] = { ...p, default: transformExpr(context, clonedDefault) }
+      }
+      else {
+        params[i] = p
+      }
     }
 
     const body = expr.body?.kind === 'block' ? transformStmt(context, expr.body) : transformExpr(context, expr.body)
