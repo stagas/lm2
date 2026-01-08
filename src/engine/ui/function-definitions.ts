@@ -157,6 +157,24 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     ],
     category: 'array',
   },
+  '.walk': {
+    name: '[].walk',
+    parameters: [
+      { name: 'bar', type: 'number',
+        description: 'Interval in bars for stepping through array elements (1/16 = sixteenth note).' },
+      { name: 'swing', type: 'number', optional: true, defaultValue: 0,
+        description: 'Swing amount (0..1) shifts odd beats earlier' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0,
+        description: 'Seconds to delay the entire walk sequence' },
+    ],
+    returnType: 'number',
+    description: 'Steps through array elements at beat-locked intervals, deterministically based on global time.',
+    examples: [
+      `scale='pentatonic' env=ad(.01,.5,5)
+#scale.walk(1/8, swing:.1) |> rhodes70($*o4)*env |> out($)`,
+    ],
+    category: 'array',
+  },
   'shuffle': {
     name: 'shuffle',
     parameters: [
@@ -2192,7 +2210,9 @@ every=1/2 q=.5
     name: 'swing',
     parameters: [
       { name: 't', type: 'number', description: 'Time value to swing' },
-      { name: 'amount', type: 'number', description: 'Swing amount (-1..1), where 0 = no swing, positive compresses first half and expands second half, negative does the opposite' },
+      { name: 'amount', type: 'number',
+        description:
+          'Swing amount (-1..1), where 0 = no swing, positive compresses first half and expands second half, negative does the opposite' },
     ],
     returnType: 'number',
     description: 'Applies rhythmic swing to time values by warping the phase within each beat cycle.',

@@ -1145,6 +1145,8 @@ class Compiler {
     if (compileMemberCallAsBuiltin('shuffle')) return
     // `signal.delay(seconds, feedback?, cb?)` is compiled as `delay(signal, seconds, feedback?, cb?)`.
     if (compileMemberCallAsBuiltin('delay')) return
+    // `array.walk(bar, swing?, offset?)` is compiled as `arrayWalk(array, bar, swing?, offset?)` to avoid GET_PROP in the VM encoder.
+    if (compileMemberCallAsBuiltin('walk', 'arrayWalk')) return
 
     type TempArg =
       | { kind: 'pos'; temp: string; valueKind?: string; identName?: string; isImplicitNamedCandidate: boolean }

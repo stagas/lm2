@@ -59,13 +59,13 @@ import {
   callSelect,
   callSign,
   callSin,
-  callSwing,
   callSmootherstep,
   callSmoothstep,
   callSnap,
   callSqrt,
   callSquare,
   callStep,
+  callSwing,
   callTan,
   callTanh,
   callTrunc,
@@ -100,6 +100,7 @@ import { callSap, callSbp, callSbs, callShp, callSlp, callSpeak } from './builti
 import { callTimeline } from './builtins/timeline'
 import { callTri } from './builtins/tri'
 import { callVelvet } from './builtins/velvet'
+import { callArrayWalk } from './builtins/walk'
 import { callZerox } from './builtins/zerox'
 import { Dsp } from './dsp'
 import { VM_FUNC_HEADER, VmBuiltin, VmTag } from './types'
@@ -310,6 +311,7 @@ export class VmBuiltins {
       && calleeAux !== VmBuiltin.Avg
       && calleeAux !== VmBuiltin.ArrayStep
       && calleeAux !== VmBuiltin.ArrayRandom
+      && calleeAux !== VmBuiltin.ArrayWalk
       && calleeAux !== VmBuiltin.Reverse
       && calleeAux !== VmBuiltin.Shuffle
       && calleeAux !== VmBuiltin.Glide
@@ -669,7 +671,6 @@ export class VmBuiltins {
     return true
   }
 
-  @inline
   tryAutoLiftFunc(
     funcPc: i32,
     posCount: i32,
@@ -1098,6 +1099,12 @@ export class VmBuiltins {
     if (calleeAux === VmBuiltin.ArrayRandom) {
       callArrayRandom(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack,
         audio, program, length, dsp)
+      return
+    }
+
+    if (calleeAux === VmBuiltin.ArrayWalk) {
+      callArrayWalk(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length, dsp)
       return
     }
 

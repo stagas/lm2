@@ -483,7 +483,6 @@ export class Dsp {
     this.vmInvokeFuncInternal(funcPc, argCount, argTags, argNums, argAux, length, left$, right$, true)
   }
 
-  @inline
   vmInvokeFuncKeepOuts(funcPc: i32, argCount: i32, argTags: StaticArray<i32>, argNums: StaticArray<f64>,
     argAux: StaticArray<i32>, length: i32, left$: usize, right$: usize): void
   {
@@ -506,8 +505,8 @@ export class Dsp {
     }
 
     // Check if auto-lift should apply (first param is 'in' and first arg is an array)
-    if (this.builtins.tryAutoLiftFunc(funcPc, argCount, argTags, argNums, argAux, this.stack, this.audio,
-      this.program, length, left$, right$, this))
+    if (this.builtins.tryAutoLiftFunc(funcPc, argCount, argTags, argNums, argAux, this.stack, this.audio, this.program,
+      length, left$, right$, this))
     {
       return
     }

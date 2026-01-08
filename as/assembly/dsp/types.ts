@@ -107,6 +107,7 @@ export enum VmBuiltin {
   Sum = VmSym.Sum,
   Avg = VmSym.Avg,
   ArrayStep = VmSym.ArrayStep,
+  ArrayWalk = VmSym.ArrayWalk,
   ArrayRandom = VmSym.ArrayRandom,
   Reverse = VmSym.Reverse,
   Shuffle = VmSym.Shuffle,

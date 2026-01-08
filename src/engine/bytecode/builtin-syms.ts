@@ -45,6 +45,7 @@ export const builtinSyms: Record<string, number> = {
   sum: VmSym.Sum,
   avg: VmSym.Avg,
   arrayStep: VmSym.ArrayStep,
+  arrayWalk: VmSym.ArrayWalk,
   arrayRandom: VmSym.ArrayRandom,
   reverse: VmSym.Reverse,
   shuffle: VmSym.Shuffle,
