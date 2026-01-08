@@ -1176,4 +1176,36 @@ export function callSafediv(
   callBinaryMath(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio, program, length, (x: f64, y: f64): f64 => y == 0.0 ? 0.0 : x / y, VmSym.X, VmSym.Y)
 }
 
+// swing(t, amount)
+// @ts-ignore
+@inline
+export function callSwing(
+  posCount: i32,
+  nameSyms: StaticArray<i32>,
+  nameTags: StaticArray<i32>,
+  nameNums: StaticArray<f64>,
+  nameAux: StaticArray<i32>,
+  namedCount: i32,
+  posTags: StaticArray<i32>,
+  posNums: StaticArray<f64>,
+  posAux: StaticArray<i32>,
+  stack: VmStack,
+  audio: VmAudio,
+  program: Program,
+  length: i32,
+): void {
+  callBinaryMath(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio, program, length, (t: f64, amount: f64): f64 => {
+    // Match Every.process(): clamp to [0, 1] and shift odd cycles earlier by interval*swing*0.5.
+    const s: f64 = Mathf.min(Mathf.max(amount as f32, 0.0), 1.0) as f64
+    if (s === 0.0) return t
+
+    const interval: f64 = 1.0
+    const swingOffset: f64 = interval * s * 0.5
+
+    const cycle: i32 = i32(Math.floor(t / interval))
+    if ((cycle & 1) === 1) return t - swingOffset
+    return t
+  }, VmSym.X, VmSym.Y)
+}
+
 

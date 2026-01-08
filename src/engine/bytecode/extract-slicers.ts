@@ -7,6 +7,15 @@ export function createSlicersVisitor(src: string, refs: SlicerRef[]) {
   const lineStarts = buildLineStartsForLocs(src)
   const scopes: Array<Map<string, number>> = [new Map()]
 
+  const recordIndexOf = (expr: any): number | undefined => {
+    if (expr?.kind !== 'call') return undefined
+    if (expr.callee?.kind !== 'ident' || expr.callee.name !== 'record') return undefined
+    const idxArg = findNamedArg(expr, '%index') ?? findNamedArg(expr, 'index')
+    const idx = tryEvalConstNumber(idxArg?.value)
+    if (idx == null || !Number.isFinite(idx)) return undefined
+    return Math.floor(idx)
+  }
+
   const getConst = (name: string): number | undefined => {
     for (let i = scopes.length - 1; i >= 0; i--) {
       const v = scopes[i]?.get(name)
@@ -26,7 +35,8 @@ export function createSlicersVisitor(src: string, refs: SlicerRef[]) {
         const sampleIndexFromVar = sampleArg?.value?.kind === 'ident'
           ? getConst(sampleArg.value.name)
           : undefined
-        const sampleIndex = sampleIndexConst ?? sampleIndexFromVar
+        const sampleIndexFromRecord = recordIndexOf(sampleArg?.value)
+        const sampleIndex = sampleIndexConst ?? sampleIndexFromVar ?? sampleIndexFromRecord
 
         if (sampleIndex != null && Number.isFinite(sampleIndex)) {
           const calleeLoc = (expr.callee?.loc ?? expr.loc) as Loc
@@ -55,6 +65,12 @@ export function createSlicersVisitor(src: string, refs: SlicerRef[]) {
         const value = tryEvalConstNumber(stmt.expr.value)
         if (value != null && Number.isFinite(value)) {
           scopes[scopes.length - 1].set(name, value)
+        }
+        else {
+          const recordIndex = recordIndexOf(stmt.expr.value)
+          if (recordIndex != null && Number.isFinite(recordIndex)) {
+            scopes[scopes.length - 1].set(name, recordIndex)
+          }
         }
       }
     }

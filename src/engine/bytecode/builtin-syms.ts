@@ -217,6 +217,7 @@ export const builtinSyms: Record<string, number> = {
   isnan: VmSym.Isnan,
   isinf: VmSym.Isinf,
   safediv: VmSym.Safediv,
+  swing: VmSym.SwingFn,
   // Named args for math functions
   lo: VmSym.Lo,
   hi: VmSym.Hi,

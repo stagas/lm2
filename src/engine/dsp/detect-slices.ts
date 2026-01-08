@@ -19,7 +19,10 @@ export function detectSlices(
   const minBucketSamples = 32
   const maxBucketsByMinSize = Math.max(1, Math.floor(len / minBucketSamples))
   const bucketCount = Math.max(1, Math.min(len, desiredBuckets, maxBucketsByMinSize))
-  if (bucketCount <= 1) return { points, count }
+  if (bucketCount <= 1) {
+    points[0] = 0
+    return { points, count: 1 }
+  }
 
   const peaks = computePeaks(samples, bucketCount)
   const rise = new Float32Array(bucketCount)
@@ -37,7 +40,10 @@ export function detectSlices(
     prevAmp = amp
   }
 
-  if (riseMax <= 0) return { points, count }
+  if (riseMax <= 0) {
+    points[0] = 0
+    return { points, count: 1 }
+  }
 
   const minRise = riseMax * (0.02 + thr * 0.28)
   const noveltyMin = riseMax * (0.01 + thr * 0.18)

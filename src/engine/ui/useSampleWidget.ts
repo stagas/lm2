@@ -216,6 +216,90 @@ export function useSampleWidget({
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
+
+    // Fetch record samples regardless of playback state
+    const worklet = useEngineRuntimeStore.getState().worklet
+    if (worklet) {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      for (const def of sampleDefs) {
+        if (def.provider !== 'record') continue
+        const idx = def.sampleIndex
+
+        const st = recordFetchRef.current.get(idx)
+        if (!st) {
+          recordFetchRef.current.set(idx, {
+            targetUrl: def.url,
+            pending: false,
+            nextAt: 0,
+            lastAppliedVer: 0,
+            waitForVer: null,
+          })
+        }
+        const cur = recordFetchRef.current.get(idx)!
+        if (cur.targetUrl !== def.url) {
+          cur.targetUrl = def.url
+          cur.waitForVer = cur.lastAppliedVer
+        }
+
+        if (cur.pending) continue
+        if (now < cur.nextAt) continue
+        cur.pending = true
+        cur.nextAt = now + 250
+
+        void worklet.getSampleVersion(idx).then((ver) => {
+          const t = typeof performance !== 'undefined' ? performance.now() : Date.now()
+          cur.pending = false
+          cur.nextAt = t + 250
+          const v = (ver ?? 0) | 0
+          if (v <= 0) return
+
+          if (cur.lastAppliedVer === 0) {
+            cur.waitForVer = null
+          }
+          else if (cur.waitForVer !== null) {
+            if (v === cur.waitForVer) return
+            cur.waitForVer = null
+          }
+          else if (v === cur.lastAppliedVer) {
+            return
+          }
+
+          cur.pending = true
+          void worklet.getSample(idx).then((s) => {
+            const tt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+            cur.pending = false
+            cur.nextAt = tt + 250
+            if (!s || s.length <= 0) return
+            if ((s.ver | 0) <= 0) return
+            cur.lastAppliedVer = s.ver | 0
+
+            const ch0Buffer = s.ch0Buffer
+            const ch0 = new Float32Array(ch0Buffer) as unknown as Float32Array<ArrayBuffer>
+            useEngineDspStore.setState(prev => {
+              const next = prev.loadedSamples.slice()
+              next[idx] = {
+                url: cur.targetUrl,
+                sampleRate: s.sampleRate,
+                length: s.length,
+                ch0,
+                ch0Buffer,
+              }
+              return { loadedSamples: next }
+            })
+          }).catch(() => {
+            const tt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+            cur.pending = false
+            cur.nextAt = tt + 250
+          })
+        }).catch(() => {
+          const t = typeof performance !== 'undefined' ? performance.now() : Date.now()
+          cur.pending = false
+          cur.nextAt = t + 250
+        })
+      }
+    }
+
+    // Handle needle tracking only when running
     const history = program1?.program.sampleNeedleHistory
     if (!history) return
 
@@ -296,87 +380,6 @@ export function useSampleWidget({
       const tau = latencySeconds / 2
       const a = 1 - Math.exp(-deltaTime / tau)
       st.posFrames = st.posFrames + diff * a
-    }
-
-    const worklet = useEngineRuntimeStore.getState().worklet
-    if (!worklet) return
-
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
-    for (const def of sampleDefs) {
-      if (def.provider !== 'record') continue
-      const idx = def.sampleIndex
-
-      const st = recordFetchRef.current.get(idx)
-      if (!st) {
-        recordFetchRef.current.set(idx, {
-          targetUrl: def.url,
-          pending: false,
-          nextAt: 0,
-          lastAppliedVer: 0,
-          waitForVer: null,
-        })
-      }
-      const cur = recordFetchRef.current.get(idx)!
-      if (cur.targetUrl !== def.url) {
-        cur.targetUrl = def.url
-        cur.waitForVer = cur.lastAppliedVer
-      }
-
-      if (cur.pending) continue
-      if (now < cur.nextAt) continue
-      cur.pending = true
-      cur.nextAt = now + 250
-
-      void worklet.getSampleVersion(idx).then((ver) => {
-        const t = typeof performance !== 'undefined' ? performance.now() : Date.now()
-        cur.pending = false
-        cur.nextAt = t + 250
-        const v = (ver ?? 0) | 0
-        if (v <= 0) return
-
-        if (cur.lastAppliedVer === 0) {
-          cur.waitForVer = null
-        }
-        else if (cur.waitForVer !== null) {
-          if (v === cur.waitForVer) return
-          cur.waitForVer = null
-        }
-        else if (v === cur.lastAppliedVer) {
-          return
-        }
-
-        cur.pending = true
-        void worklet.getSample(idx).then((s) => {
-          const tt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-          cur.pending = false
-          cur.nextAt = tt + 250
-          if (!s || s.length <= 0) return
-          if ((s.ver | 0) <= 0) return
-          cur.lastAppliedVer = s.ver | 0
-
-          const ch0Buffer = s.ch0Buffer
-          const ch0 = new Float32Array(ch0Buffer) as unknown as Float32Array<ArrayBuffer>
-          useEngineDspStore.setState(prev => {
-            const next = prev.loadedSamples.slice()
-            next[idx] = {
-              url: cur.targetUrl,
-              sampleRate: s.sampleRate,
-              length: s.length,
-              ch0,
-              ch0Buffer,
-            }
-            return { loadedSamples: next }
-          })
-        }).catch(() => {
-          const tt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-          cur.pending = false
-          cur.nextAt = tt + 250
-        })
-      }).catch(() => {
-        const t = typeof performance !== 'undefined' ? performance.now() : Date.now()
-        cur.pending = false
-        cur.nextAt = t + 250
-      })
     }
   }, [showWidgets, program1, audioContext, globalSampleCount, playbackState, sampleDefs])
 

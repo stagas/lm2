@@ -829,6 +829,11 @@ function DspSourceEditorReady(
     slicerRefs: widgetCompileState.slicerRefs,
     dspSource: widgetCompileState.dspSource,
     showWidgets,
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    sampleDefs: widgetCompileState.sampleDefs,
+    playbackState,
   })
 
   const { widgets: lfoWidgets, onBeforeDraw: onBeforeDrawLfo } = useLfoWidget({

@@ -2188,6 +2188,19 @@ every=1/2 q=.5
       'note(60) * semis(7) |> sine(hz:$) |> out($)',
     ],
   },
+  swing: {
+    name: 'swing',
+    parameters: [
+      { name: 't', type: 'number', description: 'Time value to swing' },
+      { name: 'amount', type: 'number', description: 'Swing amount (-1..1), where 0 = no swing, positive compresses first half and expands second half, negative does the opposite' },
+    ],
+    returnType: 'number',
+    description: 'Applies rhythmic swing to time values by warping the phase within each beat cycle.',
+    examples: [
+      'sine(440, swing(t, 0.1)) |> out($)',
+      'phasor(swing(t, 0.1) * 440) |> out($)',
+    ],
+  },
   stereo: {
     name: 'stereo',
     parameters: [

@@ -59,6 +59,7 @@ import {
   callSelect,
   callSign,
   callSin,
+  callSwing,
   callSmootherstep,
   callSmoothstep,
   callSnap,
@@ -1631,6 +1632,11 @@ export class VmBuiltins {
     }
     if (calleeAux === VmBuiltin.Safediv) {
       callSafediv(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Swing) {
+      callSwing(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }
