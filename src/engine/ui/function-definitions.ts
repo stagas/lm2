@@ -486,6 +486,40 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
       'impulse(440) |> out($)',
       'impulse(hz, 0, trig) |> out($)',
     ],
+    category: 'generators',
+  },
+  inc: {
+    name: 'inc',
+    parameters: [
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      {
+        name: 'width',
+        type: 'number',
+        optional: true,
+        defaultValue: 1.0,
+        description: 'Maximum value (ceiling) that the oscillator will reach before stopping.',
+      },
+      {
+        name: 'offset',
+        type: 'number',
+        optional: true,
+        defaultValue: 0,
+        description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+      },
+      {
+        name: 'trig',
+        type: 'number',
+        optional: true,
+        description: 'Trigger signal that resets the oscillator phase when it crosses from ≤0 to >0.',
+      },
+    ],
+    returnType: 'number',
+    description: 'Incremental oscillator that increases linearly from 0 to the width value at the given frequency.',
+    examples: [
+      'inc(1) |> out($)',
+      'inc(hz, width, offset, trig) |> out($)',
+    ],
+    category: 'generators',
   },
   zerox: {
     name: 'zerox',

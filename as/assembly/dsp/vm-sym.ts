@@ -121,6 +121,7 @@ export enum VmSym {
   Peak,
   Phasor,
   Impulse,
+  Inc,
   Pingpong,
   Pink,
   Play,

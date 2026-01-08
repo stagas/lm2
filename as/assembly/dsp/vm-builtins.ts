@@ -25,6 +25,7 @@ import { callGate } from './builtins/gate'
 import { callGetScale } from './builtins/get-scale'
 import { callGlide } from './builtins/glide'
 import { callImpulse } from './builtins/impulse'
+import { callInc } from './builtins/inc'
 import { callLfoRamp, callLfoSah, callLfoSaw, callLfoSine, callLfoSqr, callLfoTri } from './builtins/lfo'
 import { callLimiter } from './builtins/limiter'
 import { callMap } from './builtins/map'
@@ -1034,6 +1035,11 @@ export class VmBuiltins {
     }
     if (calleeAux === VmBuiltin.Impulse) {
       callImpulse(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Inc) {
+      callInc(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

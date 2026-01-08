@@ -3,6 +3,7 @@ import { Gen } from './gen'
 
 export class Osc extends Gen {
   hz$: usize = 0
+  ceil$: usize = 0
   width$: usize = 0
   offset$: usize = 0
   trig$: usize = 0
@@ -256,7 +257,6 @@ export class Osc extends Gen {
     for (let i = 0; i < length; i++) {
       const hz: f32 = clampNyquist(load<f32>(hz$))
       const trig: f32 = load<f32>(trig$)
-
       if (trig > 0.0 && lastTrig <= 0.0) {
         const offsetSeconds: f32 = load<f32>(offset$)
         let phaseOffset: f32 = (offsetSeconds * hz) % 1.0
@@ -355,7 +355,7 @@ export class Osc extends Gen {
   @inline
   inc(out$: usize, length: i32): void {
     let hz$ = this.hz$
-    let width$ = this.width$
+    let ceil$ = this.ceil$
     let offset$ = this.offset$
     let trig$ = this.trig$
 
@@ -364,7 +364,7 @@ export class Osc extends Gen {
 
     for (let i = 0; i < length; i++) {
       const hz: f32 = clampNyquist(load<f32>(hz$))
-      const ceil: f32 = load<f32>(width$)
+      const ceil: f32 = load<f32>(ceil$)
       const trig: f32 = load<f32>(trig$)
 
       if (trig > 0.0 && lastTrig <= 0.0) {
@@ -382,7 +382,7 @@ export class Osc extends Gen {
 
       out$ += 4
       hz$ += 4
-      width$ += 4
+      ceil$ += 4
       trig$ += 4
       offset$ += 4
     }

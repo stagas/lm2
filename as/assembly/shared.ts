@@ -45,6 +45,7 @@ export enum Op {
   Pwm,
   Phasor,
   Impulse,
+  Inc,
   Zerox,
   Lp,
   Compressor,

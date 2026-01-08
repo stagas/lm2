@@ -21,7 +21,7 @@ import { Mini } from './gen/mini'
 import { Mhp, Mlp } from './gen/moog'
 import { BrownNoise, FractalNoise, GaussNoise, PinkNoise, SmoothNoise, WhiteNoise } from './gen/noise'
 import { Ohp, Olp } from './gen/onepole'
-import { Impulse, Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
+import { Impulse, Inc, Phasor, Pwm, Ramp, Saw, Sqr, Tri } from './gen/osc'
 import { PitchShift } from './gen/pitch-shift'
 import { Random } from './gen/random'
 import { Sah } from './gen/sah'
@@ -93,6 +93,7 @@ export class GensPool {
   private pwms: GenPool<Pwm> = new GenPool<Pwm>(() => new Pwm())
   private phasors: GenPool<Phasor> = new GenPool<Phasor>(() => new Phasor())
   private impulses: GenPool<Impulse> = new GenPool<Impulse>(() => new Impulse())
+  private incs: GenPool<Inc> = new GenPool<Inc>(() => new Inc())
   private zeroxes: GenPool<Zerox> = new GenPool<Zerox>(() => new Zerox())
   private ads: GenPool<Ad> = new GenPool<Ad>(() => new Ad())
   private adsrs: GenPool<Adsr> = new GenPool<Adsr>(() => new Adsr())
@@ -153,7 +154,7 @@ export class GensPool {
   private sahs: GenPool<Sah> = new GenPool<Sah>(() => new Sah())
 
   // Keep in sync with `saveIndices()`/`restoreIndices()`.
-  static readonly INDICES_COUNT: i32 = 64
+  static readonly INDICES_COUNT: i32 = 65
 
   @inline
   saveIndices(out: StaticArray<i32>): void {
@@ -166,6 +167,7 @@ export class GensPool {
     out[i++] = this.pwms.getIndex()
     out[i++] = this.phasors.getIndex()
     out[i++] = this.impulses.getIndex()
+    out[i++] = this.incs.getIndex()
     out[i++] = this.zeroxes.getIndex()
     out[i++] = this.ads.getIndex()
     out[i++] = this.adsrs.getIndex()
@@ -235,6 +237,7 @@ export class GensPool {
     this.pwms.setIndex(src[i++])
     this.phasors.setIndex(src[i++])
     this.impulses.setIndex(src[i++])
+    this.incs.setIndex(src[i++])
     this.zeroxes.setIndex(src[i++])
     this.ads.setIndex(src[i++])
     this.adsrs.setIndex(src[i++])
@@ -302,6 +305,7 @@ export class GensPool {
     this.pwms.resetIndex()
     this.phasors.resetIndex()
     this.impulses.resetIndex()
+    this.incs.resetIndex()
     this.zeroxes.resetIndex()
     this.ads.resetIndex()
     this.adsrs.resetIndex()
@@ -368,6 +372,7 @@ export class GensPool {
     this.pwms.reset()
     this.phasors.reset()
     this.impulses.reset()
+    this.incs.reset()
     this.zeroxes.reset()
     this.ads.reset()
     this.adsrs.reset()
@@ -444,6 +449,8 @@ export class GensPool {
         return this.phasors.get()
       case Op.Impulse:
         return this.impulses.get()
+      case Op.Inc:
+        return this.incs.get()
       case Op.Zerox:
         return this.zeroxes.get()
       case Op.Ad:

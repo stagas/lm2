@@ -83,6 +83,7 @@ export enum VmBuiltin {
   Pwm = VmSym.Pwm,
   Phasor = VmSym.Phasor,
   Impulse = VmSym.Impulse,
+  Inc = VmSym.Inc,
   Ad = VmSym.Ad,
   Adsr = VmSym.Adsr,
   Envfollow = VmSym.Envfollow,
