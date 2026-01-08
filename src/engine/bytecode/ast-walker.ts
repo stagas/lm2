@@ -78,6 +78,11 @@ function visitExpr(expr: any, visitors: VisitorFunctions[], ctx: VisitorContext)
   }
 
   if (expr.kind === 'func') {
+    // Visit parameter defaults
+    for (const param of expr.params ?? []) {
+      if (param.default) visitExpr(param.default, visitors, ctx)
+    }
+    // Visit function body
     if (expr.body?.kind === 'block') visitStmt(expr.body, visitors, ctx)
     else visitExpr(expr.body, visitors, ctx)
     return

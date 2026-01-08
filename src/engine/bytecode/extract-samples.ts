@@ -31,8 +31,9 @@ function recordKeyFromAssign(targetName: string): string {
   return `record:${targetName}`
 }
 
-function recordKeyFallback(callLoc: Loc): string {
-  return `record@${callLoc.line}:${callLoc.column}`
+function recordKeyFallback(call: any): string {
+  const cbKey = getRecordCbKey(call)
+  return `record#${(cbKey >>> 0).toString(16)}`
 }
 
 export function createSamplesVisitor(
@@ -150,7 +151,7 @@ export function createSamplesVisitor(
       else if (expr.callee?.kind === 'ident' && expr.callee?.name === 'record') {
         const lk = locKey(expr.loc)
         if (handledRecordCalls.has(lk)) return
-        const key = recordKeyFallback(expr.loc)
+        const key = recordKeyFallback(expr)
         const cbKey = getRecordCbKey(expr)
         ensureRecordSample(key, expr.loc, cbKey)
       }

@@ -233,8 +233,9 @@ function recordKeyFromAssign(targetName: string): string {
   return `record:${targetName}`
 }
 
-function recordKeyFallback(loc: Loc): string {
-  return `record@${loc.line}:${loc.column}`
+function recordKeyFallback(call: any): string {
+  const cbKey = getRecordCbKey(call)
+  return `record#${(cbKey >>> 0).toString(16)}`
 }
 
 function toSeqIndexExpr(loc: Loc, idx: number): any {
@@ -545,7 +546,7 @@ function transformExpr(context: AstTransformContext, expr: any): any {
     }
 
     if (isRecord) {
-      return injectRecordArgs(context.sampleKeyToIndex, expr, callee, args, recordKeyFallback(expr.loc))
+      return injectRecordArgs(context.sampleKeyToIndex, expr, callee, args, recordKeyFallback(expr))
     }
 
     const withIndex = (idx: number) => ({
@@ -1707,7 +1708,7 @@ export function encodeLangToVmOps(
     tramSequences.forEach((seq, idx) => sequenceToIndex.set(seq, sequences.length + idx))
     const timelineKeyToIndex = new Map<string, number>()
     timelineSequences.forEach((s, idx) => timelineKeyToIndex.set(s.sequence, idx))
-    const miniCount = sequences.length
+    const miniCount = sequences.length + tramSequences.length
     const sampleKeyToIndex = new Map<string, number>()
     for (const s of samples) {
       if (s.provider === 'freesound') sampleKeyToIndex.set(`freesound:${s.id}`, s.sampleIndex)

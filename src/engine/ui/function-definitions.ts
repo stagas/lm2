@@ -1912,14 +1912,17 @@ every=1/2 q=.5
   tram: {
     name: 'tram',
     parameters: [
-      { name: 'sequence', type: 'string', description: 'Rhythm sequence string using "x" for hits and "-" for pauses' },
+      { name: 'sequence', type: 'string', description: 'Rhythm sequence string using "x" for hits and "-" for pauses. Square brackets [x x] subdivide a single beat. Whitespace is ignored for readability.' },
       { name: 'bar', type: 'number', optional: true, defaultValue: 1, description: 'Bar duration to fit the sequence into' },
     ],
     returnType: 'number',
-    description: 'Rhythm impulse generator that produces deterministic impulses based on a sequence pattern.',
+    description: 'Rhythm impulse generator with microtiming support. Brackets subdivide beats for complex polyrhythms.',
     examples: [
       'hihats = tram("--x-", 1/4)',
       'kick = tram("x---x---x---x-x-")',
+      'snare = tram("  x  -  x  ", 1/2)',
+      'microtiming = tram("x-[x x]-x", 1)', // 5 beats: x, -, [x x], -, x
+      'polyrhythm = tram("[x x x]-[x x]")', // 3 beats: [x x x], -, [x x]
     ],
     category: 'sequencing',
   },

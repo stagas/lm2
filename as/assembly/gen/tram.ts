@@ -34,9 +34,9 @@ export class Tram extends Gen {
       return
     }
 
-    // Read sequence length from bytecode
-    const seqLength = i32(load<f32>(bytecodePtr))
-    if (seqLength <= 0) {
+    // Read total beats count from bytecode
+    const totalBeats = i32(load<f32>(bytecodePtr))
+    if (totalBeats <= 0) {
       // Empty sequence, no output
       for (let i = 0; i < length; i++) {
         store<f32>(out$, 0.0)
@@ -45,18 +45,52 @@ export class Tram extends Gen {
       return
     }
 
-    for (let i = 0; i < length; i++) {
-      const globalSample: f64 = (globalSampleCount + i) as f64
-      const beatPosition = globalSample / interval
-      const stepIndex = i32(Math.floor(beatPosition * seqLength)) % seqLength
+    // Calculate samples per beat
+    const samplesPerBeat: f64 = interval / (totalBeats as f64)
 
-      // Read the bit from packed bytecode
-      const packedIndex = stepIndex / 32
-      const bitIndex = stepIndex % 32
-      const packedValue = load<f32>(bytecodePtr + 4 + packedIndex * 4)
+    for (let i = 0; i < length; i++) {
+      const currentSample: f64 = (globalSampleCount + i) as f64
+
+      // Determine which beat we're in
+      const beatPosition: f64 = currentSample / samplesPerBeat
+      const beatIndex: i32 = i32(Math.floor(beatPosition)) % totalBeats
+      const beatStartSample: f64 = Math.floor(beatPosition) * samplesPerBeat
+
+      // Find the beat data in bytecode
+      let readPtr: usize = bytecodePtr + 4 // Skip totalBeats
+      for (let b: i32 = 0; b < beatIndex; b++) {
+        const subdivCount = i32(load<f32>(readPtr))
+        readPtr += 4 // Skip subdivCount
+        const packedLength = (subdivCount + 31) / 32
+        readPtr += packedLength * 4 // Skip packed data
+      }
+
+      // Read current beat's subdivision count
+      const subdivCount = i32(load<f32>(readPtr))
+      readPtr += 4
+
+      if (subdivCount <= 0) {
+        store<f32>(out$, 0.0)
+        out$ += 4
+        continue
+      }
+
+      // Calculate which subdivision we're in
+      const sampleInBeat: f64 = currentSample - beatStartSample
+      const samplesPerSubdiv: f64 = samplesPerBeat / (subdivCount as f64)
+      const subdivIndex: i32 = i32(Math.floor(sampleInBeat / samplesPerSubdiv)) % subdivCount
+      const subdivStartSample: f64 = beatStartSample + (subdivIndex as f64) * samplesPerSubdiv
+
+      // Generate impulse only at the exact start sample of subdivision
+      const isImpulseSample: bool = Math.abs(currentSample - subdivStartSample) < 0.5
+
+      // Read the subdivision bit from packed data
+      const packedIndex = subdivIndex / 32
+      const bitIndex = subdivIndex % 32
+      const packedValue = load<f32>(readPtr + packedIndex * 4)
       const bit = (i32(packedValue) & (1 << bitIndex)) !== 0
 
-      const value: f32 = bit ? 1.0 : 0.0
+      const value: f32 = (bit && isImpulseSample) ? 1.0 : 0.0
       store<f32>(out$, value)
       out$ += 4
     }
