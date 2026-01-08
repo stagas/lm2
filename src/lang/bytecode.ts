@@ -152,6 +152,40 @@ export type BytecodeProgram = {
   errors: LangError[]
 }
 
+const K_UNDEF = 0
+const K_NULL = 1
+const K_TRUE = 2
+const K_FALSE = 3
+const K_ZERO = 4
+const K_ONE = 5
+const K_NEG_ONE = 6
+
+const BASE_CONSTS: ConstVal[] = [undefined, null, true, false, 0, 1, -1]
+
+const INS_BRANCH: Instr = { op: 'BRANCH' }
+const INS_ENTER_SCOPE: Instr = { op: 'ENTER_SCOPE' }
+const INS_EXIT_SCOPE: Instr = { op: 'EXIT_SCOPE' }
+const INS_POP: Instr = { op: 'POP' }
+const INS_DUP: Instr = { op: 'DUP' }
+const INS_DUP2: Instr = { op: 'DUP2' }
+const INS_LEN: Instr = { op: 'LEN' }
+const INS_GET_INDEX: Instr = { op: 'GET_INDEX' }
+const INS_GET_INDEX2: Instr = { op: 'GET_INDEX2' }
+const INS_SET_INDEX: Instr = { op: 'SET_INDEX' }
+const INS_TRY_BEGIN: Instr = { op: 'TRY_BEGIN' }
+const INS_FINALLY_BEGIN: Instr = { op: 'FINALLY_BEGIN' }
+const INS_TRY_END: Instr = { op: 'TRY_END' }
+const INS_THROW: Instr = { op: 'THROW' }
+const INS_RETURN: Instr = { op: 'RETURN' }
+
+const INS_PUSH_UNDEF: Instr = { op: 'PUSH_CONST', k: K_UNDEF }
+const INS_PUSH_NULL: Instr = { op: 'PUSH_CONST', k: K_NULL }
+const INS_PUSH_TRUE: Instr = { op: 'PUSH_CONST', k: K_TRUE }
+const INS_PUSH_FALSE: Instr = { op: 'PUSH_CONST', k: K_FALSE }
+const INS_PUSH_ZERO: Instr = { op: 'PUSH_CONST', k: K_ZERO }
+const INS_PUSH_ONE: Instr = { op: 'PUSH_CONST', k: K_ONE }
+const INS_PUSH_NEG_ONE: Instr = { op: 'PUSH_CONST', k: K_NEG_ONE }
+
 export function compile(src: string, program: Program): BytecodeProgram {
   const c = new Compiler(src)
   c.compileProgram(program)
@@ -207,24 +241,45 @@ export function disassemble(chunk: Chunk): string {
 }
 
 class Compiler {
-  readonly chunk: Chunk = { consts: [], funcs: [], code: [], arrayLiterals: [], branchMarks: [] }
+  readonly chunk: Chunk = { consts: [...BASE_CONSTS], funcs: [], code: [], arrayLiterals: [], branchMarks: [] }
   readonly errors: LangError[] = []
-  private constIndex = new Map<ConstVal, number>()
+  private strConstIndex: Record<string, number> = Object.create(null)
+  private strConstKeys: string[] = []
+  private numConstIndex = new Map<number, number>()
   private pipe: string[] = []
   private labelId = 0
   private callTempId = 0
   private forTempId = 0
   private destructureTempId = 0
   private sigScopes: Array<Map<string, SigInfo>> = [new Map()]
+  private sigScopePool: Array<Map<string, SigInfo>> = []
 
   constructor(private readonly src: string) {}
 
   private k(v: ConstVal): number {
-    const hit = this.constIndex.get(v)
+    if (v === undefined) return K_UNDEF
+    if (v === null) return K_NULL
+    if (v === true) return K_TRUE
+    if (v === false) return K_FALSE
+
+    if (typeof v === 'number') {
+      if (v === 0) return K_ZERO
+      if (v === 1) return K_ONE
+      if (v === -1) return K_NEG_ONE
+      const hit = this.numConstIndex.get(v)
+      if (hit !== undefined) return hit
+      const i = this.chunk.consts.length
+      this.chunk.consts.push(v)
+      this.numConstIndex.set(v, i)
+      return i
+    }
+
+    const hit = this.strConstIndex[v]
     if (hit !== undefined) return hit
     const i = this.chunk.consts.length
     this.chunk.consts.push(v)
-    this.constIndex.set(v, i)
+    this.strConstIndex[v] = i
+    this.strConstKeys.push(v)
     return i
   }
 
@@ -237,12 +292,23 @@ class Compiler {
     return this.chunk.code.length - 1
   }
 
+  private emitUndef(): void {
+    this.emit(INS_PUSH_UNDEF)
+  }
+
+  private emitLoadName(name: string): void {
+    this.emit({ op: 'LOAD', name: this.nameConst(name) })
+  }
+
   private enterSigScope(): void {
-    this.sigScopes.push(new Map())
+    this.sigScopes.push(this.sigScopePool.pop() ?? new Map())
   }
 
   private exitSigScope(): void {
-    if (this.sigScopes.length > 1) this.sigScopes.pop()
+    if (this.sigScopes.length <= 1) return
+    const scope = this.sigScopes.pop()!
+    scope.clear()
+    this.sigScopePool.push(scope)
   }
 
   private findSigInfo(name: string): SigInfo | null {
@@ -280,7 +346,7 @@ class Compiler {
   }
 
   private emitBranchMark(loc: Loc): void {
-    const ins = this.emit({ op: 'BRANCH' })
+    const ins = this.emit(INS_BRANCH)
     this.chunk.branchMarks.push({ ins, loc: { line: loc.line, column: loc.column, length: Math.max(1, loc.length) } })
   }
 
@@ -344,7 +410,7 @@ class Compiler {
 
     if (stmt.kind === 'expr_stmt') {
       this.compileExpr(stmt.expr)
-      if (!isLast) this.emit({ op: 'POP' })
+      if (!isLast) this.emit(INS_POP)
       return
     }
 
@@ -355,16 +421,16 @@ class Compiler {
 
       this.compileExpr(stmt.value)
       this.emit({ op: 'STORE', name: tempName })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
 
       if (stmt.pattern.kind === 'arr') {
         for (let i = 0; i < stmt.pattern.items.length; i++) {
           const name = stmt.pattern.items[i]!
           this.emit({ op: 'LOAD', name: tempName })
           this.emit({ op: 'PUSH_CONST', k: this.k(i) })
-          this.emit({ op: 'GET_INDEX' })
+          this.emit(INS_GET_INDEX)
           this.emit({ op: 'STORE', name: this.nameConst(name) })
-          this.emit({ op: 'POP' })
+          this.emit(INS_POP)
         }
       }
       else {
@@ -372,7 +438,7 @@ class Compiler {
           this.emit({ op: 'LOAD', name: tempName })
           this.emit({ op: 'GET_PROP', key: this.k(key) })
           this.emit({ op: 'STORE', name: this.nameConst(key) })
-          this.emit({ op: 'POP' })
+          this.emit(INS_POP)
         }
       }
       return
@@ -385,14 +451,14 @@ class Compiler {
 
     if (stmt.kind === 'return') {
       if (stmt.value) this.compileExpr(stmt.value)
-      else this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
-      this.emit({ op: 'RETURN' })
+      else this.emit(INS_PUSH_UNDEF)
+      this.emit(INS_RETURN)
       return
     }
 
     if (stmt.kind === 'throw') {
       this.compileExpr(stmt.value)
-      this.emit({ op: 'THROW' })
+      this.emit(INS_THROW)
       return
     }
 
@@ -446,24 +512,24 @@ class Compiler {
   }
 
   private compileBlockStmt(block: BlockStmt, isLast: boolean): void {
-    this.emit({ op: 'ENTER_SCOPE' })
+    this.emit(INS_ENTER_SCOPE)
     this.enterSigScope()
     for (let i = 0; i < block.body.length; i++) {
       this.compileStmt(block.body[i]!, isLast && i === block.body.length - 1)
     }
     this.exitSigScope()
-    this.emit({ op: 'EXIT_SCOPE' })
+    this.emit(INS_EXIT_SCOPE)
   }
 
   private compileForStmt(stmt: ForStmt): void {
     // Loops introduce a scope (loop head bindings shouldn't leak).
-    this.emit({ op: 'ENTER_SCOPE' })
+    this.emit(INS_ENTER_SCOPE)
     this.enterSigScope()
 
     if (stmt.head.kind === 'c_style') {
       if (stmt.head.init) {
         this.compileExpr(stmt.head.init)
-        this.emit({ op: 'POP' })
+        this.emit(INS_POP)
       }
       const start = this.emit({ op: 'LABEL', id: this.labelId++ })
       if (stmt.head.test) {
@@ -472,7 +538,7 @@ class Compiler {
         this.compileStmt(stmt.body, false)
         if (stmt.head.update) {
           this.compileExpr(stmt.head.update)
-          this.emit({ op: 'POP' })
+          this.emit(INS_POP)
         }
         this.emit({ op: 'JUMP', to: start })
         this.patch(j, this.chunk.code.length)
@@ -481,12 +547,12 @@ class Compiler {
         this.compileStmt(stmt.body, false)
         if (stmt.head.update) {
           this.compileExpr(stmt.head.update)
-          this.emit({ op: 'POP' })
+          this.emit(INS_POP)
         }
         this.emit({ op: 'JUMP', to: start })
       }
       this.exitSigScope()
-      this.emit({ op: 'EXIT_SCOPE' })
+      this.emit(INS_EXIT_SCOPE)
       return
     }
 
@@ -501,24 +567,24 @@ class Compiler {
     // iterable
     this.compileExpr(stmt.head.iterable)
     this.emit({ op: 'STORE', name: iterName })
-    this.emit({ op: 'POP' })
+    this.emit(INS_POP)
 
     // length (cache it once)
     this.emit({ op: 'LOAD', name: iterName })
-    this.emit({ op: 'LEN' })
+    this.emit(INS_LEN)
     this.emit({ op: 'STORE', name: lenName })
-    this.emit({ op: 'POP' })
+    this.emit(INS_POP)
 
     if (stmt.head.length) {
       this.emit({ op: 'LOAD', name: lenName })
       this.emit({ op: 'STORE', name: this.nameConst(stmt.head.length) })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
     }
 
     // index = 0
-    this.emit({ op: 'PUSH_CONST', k: this.k(0) })
+    this.emit(INS_PUSH_ZERO)
     this.emit({ op: 'STORE', name: indexName })
-    this.emit({ op: 'POP' })
+    this.emit(INS_POP)
 
     const start = this.emit({ op: 'LABEL', id: this.labelId++ })
 
@@ -531,38 +597,38 @@ class Compiler {
     if (stmt.head.index) {
       this.emit({ op: 'LOAD', name: indexName })
       this.emit({ op: 'STORE', name: this.nameConst(stmt.head.index) })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
     }
 
     // value = iterable[index]
     this.emit({ op: 'LOAD', name: iterName })
     this.emit({ op: 'LOAD', name: indexName })
-    this.emit({ op: 'GET_INDEX' })
+    this.emit(INS_GET_INDEX)
     this.emit({ op: 'STORE', name: this.nameConst(stmt.head.value) })
-    this.emit({ op: 'POP' })
+    this.emit(INS_POP)
 
     this.compileStmt(stmt.body, false)
 
     // index++
     this.emit({ op: 'LOAD', name: indexName })
-    this.emit({ op: 'PUSH_CONST', k: this.k(1) })
+    this.emit(INS_PUSH_ONE)
     this.emit({ op: 'BINARY', opName: '+' })
     this.emit({ op: 'STORE', name: indexName })
-    this.emit({ op: 'POP' })
+    this.emit(INS_POP)
 
     this.emit({ op: 'JUMP', to: start })
     this.patch(jEnd, this.chunk.code.length)
-    this.emit({ op: 'EXIT_SCOPE' })
+    this.emit(INS_EXIT_SCOPE)
     this.exitSigScope()
   }
 
   private compileSwitchStmt(stmt: SwitchStmt): void {
     this.compileExpr(stmt.test)
-    this.emit({ op: 'POP' })
+    this.emit(INS_POP)
     for (const c of stmt.cases) {
       if (c.test) {
         this.compileExpr(c.test)
-        this.emit({ op: 'POP' })
+        this.emit(INS_POP)
       }
       for (let i = 0; i < c.body.length; i++) {
         this.compileStmt(c.body[i]!, false)
@@ -571,7 +637,7 @@ class Compiler {
   }
 
   private compileTryStmt(stmt: TryStmt): void {
-    this.emit({ op: 'TRY_BEGIN' })
+    this.emit(INS_TRY_BEGIN)
     this.compileBlockStmt(stmt.body, false)
     if (stmt.catchBody) {
       const name = stmt.catchName ? this.nameConst(stmt.catchName) : undefined
@@ -579,10 +645,10 @@ class Compiler {
       this.compileBlockStmt(stmt.catchBody, false)
     }
     if (stmt.finallyBody) {
-      this.emit({ op: 'FINALLY_BEGIN' })
+      this.emit(INS_FINALLY_BEGIN)
       this.compileBlockStmt(stmt.finallyBody, false)
     }
-    this.emit({ op: 'TRY_END' })
+    this.emit(INS_TRY_END)
   }
 
   private compileExpr(expr: Expr): void {
@@ -609,7 +675,7 @@ class Compiler {
         const name = this.pipe[this.pipe.length - 1]
         if (!name) {
           this.err(expr.loc, 'Pipe value \'$\' is only valid on the right side of a pipe')
-          this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+          this.emit(INS_PUSH_UNDEF)
           return
         }
         this.emit({ op: 'LOAD', name: this.nameConst(name) })
@@ -619,7 +685,9 @@ class Compiler {
         for (const it of expr.items) this.compileExpr(it)
         {
           const ins = this.emit({ op: 'ARRAY', n: expr.items.length })
-          this.chunk.arrayLiterals.push({ ins, loc: expr.loc, items: expr.items.map(it => it.loc) })
+          const items: Loc[] = new Array(expr.items.length)
+          for (let i = 0; i < expr.items.length; i++) items[i] = expr.items[i]!.loc
+          this.chunk.arrayLiterals.push({ ins, loc: expr.loc, items })
         }
         return
       case 'object':
@@ -643,7 +711,7 @@ class Compiler {
           if (expr.expr.kind === 'ident') {
             const name = this.nameConst(expr.expr.name)
             this.emit({ op: 'LOAD', name })
-            this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+            this.emit(delta === 1 ? INS_PUSH_ONE : INS_PUSH_NEG_ONE)
             this.emit({ op: 'BINARY', opName: '+' })
             this.emit({ op: 'STORE', name })
             return
@@ -654,16 +722,16 @@ class Compiler {
             this.compileExpr(expr.expr.object)
             if (expr.expr.computed === true) {
               this.compileExpr(expr.expr.index)
-              this.emit({ op: 'DUP2' })
-              this.emit({ op: 'GET_INDEX' })
-              this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+              this.emit(INS_DUP2)
+              this.emit(INS_GET_INDEX)
+              this.emit(delta === 1 ? INS_PUSH_ONE : INS_PUSH_NEG_ONE)
               this.emit({ op: 'BINARY', opName: '+' })
-              this.emit({ op: 'SET_INDEX' })
+              this.emit(INS_SET_INDEX)
             }
             else {
-              this.emit({ op: 'DUP' })
+              this.emit(INS_DUP)
               this.emit({ op: 'GET_PROP', key: this.k(expr.expr.prop) })
-              this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+              this.emit(delta === 1 ? INS_PUSH_ONE : INS_PUSH_NEG_ONE)
               this.emit({ op: 'BINARY', opName: '+' })
               this.emit({ op: 'SET_PROP', key: this.k(expr.expr.prop) })
             }
@@ -671,7 +739,7 @@ class Compiler {
           }
 
           this.err(expr.loc, 'Invalid increment/decrement target')
-          this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+          this.emit(INS_PUSH_UNDEF)
           return
         }
 
@@ -687,11 +755,11 @@ class Compiler {
             const name = this.nameConst(expr.expr.name)
             // LOAD old; DUP; PUSH_CONST delta; BINARY '+'; STORE; POP -> leaves old
             this.emit({ op: 'LOAD', name })
-            this.emit({ op: 'DUP' })
-            this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+            this.emit(INS_DUP)
+            this.emit(delta === 1 ? INS_PUSH_ONE : INS_PUSH_NEG_ONE)
             this.emit({ op: 'BINARY', opName: '+' })
             this.emit({ op: 'STORE', name })
-            this.emit({ op: 'POP' })
+            this.emit(INS_POP)
             return
           }
 
@@ -699,28 +767,28 @@ class Compiler {
             this.compileExpr(expr.expr.object)
             if (expr.expr.computed === true) {
               this.compileExpr(expr.expr.index)
-              this.emit({ op: 'DUP2' })
-              this.emit({ op: 'GET_INDEX' })
-              this.emit({ op: 'DUP' })
-              this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+              this.emit(INS_DUP2)
+              this.emit(INS_GET_INDEX)
+              this.emit(INS_DUP)
+              this.emit(delta === 1 ? INS_PUSH_ONE : INS_PUSH_NEG_ONE)
               this.emit({ op: 'BINARY', opName: '+' })
-              this.emit({ op: 'SET_INDEX' })
-              this.emit({ op: 'POP' })
+              this.emit(INS_SET_INDEX)
+              this.emit(INS_POP)
             }
             else {
-              this.emit({ op: 'DUP' })
+              this.emit(INS_DUP)
               this.emit({ op: 'GET_PROP', key: this.k(expr.expr.prop) })
-              this.emit({ op: 'DUP' })
-              this.emit({ op: 'PUSH_CONST', k: this.k(delta) })
+              this.emit(INS_DUP)
+              this.emit(delta === 1 ? INS_PUSH_ONE : INS_PUSH_NEG_ONE)
               this.emit({ op: 'BINARY', opName: '+' })
               this.emit({ op: 'SET_PROP', key: this.k(expr.expr.prop) })
-              this.emit({ op: 'POP' })
+              this.emit(INS_POP)
             }
             return
           }
 
           this.err(expr.loc, 'Invalid increment/decrement target')
-          this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+          this.emit(INS_PUSH_UNDEF)
           return
         }
 
@@ -750,18 +818,18 @@ class Compiler {
         this.compileExpr(expr.object.object)
         this.compileExpr(expr.object.index)
         this.compileExpr(expr.index)
-        this.emit({ op: 'GET_INDEX2' })
+        this.emit(INS_GET_INDEX2)
         return
       }
 
       this.compileExpr(expr.object)
       this.compileExpr(expr.index)
-      this.emit({ op: 'GET_INDEX' })
+      this.emit(INS_GET_INDEX)
       return
     }
     if (expr.prop === 'length') {
       this.compileExpr(expr.object)
-      this.emit({ op: 'LEN' })
+      this.emit(INS_LEN)
       return
     }
     this.compileExpr(expr.object)
@@ -797,7 +865,7 @@ class Compiler {
       const recvTemp = `%recv${this.callTempId++}`
       this.compileExpr(expr.callee.object)
       this.emit({ op: 'STORE', name: this.nameConst(recvTemp) })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
 
       this.emit({ op: 'LOAD', name: this.nameConst('map') })
 
@@ -829,7 +897,7 @@ class Compiler {
 
           this.compileExpr(valueToCompile)
           this.emit({ op: 'STORE', name: this.nameConst(t) })
-          this.emit({ op: 'POP' })
+          this.emit(INS_POP)
           temps.push({ kind: 'pos', temp: t })
           continue
         }
@@ -843,18 +911,16 @@ class Compiler {
 
           this.compileExpr(valueToCompile)
           this.emit({ op: 'STORE', name: this.nameConst(t) })
-          this.emit({ op: 'POP' })
+          this.emit(INS_POP)
           temps.push({ kind: 'named', temp: t, name: a.name })
           continue
         }
         // shorthand: store the loaded value into a temp (keeps evaluation behavior consistent)
         this.emit({ op: 'LOAD', name: this.nameConst(a.name) })
         this.emit({ op: 'STORE', name: this.nameConst(t) })
-        this.emit({ op: 'POP' })
+        this.emit(INS_POP)
         temps.push({ kind: 'named', temp: t, name: a.name })
       }
-
-      const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
 
       // Generic call layout: positional values first, then named pairs (reverse order so last wins).
       const namedTemps: { name: string; temp: string }[] = []
@@ -864,12 +930,12 @@ class Compiler {
         else namedTemps.push({ name: a.name, temp: a.temp })
       }
 
-      emitLoadTemp(recvTemp)
-      for (const a of temps) if (a.kind === 'pos') emitLoadTemp(a.temp)
+      this.emitLoadName(recvTemp)
+      for (const a of temps) if (a.kind === 'pos') this.emitLoadName(a.temp)
       for (let i = namedTemps.length - 1; i >= 0; i--) {
         const a = namedTemps[i]!
         this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
-        emitLoadTemp(a.temp)
+        this.emitLoadName(a.temp)
       }
 
       this.emit({ op: 'CALL', pos, named: namedTemps.length })
@@ -884,7 +950,7 @@ class Compiler {
       const recvTemp = `%recv${this.callTempId++}`
       this.compileExpr(expr.callee.object)
       this.emit({ op: 'STORE', name: this.nameConst(recvTemp) })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
 
       this.emit({ op: 'LOAD', name: this.nameConst(loadName || propName) })
 
@@ -920,7 +986,7 @@ class Compiler {
         if (a.kind === 'pos') {
           this.compileExpr(a.value)
           this.emit({ op: 'STORE', name: this.nameConst(t) })
-          this.emit({ op: 'POP' })
+          this.emit(INS_POP)
           let identName: string | undefined
           if (a.value.kind === 'ident') identName = a.value.name
           temps.push({
@@ -934,17 +1000,15 @@ class Compiler {
         if (a.kind === 'named') {
           this.compileExpr(a.value)
           this.emit({ op: 'STORE', name: this.nameConst(t) })
-          this.emit({ op: 'POP' })
+          this.emit(INS_POP)
           temps.push({ kind: 'named', temp: t, name: a.name })
           continue
         }
         this.emit({ op: 'LOAD', name: this.nameConst(a.name) })
         this.emit({ op: 'STORE', name: this.nameConst(t) })
-        this.emit({ op: 'POP' })
+        this.emit(INS_POP)
         temps.push({ kind: 'named', temp: t, name: a.name })
       }
-
-      const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
 
       if (sigNames && idxOf) {
         const reserved: boolean[] = []
@@ -992,17 +1056,16 @@ class Compiler {
         for (let i = 0; i < slots.length; i++) if (slots[i] !== undefined) maxIdx = i
         const pos = maxIdx + 1
 
-        const emitUndef = () => this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
         for (let i = 0; i < pos; i++) {
           const t = slots[i]
-          if (t !== undefined) emitLoadTemp(t)
-          else emitUndef()
+          if (t !== undefined) this.emitLoadName(t)
+          else this.emitUndef()
         }
 
         for (let i = extraNamed.length - 1; i >= 0; i--) {
           const a = extraNamed[i]!
           this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
-          emitLoadTemp(a.temp)
+          this.emitLoadName(a.temp)
         }
 
         this.emit({ op: 'CALL', pos, named: extraNamed.length })
@@ -1016,12 +1079,12 @@ class Compiler {
         else namedTemps.push({ name: a.name, temp: a.temp })
       }
 
-      emitLoadTemp(recvTemp)
-      for (const a of temps) if (a.kind === 'pos') emitLoadTemp(a.temp)
+      this.emitLoadName(recvTemp)
+      for (const a of temps) if (a.kind === 'pos') this.emitLoadName(a.temp)
       for (let i = namedTemps.length - 1; i >= 0; i--) {
         const a = namedTemps[i]!
         this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
-        emitLoadTemp(a.temp)
+        this.emitLoadName(a.temp)
       }
 
       this.emit({ op: 'CALL', pos, named: namedTemps.length })
@@ -1076,7 +1139,11 @@ class Compiler {
         }
       }
 
-      const userCount = expr.args.filter(a => !(a.kind === 'named' && a.name.startsWith('%'))).length
+      let userCount = 0
+      for (const a of expr.args) {
+        if (a.kind === 'named' && a.name.startsWith('%')) continue
+        userCount++
+      }
       if (userCount > sigNames.length) {
         this.err(expr.loc,
           `Too many arguments for function '${calleeName}'. Expected at most ${sigNames.length} arguments, got ${userCount}`)
@@ -1101,7 +1168,7 @@ class Compiler {
 
         this.compileExpr(valueToCompile)
         this.emit({ op: 'STORE', name: this.nameConst(t) })
-        this.emit({ op: 'POP' })
+        this.emit(INS_POP)
         if (posSeen === 0) firstPosTemp = t
         posSeen++
         let identName: string | undefined
@@ -1124,30 +1191,27 @@ class Compiler {
 
         this.compileExpr(valueToCompile)
         this.emit({ op: 'STORE', name: this.nameConst(t) })
-        this.emit({ op: 'POP' })
+        this.emit(INS_POP)
         temps.push({ kind: 'named', temp: t, name: a.name })
         continue
       }
       // shorthand: store the loaded value into a temp (keeps evaluation behavior consistent)
       this.emit({ op: 'LOAD', name: this.nameConst(a.name) })
       this.emit({ op: 'STORE', name: this.nameConst(t) })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
       temps.push({ kind: 'named', temp: t, name: a.name })
     }
 
     const idxOf = sigInfo?.idxOf
 
-    const emitUndef = () => this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
-    const emitLoadTemp = (t: string) => this.emit({ op: 'LOAD', name: this.nameConst(t) })
-
     // Side-effect analyser tap for out()/solo(): emit `analyser(arg0, idx)` without rewriting the expression to
     // `out(analyser(arg0))` (which would change semantics for arrays).
     if ((calleeName === 'out' || calleeName === 'solo') && tapAnalyserIndex !== null && firstPosTemp) {
       this.emit({ op: 'LOAD', name: this.nameConst('analyser') })
-      emitLoadTemp(firstPosTemp)
+      this.emitLoadName(firstPosTemp)
       this.emit({ op: 'PUSH_CONST', k: this.k(tapAnalyserIndex) })
       this.emit({ op: 'CALL', pos: 2, named: 0 })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
     }
 
     // Compile the callee AFTER evaluating arguments to prevent stack corruption
@@ -1204,15 +1268,15 @@ class Compiler {
 
       for (let i = 0; i < pos; i++) {
         const t = slots[i]
-        if (t !== undefined) emitLoadTemp(t)
-        else emitUndef()
+        if (t !== undefined) this.emitLoadName(t)
+        else this.emitUndef()
       }
 
       // Push extra named pairs (unknown keys) last; last one in source should win -> push in reverse.
       for (let i = extraNamed.length - 1; i >= 0; i--) {
         const a = extraNamed[i]!
         this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
-        emitLoadTemp(a.temp)
+        this.emitLoadName(a.temp)
       }
 
       this.emit({ op: 'CALL', pos, named: extraNamed.length })
@@ -1227,11 +1291,11 @@ class Compiler {
       else namedTemps.push({ name: a.name, temp: a.temp })
     }
 
-    for (const a of temps) if (a.kind === 'pos') emitLoadTemp(a.temp)
+    for (const a of temps) if (a.kind === 'pos') this.emitLoadName(a.temp)
     for (let i = namedTemps.length - 1; i >= 0; i--) {
       const a = namedTemps[i]!
       this.emit({ op: 'PUSH_CONST', k: this.k(a.name) })
-      emitLoadTemp(a.temp)
+      this.emitLoadName(a.temp)
     }
 
     this.emit({ op: 'CALL', pos, named: namedTemps.length })
@@ -1265,7 +1329,7 @@ class Compiler {
       const temp = `%pipe${this.pipe.length}`
       this.compileExpr(expr.left)
       this.emit({ op: 'STORE', name: this.nameConst(temp) })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
       this.pipe.push(temp)
       this.compileExpr(expr.right)
       this.pipe.pop()
@@ -1274,11 +1338,11 @@ class Compiler {
 
     if (expr.op === '||') {
       this.compileExpr(expr.left)
-      this.emit({ op: 'DUP' })
+      this.emit(INS_DUP)
       const jFalse = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
       const jEnd = this.emit({ op: 'JUMP', to: -1 })
       this.patch(jFalse, this.chunk.code.length)
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
       this.compileExpr(expr.right)
       this.patch(jEnd, this.chunk.code.length)
       return
@@ -1286,9 +1350,9 @@ class Compiler {
 
     if (expr.op === '&&') {
       this.compileExpr(expr.left)
-      this.emit({ op: 'DUP' })
+      this.emit(INS_DUP)
       const jFalse = this.emit({ op: 'JUMP_IF_FALSE', to: -1 })
-      this.emit({ op: 'POP' })
+      this.emit(INS_POP)
       this.compileExpr(expr.right)
       this.patch(jFalse, this.chunk.code.length)
       return
@@ -1315,14 +1379,14 @@ class Compiler {
         this.compileExpr(expr.target.object)
         if (expr.target.computed === true) {
           this.compileExpr(expr.target.index)
-          this.emit({ op: 'DUP2' })
-          this.emit({ op: 'GET_INDEX' })
+          this.emit(INS_DUP2)
+          this.emit(INS_GET_INDEX)
           this.compileExpr(expr.value)
           this.emit({ op: 'BINARY', opName })
-          this.emit({ op: 'SET_INDEX' })
+          this.emit(INS_SET_INDEX)
         }
         else {
-          this.emit({ op: 'DUP' })
+          this.emit(INS_DUP)
           this.emit({ op: 'GET_PROP', key: this.k(expr.target.prop) })
           this.compileExpr(expr.value)
           this.emit({ op: 'BINARY', opName })
@@ -1355,7 +1419,7 @@ class Compiler {
       this.compileExpr(expr.target.object)
       if (expr.target.computed === true) this.compileExpr(expr.target.index)
       this.compileExpr(expr.value)
-      if (expr.target.computed === true) this.emit({ op: 'SET_INDEX' })
+      if (expr.target.computed === true) this.emit(INS_SET_INDEX)
       else this.emit({ op: 'SET_PROP', key: this.k(expr.target.prop) })
       return
     }
@@ -1375,7 +1439,7 @@ class Compiler {
 
     if (!expr.else) {
       this.patch(jFalse, this.chunk.code.length)
-      this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+      this.emit(INS_PUSH_UNDEF)
       return
     }
 
@@ -1401,12 +1465,12 @@ class Compiler {
   }
 
   private compileBlockAsExpr(block: BlockStmt): void {
-    this.emit({ op: 'ENTER_SCOPE' })
+    this.emit(INS_ENTER_SCOPE)
     this.enterSigScope()
     if (!block.body.length) {
-      this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+      this.emit(INS_PUSH_UNDEF)
       this.exitSigScope()
-      this.emit({ op: 'EXIT_SCOPE' })
+      this.emit(INS_EXIT_SCOPE)
       return
     }
     for (let i = 0; i < block.body.length; i++) {
@@ -1419,19 +1483,21 @@ class Compiler {
       this.compileStmt(s, false)
     }
     const last = block.body[block.body.length - 1]!
-    if (last.kind !== 'expr_stmt') this.emit({ op: 'PUSH_CONST', k: this.k(undefined) })
+    if (last.kind !== 'expr_stmt') this.emit(INS_PUSH_UNDEF)
     this.exitSigScope()
-    this.emit({ op: 'EXIT_SCOPE' })
+    this.emit(INS_EXIT_SCOPE)
   }
 
   private compileFunc(expr: FuncExpr): void {
     const id = this.chunk.funcs.length
     const fn = new Compiler(this.src)
-    fn.pipe = [...this.pipe]
+    const pipeLen = this.pipe.length
+    fn.pipe = this.pipe
     const body = expr.body
     if ('kind' in body && body.kind === 'block') fn.compileBlockAsExpr(body)
     else fn.compileExpr(body as Expr)
-    fn.emit({ op: 'RETURN' })
+    fn.emit(INS_RETURN)
+    this.pipe.length = pipeLen
     this.chunk.funcs.push({
       params: expr.params.map(p => ({ name: p.name, isRest: p.isRest })),
       chunk: fn.chunk,

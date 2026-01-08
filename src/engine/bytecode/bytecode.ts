@@ -153,6 +153,9 @@ type KernelCacheEntry = {
 const KERNEL_LEX_LINES = 1_000_000_000
 const kernelCache = new Map<string, KernelCacheEntry>()
 
+const transformedBodyScratch: any[] = []
+const transformedUserBodyScratch: any[] = []
+
 function getKernelCached(src: string): KernelCacheEntry {
   const cached = kernelCache.get(src)
   if (cached) return cached
@@ -327,6 +330,316 @@ export function extractEarlyDataFromSource(src: string): {
   const errors: LangError[] = [...lexed.errors, ...parsed.errors]
   const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
   return { ...earlyData, errors }
+}
+
+type VmEncodeChunk = {
+  consts: any[]
+  funcs: any[]
+  code: any[]
+  arrayLiterals?: any[]
+  branchMarks?: any[]
+}
+
+type VmEncodeChunkCtx = {
+  src: string
+  errors: LangError[]
+  ops: Int32Array
+  literals: Float32Array
+  symOf: (s: string) => number
+  sliderKeyOf: (loc: Pick<Loc, 'line' | 'column' | 'length'>) => string
+  sliderKeys: ReadonlySet<string>
+  litOfValue: (v: number) => number
+  litOfLocKey: (key: string, value: number) => number
+  locKeyToLiteralIndex: Map<string, number>
+  arrayLiterals: ArrayLiteralRef[]
+  branchMarks: BranchMarkRef[]
+  funcPatches: { at: number; fn: object }[]
+  funcQueue: object[]
+}
+
+let pcMapScratch = new Int32Array(0)
+
+const getPcMap = (minLen: number): Int32Array => {
+  minLen = Math.max(0, minLen | 0)
+  if (pcMapScratch.length >= minLen) return pcMapScratch
+  let cap = pcMapScratch.length > 0 ? pcMapScratch.length : 1024
+  while (cap < minLen) cap <<= 1
+  pcMapScratch = new Int32Array(cap)
+  return pcMapScratch
+}
+
+function encodeChunkVm(
+  ctx: VmEncodeChunkCtx,
+  chunk: VmEncodeChunk,
+  base: number,
+): { endPc: number; writtenEnd: number } {
+  const {
+    src,
+    errors,
+    ops,
+    literals,
+    symOf,
+    sliderKeyOf,
+    sliderKeys,
+    litOfValue,
+    litOfLocKey,
+    locKeyToLiteralIndex,
+    arrayLiterals,
+    branchMarks,
+    funcPatches,
+    funcQueue,
+  } = ctx
+
+  const code = chunk.code as any[]
+  const codeLen = code.length | 0
+  const consts = chunk.consts as any[]
+  const funcs = chunk.funcs as any[]
+
+  const pcMap = getPcMap(codeLen)
+  let pc = base | 0
+  for (let i = 0; i < codeLen; i++) {
+    pcMap[i] = pc
+    const ins = code[i]!
+    const op = ins.op
+    switch (op) {
+      case 'PUSH_CONST': {
+        const v = consts[ins.k]
+        if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') pc = (pc + 2) | 0
+        else pc = (pc + 1) | 0
+        break
+      }
+      case 'ENTER_SCOPE':
+      case 'EXIT_SCOPE':
+      case 'POP':
+      case 'DUP':
+      case 'BRANCH':
+      case 'LABEL':
+      case 'RETURN':
+      case 'THROW':
+      case 'TRY_BEGIN':
+      case 'CATCH_BEGIN':
+      case 'FINALLY_BEGIN':
+      case 'TRY_END':
+      case 'LEN':
+        pc = (pc + 1) | 0
+        break
+      case 'DUP2':
+        errors.push(encoderError(src, 'DUP2 not supported in VM encoder yet'))
+        pc = (pc + 1) | 0
+        break
+      case 'LOAD':
+      case 'STORE':
+      case 'UNARY':
+      case 'BINARY':
+      case 'FUNC':
+      case 'ARRAY':
+        pc = (pc + 2) | 0
+        break
+      case 'CALL':
+        pc = (pc + 3) | 0
+        break
+      case 'JUMP':
+      case 'JUMP_IF_FALSE':
+        pc = (pc + 2) | 0
+        break
+      case 'BREAK':
+      case 'CONTINUE':
+        errors.push(encoderError(src, `${op} not supported in VM encoder yet`))
+        pc = (pc + 1) | 0
+        break
+      case 'GET_INDEX':
+      case 'GET_INDEX2':
+      case 'SET_INDEX':
+        pc = (pc + 1) | 0
+        break
+      case 'OBJECT':
+      case 'GET_PROP':
+      case 'SET_PROP':
+        errors.push(encoderError(src, `${op} not supported in VM encoder yet`))
+        pc = (pc + 1) | 0
+        break
+      default:
+        errors.push(encoderError(src, `Unsupported opcode ${op}`))
+        pc = (pc + 1) | 0
+    }
+  }
+
+  const endPc = pc
+
+  const arrayMeta = chunk.arrayLiterals as Array<{ ins: number; loc: Loc; items: Loc[] }> | undefined
+  if (arrayMeta?.length) {
+    for (let i = 0; i < arrayMeta.length; i++) {
+      const lit = arrayMeta[i]!
+      const pcAt = pcMap[lit.ins]
+      if (pcAt !== undefined) arrayLiterals.push({ pc: pcAt, loc: lit.loc, items: lit.items })
+    }
+  }
+
+  const branchMeta = chunk.branchMarks as Array<{ ins: number; loc: Loc }> | undefined
+  if (branchMeta?.length) {
+    for (let i = 0; i < branchMeta.length; i++) {
+      const m = branchMeta[i]!
+      const pcAt = pcMap[m.ins]
+      if (pcAt !== undefined) branchMarks.push({ pc: pcAt, loc: m.loc })
+    }
+  }
+
+  let w = base | 0
+  for (let i = 0; i < codeLen; i++) {
+    const ins = code[i]!
+    const op = ins.op
+    switch (op) {
+      case 'PUSH_CONST': {
+        const v = consts[ins.k]
+        if (typeof v === 'number') {
+          const loc = ins.loc as Loc | undefined
+          const key = loc ? sliderKeyOf(loc) : undefined
+          const isSlider = key !== undefined && sliderKeys.has(key)
+          const k = (key !== undefined ? litOfLocKey(key, v) : litOfValue(v)) | 0
+          literals[k] = v
+          ops[w++] = isSlider ? VmOp.PushNumSmoothed : VmOp.PushNum
+          ops[w++] = k
+          if (key !== undefined) locKeyToLiteralIndex.set(key, k)
+        }
+        else if (typeof v === 'string') {
+          ops[w++] = VmOp.PushSym
+          ops[w++] = symOf(v) | 0
+        }
+        else if (typeof v === 'boolean') {
+          ops[w++] = VmOp.PushBool
+          ops[w++] = v ? 1 : 0
+        }
+        else if (v === null) {
+          ops[w++] = VmOp.PushNull
+        }
+        else {
+          ops[w++] = VmOp.PushUndef
+        }
+        break
+      }
+      case 'ENTER_SCOPE':
+        ops[w++] = VmOp.EnterScope
+        break
+      case 'EXIT_SCOPE':
+        ops[w++] = VmOp.ExitScope
+        break
+      case 'BRANCH':
+        ops[w++] = VmOp.Branch
+        break
+      case 'POP':
+        ops[w++] = VmOp.Pop
+        break
+      case 'DUP':
+        ops[w++] = VmOp.Dup
+        break
+      case 'LABEL':
+        ops[w++] = VmOp.Nop
+        break
+      case 'LOAD': {
+        const name = String(consts[ins.name])
+        ops[w++] = VmOp.Load
+        ops[w++] = symOf(name) | 0
+        break
+      }
+      case 'STORE': {
+        const name = String(consts[ins.name])
+        ops[w++] = VmOp.Store
+        ops[w++] = symOf(name) | 0
+        break
+      }
+      case 'UNARY': {
+        const code = unaryCode(ins.opName)
+        if (code === null) {
+          errors.push(encoderError(src, `Unsupported unary op ${ins.opName}`))
+          ops[w++] = VmOp.Nop
+          break
+        }
+        ops[w++] = VmOp.Unary
+        ops[w++] = code | 0
+        break
+      }
+      case 'BINARY': {
+        const code = binaryCode(ins.opName)
+        if (code === null) {
+          errors.push(encoderError(src, `Unsupported binary op ${ins.opName}`))
+          ops[w++] = VmOp.Nop
+          break
+        }
+        ops[w++] = VmOp.Binary
+        ops[w++] = code | 0
+        break
+      }
+      case 'ARRAY': {
+        ops[w++] = VmOp.Array
+        ops[w++] = ins.n | 0
+        break
+      }
+      case 'LEN': {
+        ops[w++] = VmOp.Len
+        break
+      }
+      case 'GET_INDEX': {
+        ops[w++] = VmOp.GetIndex
+        break
+      }
+      case 'GET_INDEX2': {
+        ops[w++] = VmOp.GetIndex2
+        break
+      }
+      case 'SET_INDEX': {
+        ops[w++] = VmOp.SetIndex
+        break
+      }
+      case 'CALL':
+        ops[w++] = VmOp.Call
+        ops[w++] = ins.pos | 0
+        ops[w++] = ins.named | 0
+        break
+      case 'JUMP': {
+        ops[w++] = VmOp.Jump
+        const to = ins.to
+        ops[w++] = to === codeLen ? endPc : (pcMap[to] ?? endPc)
+        break
+      }
+      case 'JUMP_IF_FALSE': {
+        ops[w++] = VmOp.JumpIfFalse
+        const to = ins.to
+        ops[w++] = to === codeLen ? endPc : (pcMap[to] ?? endPc)
+        break
+      }
+      case 'RETURN':
+        ops[w++] = VmOp.Return
+        break
+      case 'THROW':
+        ops[w++] = VmOp.Throw
+        break
+      case 'TRY_BEGIN':
+      case 'CATCH_BEGIN':
+      case 'FINALLY_BEGIN':
+      case 'TRY_END':
+        ops[w++] = VmOp.Nop
+        break
+      case 'FUNC': {
+        const fn = funcs[ins.id]
+        if (!fn) {
+          errors.push(encoderError(src, `Missing FUNC #${ins.id}`))
+          ops[w++] = VmOp.PushUndef
+          break
+        }
+        ops[w++] = VmOp.Func
+        const at = w++
+        funcPatches.push({ at, fn })
+        funcQueue.push(fn)
+        ops[at] = 0
+        break
+      }
+      default:
+        errors.push(encoderError(src, `Unsupported opcode ${op}`))
+        ops[w++] = VmOp.Nop
+    }
+  }
+
+  return { endPc, writtenEnd: w }
 }
 
 export function encodeLangToVmOps(
@@ -648,6 +961,7 @@ export function encodeLangToVmOps(
 
     const transformExpr = (expr: any): any => {
       if (!expr) return expr
+      if (expr.loc?.kernel) return expr
 
       if (expr.kind === 'ident') {
         const om = expr.name.match(/^o(\d+)$/)
@@ -1174,6 +1488,7 @@ export function encodeLangToVmOps(
 
     const transformStmt = (stmt: any): any => {
       if (!stmt) return stmt
+      if (stmt.loc?.kernel) return stmt
       if (stmt.kind === 'expr_stmt') {
         if (isVisualizerAssign(stmt)) return null
         const isBpmStmt = !!(
@@ -1242,19 +1557,21 @@ export function encodeLangToVmOps(
       return stmt
     }
 
-    const combinedProgram: Program = {
-      kind: 'program',
-      loc: { line: 0, column: 0, length: 0, kernel: true },
-      body: [
-        ...(preludeKernel.program?.body ?? []),
-        ...(userParsed.program?.body ?? []),
-        ...(postludeKernel.program?.body ?? []),
-      ],
+    transformedUserBodyScratch.length = 0
+    for (const s of userParsed.program?.body ?? []) {
+      const t = transformStmt(s)
+      if (t) transformedUserBodyScratch.push(t)
     }
 
-    const transformedProgram = {
-      ...combinedProgram,
-      body: combinedProgram.body.map(transformStmt).filter(Boolean),
+    transformedBodyScratch.length = 0
+    for (const s of preludeKernel.program?.body ?? []) transformedBodyScratch.push(s)
+    for (const s of transformedUserBodyScratch) transformedBodyScratch.push(s)
+    for (const s of postludeKernel.program?.body ?? []) transformedBodyScratch.push(s)
+
+    const transformedProgram: Program = {
+      kind: 'program',
+      loc: { line: 0, column: 0, length: 0, kernel: true },
+      body: transformedBodyScratch,
     } as any
 
     const undefinedVarErrors = checkUndefinedVariableErrors(src, transformedProgram)
@@ -1262,10 +1579,7 @@ export function encodeLangToVmOps(
     errors.push(...undefinedVarErrors)
     if (errors.length) return { errors: errors.map(mapError) }
     // Extract all references in a single AST traversal
-    const nonKernelProgram = {
-      ...transformedProgram,
-      body: (transformedProgram.body ?? []).filter((s: any) => !s?.loc?.kernel),
-    } as any
+    const nonKernelProgram = { ...transformedProgram, body: transformedUserBodyScratch } as any
     const extractionResults = extractAllRefsFromProgram(src, nonKernelProgram)
 
     adRefs = extractionResults.adRefs
@@ -1355,265 +1669,26 @@ export function encodeLangToVmOps(
 
     const vmFuncHeader = -2
 
-    const encodeChunk = (
-      chunk: { consts: any[]; funcs: any[]; code: any[]; arrayLiterals?: any[]; branchMarks?: any[] },
-      base: number,
-    ) => {
-      const code = chunk.code as any[]
-
-      const pcMap = new Int32Array(code.length)
-      let pc = base
-      for (let i = 0; i < code.length; i++) {
-        pcMap[i] = pc
-        const ins = code[i]!
-        switch (ins.op) {
-          case 'PUSH_CONST':
-            {
-              const v = chunk.consts[ins.k]
-              if (typeof v === 'number') pc += 2
-              else if (typeof v === 'string') pc += 2
-              else if (typeof v === 'boolean') pc += 2
-              else if (v === null) pc += 1
-              else pc += 1
-            }
-            break
-          case 'ENTER_SCOPE':
-          case 'EXIT_SCOPE':
-          case 'POP':
-          case 'DUP':
-          case 'BRANCH':
-          case 'LABEL':
-          case 'RETURN':
-          case 'THROW':
-          case 'TRY_BEGIN':
-          case 'CATCH_BEGIN':
-          case 'FINALLY_BEGIN':
-          case 'TRY_END':
-          case 'LEN':
-            pc += 1
-            break
-          case 'DUP2':
-            errors.push(encoderError(src, 'DUP2 not supported in VM encoder yet'))
-            pc += 1
-            break
-          case 'LOAD':
-          case 'STORE':
-            pc += 2
-            break
-          case 'UNARY':
-            pc += 2
-            break
-          case 'BINARY':
-            pc += 2
-            break
-          case 'CALL':
-            pc += 3
-            break
-          case 'JUMP':
-          case 'JUMP_IF_FALSE':
-            pc += 2
-            break
-          case 'FUNC':
-            pc += 2
-            break
-          case 'BREAK':
-          case 'CONTINUE':
-            errors.push(encoderError(src, `${ins.op} not supported in VM encoder yet`))
-            pc += 1
-            break
-          case 'ARRAY':
-            pc += 2
-            break
-          case 'GET_INDEX':
-          case 'GET_INDEX2':
-          case 'SET_INDEX':
-            pc += 1
-            break
-          case 'OBJECT':
-          case 'GET_PROP':
-          case 'SET_PROP':
-            errors.push(encoderError(src, `${ins.op} not supported in VM encoder yet`))
-            pc += 1
-            break
-          default:
-            errors.push(encoderError(src, `Unsupported opcode ${(ins as any).op}`))
-            pc += 1
-        }
-      }
-
-      const endPc = pc
-
-      const arrayMeta = chunk.arrayLiterals as Array<{ ins: number; loc: Loc; items: Loc[] }> | undefined
-      if (arrayMeta?.length) {
-        for (const lit of arrayMeta) {
-          const pcAt = pcMap[lit.ins]
-          if (pcAt != null) arrayLiterals.push({ pc: pcAt, loc: lit.loc, items: lit.items })
-        }
-      }
-
-      const branchMeta = chunk.branchMarks as Array<{ ins: number; loc: Loc }> | undefined
-      if (branchMeta?.length) {
-        for (const m of branchMeta) {
-          const pcAt = pcMap[m.ins]
-          if (pcAt != null) branchMarks.push({ pc: pcAt, loc: m.loc })
-        }
-      }
-
-      let w = base
-      for (let i = 0; i < code.length; i++) {
-        const ins = code[i]!
-        switch (ins.op) {
-          case 'PUSH_CONST': {
-            const v = chunk.consts[ins.k]
-            if (typeof v === 'number') {
-              const key = ins.loc ? sliderKeyOf(ins.loc) : undefined
-              const isSlider = key !== undefined && sliderKeys.has(key)
-              const k = key !== undefined ? litOfLocKey(key, v) : litOfValue(v)
-              target.literals[k] = v
-              target.ops[w++] = isSlider ? VmOp.PushNumSmoothed : VmOp.PushNum
-              target.ops[w++] = k
-              if (key !== undefined) locKeyToLiteralIndex.set(key, k)
-            }
-            else if (typeof v === 'string') {
-              target.ops[w++] = VmOp.PushSym
-              target.ops[w++] = symOf(v)
-            }
-            else if (typeof v === 'boolean') {
-              target.ops[w++] = VmOp.PushBool
-              target.ops[w++] = v ? 1 : 0
-            }
-            else if (v === null) {
-              target.ops[w++] = VmOp.PushNull
-            }
-            else {
-              target.ops[w++] = VmOp.PushUndef
-            }
-            break
-          }
-          case 'ENTER_SCOPE':
-            target.ops[w++] = VmOp.EnterScope
-            break
-          case 'EXIT_SCOPE':
-            target.ops[w++] = VmOp.ExitScope
-            break
-          case 'BRANCH':
-            target.ops[w++] = VmOp.Branch
-            break
-          case 'POP':
-            target.ops[w++] = VmOp.Pop
-            break
-          case 'DUP':
-            target.ops[w++] = VmOp.Dup
-            break
-          case 'LABEL':
-            target.ops[w++] = VmOp.Nop
-            break
-          case 'LOAD': {
-            const name = String(chunk.consts[ins.name])
-            target.ops[w++] = VmOp.Load
-            target.ops[w++] = symOf(name)
-            break
-          }
-          case 'STORE': {
-            const name = String(chunk.consts[ins.name])
-            target.ops[w++] = VmOp.Store
-            target.ops[w++] = symOf(name)
-            break
-          }
-          case 'UNARY': {
-            const code = unaryCode(ins.opName)
-            if (code === null) {
-              errors.push(encoderError(src, `Unsupported unary op ${ins.opName}`))
-              target.ops[w++] = VmOp.Nop
-              break
-            }
-            target.ops[w++] = VmOp.Unary
-            target.ops[w++] = code
-            break
-          }
-          case 'BINARY': {
-            const code = binaryCode(ins.opName)
-            if (code === null) {
-              errors.push(encoderError(src, `Unsupported binary op ${ins.opName}`))
-              target.ops[w++] = VmOp.Nop
-              break
-            }
-            target.ops[w++] = VmOp.Binary
-            target.ops[w++] = code
-            break
-          }
-          case 'ARRAY': {
-            target.ops[w++] = VmOp.Array
-            target.ops[w++] = ins.n | 0
-            break
-          }
-          case 'LEN': {
-            target.ops[w++] = VmOp.Len
-            break
-          }
-          case 'GET_INDEX': {
-            target.ops[w++] = VmOp.GetIndex
-            break
-          }
-          case 'GET_INDEX2': {
-            target.ops[w++] = VmOp.GetIndex2
-            break
-          }
-          case 'SET_INDEX': {
-            target.ops[w++] = VmOp.SetIndex
-            break
-          }
-          case 'CALL':
-            target.ops[w++] = VmOp.Call
-            target.ops[w++] = ins.pos
-            target.ops[w++] = ins.named
-            break
-          case 'JUMP':
-            target.ops[w++] = VmOp.Jump
-            target.ops[w++] = ins.to === code.length ? endPc : (pcMap[ins.to] ?? endPc)
-            break
-          case 'JUMP_IF_FALSE':
-            target.ops[w++] = VmOp.JumpIfFalse
-            target.ops[w++] = ins.to === code.length ? endPc : (pcMap[ins.to] ?? endPc)
-            break
-          case 'RETURN':
-            target.ops[w++] = VmOp.Return
-            break
-          case 'THROW':
-            target.ops[w++] = VmOp.Throw
-            break
-          case 'TRY_BEGIN':
-          case 'CATCH_BEGIN':
-          case 'FINALLY_BEGIN':
-          case 'TRY_END':
-            target.ops[w++] = VmOp.Nop
-            break
-          case 'FUNC': {
-            const fn = chunk.funcs[ins.id]
-            if (!fn) {
-              errors.push(encoderError(src, `Missing FUNC #${ins.id}`))
-              target.ops[w++] = VmOp.PushUndef
-              break
-            }
-            target.ops[w++] = VmOp.Func
-            const at = w++
-            funcPatches.push({ at, fn })
-            funcQueue.push(fn)
-            target.ops[at] = 0
-            break
-          }
-          default:
-            errors.push(encoderError(src, `Unsupported opcode ${(ins as any).op}`))
-            target.ops[w++] = VmOp.Nop
-        }
-      }
-
-      return { endPc, writtenEnd: w }
+    const encodeChunkCtx: VmEncodeChunkCtx = {
+      src,
+      errors,
+      ops: target.ops,
+      literals: target.literals,
+      symOf,
+      sliderKeyOf,
+      sliderKeys,
+      litOfValue,
+      litOfLocKey,
+      locKeyToLiteralIndex,
+      arrayLiterals,
+      branchMarks,
+      funcPatches,
+      funcQueue,
     }
 
     // Encode main chunk at pc=1
     let writePc = 1
-    const main = encodeChunk(chunk as any, writePc)
+    const main = encodeChunkVm(encodeChunkCtx, chunk as any, writePc)
     writePc = main.writtenEnd
 
     // Terminate the main program before encoding function bodies. Function bodies
@@ -1637,7 +1712,7 @@ export function encodeLangToVmOps(
         target.ops[writePc++] = symOf(p.name)
       }
 
-      const body = encodeChunk(fn.chunk as any, writePc)
+      const body = encodeChunkVm(encodeChunkCtx, fn.chunk as any, writePc)
       writePc = body.writtenEnd
 
       // Ensure function returns something
