@@ -90,6 +90,9 @@ export class Program {
   // Set to 1 by record() when it performs work in the current audio block.
   recordActive: i32 = 0
 
+  // Only one record() can render at a time (prevents shared callback DSP state from interleaving).
+  recordLockSample: i32 = -1
+
   // Callback scope stack for remapped buffers and bound inputs
   private callbackDepth: i32 = 0
   private callbackBodyBase: StaticArray<i32> = new StaticArray<i32>(CALLBACK_SCOPE_MAX_DEPTH)
@@ -139,6 +142,8 @@ export class Program {
   @inline
   reset(): void {
     this.gensPool.reset()
+    this.recordGensPool.reset()
+    this.recordLockSample = -1
   }
 
   pushCallbackScope(bodyBufferBase: i32, remapBase: i32): void {
@@ -285,15 +290,17 @@ export class Program {
     }
 
     this.gensPool.copyFrom(source.gensPool)
-    this.recordGensPool.copyFrom(source.recordGensPool)
 
     // Keep record() state stable across crossfade swaps so it doesn't re-trigger unless the callback changes.
     for (let i = 0; i < this.recordKey.length; i++) {
       this.recordKey[i] = source.recordKey[i]
       this.recordSeconds[i] = source.recordSeconds[i]
       this.recordLen[i] = source.recordLen[i]
-      this.recordPos[i] = source.recordPos[i]
-      this.recordBuf$[i] = source.recordBuf$[i]
+      this.recordPos[i] = 0
+      this.recordBuf$[i] = 0
     }
+
+    this.recordActive = 0
+    this.recordLockSample = -1
   }
 }
