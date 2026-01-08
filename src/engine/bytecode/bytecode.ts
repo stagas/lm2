@@ -135,6 +135,51 @@ export { Op, SEQ_VOICES, SeqOp }
 
 const persistentSampleKeyToIndex = new Map<string, number>()
 
+const normalizePrelude = (s: string): string => {
+  const t = s.trimEnd()
+  if (!t) return ''
+  const last = t[t.length - 1]
+  const withSep = last === ';' || last === '}' ? t : `${t};`
+  return withSep.endsWith('\n') ? withSep : `${withSep}\n`
+}
+
+type KernelCacheEntry = {
+  src: string
+  lexErrors: LexError[]
+  program: Program
+  parseErrors: LangError[]
+}
+
+const KERNEL_LEX_LINES = 1_000_000_000
+const kernelCache = new Map<string, KernelCacheEntry>()
+
+function getKernelCached(src: string): KernelCacheEntry {
+  const cached = kernelCache.get(src)
+  if (cached) return cached
+
+  const lexed = lex(src, { preludeLines: KERNEL_LEX_LINES, postludeStart: Infinity })
+  const parsed = parse(src, lexed.tokens)
+  const entry: KernelCacheEntry = {
+    src,
+    lexErrors: lexed.errors,
+    program: parsed.program,
+    parseErrors: parsed.errors,
+  }
+  kernelCache.set(src, entry)
+  return entry
+}
+
+const DEFAULT_KERNEL = (() => {
+  const preludeSrc = normalizePrelude(PRELUDE)
+  const postludeSrc = normalizePrelude(POSTLUDE)
+  return {
+    preludeSrc,
+    postludeSrc,
+    prelude: getKernelCached(preludeSrc),
+    postlude: getKernelCached(postludeSrc),
+  }
+})()
+
 function extractEarlyDataFromProgram(
   src: string,
   program: Program,
@@ -324,38 +369,26 @@ export function encodeLangToVmOps(
   numberLiterals?: NumberLiteralInfo[]
   sampleDefs?: SampleDef[]
 } {
-  const normalizePrelude = (s: string): string => {
-    const t = s.trimEnd()
-    if (!t) return ''
-    const last = t[t.length - 1]
-    const withSep = last === ';' || last === '}' ? t : `${t};`
-    return withSep.endsWith('\n') ? withSep : `${withSep}\n`
-  }
-
-  const countNewlines = (s: string): number => {
-    let n = 0
-    for (let i = 0; i < s.length; i++) if (s[i] === '\n') n++
-    return n
-  }
-
-  const p = normalizePrelude(prelude)
-  const pLines = countNewlines(p)
-  const po = normalizePrelude(postlude)
-  const sLines = countNewlines(src)
-  const postludeStart = pLines + sLines + 2
-  const fullSrc = `${p}${src}${po}`
-
   const mapError = (e: LangError): LangError => {
     if (e.line <= 0) return { ...e, line: 0, column: 0, code: '' }
     return { ...e, code: lineText(src, e.line) }
   }
 
   try {
-    const lexed = lex(fullSrc, { preludeLines: pLines, postludeStart })
-    const tokens = lexed.tokens
-    const lexErrors: LangError[] = lexed.errors.map(mapError)
-    const parsed = parse(fullSrc, tokens, { preludeLines: pLines })
-    const errors: LangError[] = [...lexErrors, ...parsed.errors.map(mapError)]
+    const useDefaultKernel = prelude === PRELUDE && postlude === POSTLUDE
+    const preludeKernel = useDefaultKernel
+      ? DEFAULT_KERNEL.prelude
+      : getKernelCached(normalizePrelude(prelude))
+    const postludeKernel = useDefaultKernel
+      ? DEFAULT_KERNEL.postlude
+      : getKernelCached(normalizePrelude(postlude))
+
+    // Only lex/parse user source per call; kernel code is cached (and marked loc.kernel).
+    const userLexed = lex(src, { preludeLines: 0, postludeStart: Infinity })
+    const userTokens = userLexed.tokens
+    const lexErrors: LangError[] = userLexed.errors.map(mapError)
+    const userParsed = parse(src, userTokens)
+    const errors: LangError[] = [...lexErrors, ...userParsed.errors.map(mapError)]
 
     let visualizerVertex: string | undefined
     let visualizerFragment: string | undefined
@@ -405,12 +438,12 @@ export function encodeLangToVmOps(
       }
     }
 
-    for (const s of parsed.program?.body ?? []) scanVisualizer(s)
+    for (const s of userParsed.program?.body ?? []) scanVisualizer(s)
 
     if (errors.length) return { errors: errors.map(mapError), visualizerVertex, visualizerFragment }
 
     // Extract all early data in a single AST traversal
-    const earlyData = extractEarlyDataFromProgram(src, parsed.program, errors)
+    const earlyData = extractEarlyDataFromProgram(src, userParsed.program, errors)
     if (errors.length) return { errors: errors.map(mapError) }
 
     const {
@@ -482,18 +515,19 @@ export function encodeLangToVmOps(
       return h >>> 0
     }
 
-    const stableAstString = (v: any): string => JSON.stringify(v, (k, val) => {
-      if (
-        k === 'loc'
-        || k === 'ifLoc'
-        || k === 'elseLoc'
-        || k === 'questionLoc'
-        || k === 'colonLoc'
-        || k === 'slider'
-        || k === 'kernel'
-      ) return undefined
-      return val
-    }) ?? ''
+    const stableAstString = (v: any): string =>
+      JSON.stringify(v, (k, val) => {
+        if (
+          k === 'loc'
+          || k === 'ifLoc'
+          || k === 'elseLoc'
+          || k === 'questionLoc'
+          || k === 'colonLoc'
+          || k === 'slider'
+          || k === 'kernel'
+        ) return undefined
+        return val
+      }) ?? ''
 
     const getPosArgValue = (call: any, posIndex: number): any | null => {
       let pos = 0
@@ -526,9 +560,11 @@ export function encodeLangToVmOps(
       const idx = sampleKeyToIndex.get(recordKey)
       if (idx === undefined) return { ...call, callee, args }
       const cbKey = getRecordCbKey(call)
-      const filtered = args.filter((a: any) => !(
-        a?.kind === 'named' && (a.name === '%index' || a.name === 'index' || a.name === '%key')
-      ))
+      const filtered = args.filter((a: any) =>
+        !(
+          a?.kind === 'named' && (a.name === '%index' || a.name === 'index' || a.name === '%key')
+        )
+      )
       return {
         ...call,
         callee,
@@ -1206,14 +1242,31 @@ export function encodeLangToVmOps(
       return stmt
     }
 
-    const transformedProgram = { ...parsed.program,
-      body: parsed.program.body.map(transformStmt).filter(Boolean) } as any
-    const undefinedVarErrors = checkUndefinedVariableErrors(fullSrc, transformedProgram)
+    const combinedProgram: Program = {
+      kind: 'program',
+      loc: { line: 0, column: 0, length: 0, kernel: true },
+      body: [
+        ...(preludeKernel.program?.body ?? []),
+        ...(userParsed.program?.body ?? []),
+        ...(postludeKernel.program?.body ?? []),
+      ],
+    }
+
+    const transformedProgram = {
+      ...combinedProgram,
+      body: combinedProgram.body.map(transformStmt).filter(Boolean),
+    } as any
+
+    const undefinedVarErrors = checkUndefinedVariableErrors(src, transformedProgram)
       .filter(e => e.line > 0)
     errors.push(...undefinedVarErrors)
     if (errors.length) return { errors: errors.map(mapError) }
     // Extract all references in a single AST traversal
-    const extractionResults = extractAllRefsFromProgram(src, transformedProgram)
+    const nonKernelProgram = {
+      ...transformedProgram,
+      body: (transformedProgram.body ?? []).filter((s: any) => !s?.loc?.kernel),
+    } as any
+    const extractionResults = extractAllRefsFromProgram(src, nonKernelProgram)
 
     adRefs = extractionResults.adRefs
     adsrRefs = extractionResults.adsrRefs
@@ -1221,7 +1274,7 @@ export function encodeLangToVmOps(
     slewRefs = extractionResults.slewRefs
     // Merge explicit and implicit analyser refs, deduplicating by index (in case saturation causes overlaps).
     const seenAnalyserIndices = new Set<number>()
-    const allAnalyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs]
+    const allAnalyserRefs = [...extractionResults.analyserRefs, ...implicitAnalyserRefs.filter(r => !r.loc?.kernel)]
     analyserRefs = allAnalyserRefs.filter(ref => {
       if (seenAnalyserIndices.has(ref.analyserIndex)) return false
       seenAnalyserIndices.add(ref.analyserIndex)
@@ -1238,7 +1291,7 @@ export function encodeLangToVmOps(
     everyRefs = extractionResults.everyRefs
     atRefs = extractionResults.atRefs
     euclidRefs = extractionResults.euclidRefs
-    const compiled = compile(fullSrc, transformedProgram)
+    const compiled = compile(src, transformedProgram)
     errors.push(...compiled.errors)
     if (errors.length) return { errors: errors.map(mapError) }
     const chunk = compiled.chunk
@@ -1268,7 +1321,7 @@ export function encodeLangToVmOps(
       const prev = litIndexByValue.get(v)
       if (prev !== undefined) return prev
       if (litCount >= target.literals.length) {
-        errors.push(encoderError(fullSrc, `Too many number literals (max ${target.literals.length})`))
+        errors.push(encoderError(src, `Too many number literals (max ${target.literals.length})`))
         return 0
       }
       const idx = allocLit()
@@ -1284,7 +1337,7 @@ export function encodeLangToVmOps(
       // Each unique location gets its own literal index so literal-only updates
       // don't accidentally overwrite other locations with the same value
       if (litCount >= target.literals.length) {
-        errors.push(encoderError(fullSrc, `Too many number literals (max ${target.literals.length})`))
+        errors.push(encoderError(src, `Too many number literals (max ${target.literals.length})`))
         return 0
       }
       const idx = allocLit()
@@ -1340,7 +1393,7 @@ export function encodeLangToVmOps(
             pc += 1
             break
           case 'DUP2':
-            errors.push(encoderError(fullSrc, 'DUP2 not supported in VM encoder yet'))
+            errors.push(encoderError(src, 'DUP2 not supported in VM encoder yet'))
             pc += 1
             break
           case 'LOAD':
@@ -1365,7 +1418,7 @@ export function encodeLangToVmOps(
             break
           case 'BREAK':
           case 'CONTINUE':
-            errors.push(encoderError(fullSrc, `${ins.op} not supported in VM encoder yet`))
+            errors.push(encoderError(src, `${ins.op} not supported in VM encoder yet`))
             pc += 1
             break
           case 'ARRAY':
@@ -1379,11 +1432,11 @@ export function encodeLangToVmOps(
           case 'OBJECT':
           case 'GET_PROP':
           case 'SET_PROP':
-            errors.push(encoderError(fullSrc, `${ins.op} not supported in VM encoder yet`))
+            errors.push(encoderError(src, `${ins.op} not supported in VM encoder yet`))
             pc += 1
             break
           default:
-            errors.push(encoderError(fullSrc, `Unsupported opcode ${(ins as any).op}`))
+            errors.push(encoderError(src, `Unsupported opcode ${(ins as any).op}`))
             pc += 1
         }
       }
@@ -1470,7 +1523,7 @@ export function encodeLangToVmOps(
           case 'UNARY': {
             const code = unaryCode(ins.opName)
             if (code === null) {
-              errors.push(encoderError(fullSrc, `Unsupported unary op ${ins.opName}`))
+              errors.push(encoderError(src, `Unsupported unary op ${ins.opName}`))
               target.ops[w++] = VmOp.Nop
               break
             }
@@ -1481,7 +1534,7 @@ export function encodeLangToVmOps(
           case 'BINARY': {
             const code = binaryCode(ins.opName)
             if (code === null) {
-              errors.push(encoderError(fullSrc, `Unsupported binary op ${ins.opName}`))
+              errors.push(encoderError(src, `Unsupported binary op ${ins.opName}`))
               target.ops[w++] = VmOp.Nop
               break
             }
@@ -1538,7 +1591,7 @@ export function encodeLangToVmOps(
           case 'FUNC': {
             const fn = chunk.funcs[ins.id]
             if (!fn) {
-              errors.push(encoderError(fullSrc, `Missing FUNC #${ins.id}`))
+              errors.push(encoderError(src, `Missing FUNC #${ins.id}`))
               target.ops[w++] = VmOp.PushUndef
               break
             }
@@ -1550,7 +1603,7 @@ export function encodeLangToVmOps(
             break
           }
           default:
-            errors.push(encoderError(fullSrc, `Unsupported opcode ${(ins as any).op}`))
+            errors.push(encoderError(src, `Unsupported opcode ${(ins as any).op}`))
             target.ops[w++] = VmOp.Nop
         }
       }
@@ -1595,7 +1648,7 @@ export function encodeLangToVmOps(
     for (const p of funcPatches) {
       const off = funcOffsets.get(p.fn)
       if (off === undefined) {
-        errors.push(encoderError(fullSrc, 'Unpatched function offset'))
+        errors.push(encoderError(src, 'Unpatched function offset'))
         target.ops[p.at] = 0
       }
       else {
@@ -1690,6 +1743,6 @@ export function encodeLangToVmOps(
   }
   catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return { errors: [mapError(encoderError(fullSrc, message))] }
+    return { errors: [mapError(encoderError(src, message))] }
   }
 }
