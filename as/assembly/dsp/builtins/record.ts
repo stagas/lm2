@@ -160,6 +160,14 @@ export function callRecord(
     program.recordLen[sampleIndex] = frames
   }
 
+  // Serialize recordings so callback DSP state cannot interleave across different record() calls.
+  const lock = program.recordLockSample
+  if (lock !== -1 && lock !== sampleIndex) {
+    stack.push(VmTag.Num, f64(sampleIndex))
+    return
+  }
+  program.recordLockSample = sampleIndex
+
   // Record progressively across blocks (never blocks the audio thread).
   program.recordActive = 1
 
@@ -174,6 +182,16 @@ export function callRecord(
   const savedSampleCount: i32 = globalSampleCount
   const savedTHas: i32 = audio.tHas
   const savedTOutIndex: i32 = audio.tOutIndex
+  const savedPool = program.gensPool
+
+  if (paramsChanged || pos === 0) {
+    program.recordGensPool.reset()
+  }
+  else {
+    // Deterministic get() order per block, while keeping generator internal state for continuity.
+    program.recordGensPool.resetIndices()
+  }
+  program.gensPool = program.recordGensPool
 
   audio.tHas = 0
   globalSampleCount = pos
@@ -182,6 +200,7 @@ export function callRecord(
   globalSampleCount = savedSampleCount
   audio.tHas = savedTHas
   audio.tOutIndex = savedTOutIndex
+  program.gensPool = savedPool
   program.popHistoryWriteEnabled()
 
   if (vmErrorCode !== 0) {
@@ -220,6 +239,7 @@ export function callRecord(
     hostSampleSet(sampleIndex, curLen, buf$)
     program.recordBuf$[sampleIndex] = 0
     program.recordPos[sampleIndex] = 0
+    program.recordLockSample = -1
   }
 
   stack.push(VmTag.Num, f64(sampleIndex))
