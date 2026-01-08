@@ -63,7 +63,12 @@ export function compileMiniNotation(
   input: string,
   options: { seed?: number; defaultScale?: DefaultScale } = {},
 ) {
-  const cached = cacheByMiniNotation.get(input)
+  // Include defaultScale in cache key to ensure different scales produce different bytecode
+  const cacheKey = options.defaultScale
+    ? `${input}|scale:${options.defaultScale.rootMidi ?? 60},${options.defaultScale.scaleIndex ?? 0}`
+    : input
+
+  const cached = cacheByMiniNotation.get(cacheKey)
   if (cached) return cached
 
   if (cacheByMiniNotation.size > 1000) {
@@ -97,6 +102,6 @@ export function compileMiniNotation(
   const sourceMap: MiniSourceMapEntry[] = []
 
   const result = { bytecode: trimmedBytecode, sourceMap, nodes }
-  cacheByMiniNotation.set(input, result)
+  cacheByMiniNotation.set(cacheKey, result)
   return result
 }
