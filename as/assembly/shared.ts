@@ -38,6 +38,7 @@ export enum Op {
   Every,
   At,
   Slew,
+  Tram,
   Tri,
   Saw,
   Ramp,

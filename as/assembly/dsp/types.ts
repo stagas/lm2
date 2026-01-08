@@ -76,6 +76,7 @@ export enum VmBuiltin {
   Solo = VmSym.Solo,
   Post = VmSym.Post,
   Sine = VmSym.Sine,
+  Tram = VmSym.Tram,
   Tri = VmSym.Tri,
   Saw = VmSym.Saw,
   Ramp = VmSym.Ramp,

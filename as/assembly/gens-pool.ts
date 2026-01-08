@@ -32,6 +32,7 @@ import { Slicer } from './gen/slicer'
 import { Step } from './gen/step'
 import { Sap, Sbp, Sbs, Shp, Slp, Speak } from './gen/svf'
 import { Timeline } from './gen/timeline'
+import { Tram } from './gen/tram'
 import { Velvet } from './gen/velvet'
 import { Zerox } from './gen/zerox'
 import { Op } from './shared'
@@ -107,6 +108,7 @@ export class GensPool {
   private every: GenPool<Every> = new GenPool<Every>(() => new Every())
   private ats: GenPool<At> = new GenPool<At>(() => new At())
   private euclids: GenPool<Euclid> = new GenPool<Euclid>(() => new Euclid())
+  private trams: GenPool<Tram> = new GenPool<Tram>(() => new Tram())
   private lps: GenPool<Lp> = new GenPool<Lp>(() => new Lp())
   private hps: GenPool<Hp> = new GenPool<Hp>(() => new Hp())
   private bps: GenPool<Bp> = new GenPool<Bp>(() => new Bp())
@@ -477,6 +479,8 @@ export class GensPool {
         return this.ats.get()
       case Op.Euclid:
         return this.euclids.get()
+      case Op.Tram:
+        return this.trams.get()
       case Op.Lp:
         return this.lps.get()
       case Op.Hp:

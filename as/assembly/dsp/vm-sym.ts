@@ -189,6 +189,7 @@ export enum VmSym {
   Threshold,
   Timeline,
   Transpose,
+  Tram,
   Tri,
   Trig,
   Trunc,

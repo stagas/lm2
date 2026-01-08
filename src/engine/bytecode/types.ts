@@ -294,6 +294,17 @@ export type MiniSequenceRef = {
   loc: Loc
 }
 
+export type TramSequenceRef = {
+  seqIndex: number
+  sequence: string
+  /** Absolute start index (0-based) of the string content (excluding quotes) in the DSP source. */
+  start: number
+  /** Absolute end index (0-based, exclusive) of the string content (excluding quotes) in the DSP source. */
+  end: number
+  /** Location of the full string token (including quotes). */
+  loc: Loc
+}
+
 export type TimelineSequenceDef = {
   sequence: string
 }

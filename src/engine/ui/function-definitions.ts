@@ -1909,6 +1909,20 @@ every=1/2 q=.5
     description: 'Tangent function.',
     examples: ['tan(x) |> out($)'],
   },
+  tram: {
+    name: 'tram',
+    parameters: [
+      { name: 'sequence', type: 'string', description: 'Rhythm sequence string using "x" for hits and "-" for pauses' },
+      { name: 'bar', type: 'number', optional: true, defaultValue: 1, description: 'Bar duration to fit the sequence into' },
+    ],
+    returnType: 'number',
+    description: 'Rhythm impulse generator that produces deterministic impulses based on a sequence pattern.',
+    examples: [
+      'hihats = tram("--x-", 1/4)',
+      'kick = tram("x---x---x---x-x-")',
+    ],
+    category: 'sequencing',
+  },
   asin: {
     name: 'asin',
     parameters: [{ name: 'x', type: 'number', description: 'Input value (-1..1)' }],

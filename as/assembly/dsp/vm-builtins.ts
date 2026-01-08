@@ -99,6 +99,7 @@ import { callArrayRandom, callArrayStep } from './builtins/step'
 import { callSum } from './builtins/sum'
 import { callSap, callSbp, callSbs, callShp, callSlp, callSpeak } from './builtins/svf'
 import { callTimeline } from './builtins/timeline'
+import { callTram } from './builtins/tram'
 import { callTri } from './builtins/tri'
 import { callVelvet } from './builtins/velvet'
 import { callArrayWalk } from './builtins/walk'
@@ -1000,6 +1001,11 @@ export class VmBuiltins {
 
     if (calleeAux === VmBuiltin.Sine) {
       callSine(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
+        program, length)
+      return
+    }
+    if (calleeAux === VmBuiltin.Tram) {
+      callTram(posCount, nameSyms, nameTags, nameNums, nameAux, namedCount, posTags, posNums, posAux, stack, audio,
         program, length)
       return
     }

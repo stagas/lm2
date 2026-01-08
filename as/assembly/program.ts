@@ -1,7 +1,5 @@
 import { AnalyserOutsPool } from './analyser-outs-pool'
 import { CompressorOutsPool } from './compressor-outs-pool'
-import { ExpanderOutsPool } from './expander-outs-pool'
-import { GateOutsPool } from './gate-outs-pool'
 import {
   ARRAY_HISTORY_ENTRY_SIZE,
   ARRAY_HISTORY_SIZE,
@@ -32,6 +30,8 @@ import {
   TRIG_ENTRY_SIZE,
   TRIG_HISTORY_SIZE,
 } from './constants'
+import { ExpanderOutsPool } from './expander-outs-pool'
+import { GateOutsPool } from './gate-outs-pool'
 import { GensPool } from './gens-pool'
 import { Smoothed } from './lib/smoothed'
 import { LimiterOutsPool } from './limiter-outs-pool'

@@ -54,6 +54,9 @@ import {
   createTimelineSequencesVisitor,
 } from './extract-timeline-sequences.ts'
 import {
+  createTramSequencesVisitor,
+} from './extract-tram.ts'
+import {
   createAtVisitor,
   createEuclidVisitor,
   createEveryVisitor,
@@ -86,6 +89,7 @@ import {
   type TimelineLabel,
   type TimelineSequenceDef,
   type TimelineSequenceRef,
+  type TramSequenceRef,
   VM_MAGIC,
   VmOp,
   VmTarget,
@@ -459,6 +463,7 @@ function transformExpr(context: AstTransformContext, expr: any): any {
 
     const isMini = calleeName === 'mini'
     const isPlay = calleeName === 'play'
+    const isTram = calleeName === 'tram'
     const isTimeline = calleeName === 'timeline'
     const isAd = calleeName === 'ad'
     const isAdsr = calleeName === 'adsr'
@@ -732,6 +737,29 @@ function transformExpr(context: AstTransformContext, expr: any): any {
       }
 
       return { ...expr, callee, args: argsNoColor }
+    }
+
+    if (isTram) {
+      // For tram, the first positional argument is the sequence
+      let seqArg: any | undefined
+      for (const a of args) {
+        if (a?.kind === 'pos') {
+          seqArg = a
+          break
+        }
+      }
+
+      if (seqArg?.kind === 'pos') {
+        const v = seqArg.value
+        if (v?.kind === 'string') {
+          const idx = context.sequenceToIndex.get(String(v.value ?? ''))
+          if (idx !== undefined) {
+            seqArg.value = toSeqIndexExpr(v.loc, idx)
+          }
+        }
+      }
+
+      return { ...expr, callee, args }
     }
 
     if (isTimeline) {
@@ -1048,6 +1076,8 @@ function extractEarlyDataFromProgram(
   const sequences: string[] = []
   const miniRefs: MiniSequenceRef[] = []
   const miniPlayBars: Array<number | undefined> = []
+  const tramRefs: TramSequenceRef[] = []
+  const tramSequences: string[] = []
   const timelineSequences: TimelineSequenceDef[] = []
   const timelineRefs: TimelineSequenceRef[] = []
   const timelineLabels: TimelineLabel[] = []
@@ -1064,6 +1094,7 @@ function extractEarlyDataFromProgram(
     createBarsVisitor(src, errors, result),
     createScaleVisitor(src, errors, result),
     createMiniSequencesVisitor(src, sequences, miniRefs, miniPlayBars),
+    createTramSequencesVisitor(src, tramSequences, tramRefs),
     createTimelineSequencesVisitor(src, timelineSequences, timelineRefs),
     createTimelineLabelsVisitor(timelineLabels),
     createSamplesVisitor(src, samples, errors, sampleKeyToIndex),
@@ -1082,6 +1113,8 @@ function extractEarlyDataFromProgram(
     sequences,
     miniRefs,
     miniPlayBars,
+    tramSequences,
+    tramRefs,
     timelineSequences,
     timelineRefs,
     timelineLabels,
@@ -1171,6 +1204,8 @@ export function extractEarlyDataFromSource(src: string): {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
   miniPlayBars: Array<number | undefined>
+  tramSequences: string[]
+  tramRefs: TramSequenceRef[]
   timelineSequences: TimelineSequenceDef[]
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
@@ -1512,6 +1547,8 @@ export function encodeLangToVmOps(
   miniSequences?: string[]
   miniRefs?: MiniSequenceRef[]
   miniPlayBars?: Array<number | undefined>
+  tramSequences?: string[]
+  tramRefs?: TramSequenceRef[]
   timelineSequences?: TimelineSequenceDef[]
   timelineRefs?: TimelineSequenceRef[]
   timelineLabels?: TimelineLabel[]
@@ -1621,6 +1658,8 @@ export function encodeLangToVmOps(
       sequences,
       miniRefs: allMiniRefs,
       miniPlayBars: allMiniPlayBars,
+      tramSequences,
+      tramRefs,
       timelineSequences: allTimelineSequences,
       timelineRefs: allTimelineRefs,
       timelineLabels: allTimelineLabels,
@@ -1665,6 +1704,7 @@ export function encodeLangToVmOps(
     const sliderKeys = new Set(numberParams.map(p => sliderKeyOf(p)))
     const sequenceToIndex = new Map<string, number>()
     sequences.forEach((seq, idx) => sequenceToIndex.set(seq, idx))
+    tramSequences.forEach((seq, idx) => sequenceToIndex.set(seq, sequences.length + idx))
     const timelineKeyToIndex = new Map<string, number>()
     timelineSequences.forEach((s, idx) => timelineKeyToIndex.set(s.sequence, idx))
     const miniCount = sequences.length
@@ -1913,6 +1953,8 @@ export function encodeLangToVmOps(
         miniSequences: sequences,
         miniRefs: miniRefs,
         miniPlayBars,
+        tramSequences,
+        tramRefs,
         timelineSequences,
         timelineRefs: timelineRefsMapped,
         timelineLabels,
@@ -1948,6 +1990,8 @@ export function encodeLangToVmOps(
         miniSequences: sequences,
         miniRefs: miniRefs,
         miniPlayBars,
+        tramSequences,
+        tramRefs,
         timelineSequences,
         timelineRefs: timelineRefsMapped,
         timelineLabels,

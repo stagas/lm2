@@ -42,6 +42,7 @@ import { acquireSpinLock } from '../../lib/atomics.ts'
 import { buildMiniSourceMap, type SourceLocation } from '../../lib/mini-source-map.ts'
 import { compileMiniNotation } from '../../mini/compiler.ts'
 import { compileTimelineNotation } from '../../timeline/compiler.ts'
+import { compileTramSequence, tramSequenceToBytecode } from '../../tram/compiler.ts'
 import {
   type AdRef,
   type AdsrRef,
@@ -178,6 +179,28 @@ function updateSequence(
   return buildMiniSourceMap(sequence, compiled.nodes, compiled.bytecode)
 }
 
+function updateTramSequence(
+  sequence: string,
+  arrayIndex: number,
+  data: ProgramDataView,
+): Map<number, SourceLocation> | undefined {
+  const parsed = compileTramSequence(sequence)
+  const bytecode = tramSequenceToBytecode(parsed)
+  const target = data.arrays[arrayIndex]
+
+  // Write new bytecode
+  const maxSize = Math.min(bytecode.length, ARRAY_SIZE)
+  target.raw.set(bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE)
+  target.length = maxSize
+
+  // Increment version to signal bytecode change
+  const currentVersion = target.raw[3] || 0
+  target.raw[3] = currentVersion + 1
+
+  // No source map for tram sequences (they're simple patterns)
+  return undefined
+}
+
 function updateTimelineSequence(
   sequence: string,
   arrayIndex: number,
@@ -200,9 +223,11 @@ function buildProgram(
   vm?: VmCompileSnapshot,
 ): {
   sequences: string[]
+  tramSequences: string[]
   timelineSequences: TimelineSequenceDef[]
   miniRefs: MiniSequenceRef[]
   miniPlayBars: Array<number | undefined>
+  tramRefs: TramSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
   adRefs: AdRef[]
@@ -234,19 +259,21 @@ function buildProgram(
     ? (data.ops.set(vm.ops), data.literals.set(vm.literals), vm.result)
     : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals })
 
-  const { errors, miniSequences, timelineSequences, miniRefs, miniPlayBars, timelineRefs, timelineLabels, adRefs,
-    adsrRefs, envfollowRefs, slewRefs, analyserRefs, compressorRefs, expanderRefs, gateRefs, limiterRefs, filterRefs,
-    reverbRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
-    numberLiterals, bpm, bars, scale, sampleDefs } = compiled
+  const { errors, miniSequences, tramSequences, timelineSequences, miniRefs, miniPlayBars, tramRefs, timelineRefs,
+    timelineLabels, adRefs, adsrRefs, envfollowRefs, slewRefs, analyserRefs, compressorRefs, expanderRefs, gateRefs,
+    limiterRefs, filterRefs, reverbRefs, lfoRefs, slicerRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks,
+    numberParams, numberLiterals, bpm, bars, scale, sampleDefs } = compiled
   if (errors.length) {
     console.error('VM compile errors:', errors)
     throw new Error(`VM compile errors: ${errors.map(e => e.message).join(', ')}`)
   }
   return {
     sequences: miniSequences ?? [],
+    tramSequences: tramSequences ?? [],
     timelineSequences: timelineSequences ?? [],
     miniRefs: miniRefs ?? [],
     miniPlayBars: miniPlayBars ?? [],
+    tramRefs: tramRefs ?? [],
     timelineRefs: timelineRefs ?? [],
     timelineLabels: timelineLabels ?? [],
     adRefs: adRefs ?? [],
@@ -293,8 +320,10 @@ export type ProgramBuildDiff = {
 
 export type ProgramBuildResult = {
   sequences: string[]
+  tramSequences: string[]
   miniRefs: MiniSequenceRef[]
   miniPlayBars: Array<number | undefined>
+  tramRefs: TramSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
   timelineLabels: TimelineLabel[]
   adRefs: AdRef[]
@@ -634,18 +663,24 @@ async function createProgram(
       const newData = nextProgramData()
 
       try {
-        const { sequences, timelineSequences, miniRefs, miniPlayBars, timelineRefs, timelineLabels, adRefs, adsrRefs,
-          envfollowRefs, slewRefs, analyserRefs, compressorRefs, expanderRefs, gateRefs, limiterRefs, filterRefs,
-          reverbRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs, arrayLiterals, branchMarks, numberParams,
-          numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(newData, source, options.vm)
+        const { sequences, tramSequences, timelineSequences, miniRefs, miniPlayBars, tramRefs, timelineRefs,
+          timelineLabels, adRefs, adsrRefs, envfollowRefs, slewRefs, analyserRefs, compressorRefs, expanderRefs,
+          gateRefs, limiterRefs, filterRefs, reverbRefs, slicerRefs, lfoRefs, everyRefs, atRefs, euclidRefs,
+          arrayLiterals, branchMarks, numberParams, numberLiterals, sampleDefs, bpm, bars, scale } = buildProgram(
+            newData,
+            source,
+            options.vm,
+          )
         const miniSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(sequences.length)
-        const totalSeqCount = sequences.length + timelineSequences.length
+        const tramSourceMaps: Array<Map<number, SourceLocation> | undefined> = new Array(tramSequences.length)
+        const totalSeqCount = sequences.length + tramSequences.length + timelineSequences.length
         if (totalSeqCount > HISTORIES_COUNT) {
           throw new Error(`Too many sequences for history pool: ${totalSeqCount} > ${HISTORIES_COUNT}`)
         }
 
         // await this.acquireLock()
         try {
+          // Process mini sequences
           for (let arrayIndex = 0; arrayIndex < sequences.length; arrayIndex++) {
             const sequence = sequences[arrayIndex]
             if (!sequence) continue
@@ -658,10 +693,24 @@ async function createProgram(
             miniSourceMaps[arrayIndex] = updateSequence(sequence, arrayIndex, newData, scale)
           }
 
+          // Process tram sequences
+          for (let i = 0; i < tramSequences.length; i++) {
+            const sequence = tramSequences[i]
+            if (!sequence) continue
+            const arrayIndex = sequences.length + i
+
+            const oldArray = versionSource?.arrays[arrayIndex]
+            if (oldArray) {
+              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3]
+            }
+
+            tramSourceMaps[i] = updateTramSequence(sequence, arrayIndex, newData)
+          }
+
           for (let i = 0; i < timelineSequences.length; i++) {
             const s = timelineSequences[i]
             if (!s) continue
-            const arrayIndex = sequences.length + i
+            const arrayIndex = sequences.length + tramSequences.length + i
 
             const oldArray = versionSource?.arrays[arrayIndex]
             if (oldArray) {
@@ -682,8 +731,10 @@ async function createProgram(
         const diff = computeProgramDiff(referenceData, newData)
         return {
           sequences,
+          tramSequences,
           miniRefs,
           miniPlayBars,
+          tramRefs,
           timelineRefs,
           timelineLabels,
           adRefs,

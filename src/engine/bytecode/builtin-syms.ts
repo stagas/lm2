@@ -98,6 +98,7 @@ export const builtinSyms: Record<string, number> = {
   tune: VmSym.Tune,
   octave: VmSym.Octave,
   transpose: VmSym.Transpose,
+  tram: VmSym.Tram,
   scale: VmSym.Scale,
   // Named args for out() and solo()
   L: VmSym.L,
