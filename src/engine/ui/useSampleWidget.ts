@@ -11,7 +11,7 @@ import { computePeaks } from '../dsp/peaks.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { createGreyVerticalGradient } from './grey-gradient.ts'
-import { syncRecordSamplesForWidgets, type RecordFetchState, type RecordOfflineState } from './record-samples.ts'
+import { type RecordFetchState, type RecordOfflineState, syncRecordSamplesForWidgets } from './record-samples.ts'
 import { getCurrentTheme } from './theme.ts'
 import {
   createWidgetCanvas,
@@ -36,6 +36,9 @@ type NeedleState = {
   atSampleCount: number
   speed: number
   playing: boolean
+  animationStartTime?: number
+  stoppedTime?: number
+  startPos: number
 }
 
 type WaveCache = {
@@ -138,6 +141,7 @@ function drawSample(
   ch0: Float32Array<ArrayBuffer>,
   waveRef: preact.RefObject<WeakMap<ArrayBuffer, Map<string, WaveCache>>>,
   needle: NeedleState | undefined,
+  sampleRate: number,
 ) {
   if (w <= 1 || h <= 1) return
 
@@ -171,11 +175,34 @@ function drawSample(
 
   c.drawImage(canvas, 0, 0, w, h)
 
-  if (needle?.playing && ch0.length > 1) {
-    const pos = needle.posFrames
-    const t = pos / (ch0.length - 1)
-    const clamped = t < 0 ? 0 : t > 1 ? 1 : t
-    const nx = clamped * w
+  if (needle && ch0.length > 1) {
+    const now = performance.now() / 1000
+    const animationStartTime = needle.animationStartTime ?? now
+    const elapsed = now - animationStartTime
+
+    // Calculate actual sample duration
+    const sampleDurationSeconds = ch0.length / sampleRate
+
+    // Use minimum animation duration for visibility
+    const minAnimationDuration = 0.15 // 150ms minimum visible duration
+    const visualDuration = Math.max(sampleDurationSeconds, minAnimationDuration)
+
+    // For sliced samples, offset the animation start position
+    const startPos = needle.startPos
+    const startVisualPos = startPos / (ch0.length - 1)
+
+    // Calculate visual progress based on elapsed time, relative to the slice
+    let visualProgress = Math.min(1, elapsed / visualDuration)
+
+    // If sample has stopped playing, ensure animation completes
+    if (!needle.playing) {
+      visualProgress = 1 // Snap to end when stopped
+    }
+
+    // Offset by the slice start position
+    visualProgress = startVisualPos + visualProgress * (1 - startVisualPos)
+
+    const nx = visualProgress * w
     c.strokeStyle = '#ff0e'
     c.lineWidth = 2
     c.beginPath()
@@ -261,7 +288,22 @@ export function useSampleWidget({
         const playing = (raw[base + 2] ?? 0) > 0
         if (sampleIndex < 0) continue
         if (!playing) {
-          needles.delete(sampleIndex)
+          const existing = needles.get(sampleIndex)
+          if (existing && existing.playing) {
+            // Sample just stopped playing, mark it for fade-out
+            existing.playing = false
+            existing.stoppedTime = performance.now() / 1000
+            // Keep the needle for fade-out animation
+          }
+          else if (existing && !existing.playing) {
+            // Already stopped, check if we should remove it
+            const stoppedTime = existing.stoppedTime ?? 0
+            const now = performance.now() / 1000
+            const fadeOutDuration = 0.2 // 200ms fade-out
+            if (now - stoppedTime > fadeOutDuration) {
+              needles.delete(sampleIndex)
+            }
+          }
           continue
         }
 
@@ -282,12 +324,22 @@ export function useSampleWidget({
         const isRetrig = prev && prev.playing && jump < -64
         const isTeleport = prev && prev.playing && Math.abs(jump) > 200000
 
+        const isStarting = !prev || !prev.playing || isRetrig || isTeleport
+        const animationStartTime = isStarting
+          ? performance.now() / 1000
+          : (prev?.animationStartTime ?? performance.now() / 1000)
+
+        // Track the starting position for slice-aware visualization
+        const startPos = isStarting ? posFrames : (prev?.startPos ?? posFrames)
+
         needles.set(sampleIndex, {
           posFrames: (isRetrig || isTeleport) ? compensated : initPos,
           rawPosFrames: posFrames,
           atSampleCount: tsMod,
           speed,
           playing: true,
+          animationStartTime,
+          startPos,
         })
       }
     }
@@ -327,8 +379,9 @@ export function useSampleWidget({
     }
 
     const needle = needleRef.current.get(sampleIndex)
-    drawSample(c, x, widgetY, w, h, ch0, waveRef, needle)
-  }, [])
+    const sampleRate = audioContext?.sampleRate ?? 44100
+    drawSample(c, x, widgetY, w, h, ch0, waveRef, needle, sampleRate)
+  }, [audioContext?.sampleRate])
 
   const widgets = useMemo((): EditorWidget[] => {
     if (!showWidgets) return []
