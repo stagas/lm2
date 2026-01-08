@@ -484,7 +484,7 @@ export const functionDefinitions: Record<string, FunctionSignature> = {
     returnType: 'number',
     description: 'Attack/decay envelope that emits a single bump per trigger pulse.',
     examples: [
-      'drawbar(a4) * ad(.01,.3,2,trig:every(1/8)) |> out($)',
+      'drawbar(a3) * ad(attack:.01,decay:.3,exponent:2,trig:every(1/8)) |> out($)',
     ],
   },
   adsr: {
@@ -1322,7 +1322,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Band-pass filter that attenuates frequencies outside a specific range.',
     examples: [
-      'saw(hz) |> bp($, cutoff:1000, q:2) |> out($)',
+      'saw(a3) |> bp($, cutoff:1000, q:2) |> out($)',
     ],
   },
   bs: {
@@ -1335,7 +1335,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Band-stop filter that attenuates frequencies within a specific range.',
     examples: [
-      'saw(hz) |> bs($, cutoff:1000, q:5) |> out($)',
+      'saw(a3) |> $-bs($, cutoff:1000, q:1) |> out($)',
     ],
   },
   ls: {
@@ -1388,7 +1388,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'All-pass filter that changes phase without affecting frequency response.',
     examples: [
-      'saw(220) |> ap($, cutoff:1000, q:1) |> out($)',
+      'saw(220)*ad(.01,.2,trig:every(1/8)) |> ap($, cutoff:1000, q:1) |> limiter($) |> out($)',
     ],
   },
   slp: {
@@ -1723,7 +1723,6 @@ every=1/2 q=.5
     description: 'Deterministic brown-ish noise stream in -1..1 (stateful random walk with soft leak).',
     examples: [
       'brown() |> out($)',
-      'brown(1234, trig) |> out($)',
     ],
   },
   random: {
@@ -1826,7 +1825,7 @@ every=1/2 q=.5
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
     description: 'Arctangent function.',
-    examples: ['atan(x) |> out($)'],
+    examples: ['karplus([c4,a4,f4,e4].step(every(1/4)),trig:every(1/8)) |> atan($) |> out($)'],
   },
   abs: {
     name: 'abs',
@@ -1980,28 +1979,28 @@ every=1/2 q=.5
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
     description: 'Rounds down to nearest integer.',
-    examples: ['floor(sine(220) * 10) |> out($)'],
+    examples: ['floor(sine([c4,a4,f4,e4].step(every(1/8))) * 2)*ad(.01,.2,trig:every(1/8)) |> tanh($) |> out($)'],
   },
   ceil: {
     name: 'ceil',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
     description: 'Rounds up to nearest integer.',
-    examples: ['ceil(sine(220) * 10) |> out($)'],
+    examples: ['ceil(sine([c4,a4,f4,e4].step(every(1/8))) * 2)*ad(.01,.2,trig:every(1/8)) |> tanh($) |> out($)'],
   },
   round: {
     name: 'round',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
     description: 'Rounds to nearest integer.',
-    examples: ['round(sine(220) * 10) |> out($)'],
+    examples: ['floor(sine([c4,a4,f4,e4].step(every(1/8))) * 2)*ad(.01,.2,trig:every(1/8)) |> tanh($) |> out($)'],
   },
   trunc: {
     name: 'trunc',
     parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
     returnType: 'number',
     description: 'Truncates to integer (rounds toward zero).',
-    examples: ['trunc(sine(220) * 10) |> out($)'],
+    examples: ['trunc(sine([c4,a4,f4,e4].step(every(1/8))) * 2)*ad(.01,.2,trig:every(1/8)) |> tanh($) |> out($)'],
   },
   snap: {
     name: 'snap',
@@ -2475,7 +2474,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Bit crushing effect using sample and hold.',
     examples: [
-      'saw(220) |> bitcrush($, rate:1000) |> out($)',
+      'saw(a3) |> bitcrush($, rate:404  (50 5k 3)) |> out($)',
     ],
   },
   mix: {
@@ -2502,7 +2501,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Convert unipolar signal to bipolar ([0,1] to [-1,1]).',
     examples: [
-      'random() |> bi($) |> out($)',
+      'phasor(220) |> bi($)*ad(.01,.2,trig:every(1/8)) |> out($)',
     ],
   },
   crossfade: {

@@ -297,6 +297,9 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     target.literals.fill(0)
     const result = encodeLangToVmOps(code, target)
 
+    // Docs should default to prelude BPM (60) unless explicitly set
+    result.bpm = result.bpm ?? 60
+
     if (result.errors.length === 0) {
       lastSuccessfulRef.current = {
         code,
