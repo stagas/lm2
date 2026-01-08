@@ -198,7 +198,7 @@ rhodes=(hz,vel=1,trig)->{
   resonances = [
     bp(tine, hz*3.8, 7),
     bp(tine, hz*7.1, 9)
-  ].sum()
+  ].avg()
 
   // Pickup / hammer click
   click = hp(tine, 2500, 0.7)
@@ -213,7 +213,6 @@ rhodes=(hz,vel=1,trig)->{
 
   // Gentle saturation + DC cleanup
   s = tube(s, drive:2.0 + v, bias:.04)
-  s = dc(s)
 
   // Pickup EQ tilt (brighter with velocity)
   s = ls(s, 250, -2*(1-v))
@@ -222,7 +221,7 @@ rhodes=(hz,vel=1,trig)->{
   // Classic Rhodes chorus
   s = chorus(s, voices:3, rate:.22, depth:.005, spread:.6)
 
-  s
+  s*.5
 }
 
 /*
@@ -235,7 +234,7 @@ Changes vs previous:
 - Overall darker, woodier response
 */
 
-rhodes2=(hz,vel=1,trig)->{
+rhodes70=(hz,vel=1,trig)->{
   v = clamp(vel,0,1)
 
   // Fundamental (very pure)

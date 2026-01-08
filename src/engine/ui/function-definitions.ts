@@ -62,7 +62,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'array',
     description: 'Maps over an array and returns a new array with the results.',
     examples: [
-      '[60,62,65].map((x,i)->rhodes2(note(x*(1.03**i)))).avg() |> out($)',
+      '[60,62,65].map((x,i)->rhodes70(note(x*(1.03**i)))).avg() |> out($)',
     ],
     category: 'array',
   },
@@ -102,7 +102,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Averages an array and returns the result.',
     examples: [
-      '[60,62,65].map(x->rhodes2(note(x))).avg() |> out($)',
+      '[60,62,65].map(x->rhodes70(note(x))).avg() |> out($)',
     ],
     category: 'array',
   },
@@ -115,7 +115,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     description: 'Steps through array elements on trigger impulses, wrapping around when reaching the end.',
     examples: [
       `scale='pentatonic' trig=euclid(5,8,bar:.25) env=ad(.01,.5,5,trig)
-#scale.step(trig) |> rhodes2($*o4)*env |> out($)`,
+#scale.step(trig) |> rhodes70($*o4)*env |> out($)`,
     ],
     category: 'array',
   },
