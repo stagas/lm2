@@ -181,7 +181,6 @@ export enum VmSym {
   Sum,
   Sustain,
   Swing,
-  SwingFn,
   T,
   Tan,
   Tanh,

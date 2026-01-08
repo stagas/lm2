@@ -192,7 +192,7 @@ export enum VmBuiltin {
   Isnan = VmSym.Isnan,
   Isinf = VmSym.Isinf,
   Safediv = VmSym.Safediv,
-  Swing = VmSym.SwingFn,
+  Swing = VmSym.Swing,
   Oversample = VmSym.Oversample,
   Zerox = VmSym.Zerox,
   PitchShift = VmSym.PitchShift,
