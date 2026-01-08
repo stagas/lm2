@@ -156,6 +156,851 @@ const kernelCache = new Map<string, KernelCacheEntry>()
 const transformedBodyScratch: any[] = []
 const transformedUserBodyScratch: any[] = []
 
+type AstTransformContext = {
+  sequenceToIndex: Map<string, number>
+  timelineKeyToIndex: Map<string, number>
+  miniCount: number
+  sampleKeyToIndex: Map<string, number>
+  allocAnalyserIndex: (span?: number) => number
+  allocCompressorIndex: (span?: number) => number
+  allocExpanderIndex: (span?: number) => number
+  allocGateIndex: (span?: number) => number
+  allocLimiterIndex: (span?: number) => number
+  allocFilterIndex: (span?: number) => number
+  allocLfoIndex: (span?: number) => number
+  allocReverbIndex: (span?: number) => number
+  allocAdIndex: (span?: number) => number
+  allocAdsrIndex: (span?: number) => number
+  allocEnvfollowIndex: (span?: number) => number
+  allocTrigIndex: (span?: number) => number
+  implicitAnalyserRefs: AnalyserRef[]
+  isVisualizerAssign: (stmt: any) => boolean
+}
+
+function fnv1a32(str: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h >>> 0
+}
+
+function stableAstString(v: any): string {
+  return JSON.stringify(v, (k, val) => {
+    if (
+      k === 'loc'
+      || k === 'ifLoc'
+      || k === 'elseLoc'
+      || k === 'questionLoc'
+      || k === 'colonLoc'
+      || k === 'slider'
+      || k === 'kernel'
+    ) return undefined
+    return val
+  }) ?? ''
+}
+
+function getPosArgValue(call: any, posIndex: number): any | null {
+  let pos = 0
+  for (const arg of call.args ?? []) {
+    if (arg?.kind !== 'pos') continue
+    if (pos === posIndex) return arg.value ?? null
+    pos++
+  }
+  return null
+}
+
+function getNamedArgValue(call: any, name: string): any | null {
+  for (const arg of call.args ?? []) {
+    if (arg?.kind !== 'named') continue
+    if (arg.name === name) return arg.value ?? null
+  }
+  return null
+}
+
+function getRecordCbKey(call: any): number {
+  const secondsExpr = getNamedArgValue(call, 'seconds') ?? getPosArgValue(call, 0)
+  const cbExpr = getNamedArgValue(call, 'cb') ?? getNamedArgValue(call, 'callback') ?? getPosArgValue(call, 1)
+  return fnv1a32(stableAstString({ seconds: secondsExpr, cb: cbExpr }))
+}
+
+function recordKeyFromAssign(targetName: string): string {
+  return `record:${targetName}`
+}
+
+function recordKeyFallback(loc: Loc): string {
+  return `record@${loc.line}:${loc.column}`
+}
+
+function toSeqIndexExpr(loc: Loc, idx: number): any {
+  return { kind: 'number', value: idx, raw: String(idx), loc } as any
+}
+
+function injectRecordArgs(
+  sampleKeyToIndex: Map<string, number>,
+  call: any,
+  callee: any,
+  args: any[],
+  recordKey: string,
+): any {
+  const idx = sampleKeyToIndex.get(recordKey)
+  if (idx === undefined) return { ...call, callee, args }
+  const cbKey = getRecordCbKey(call)
+
+  const filtered: any[] = []
+  for (const a of args) {
+    const drop = a?.kind === 'named' && (a.name === '%index' || a.name === 'index' || a.name === '%key')
+    if (!drop) filtered.push(a)
+  }
+
+  return {
+    ...call,
+    callee,
+    args: [
+      ...filtered,
+      { kind: 'named', name: '%index', value: toSeqIndexExpr(call.loc, idx), loc: call.loc },
+      { kind: 'named', name: '%key', value: toSeqIndexExpr(call.loc, cbKey >>> 0), loc: call.loc },
+    ],
+  }
+}
+
+function createIndexAllocator(
+  opts: { start: number; max: number; reserved?: number[] },
+): (span?: number) => number {
+  const used = new Set<number>(opts.reserved ?? [])
+  let next = opts.start | 0
+  const max = opts.max | 0
+
+  return (span = 1): number => {
+    span = Math.max(1, span | 0)
+    const maxStart = Math.max(0, max - (span - 1))
+
+    while (next <= maxStart) {
+      let ok = true
+      for (let i = 0; i < span; i++) {
+        if (used.has(next + i)) {
+          ok = false
+          break
+        }
+      }
+      if (ok) {
+        const idx = next
+        for (let i = 0; i < span; i++) used.add(idx + i)
+        next = idx + span
+        return idx
+      }
+      next++
+    }
+
+    // Saturate if we've run out of space; better to overlap than to crash or produce gaps.
+    const idx = maxStart
+    for (let i = 0; i < span; i++) used.add(idx + i)
+    return idx
+  }
+}
+
+function isReverbCall(name: string | null): boolean {
+  return name === 'freeverb' || name === 'dattorro' || name === 'fdn' || name === 'velvet'
+}
+
+function stripMiniColorArg(args: any[]): any[] {
+  let namedColor: any | null = null
+  let secondPos: any | null = null
+  let thirdPos: any | null = null
+  let pos = 0
+
+  for (const a of args) {
+    if (a?.kind === 'named' && a.name === 'color') namedColor = a
+    if (a?.kind === 'pos') {
+      if (pos === 1) secondPos = a
+      else if (pos === 2) thirdPos = a
+      pos++
+    }
+  }
+
+  const toDrop = namedColor
+    ?? (secondPos?.value?.kind === 'string' ? secondPos : null)
+    ?? (thirdPos?.value?.kind === 'string' ? thirdPos : null)
+
+  if (!toDrop) return args
+  const out: any[] = []
+  for (const a of args) if (a !== toDrop) out.push(a)
+  return out
+}
+
+function transformExpr(context: AstTransformContext, expr: any): any {
+  if (!expr) return expr
+  if (expr.loc?.kernel) return expr
+
+  if (expr.kind === 'ident') {
+    const om = expr.name.match(/^o(\d+)$/)
+    if (om) {
+      const o = parseInt(om[1]!, 10)
+      const mul = Number.isFinite(o) ? 2 ** (o + 1) : 0
+      return { kind: 'number', value: mul, raw: String(mul), loc: expr.loc }
+    }
+
+    if (expr.name.startsWith('#')) {
+      const raw = expr.name.slice(1)
+      const dm = raw.match(/^(\d+)$/)
+      if (dm) {
+        const d = parseInt(dm[1]!, 10)
+        return {
+          kind: 'call',
+          callee: { kind: 'ident', name: 'degree', loc: expr.loc },
+          args: [{
+            kind: 'pos',
+            value: { kind: 'number', value: d, raw: String(d), loc: expr.loc },
+            loc: expr.loc,
+          }],
+          loc: expr.loc,
+        }
+      }
+
+      if (raw === 'scale') {
+        return {
+          kind: 'call',
+          callee: { kind: 'ident', name: 'getScale', loc: expr.loc },
+          args: [],
+          loc: expr.loc,
+        }
+      }
+
+      const chordMatch = raw.match(/^([ivxlcdm]+)(.*)$/i)
+      if (chordMatch) {
+        const roman = chordMatch[1]
+        const suffix = chordMatch[2] ?? ''
+        const base = romanToDegree(roman)
+        if (base !== null) {
+          const tones = parseChordSuffix(suffix)
+          const items = new Array<any>(tones.length)
+          for (let idx = 0; idx < tones.length; idx++) {
+            const tone = tones[idx]
+            const scaleDegree = base + tone.degree
+            const loc: Loc = idx === 0 ? expr.loc : { ...expr.loc, line: 0, column: expr.loc.column + idx }
+            const args: any[] = [{
+              kind: 'pos',
+              value: { kind: 'number', value: scaleDegree, raw: String(scaleDegree), loc },
+              loc: expr.loc,
+            }]
+
+            if (tone.semitoneAdjust !== 0) {
+              args.push({
+                kind: 'pos',
+                value: {
+                  kind: 'number',
+                  value: tone.semitoneAdjust,
+                  raw: String(tone.semitoneAdjust),
+                  loc,
+                },
+                loc: expr.loc,
+              })
+            }
+
+            items[idx] = {
+              kind: 'call',
+              callee: { kind: 'ident', name: 'degree', loc: expr.loc },
+              args,
+              loc: expr.loc,
+            }
+          }
+
+          return { kind: 'array', items, loc: expr.loc }
+        }
+      }
+    }
+
+    const midi = noteIdentToMidi(expr.name)
+    if (midi !== null) {
+      return {
+        kind: 'call',
+        callee: { kind: 'ident', name: 'note', loc: expr.loc },
+        args: [{
+          kind: 'pos',
+          value: { kind: 'number', value: midi, raw: String(midi), loc: expr.loc },
+          loc: expr.loc,
+        }],
+        loc: expr.loc,
+      }
+    }
+  }
+
+  if (expr.kind === 'call') {
+    const preCalleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
+    const reverbIndex = isReverbCall(preCalleeName) ? context.allocReverbIndex() : null
+
+    const callee = transformExpr(context, expr.callee)
+    const inArgs = expr.args ?? []
+    let args = inArgs
+    if (inArgs.length) {
+      const out = new Array<any>(inArgs.length)
+      for (let i = 0; i < inArgs.length; i++) {
+        const a = inArgs[i]
+        if (a?.kind === 'pos' || a?.kind === 'named') out[i] = { ...a, value: transformExpr(context, a.value) }
+        else out[i] = a
+      }
+      args = out
+    }
+
+    if (reverbIndex !== null) {
+      const filtered: any[] = []
+      for (const a of args) {
+        const drop = a?.kind === 'named' && (a.name === '%index' || a.name === 'index')
+        if (!drop) filtered.push(a)
+      }
+      args = [
+        ...filtered,
+        { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, reverbIndex), loc: expr.loc },
+      ]
+    }
+
+    const calleeName = callee?.kind === 'ident' ? callee.name : null
+
+    const isMini = calleeName === 'mini'
+    const isPlay = calleeName === 'play'
+    const isTimeline = calleeName === 'timeline'
+    const isAd = calleeName === 'ad'
+    const isAdsr = calleeName === 'adsr'
+    const isEnvfollow = calleeName === 'envfollow'
+    const analyserKind = (
+        calleeName === 'analyser'
+        || calleeName === 'amplitude'
+        || calleeName === 'waveform'
+        || calleeName === 'spectrum'
+        || calleeName === 'level'
+        || calleeName === 'print'
+      )
+      ? calleeName
+      : null
+    const isAnalyser = analyserKind !== null
+    const isCompressor = calleeName === 'compressor'
+    const isExpander = calleeName === 'expander'
+    const isGate = calleeName === 'gate'
+    const isLimiter = calleeName === 'limiter'
+    const isFilter = calleeName === 'lp'
+      || calleeName === 'hp'
+      || calleeName === 'bp'
+      || calleeName === 'bs'
+      || calleeName === 'ls'
+      || calleeName === 'hs'
+      || calleeName === 'peak'
+      || calleeName === 'ap'
+      || calleeName === 'slp'
+      || calleeName === 'shp'
+      || calleeName === 'sbp'
+      || calleeName === 'sbs'
+      || calleeName === 'speak'
+      || calleeName === 'sap'
+      || calleeName === 'mlp'
+      || calleeName === 'mhp'
+      || calleeName === 'diodeladder'
+      || calleeName === 'olp'
+      || calleeName === 'ohp'
+    const isLfo = calleeName === 'lfosine'
+      || calleeName === 'lfotri'
+      || calleeName === 'lfosaw'
+      || calleeName === 'lforamp'
+      || calleeName === 'lfosqr'
+      || calleeName === 'lfosah'
+      || calleeName === 'smooth'
+      || calleeName === 'fractal'
+    const isOut = calleeName === 'out' || calleeName === 'solo'
+    const isLabel = calleeName === 'label'
+    const isFreesound = calleeName === 'freesound'
+    const isRecord = calleeName === 'record'
+
+    if (isLabel) {
+      return { kind: 'undefined', loc: expr.loc }
+    }
+
+    if (isFreesound) {
+      let idArg: any | undefined
+      for (const a of args) {
+        if (a?.kind === 'named' && a.name === 'id') {
+          idArg = a
+          break
+        }
+      }
+      if (!idArg) {
+        for (const a of args) {
+          if (a?.kind === 'pos') {
+            idArg = a
+            break
+          }
+        }
+      }
+      const idExpr = idArg?.kind === 'pos' || idArg?.kind === 'named' ? idArg.value : null
+      const id = tryEvalConstNumber(idExpr)
+      if (id != null && Number.isFinite(id) && Number.isInteger(id) && id >= 0) {
+        const idx = context.sampleKeyToIndex.get(`freesound:${id}`)
+        if (idx !== undefined) return toSeqIndexExpr(expr.loc, idx)
+      }
+      return { kind: 'undefined', loc: expr.loc }
+    }
+
+    if (isRecord) {
+      return injectRecordArgs(context.sampleKeyToIndex, expr, callee, args, recordKeyFallback(expr.loc))
+    }
+
+    const withIndex = (idx: number) => ({
+      kind: 'named',
+      name: '%index',
+      value: toSeqIndexExpr(expr.loc, idx),
+      loc: expr.loc,
+    })
+
+    if (isAd) {
+      const idx = context.allocAdIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (isAdsr) {
+      const idx = context.allocAdsrIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (isEnvfollow) {
+      const idx = context.allocEnvfollowIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (isAnalyser) {
+      const idx = context.allocAnalyserIndex()
+      // Keep only the first positional arg (signal), drop any user-provided index and any named index.
+      const filtered: any[] = []
+      let posSeen = 0
+      for (const a of args) {
+        if (a?.kind === 'named' && (a.name === '%index' || a.name === 'index')) continue
+        if (a?.kind !== 'pos') {
+          filtered.push(a)
+          continue
+        }
+        if (posSeen === 0) filtered.push(a)
+        posSeen++
+      }
+      return { ...expr, callee, args: [...filtered, withIndex(idx)] }
+    }
+
+    if (isCompressor) {
+      const idx = context.allocCompressorIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (isExpander) {
+      const idx = context.allocExpanderIndex()
+      const filtered: any[] = []
+      for (const a of args) {
+        const drop = a?.kind === 'named' && (a.name === '%index' || a.name === 'index')
+        if (!drop) filtered.push(a)
+      }
+      return { ...expr, callee, args: [...filtered, withIndex(idx)] }
+    }
+
+    if (isGate) {
+      const idx = context.allocGateIndex()
+      const filtered: any[] = []
+      for (const a of args) {
+        const drop = a?.kind === 'named' && (a.name === '%index' || a.name === 'index')
+        if (!drop) filtered.push(a)
+      }
+      return { ...expr, callee, args: [...filtered, withIndex(idx)] }
+    }
+
+    if (isLimiter) {
+      const idx = context.allocLimiterIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (isFilter) {
+      const idx = context.allocFilterIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (isLfo) {
+      const idx = context.allocLfoIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (calleeName === 'every') {
+      const idx = context.allocTrigIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (calleeName === 'at') {
+      const idx = context.allocTrigIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (calleeName === 'euclid') {
+      const idx = context.allocTrigIndex()
+      return { ...expr, callee, args: [...args, withIndex(idx)] }
+    }
+
+    if (isOut) {
+      let audioArg: any | null = null
+      for (const a of args) {
+        if (a?.kind === 'pos') {
+          audioArg = a
+          break
+        }
+      }
+      const audioExpr = audioArg?.value
+      const audioCalleeName = audioExpr?.kind === 'call' && audioExpr.callee?.kind === 'ident'
+        ? audioExpr.callee.name
+        : null
+
+      // If the signal is already analysed (common: `... |> analyser(%) |> out(%)`), don't add an implicit tap.
+      //
+      // Important: we do NOT desugar to `out(analyser(x))` because that changes semantics for arrays
+      // (e.g. `array |> out($)` would get coerced). Instead, attach an analyser tap index and emit
+      // a side-effect analyser call at bytecode compile time.
+      const isAlreadyAnalysed = audioCalleeName === 'analyser'
+        || audioCalleeName === 'amplitude'
+        || audioCalleeName === 'waveform'
+        || audioCalleeName === 'spectrum'
+        || audioCalleeName === 'level'
+        || audioCalleeName === 'print'
+      if (audioArg?.kind === 'pos' && audioExpr && !isAlreadyAnalysed) {
+        const idx = context.allocAnalyserIndex()
+        const calleeLoc = expr.callee?.loc ?? expr.loc
+        context.implicitAnalyserRefs.push({
+          kind: 'analyser',
+          analyserIndex: idx,
+          loc: calleeLoc,
+          aboveLoc: calleeLoc,
+          callLoc: expr.loc,
+        })
+        return { ...(expr as any), callee, args, __tapAnalyserIndex: idx }
+      }
+    }
+
+    if (isMini || isPlay) {
+      let seqArg: any | undefined
+      for (const a of args) {
+        if (a?.kind === 'named' && a.name === 'seq') {
+          seqArg = a
+          break
+        }
+      }
+      if (!seqArg) {
+        for (const a of args) {
+          if (a?.kind === 'pos') {
+            seqArg = a
+            break
+          }
+        }
+      }
+
+      if (seqArg?.kind === 'pos' || seqArg?.kind === 'named') {
+        const v = seqArg.value
+        if (v?.kind === 'string') {
+          const idx = context.sequenceToIndex.get(String(v.value ?? ''))
+          if (idx !== undefined) {
+            seqArg.value = toSeqIndexExpr(v.loc, idx)
+          }
+        }
+      }
+
+      // Strip compile-time-only mini(seq, color?) arg so runtime sees mini(seq[, cb]).
+      const argsNoColor = stripMiniColorArg(args)
+
+      let seqArg2: any | undefined
+      for (const a of argsNoColor) {
+        if (a?.kind === 'named' && a.name === 'seq') {
+          seqArg2 = a
+          break
+        }
+      }
+      if (!seqArg2) {
+        for (const a of argsNoColor) {
+          if (a?.kind === 'pos') {
+            seqArg2 = a
+            break
+          }
+        }
+      }
+
+      // mini(x) is a compile-time identity for sequence refs (also mini(x, color?))
+      if (isMini && argsNoColor.length === 1 && seqArg2 && (seqArg2.kind === 'pos' || seqArg2.kind === 'named')) {
+        return seqArg2.value
+      }
+
+      // play(seq, cb) is a compile-time alias of mini(seq, cb)
+      if (isPlay) {
+        return { ...expr, callee: { kind: 'ident', name: 'mini', loc: callee.loc }, args: argsNoColor }
+      }
+
+      return { ...expr, callee, args: argsNoColor }
+    }
+
+    if (isTimeline) {
+      let seqArg: any | null = null
+      for (const a of args) {
+        if (a?.kind === 'named' && a.name === 'seq') {
+          seqArg = a
+          break
+        }
+      }
+      let firstPos: any | null = null
+      let secondPos: any | null = null
+      let firstStringPos: any | null = null
+      let pos = 0
+      for (const a of args) {
+        if (a?.kind !== 'pos') continue
+        if (!firstPos) firstPos = a
+        else if (!secondPos) secondPos = a
+        if (!firstStringPos && a.value?.kind === 'string') firstStringPos = a
+        pos++
+      }
+      if (!seqArg) seqArg = firstStringPos ?? secondPos ?? firstPos
+
+      if (seqArg?.kind === 'pos' || seqArg?.kind === 'named') {
+        const v = seqArg.value
+        if (v?.kind === 'string') {
+          const key = String(v.value ?? '')
+          const idx = context.timelineKeyToIndex.get(key)
+          if (idx !== undefined) {
+            seqArg.value = toSeqIndexExpr(v.loc, context.miniCount + idx)
+            return {
+              ...expr,
+              callee,
+              args: [{ kind: 'pos', value: seqArg.value }],
+            }
+          }
+        }
+      }
+    }
+
+    return { ...expr, callee, args }
+  }
+
+  if (expr.kind === 'binary') {
+    return { ...expr, left: transformExpr(context, expr.left), right: transformExpr(context, expr.right) }
+  }
+
+  if (expr.kind === 'assign') {
+    if (expr.op === '=' && expr.target?.kind === 'ident' && expr.target.name === 'scale') {
+      const v = expr.value
+      const name = v?.kind === 'string' ? String(v.value ?? '') : v?.kind === 'ident' ? String(v.name ?? '') : ''
+      if (name) {
+        const idx = findScaleIndex(name) ?? findScaleIndex(name.toLowerCase()) ?? 0
+        return {
+          ...expr,
+          target: transformExpr(context, expr.target),
+          value: { kind: 'number', value: idx, raw: String(idx), loc: v?.loc ?? expr.loc },
+        }
+      }
+    }
+    if (
+      expr.op === '='
+      && expr.target?.kind === 'ident'
+      && expr.value?.kind === 'call'
+      && expr.value.callee?.kind === 'ident'
+      && expr.value.callee.name === 'record'
+    ) {
+      const target = transformExpr(context, expr.target)
+      const call = expr.value
+      const callee = transformExpr(context, call.callee)
+      const inArgs = call.args ?? []
+      const args = inArgs.length
+        ? inArgs.map((
+          a: any,
+        ) => (a.kind === 'pos' || a.kind === 'named' ? { ...a, value: transformExpr(context, a.value) } : a))
+        : inArgs
+      const key = recordKeyFromAssign(expr.target.name)
+      return { ...expr, target, value: injectRecordArgs(context.sampleKeyToIndex, call, callee, args, key) }
+    }
+    return { ...expr, target: transformExpr(context, expr.target), value: transformExpr(context, expr.value) }
+  }
+
+  if (expr.kind === 'unary' || expr.kind === 'postfix') {
+    return { ...expr, expr: transformExpr(context, expr.expr) }
+  }
+
+  if (expr.kind === 'member') {
+    const out: any = { ...expr, object: transformExpr(context, expr.object) }
+    if (expr.computed) out.index = transformExpr(context, expr.index)
+    return out
+  }
+
+  if (expr.kind === 'array') {
+    const inItems = expr.items ?? []
+    if (!inItems.length) return { ...expr, items: [] }
+    const items = new Array<any>(inItems.length)
+    for (let i = 0; i < inItems.length; i++) items[i] = transformExpr(context, inItems[i])
+    return { ...expr, items }
+  }
+
+  if (expr.kind === 'object') {
+    const inProps = expr.props ?? []
+    if (!inProps.length) return { ...expr, props: [] }
+    const props = new Array<any>(inProps.length)
+    for (let i = 0; i < inProps.length; i++) {
+      const p = inProps[i]
+      props[i] = { ...p, value: transformExpr(context, p.value) }
+    }
+    return { ...expr, props }
+  }
+
+  if (expr.kind === 'if') {
+    const thenPart = expr.then?.kind === 'block' ? transformStmt(context, expr.then) : transformExpr(context, expr.then)
+    const elsePart = expr.else?.kind === 'block' ? transformStmt(context, expr.else) : transformExpr(context, expr.else)
+    return { ...expr, test: transformExpr(context, expr.test), then: thenPart, else: elsePart }
+  }
+
+  if (expr.kind === 'func') {
+    const inParams = expr.params ?? []
+    const params = new Array<any>(inParams.length)
+    for (let i = 0; i < inParams.length; i++) {
+      const p = inParams[i]
+      params[i] = p?.default ? { ...p, default: transformExpr(context, p.default) } : p
+    }
+
+    const body = expr.body?.kind === 'block' ? transformStmt(context, expr.body) : transformExpr(context, expr.body)
+    const initStmts: any[] = []
+
+    for (const p of params) {
+      if (p?.default && !p.isRest) {
+        const pLoc = p.loc ?? expr.loc
+        const ident = { kind: 'ident', name: p.name, loc: pLoc }
+        const test = {
+          kind: 'binary',
+          op: '==',
+          left: ident,
+          right: { kind: 'undefined', loc: pLoc },
+          loc: pLoc,
+        }
+        const value = {
+          kind: 'if',
+          test,
+          then: p.default,
+          else: ident,
+          loc: pLoc,
+          __noBranchMark: true,
+        }
+        const assign = {
+          kind: 'assign',
+          op: '=',
+          target: ident,
+          value,
+          loc: pLoc,
+        }
+        initStmts.push({ kind: 'expr_stmt', expr: assign, loc: pLoc })
+      }
+
+      if (p?.pattern) {
+        const pLoc = p.loc ?? expr.loc
+        initStmts.push({
+          kind: 'destructure',
+          pattern: p.pattern,
+          value: { kind: 'ident', name: p.name, loc: pLoc },
+          loc: pLoc,
+        })
+      }
+    }
+
+    if (initStmts.length === 0) return { ...expr, params, body }
+
+    if (body?.kind === 'block') {
+      return { ...expr, params, body: { ...body, body: [...initStmts, ...(body.body ?? [])] } }
+    }
+
+    return {
+      ...expr,
+      params,
+      body: {
+        kind: 'block',
+        body: [...initStmts, { kind: 'expr_stmt', expr: body, loc: body.loc }],
+        loc: expr.loc,
+      },
+    }
+  }
+
+  return expr
+}
+
+function transformStmt(context: AstTransformContext, stmt: any): any {
+  if (!stmt) return stmt
+  if (stmt.loc?.kernel) return stmt
+  if (stmt.kind === 'expr_stmt') {
+    if (context.isVisualizerAssign(stmt)) return null
+    const isBpmStmt = !!(
+      stmt.expr?.kind === 'assign'
+      && stmt.expr.target?.kind === 'ident'
+      && stmt.expr.target?.name === 'bpm'
+    )
+    if (isBpmStmt) return null
+    const isBarsStmt = !!(
+      stmt.expr?.kind === 'assign'
+      && stmt.expr.target?.kind === 'ident'
+      && stmt.expr.target?.name === 'bars'
+    )
+    if (isBarsStmt) return null
+    const isLabelStmt = !!(
+      stmt.expr?.kind === 'call'
+      && stmt.expr.callee?.kind === 'ident'
+      && stmt.expr.callee?.name === 'label'
+    )
+    if (isLabelStmt) return null
+    return { ...stmt, expr: transformExpr(context, stmt.expr) }
+  }
+  if (stmt.kind === 'block') {
+    const out: any[] = []
+    for (const s of stmt.body ?? []) {
+      const t = transformStmt(context, s)
+      if (t) out.push(t)
+    }
+    return { ...stmt, body: out }
+  }
+  if (stmt.kind === 'for') {
+    if (stmt.head?.kind === 'c_style') {
+      return {
+        ...stmt,
+        head: {
+          ...stmt.head,
+          init: stmt.head.init ? transformExpr(context, stmt.head.init) : undefined,
+          test: stmt.head.test ? transformExpr(context, stmt.head.test) : undefined,
+          update: stmt.head.update ? transformExpr(context, stmt.head.update) : undefined,
+        },
+        body: transformStmt(context, stmt.body),
+      }
+    }
+    return {
+      ...stmt,
+      head: { ...stmt.head, iterable: transformExpr(context, stmt.head.iterable) },
+      body: transformStmt(context, stmt.body),
+    }
+  }
+  if (stmt.kind === 'while' || stmt.kind === 'do_while') {
+    return { ...stmt, test: transformExpr(context, stmt.test), body: transformStmt(context, stmt.body) }
+  }
+  if (stmt.kind === 'switch') {
+    return {
+      ...stmt,
+      test: transformExpr(context, stmt.test),
+      cases: (stmt.cases ?? []).map((c: any) => ({
+        ...c,
+        test: c.test ? transformExpr(context, c.test) : undefined,
+        body: (c.body ?? []).map((s: any) => transformStmt(context, s)).filter(Boolean),
+      })),
+    }
+  }
+  if (stmt.kind === 'try') {
+    return {
+      ...stmt,
+      body: transformStmt(context, stmt.body),
+      catchBody: stmt.catchBody ? transformStmt(context, stmt.catchBody) : undefined,
+      finallyBody: stmt.finallyBody ? transformStmt(context, stmt.finallyBody) : undefined,
+    }
+  }
+  if (stmt.kind === 'throw') return { ...stmt, value: transformExpr(context, stmt.value) }
+  if (stmt.kind === 'return') return { ...stmt, value: stmt.value ? transformExpr(context, stmt.value) : undefined }
+  if (stmt.kind === 'label') return { ...stmt, stmt: transformStmt(context, stmt.stmt) }
+  if (stmt.kind === 'destructure') return { ...stmt, value: transformExpr(context, stmt.value) }
+  return stmt
+}
+
 function getKernelCached(src: string): KernelCacheEntry {
   const cached = kernelCache.get(src)
   if (cached) return cached
@@ -819,113 +1664,6 @@ export function encodeLangToVmOps(
       else if (s.provider === 'record') sampleKeyToIndex.set(s.key, s.sampleIndex)
     }
 
-    const fnv1a32 = (str: string): number => {
-      let h = 0x811c9dc5
-      for (let i = 0; i < str.length; i++) {
-        h ^= str.charCodeAt(i)
-        h = Math.imul(h, 0x01000193) >>> 0
-      }
-      return h >>> 0
-    }
-
-    const stableAstString = (v: any): string =>
-      JSON.stringify(v, (k, val) => {
-        if (
-          k === 'loc'
-          || k === 'ifLoc'
-          || k === 'elseLoc'
-          || k === 'questionLoc'
-          || k === 'colonLoc'
-          || k === 'slider'
-          || k === 'kernel'
-        ) return undefined
-        return val
-      }) ?? ''
-
-    const getPosArgValue = (call: any, posIndex: number): any | null => {
-      let pos = 0
-      for (const arg of call.args ?? []) {
-        if (arg?.kind !== 'pos') continue
-        if (pos === posIndex) return arg.value ?? null
-        pos++
-      }
-      return null
-    }
-
-    const getNamedArgValue = (call: any, name: string): any | null => {
-      for (const arg of call.args ?? []) {
-        if (arg?.kind !== 'named') continue
-        if (arg.name === name) return arg.value ?? null
-      }
-      return null
-    }
-
-    const getRecordCbKey = (call: any): number => {
-      const secondsExpr = getNamedArgValue(call, 'seconds') ?? getPosArgValue(call, 0)
-      const cbExpr = getNamedArgValue(call, 'cb') ?? getNamedArgValue(call, 'callback') ?? getPosArgValue(call, 1)
-      return fnv1a32(stableAstString({ seconds: secondsExpr, cb: cbExpr }))
-    }
-
-    const recordKeyFromAssign = (targetName: string): string => `record:${targetName}`
-    const recordKeyFallback = (loc: Loc): string => `record@${loc.line}:${loc.column}`
-
-    const injectRecordArgs = (call: any, callee: any, args: any[], recordKey: string): any => {
-      const idx = sampleKeyToIndex.get(recordKey)
-      if (idx === undefined) return { ...call, callee, args }
-      const cbKey = getRecordCbKey(call)
-      const filtered = args.filter((a: any) =>
-        !(
-          a?.kind === 'named' && (a.name === '%index' || a.name === 'index' || a.name === '%key')
-        )
-      )
-      return {
-        ...call,
-        callee,
-        args: [
-          ...filtered,
-          { kind: 'named', name: '%index', value: toSeqIndexExpr(call.loc, idx), loc: call.loc },
-          { kind: 'named', name: '%key', value: toSeqIndexExpr(call.loc, cbKey >>> 0), loc: call.loc },
-        ],
-      }
-    }
-
-    const toSeqIndexExpr = (loc: Loc, idx: number) => ({ kind: 'number', value: idx, raw: String(idx), loc }) as any
-
-    const createIndexAllocator = (
-      opts: { start: number; max: number; reserved?: number[] },
-    ): (span?: number) => number => {
-      const used = new Set<number>(opts.reserved ?? [])
-      let next = opts.start | 0
-      const max = opts.max | 0
-
-      return (span = 1): number => {
-        span = Math.max(1, span | 0)
-        const maxStart = Math.max(0, max - (span - 1))
-
-        while (next <= maxStart) {
-          let ok = true
-          for (let i = 0; i < span; i++) {
-            if (used.has(next + i)) {
-              ok = false
-              break
-            }
-          }
-          if (ok) {
-            const idx = next
-            for (let i = 0; i < span; i++) used.add(idx + i)
-            next = idx + span
-            return idx
-          }
-          next++
-        }
-
-        // Saturate if we've run out of space; better to overlap than to crash or produce gaps.
-        const idx = maxStart
-        for (let i = 0; i < span; i++) used.add(idx + i)
-        return idx
-      }
-    }
-
     const allocAnalyserIndex = createIndexAllocator({
       start: 0,
       max: FINAL_OUT_ANALYSER_L_INDEX - 1,
@@ -935,631 +1673,41 @@ export function encodeLangToVmOps(
     const implicitAnalyserRefs: AnalyserRef[] = []
 
     const allocCompressorIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocExpanderIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocGateIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocLimiterIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocFilterIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocLfoIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocReverbIndex = createIndexAllocator({ start: 0, max: 63 })
-
-    const isReverbCall = (name: string | null): boolean =>
-      name === 'freeverb' || name === 'dattorro' || name === 'fdn' || name === 'velvet'
-
     const allocAdIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocAdsrIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocEnvfollowIndex = createIndexAllocator({ start: 0, max: 63 })
-
     const allocTrigIndex = createIndexAllocator({ start: 0, max: 63 })
 
-    const transformExpr = (expr: any): any => {
-      if (!expr) return expr
-      if (expr.loc?.kernel) return expr
-
-      if (expr.kind === 'ident') {
-        const om = expr.name.match(/^o(\d+)$/)
-        if (om) {
-          const o = parseInt(om[1]!, 10)
-          const mul = Number.isFinite(o) ? 2 ** (o + 1) : 0
-          return { kind: 'number', value: mul, raw: String(mul), loc: expr.loc }
-        }
-
-        if (expr.name.startsWith('#')) {
-          const raw = expr.name.slice(1)
-          const dm = raw.match(/^(\d+)$/)
-          if (dm) {
-            const d = parseInt(dm[1]!, 10)
-            return {
-              kind: 'call',
-              callee: { kind: 'ident', name: 'degree', loc: expr.loc },
-              args: [{
-                kind: 'pos',
-                value: { kind: 'number', value: d, raw: String(d), loc: expr.loc },
-                loc: expr.loc,
-              }],
-              loc: expr.loc,
-            }
-          }
-
-          if (raw === 'scale') {
-            return {
-              kind: 'call',
-              callee: { kind: 'ident', name: 'getScale', loc: expr.loc },
-              args: [],
-              loc: expr.loc,
-            }
-          }
-
-          const chordMatch = raw.match(/^([ivxlcdm]+)(.*)$/i)
-          if (chordMatch) {
-            const roman = chordMatch[1]
-            const suffix = chordMatch[2] ?? ''
-            const base = romanToDegree(roman)
-            if (base !== null) {
-              const tones = parseChordSuffix(suffix)
-              const numLoc = (dx: number): Loc =>
-                dx === 0 ? expr.loc : { ...expr.loc, line: 0, column: expr.loc.column + dx }
-
-              const items = tones.map((tone, idx) => {
-                const scaleDegree = base + tone.degree
-                const args: any[] = [{
-                  kind: 'pos',
-                  value: { kind: 'number', value: scaleDegree, raw: String(scaleDegree), loc: numLoc(idx) },
-                  loc: expr.loc,
-                }]
-
-                if (tone.semitoneAdjust !== 0) {
-                  args.push({
-                    kind: 'pos',
-                    value: { kind: 'number', value: tone.semitoneAdjust, raw: String(tone.semitoneAdjust),
-                      loc: numLoc(idx) },
-                    loc: expr.loc,
-                  })
-                }
-
-                return {
-                  kind: 'call',
-                  callee: { kind: 'ident', name: 'degree', loc: expr.loc },
-                  args,
-                  loc: expr.loc,
-                }
-              })
-
-              return { kind: 'array', items, loc: expr.loc }
-            }
-          }
-        }
-
-        const midi = noteIdentToMidi(expr.name)
-        if (midi !== null) {
-          return {
-            kind: 'call',
-            callee: { kind: 'ident', name: 'note', loc: expr.loc },
-            args: [{
-              kind: 'pos',
-              value: { kind: 'number', value: midi, raw: String(midi), loc: expr.loc },
-              loc: expr.loc,
-            }],
-            loc: expr.loc,
-          }
-        }
-      }
-
-      if (expr.kind === 'call') {
-        const preCalleeName = expr.callee?.kind === 'ident' ? expr.callee.name : null
-        const reverbIndex = isReverbCall(preCalleeName) ? allocReverbIndex() : null
-
-        const callee = transformExpr(expr.callee)
-        let args = (expr.args ?? []).map((a: any) => {
-          if (a.kind === 'pos' || a.kind === 'named') return { ...a, value: transformExpr(a.value) }
-          return a
-        })
-
-        if (reverbIndex !== null) {
-          args = args.filter((a: any) => !(a.kind === 'named' && (a.name === '%index' || a.name === 'index')))
-          args = [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, reverbIndex),
-            loc: expr.loc }]
-        }
-
-        const calleeName = callee?.kind === 'ident' ? callee.name : null
-
-        const isMini = calleeName === 'mini'
-        const isPlay = calleeName === 'play'
-        const isTimeline = calleeName === 'timeline'
-        const isAd = calleeName === 'ad'
-        const isAdsr = calleeName === 'adsr'
-        const isEnvfollow = calleeName === 'envfollow'
-        const analyserKind = (
-            calleeName === 'analyser'
-            || calleeName === 'amplitude'
-            || calleeName === 'waveform'
-            || calleeName === 'spectrum'
-            || calleeName === 'level'
-            || calleeName === 'print'
-          )
-          ? calleeName
-          : null
-        const isAnalyser = analyserKind !== null
-        const isCompressor = calleeName === 'compressor'
-        const isExpander = calleeName === 'expander'
-        const isGate = calleeName === 'gate'
-        const isLimiter = calleeName === 'limiter'
-        const isFilter = calleeName === 'lp'
-          || calleeName === 'hp'
-          || calleeName === 'bp'
-          || calleeName === 'bs'
-          || calleeName === 'ls'
-          || calleeName === 'hs'
-          || calleeName === 'peak'
-          || calleeName === 'ap'
-          || calleeName === 'slp'
-          || calleeName === 'shp'
-          || calleeName === 'sbp'
-          || calleeName === 'sbs'
-          || calleeName === 'speak'
-          || calleeName === 'sap'
-          || calleeName === 'mlp'
-          || calleeName === 'mhp'
-          || calleeName === 'diodeladder'
-          || calleeName === 'olp'
-          || calleeName === 'ohp'
-        const isLfo = calleeName === 'lfosine'
-          || calleeName === 'lfotri'
-          || calleeName === 'lfosaw'
-          || calleeName === 'lforamp'
-          || calleeName === 'lfosqr'
-          || calleeName === 'lfosah'
-          || calleeName === 'smooth'
-          || calleeName === 'fractal'
-        const isOut = calleeName === 'out' || calleeName === 'solo'
-        const isLabel = calleeName === 'label'
-        const isFreesound = calleeName === 'freesound'
-        const isRecord = calleeName === 'record'
-
-        if (isLabel) {
-          return { kind: 'undefined', loc: expr.loc }
-        }
-
-        if (isFreesound) {
-          const idArg = args.find((a: any) => a.kind === 'named' && a.name === 'id')
-            ?? args.find((a: any) => a.kind === 'pos')
-          const idExpr = idArg?.kind === 'pos' || idArg?.kind === 'named' ? idArg.value : null
-          const id = tryEvalConstNumber(idExpr)
-          if (id != null && Number.isFinite(id) && Number.isInteger(id) && id >= 0) {
-            const idx = sampleKeyToIndex.get(`freesound:${id}`)
-            if (idx !== undefined) return toSeqIndexExpr(expr.loc, idx)
-          }
-          return { kind: 'undefined', loc: expr.loc }
-        }
-
-        if (isRecord) {
-          return injectRecordArgs(expr, callee, args, recordKeyFallback(expr.loc))
-        }
-
-        const stripNamedIndex = (aa: any[]) => aa.filter((a: any) => !(a?.kind === 'named' && a.name === 'index'))
-
-        if (isAd) {
-          const idx = allocAdIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isAdsr) {
-          const idx = allocAdsrIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isEnvfollow) {
-          const idx = allocEnvfollowIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isAnalyser) {
-          const idx = allocAnalyserIndex()
-          // Keep only the first positional arg (signal), drop any user-provided index and any named index.
-          let posSeen = 0
-          args = args.filter((a: any) => {
-            if (a?.kind === 'named' && (a.name === '%index' || a.name === 'index')) return false
-            if (a?.kind !== 'pos') return true
-            const keep = posSeen === 0
-            posSeen++
-            return keep
-          })
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isCompressor) {
-          const idx = allocCompressorIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isExpander) {
-          const idx = allocExpanderIndex()
-          args = args.filter((a: any) => !(a?.kind === 'named' && (a.name === '%index' || a.name === 'index')))
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isGate) {
-          const idx = allocGateIndex()
-          args = args.filter((a: any) => !(a?.kind === 'named' && (a.name === '%index' || a.name === 'index')))
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isLimiter) {
-          const idx = allocLimiterIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isFilter) {
-          const idx = allocFilterIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isLfo) {
-          const idx = allocLfoIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (calleeName === 'every') {
-          const idx = allocTrigIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (calleeName === 'at') {
-          const idx = allocTrigIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (calleeName === 'euclid') {
-          const idx = allocTrigIndex()
-
-          return { ...expr, callee,
-            args: [...args, { kind: 'named', name: '%index', value: toSeqIndexExpr(expr.loc, idx), loc: expr.loc }] }
-        }
-
-        if (isOut) {
-          const posArgs = args.filter((a: any) => a.kind === 'pos')
-          const audioArg = posArgs[0]
-          const audioExpr = audioArg?.value
-          const audioCalleeName = audioExpr?.kind === 'call' && audioExpr.callee?.kind === 'ident'
-            ? audioExpr.callee.name
-            : null
-
-          // If the signal is already analysed (common: `... |> analyser(%) |> out(%)`), don't add an implicit tap.
-          //
-          // Important: we do NOT desugar to `out(analyser(x))` because that changes semantics for arrays
-          // (e.g. `array |> out($)` would get coerced). Instead, attach an analyser tap index and emit
-          // a side-effect analyser call at bytecode compile time.
-          const isAlreadyAnalysed = audioCalleeName === 'analyser'
-            || audioCalleeName === 'amplitude'
-            || audioCalleeName === 'waveform'
-            || audioCalleeName === 'spectrum'
-            || audioCalleeName === 'level'
-            || audioCalleeName === 'print'
-          if (audioArg?.kind === 'pos' && audioExpr && !isAlreadyAnalysed) {
-            const idx = allocAnalyserIndex()
-            const calleeLoc = expr.callee?.loc ?? expr.loc
-            implicitAnalyserRefs.push({
-              kind: 'analyser',
-              analyserIndex: idx,
-              loc: calleeLoc,
-              aboveLoc: calleeLoc,
-              callLoc: expr.loc,
-            })
-            return { ...(expr as any), callee, args, __tapAnalyserIndex: idx }
-          }
-        }
-
-        if (isMini || isPlay) {
-          // Find "seq" argument (positional #0 or named seq:)
-          const seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq')
-            ?? args.find((a: any) => a.kind === 'pos') // first positional
-
-          if (seqArg?.kind === 'pos' || seqArg?.kind === 'named') {
-            const v = seqArg.value
-            if (v?.kind === 'string') {
-              const idx = sequenceToIndex.get(String(v.value ?? ''))
-              if (idx !== undefined) {
-                seqArg.value = toSeqIndexExpr(v.loc, idx)
-              }
-            }
-          }
-
-          // Strip compile-time-only mini(seq, color?) arg so runtime sees mini(seq[, cb]).
-          const argsNoColor = (() => {
-            const namedColor = args.find((a: any) => a.kind === 'named' && a.name === 'color')
-            if (namedColor) return args.filter((a: any) => a !== namedColor)
-
-            const posArgs = args.filter((a: any) => a.kind === 'pos')
-            const secondPos = posArgs[1]
-            const thirdPos = posArgs[2]
-            if (secondPos?.value?.kind === 'string') {
-              return args.filter((a: any) => a !== secondPos)
-            }
-            if (thirdPos?.value?.kind === 'string') {
-              return args.filter((a: any) => a !== thirdPos)
-            }
-            return args
-          })()
-
-          const seqArg2 = argsNoColor.find((a: any) => a.kind === 'named' && a.name === 'seq')
-            ?? argsNoColor.find((a: any) => a.kind === 'pos')
-
-          // mini(x) is a compile-time identity for sequence refs (also mini(x, color?))
-          if (isMini && argsNoColor.length === 1 && seqArg2 && (seqArg2.kind === 'pos' || seqArg2.kind === 'named')) {
-            return seqArg2.value
-          }
-
-          // play(seq, cb) is a compile-time alias of mini(seq, cb)
-          if (isPlay) {
-            return { ...expr, callee: { kind: 'ident', name: 'mini', loc: callee.loc }, args: argsNoColor }
-          }
-
-          return { ...expr, callee, args: argsNoColor }
-        }
-
-        if (isTimeline) {
-          const posArgs = args.filter((a: any) => a.kind === 'pos')
-          let seqArg = args.find((a: any) => a.kind === 'named' && a.name === 'seq') ?? null
-          if (!seqArg) {
-            for (let i = 0; i < posArgs.length; i++) {
-              const v = posArgs[i]?.value
-              if (v?.kind === 'string') {
-                seqArg = posArgs[i]
-                break
-              }
-            }
-          }
-          if (!seqArg) seqArg = posArgs.length >= 2 ? posArgs[1] : posArgs[0]
-          if (seqArg?.kind === 'pos' || seqArg?.kind === 'named') {
-            const v = seqArg.value
-            if (v?.kind === 'string') {
-              const key = String(v.value ?? '')
-              const idx = timelineKeyToIndex.get(key)
-              if (idx !== undefined) {
-                seqArg.value = toSeqIndexExpr(v.loc, miniCount + idx)
-                return {
-                  ...expr,
-                  callee,
-                  args: [{ kind: 'pos', value: seqArg.value }],
-                }
-              }
-            }
-          }
-        }
-
-        return { ...expr, callee, args }
-      }
-
-      if (expr.kind === 'binary') {
-        return { ...expr, left: transformExpr(expr.left), right: transformExpr(expr.right) }
-      }
-
-      if (expr.kind === 'assign') {
-        if (expr.op === '=' && expr.target?.kind === 'ident' && expr.target.name === 'scale') {
-          const v = expr.value
-          const name = v?.kind === 'string' ? String(v.value ?? '') : v?.kind === 'ident' ? String(v.name ?? '') : ''
-          if (name) {
-            const idx = findScaleIndex(name) ?? findScaleIndex(name.toLowerCase()) ?? 0
-            return { ...expr, target: transformExpr(expr.target),
-              value: { kind: 'number', value: idx, raw: String(idx), loc: v?.loc ?? expr.loc } }
-          }
-        }
-        if (
-          expr.op === '='
-          && expr.target?.kind === 'ident'
-          && expr.value?.kind === 'call'
-          && expr.value.callee?.kind === 'ident'
-          && expr.value.callee.name === 'record'
-        ) {
-          const target = transformExpr(expr.target)
-          const call = expr.value
-          const callee = transformExpr(call.callee)
-          const args = (call.args ?? []).map((a: any) => {
-            if (a.kind === 'pos' || a.kind === 'named') return { ...a, value: transformExpr(a.value) }
-            return a
-          })
-          const key = recordKeyFromAssign(expr.target.name)
-          return { ...expr, target, value: injectRecordArgs(call, callee, args, key) }
-        }
-        return { ...expr, target: transformExpr(expr.target), value: transformExpr(expr.value) }
-      }
-
-      if (expr.kind === 'unary' || expr.kind === 'postfix') {
-        return { ...expr, expr: transformExpr(expr.expr) }
-      }
-
-      if (expr.kind === 'member') {
-        const out: any = { ...expr, object: transformExpr(expr.object) }
-        if (expr.computed) out.index = transformExpr(expr.index)
-        return out
-      }
-
-      if (expr.kind === 'array') {
-        return { ...expr, items: (expr.items ?? []).map(transformExpr) }
-      }
-
-      if (expr.kind === 'object') {
-        return { ...expr, props: (expr.props ?? []).map((p: any) => ({ ...p, value: transformExpr(p.value) })) }
-      }
-
-      if (expr.kind === 'if') {
-        const thenPart = expr.then?.kind === 'block' ? transformStmt(expr.then) : transformExpr(expr.then)
-        const elsePart = expr.else?.kind === 'block' ? transformStmt(expr.else) : transformExpr(expr.else)
-        return { ...expr, test: transformExpr(expr.test), then: thenPart, else: elsePart }
-      }
-
-      if (expr.kind === 'func') {
-        const params = (expr.params ?? []).map((
-          p: any,
-        ) => (p.default ? { ...p, default: transformExpr(p.default) } : p))
-        const body = expr.body?.kind === 'block' ? transformStmt(expr.body) : transformExpr(expr.body)
-
-        const initStmts = (params ?? []).flatMap((p: any) => {
-          const out: any[] = []
-
-          if (p?.default && !p.isRest) {
-            const pLoc = p.loc ?? expr.loc
-            const ident = { kind: 'ident', name: p.name, loc: pLoc }
-            const test = {
-              kind: 'binary',
-              op: '==',
-              left: ident,
-              right: { kind: 'undefined', loc: pLoc },
-              loc: pLoc,
-            }
-            const value = {
-              kind: 'if',
-              test,
-              then: p.default,
-              else: ident,
-              loc: pLoc,
-              __noBranchMark: true,
-            }
-            const assign = {
-              kind: 'assign',
-              op: '=',
-              target: ident,
-              value,
-              loc: pLoc,
-            }
-            out.push({ kind: 'expr_stmt', expr: assign, loc: pLoc })
-          }
-
-          if (p?.pattern) {
-            const pLoc = p.loc ?? expr.loc
-            out.push({
-              kind: 'destructure',
-              pattern: p.pattern,
-              value: { kind: 'ident', name: p.name, loc: pLoc },
-              loc: pLoc,
-            })
-          }
-
-          return out
-        })
-
-        if (initStmts.length === 0) return { ...expr, params, body }
-
-        if (body?.kind === 'block') {
-          return { ...expr, params, body: { ...body, body: [...initStmts, ...(body.body ?? [])] } }
-        }
-
-        return {
-          ...expr,
-          params,
-          body: {
-            kind: 'block',
-            body: [...initStmts, { kind: 'expr_stmt', expr: body, loc: body.loc }],
-            loc: expr.loc,
-          },
-        }
-      }
-
-      return expr
-    }
-
-    const transformStmt = (stmt: any): any => {
-      if (!stmt) return stmt
-      if (stmt.loc?.kernel) return stmt
-      if (stmt.kind === 'expr_stmt') {
-        if (isVisualizerAssign(stmt)) return null
-        const isBpmStmt = !!(
-          stmt.expr?.kind === 'assign'
-          && stmt.expr.target?.kind === 'ident'
-          && stmt.expr.target?.name === 'bpm'
-        )
-        if (isBpmStmt) return null
-        const isBarsStmt = !!(
-          stmt.expr?.kind === 'assign'
-          && stmt.expr.target?.kind === 'ident'
-          && stmt.expr.target?.name === 'bars'
-        )
-        if (isBarsStmt) return null
-        const isLabelStmt = !!(
-          stmt.expr?.kind === 'call'
-          && stmt.expr.callee?.kind === 'ident'
-          && stmt.expr.callee?.name === 'label'
-        )
-        if (isLabelStmt) return null
-        return { ...stmt, expr: transformExpr(stmt.expr) }
-      }
-      if (stmt.kind === 'block') return { ...stmt, body: (stmt.body ?? []).map(transformStmt).filter(Boolean) }
-      if (stmt.kind === 'for') {
-        if (stmt.head?.kind === 'c_style') {
-          return {
-            ...stmt,
-            head: {
-              ...stmt.head,
-              init: stmt.head.init ? transformExpr(stmt.head.init) : undefined,
-              test: stmt.head.test ? transformExpr(stmt.head.test) : undefined,
-              update: stmt.head.update ? transformExpr(stmt.head.update) : undefined,
-            },
-            body: transformStmt(stmt.body),
-          }
-        }
-        return { ...stmt, head: { ...stmt.head, iterable: transformExpr(stmt.head.iterable) },
-          body: transformStmt(stmt.body) }
-      }
-      if (stmt.kind === 'while' || stmt.kind === 'do_while') {
-        return { ...stmt, test: transformExpr(stmt.test), body: transformStmt(stmt.body) }
-      }
-      if (stmt.kind === 'switch') {
-        return {
-          ...stmt,
-          test: transformExpr(stmt.test),
-          cases: (stmt.cases ?? []).map((c: any) => ({
-            ...c,
-            test: c.test ? transformExpr(c.test) : undefined,
-            body: (c.body ?? []).map(transformStmt).filter(Boolean),
-          })),
-        }
-      }
-      if (stmt.kind === 'try') {
-        return {
-          ...stmt,
-          body: transformStmt(stmt.body),
-          catchBody: stmt.catchBody ? transformStmt(stmt.catchBody) : undefined,
-          finallyBody: stmt.finallyBody ? transformStmt(stmt.finallyBody) : undefined,
-        }
-      }
-      if (stmt.kind === 'throw') return { ...stmt, value: transformExpr(stmt.value) }
-      if (stmt.kind === 'return') return { ...stmt, value: stmt.value ? transformExpr(stmt.value) : undefined }
-      if (stmt.kind === 'label') return { ...stmt, stmt: transformStmt(stmt.stmt) }
-      if (stmt.kind === 'destructure') return { ...stmt, value: transformExpr(stmt.value) }
-      return stmt
+    const transformContext: AstTransformContext = {
+      sequenceToIndex,
+      timelineKeyToIndex,
+      miniCount,
+      sampleKeyToIndex,
+      allocAnalyserIndex,
+      allocCompressorIndex,
+      allocExpanderIndex,
+      allocGateIndex,
+      allocLimiterIndex,
+      allocFilterIndex,
+      allocLfoIndex,
+      allocReverbIndex,
+      allocAdIndex,
+      allocAdsrIndex,
+      allocEnvfollowIndex,
+      allocTrigIndex,
+      implicitAnalyserRefs,
+      isVisualizerAssign,
     }
 
     transformedUserBodyScratch.length = 0
     for (const s of userParsed.program?.body ?? []) {
-      const t = transformStmt(s)
+      const t = transformStmt(transformContext, s)
       if (t) transformedUserBodyScratch.push(t)
     }
 
