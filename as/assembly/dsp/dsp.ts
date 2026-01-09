@@ -28,6 +28,12 @@ export class Dsp {
   private builtins: VmBuiltins = new VmBuiltins()
 
   private funcParamSyms: StaticArray<i32> = new StaticArray<i32>(16)
+  // Preserve caller stack entries across vmInvokeFuncInternal.
+  // Some builtins (notably play/mini) reset the stack while invoking callbacks,
+  // and user-defined functions should not clobber the caller's in-flight expression stack.
+  private callSavedTag: StaticArray<i32> = new StaticArray<i32>(128)
+  private callSavedNum: StaticArray<f64> = new StaticArray<f64>(128)
+  private callSavedAux: StaticArray<i32> = new StaticArray<i32>(128)
 
   // Runtime directive globals (segment-scoped; saved/restored across vmInvokeFunc)
   tuneTag: i32 = VmTag.Num
@@ -519,6 +525,21 @@ export class Dsp {
     }
     const bodyPc = funcPc + 2 + paramCount
 
+    // Save caller stack so the callee can freely use/reset the stack.
+    const callerSp: i32 = this.stack.sp
+    const maxSave: i32 = this.callSavedTag.length
+    if (callerSp < 0 || callerSp > maxSave) {
+      setVmError(10, funcPc)
+      this.stack.push(VmTag.Undef)
+      return
+    }
+    for (let i: i32 = 0; i < callerSp; i++) {
+      this.callSavedTag[i] = this.stack.tag[i]
+      this.callSavedNum[i] = this.stack.num[i]
+      this.callSavedAux[i] = this.stack.aux[i]
+    }
+    this.stack.sp = 0
+
     const savedEnv = this.env.count
     const savedDepth = this.env.scopeDepth
     const savedOut = this.audio.outCursor
@@ -551,27 +572,35 @@ export class Dsp {
     // The compiler evaluates call arguments via temps, so returned audio must survive subsequent
     // evaluations that may reuse internal scratch out buffers.
     let restoreTo: i32 = savedOut
-    if (restoreOuts && this.stack.sp > 0) {
+    let retTag: VmTag = VmTag.Undef
+    let retNum: f64 = 0.0
+    let retAux: i32 = 0
+    if (this.stack.sp > 0) {
       const top = this.stack.peek()
-      const tag = this.stack.tag[top] as VmTag
-      if (tag === VmTag.Audio) {
-        const srcIndex: i32 = this.stack.aux[top]
-        if (srcIndex >= savedOut) {
-          const dstIndex: i32 = savedOut
-          if (srcIndex !== dstIndex) {
-            const src$ = this.program.getOutBuffer(srcIndex)
-            const dst$ = this.program.getOutBuffer(dstIndex)
-            copyAudio(dst$, src$, length)
+      retTag = this.stack.tag[top] as VmTag
+      retNum = this.stack.num[top]
+      retAux = this.stack.aux[top]
+
+      if (restoreOuts) {
+        if (retTag === VmTag.Audio) {
+          const srcIndex: i32 = retAux
+          if (srcIndex >= savedOut) {
+            const dstIndex: i32 = savedOut
+            if (srcIndex !== dstIndex) {
+              const src$ = this.program.getOutBuffer(srcIndex)
+              const dst$ = this.program.getOutBuffer(dstIndex)
+              copyAudio(dst$, src$, length)
+            }
+            retAux = dstIndex
+            restoreTo = savedOut + 1
           }
-          this.stack.aux[top] = dstIndex
-          restoreTo = savedOut + 1
         }
-      }
-      else if (tag === VmTag.Arr) {
-        // Arrays can contain Audio values backed by out buffers allocated during the call.
-        // Rewinding outCursor would allow those buffers to be reused/clobbered before the caller consumes the array.
-        // Keep all outs allocated during this call alive.
-        restoreTo = this.audio.outCursor
+        else if (retTag === VmTag.Arr) {
+          // Arrays can contain Audio values backed by out buffers allocated during the call.
+          // Rewinding outCursor would allow those buffers to be reused/clobbered before the caller consumes the array.
+          // Keep all outs allocated during this call alive.
+          restoreTo = this.audio.outCursor
+        }
       }
     }
 
@@ -591,6 +620,15 @@ export class Dsp {
     this.transposeNum = savedTransposeNum
     this.transposeAux = savedTransposeAux
     this.scaleIndex = savedScaleIndex
+
+    // Restore caller stack and push return value as the call result.
+    for (let i: i32 = 0; i < callerSp; i++) {
+      this.stack.tag[i] = this.callSavedTag[i]
+      this.stack.num[i] = this.callSavedNum[i]
+      this.stack.aux[i] = this.callSavedAux[i]
+    }
+    this.stack.sp = callerSp
+    this.stack.push(retTag, retNum, retAux)
   }
 
   private runVmSegments(left$: usize, right$: usize, begin: i32, length: i32): void {
