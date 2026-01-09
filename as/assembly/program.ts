@@ -292,13 +292,16 @@ export class Program {
     this.gensPool.copyFrom(source.gensPool)
 
     // Keep record() state stable across crossfade swaps so it doesn't re-trigger unless the callback changes.
-    for (let i = 0; i < this.recordKey.length; i++) {
-      this.recordKey[i] = source.recordKey[i]
-      this.recordSeconds[i] = source.recordSeconds[i]
-      this.recordLen[i] = source.recordLen[i]
-      this.recordPos[i] = 0
-      this.recordBuf$[i] = 0
-    }
+    //
+    // NOTE: This is commented because it's faulty - it creates stale recordings and we haven't figured a way to solve it
+    //
+    // for (let i = 0; i < this.recordKey.length; i++) {
+    //   this.recordKey[i] = source.recordKey[i]
+    //   this.recordSeconds[i] = source.recordSeconds[i]
+    //   this.recordLen[i] = source.recordLen[i]
+    //   this.recordPos[i] = 0
+    //   this.recordBuf$[i] = 0
+    // }
 
     this.recordActive = 0
     this.recordLockSample = -1

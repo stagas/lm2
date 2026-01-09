@@ -1,12 +1,11 @@
 // dprint-ignore-file
-import { hostSampleLen, hostSampleSet } from '../../sample-host'
-import { globalSampleCount, sampleRate, vmErrorCode } from '../../globals'
 import { Program } from '../../program'
-import { VmTag } from '../types'
-import { VmSym } from '../vm-sym'
-import { VmStack } from '../vm-stack'
+import { hostSampleLen, hostSampleSet } from '../../sample-host'
 import { Dsp } from '../dsp'
+import { VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
+import { VmStack } from '../vm-stack'
+import { VmSym } from '../vm-sym'
 
 // @ts-ignore
 @inline
@@ -246,7 +245,7 @@ export function callRecord(
   program.recordPos[sampleIndex] = pos
 
   if (pos >= curLen) {
-    hostSampleSet(sampleIndex, curLen, buf$)
+    hostSampleSet(sampleIndex, sampleRate, curLen, buf$)
     program.recordBuf$[sampleIndex] = 0
     program.recordPos[sampleIndex] = 0
     program.recordLockSample = -1

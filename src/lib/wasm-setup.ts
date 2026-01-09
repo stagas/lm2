@@ -14,6 +14,18 @@ interface SetupOptions {
   imports?: WebAssembly.Imports | ((ctx: { memory: WebAssembly.Memory }) => WebAssembly.Imports)
 }
 
+export function liftString(memory: WebAssembly.Memory, pointer: number) {
+  if (!pointer) return ''
+  const end = (pointer + new Uint32Array(memory.buffer)[(pointer - 4) >>> 2]) >>> 1,
+    memoryU16 = new Uint16Array(memory.buffer)
+  let start = pointer >>> 1,
+    string = ''
+  while (end - start > 1024) {
+    string += String.fromCharCode(...memoryU16.subarray(start, start += 1024))
+  }
+  return string + String.fromCharCode(...memoryU16.subarray(start, end))
+}
+
 export type WasmSetup<T> = Awaited<ReturnType<typeof wasmSetup<T>>>
 export async function wasmSetup<T>({ binary, sourcemapUrl, config, imports }: SetupOptions) {
   const buffer = wasmSourceMap.setSourceMapURL(binary, sourcemapUrl)
@@ -26,25 +38,13 @@ export async function wasmSetup<T>({ binary, sourcemapUrl, config, imports }: Se
   })
   const mod = await WebAssembly.compile(uint8.buffer)
 
-  function __liftString(pointer: number) {
-    if (!pointer) return null
-    const end = (pointer + new Uint32Array(memory.buffer)[(pointer - 4) >>> 2]) >>> 1,
-      memoryU16 = new Uint16Array(memory.buffer)
-    let start = pointer >>> 1,
-      string = ''
-    while (end - start > 1024) {
-      string += String.fromCharCode(...memoryU16.subarray(start, start += 1024))
-    }
-    return string + String.fromCharCode(...memoryU16.subarray(start, end))
-  }
-
   const extraImports = typeof imports === 'function' ? imports({ memory }) : imports
   const importObject: WebAssembly.Imports = {
     env: {
       memory,
       abort(message$: number, fileName$: number, lineNumber$: number, columnNumber$: number) {
-        const message = __liftString(message$ >>> 0)
-        const fileName = __liftString(fileName$ >>> 0)
+        const message = liftString(memory, message$ >>> 0)
+        const fileName = liftString(memory, fileName$ >>> 0)
         const lineNumber = lineNumber$ >>> 0
         const columnNumber = columnNumber$ >>> 0
         throw new Error(`${message} in ${fileName}:${lineNumber}:${columnNumber}`)
@@ -52,10 +52,10 @@ export async function wasmSetup<T>({ binary, sourcemapUrl, config, imports }: Se
       seed: () => Date.now() * Math.random(),
       log: console.log,
       'console.log': (textPtr: number) => {
-        console.log(__liftString(textPtr))
+        console.log(liftString(memory, textPtr))
       },
       'console.warn': (textPtr: number) => {
-        console.warn(__liftString(textPtr))
+        console.warn(liftString(memory, textPtr))
       },
     },
     host: {

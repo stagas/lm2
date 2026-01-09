@@ -7,37 +7,17 @@ import {
   ARRAYS_COUNT,
   CHUNK_SIZE,
   HISTORIES_COUNT,
-  HISTORY_ENTRY_SIZE,
-  HISTORY_HEADER_SIZE,
-  HISTORY_SIZE,
   LITERALS_COUNT,
   OPS_COUNT,
 } from '../../as/assembly/constants.ts'
+import type * as WasmExports from '../../as/build/index'
 import config from '../../asconfig.json'
 import { encodeLangToVmOps } from '../engine/bytecode/bytecode.ts'
 import { PRELUDE } from '../engine/bytecode/prelude.ts'
-import { detectSlices } from '../engine/dsp/detect-slices.ts'
+import { workletImports } from '../engine/dsp/worklet-imports.ts'
 import { analyze } from '../lang/pipeline.ts'
-import { wasmSetup } from '../lib/wasm-setup.ts'
+import { liftString, wasmSetup } from '../lib/wasm-setup.ts'
 import { compileMiniNotation } from '../mini/compiler.ts'
-
-type WasmExports = {
-  createDsp: () => number
-  createProgram: () => number
-  createProgramData: () => number
-  createOps: () => number
-  createArray: () => number
-  createHistoryArray: () => number
-  processAudio: (dsp$: number, left$: number, right$: number, begin: number, length: number) => void
-  createFloat32Buffer: (size: number) => number
-  resetDsp: (dsp$: number) => void
-  resetGlobalSampleCount: () => void
-  getProgramRecordActive: (program$: number) => number
-  sampleRate?: { value: number }
-  nyquist?: { value: number }
-  bpm?: { value: number }
-  globalSampleCount?: { value: number }
-}
 
 async function evalDsp(programSource: string) {
   const consoleLogs: string[] = []
@@ -51,74 +31,12 @@ async function evalDsp(programSource: string) {
   const sourcemapUrl = `file://${resolve(import.meta.dir, '../../as/build/index.wasm.map')}`
 
   // Setup WASM with console.log capture
-  const core = await wasmSetup<WasmExports>({
+  const core = await wasmSetup<typeof WasmExports>({
     binary: binary.buffer,
     sourcemapUrl,
     config,
     imports: ({ memory }) => ({
-      host: (() => {
-        const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-        return {
-          sampleVersion: (sampleIndex: number) => {
-            const s = samples.get(sampleIndex | 0)
-            return s ? (s.ver | 0) : 0
-          },
-          sampleLen: (sampleIndex: number) => {
-            const idx = sampleIndex | 0
-            const s = samples.get(idx)
-            return s ? (s.len | 0) : 0
-          },
-          sampleRead: (sampleIndex: number, start: number, length: number, outPtr: number) => {
-            const idx = sampleIndex | 0
-            const s = samples.get(idx)
-            const n = length | 0
-            if (!memory?.buffer || outPtr === 0 || n <= 0) return 0
-
-            const out = new Float32Array(memory.buffer, outPtr >>> 0, n)
-            if (!s || !s.ch0 || s.len <= 0) {
-              out.fill(0)
-              return 0
-            }
-
-            const src = s.ch0
-            const len = s.len | 0
-            const a = start | 0
-
-            const from = clamp(a, 0, len)
-            const to = clamp(a + n, 0, len)
-            const take = Math.max(0, to - from)
-
-            if (take > 0) out.set(src.subarray(from, from + take), 0)
-            if (take < n) out.fill(0, take)
-            return take | 0
-          },
-          sampleSet: (sampleIndex: number, length: number, inPtr: number) => {
-            const idx = sampleIndex | 0
-            const n = length | 0
-            if (!memory?.buffer || inPtr === 0 || n <= 0) return
-            const src = new Float32Array(memory.buffer, inPtr >>> 0, n)
-            const copy = src.slice()
-            const prev = samples.get(idx)
-            const ver = ((prev?.ver ?? 0) + 1) | 0
-            samples.set(idx, { ver, sampleRate: currentSampleRate | 0, len: copy.length | 0, ch0: copy })
-          },
-          sampleSlices: (sampleIndex: number, threshold: number, outPtr: number, max: number) => {
-            const s = samples.get(sampleIndex | 0)
-            const m = max | 0
-            if (!memory?.buffer || outPtr === 0 || m <= 0) return 0
-            const out = new Int32Array(memory.buffer, outPtr >>> 0, m)
-            if (!s || !s.ch0 || s.len <= 0) {
-              out.fill(0)
-              return 0
-            }
-
-            const res = detectSlices(s.ch0, threshold || 0, m)
-            out.set(res.points.subarray(0, res.count))
-            if (res.count < m) out.fill(0, res.count)
-            return res.count | 0
-          },
-        }
-      })(),
+      ...workletImports(memory, samples),
       env: {
         'console.log': (textPtr: number) => {
           const text = liftString(memory, textPtr)
@@ -134,21 +52,8 @@ async function evalDsp(programSource: string) {
 
   const { wasm, memory } = core
 
-  // Helper to lift strings from WASM memory
-  function liftString(mem: WebAssembly.Memory, pointer: number): string {
-    if (!pointer) return ''
-    const end = (pointer + new Uint32Array(mem.buffer)[(pointer - 4) >>> 2]) >>> 1
-    const memoryU16 = new Uint16Array(mem.buffer)
-    let start = pointer >>> 1
-    let string = ''
-    while (end - start > 1024) {
-      string += String.fromCharCode(...memoryU16.subarray(start, start += 1024))
-    }
-    return string + String.fromCharCode(...memoryU16.subarray(start, end))
-  }
-
   // Analyze the source to get AST and bytecode text
-  const analysis = analyze(programSource, PRELUDE)
+  const analysis = analyze(programSource, '')
 
   // Create VM bytecode
   const ops = new Int32Array(OPS_COUNT)
@@ -289,68 +194,9 @@ async function evalDsp(programSource: string) {
     }
   }
 
-  // Process multiple chunks to allow play() to trigger and samples to be read
-  // processAudio automatically updates globalSampleCount by adding length to it at the END
-  // So during processing, globalSampleCount is at the start of the window
-  // mini('1*4') triggers every beat at 60 BPM = every second = 48000 samples at 48kHz
-  // Process enough chunks to cover at least one beat
-  // Ensure globalSampleCount starts at 0, then let processAudio update it automatically
-  // mini('1*4') triggers every beat at 60 BPM = every second = 48000 samples at 48kHz
-  // One cycle (4 beats) = 192000 samples at 48kHz
-  // We need to process enough chunks to allow mini() to generate history and trigger
-  if (wasm.globalSampleCount) wasm.globalSampleCount.value = 0
-  const chunksToProcess = 1500 // Process 1500 chunks = 192000 samples = 4 seconds at 48kHz (one full cycle)
-
-  // Accumulate output across chunks to capture any audio that plays
-  const accumulatedLeft = new Float32Array(CHUNK_SIZE * chunksToProcess)
-  const accumulatedRight = new Float32Array(CHUNK_SIZE * chunksToProcess)
-
-  for (let i = 0; i < chunksToProcess; i++) {
-    // processAudio uses globalSampleCount at the start of the window, then updates it at the end
-    // So we need to ensure globalSampleCount is set correctly before each call
-    // For the first iteration, it's 0 (set above). For subsequent iterations, it should be updated
-    // by the previous processAudio call, but let's verify it's correct
-    const expectedSampleCount = i * CHUNK_SIZE
-    if (wasm.globalSampleCount && wasm.globalSampleCount.value !== expectedSampleCount) {
-      // If it's not at the expected value, set it (shouldn't happen, but just in case)
-      wasm.globalSampleCount.value = expectedSampleCount
-    }
-    wasm.processAudio(dsp$, left$, right$, 0, CHUNK_SIZE)
-    // After processAudio, globalSampleCount should be (i + 1) * CHUNK_SIZE
-
-    // Accumulate output from each chunk
-    const chunkLeft = new Float32Array(memory.buffer, left$, CHUNK_SIZE)
-    const chunkRight = new Float32Array(memory.buffer, right$, CHUNK_SIZE)
-    accumulatedLeft.set(chunkLeft, i * CHUNK_SIZE)
-    accumulatedRight.set(chunkRight, i * CHUNK_SIZE)
-  }
-
-  // Use accumulated samples for output (they contain the actual audio)
-  // Find the chunk with the most non-zero samples
-  let maxNonZeroChunk = 0
-  let maxNonZeroCount = 0
-  for (let i = 0; i < chunksToProcess; i++) {
-    const chunkStart = i * CHUNK_SIZE
-    const chunkLeft = accumulatedLeft.subarray(chunkStart, chunkStart + CHUNK_SIZE)
-    const nonZeroCount = chunkLeft.filter(v => v !== 0).length
-    if (nonZeroCount > maxNonZeroCount) {
-      maxNonZeroCount = nonZeroCount
-      maxNonZeroChunk = i
-    }
-  }
-
-  // Use the chunk with the most non-zero samples for display
-  const displayChunkStart = maxNonZeroChunk * CHUNK_SIZE
-  const leftSamples = accumulatedLeft.subarray(displayChunkStart, displayChunkStart + CHUNK_SIZE)
-  const rightSamples = accumulatedRight.subarray(displayChunkStart, displayChunkStart + CHUNK_SIZE)
-
-  // Collect non-zero literals
-  const nonZeroLiterals: Record<number, number> = {}
-  for (let i = 0; i < literals.length; i++) {
-    if (literals[i] !== 0) {
-      nonZeroLiterals[i] = literals[i]!
-    }
-  }
+  wasm.processAudio(dsp$, left$, right$, 0, CHUNK_SIZE)
+  const leftSamples = new Float32Array(memory.buffer, left$, CHUNK_SIZE)
+  const rightSamples = new Float32Array(memory.buffer, right$, CHUNK_SIZE)
 
   // Output results
   console.log('=== PROGRAM SOURCE ===')
@@ -362,12 +208,6 @@ async function evalDsp(programSource: string) {
 
   console.log('\n=== BYTECODE ===')
   console.log(analysis.bytecodeText)
-
-  console.log('\n=== VM OPS ===')
-  console.log(ops)
-
-  console.log('\n=== VM LITERALS ===')
-  console.log(literals)
 
   console.log('\n=== OUTPUT SAMPLES ===')
   console.log(leftSamples)
@@ -396,7 +236,6 @@ async function evalDsp(programSource: string) {
   console.log(`AST size: ${JSON.stringify(analysis.program).length} chars`)
   console.log(`Bytecode lines: ${analysis.bytecodeText.split('\n').length}`)
   console.log(`VM ops count: ${vmOpsCount}`)
-  console.log(`Non-zero literals: ${Object.keys(nonZeroLiterals).length}`)
   console.log(`Output samples: ${CHUNK_SIZE} per channel`)
   console.log(`Left channel range: [${Math.min(...leftSamples).toFixed(6)}, ${Math.max(...leftSamples).toFixed(6)}]`)
   console.log(`Right channel range: [${Math.min(...rightSamples).toFixed(6)}, ${Math.max(...rightSamples).toFixed(6)}]`)
@@ -407,20 +246,7 @@ async function evalDsp(programSource: string) {
 // CLI interface
 const args = process.argv.slice(2)
 
-if (args.length === 0) {
-  console.error('Usage: bun src/cli/eval-dsp.ts [options] "<program>"')
-  console.error('       bun src/cli/eval-dsp.ts [options] --file <path>')
-  console.error('\nOptions:')
-  console.error('  --file, -f <path>    Read program from file')
-  console.error('  --help, -h           Show this help message')
-  console.error('\nExamples:')
-  console.error('  bun src/cli/eval-dsp.ts "out(sine(440))"')
-  console.error('  bun src/cli/eval-dsp.ts "out(sine(440) * 0.5)"')
-  console.error('  bun src/cli/eval-dsp.ts --file examples/simple.lm')
-  process.exit(1)
-}
-
-if (args[0] === '--help' || args[0] === '-h') {
+if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
   console.log('DSP Program Evaluator')
   console.log('\nThis tool compiles and evaluates a DSP program, running one chunk (128 samples)')
   console.log('and outputs the bytecode, AST, and audio samples.')
