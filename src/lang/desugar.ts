@@ -178,7 +178,7 @@ function desugarExpr(expr: Expr): Expr {
         const ident = { kind: 'ident' as const, name: p.name, loc: pLoc }
         const test = {
           kind: 'binary' as const,
-          op: '==' as const,
+          op: '===' as const,
           left: ident,
           right: { kind: 'undefined' as const, loc: pLoc },
           loc: pLoc,

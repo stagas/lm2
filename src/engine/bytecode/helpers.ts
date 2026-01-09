@@ -22,6 +22,7 @@ export function binaryCode(opName: string): VmBinary | null {
   if (opName === '%') return VmBinary.Mod
   if (opName === '**') return VmBinary.Pow
   if (opName === '==') return VmBinary.Eq
+  if (opName === '===') return VmBinary.StrictEq
   if (opName === '<') return VmBinary.Lt
   if (opName === '<=') return VmBinary.Lte
   if (opName === '>') return VmBinary.Gt

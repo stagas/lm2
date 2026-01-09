@@ -553,7 +553,6 @@ export function useAnalyserWidget({
   }, [])
 
   useEffect(() => {
-    if (!isLive) return
     const programPtr = program1?.program?.ptr$ ?? 0
     if (lastLiveProgramPtrRef.current === programPtr && lastLiveAnalyserKeyRef.current === analyserKey) return
     lastLiveProgramPtrRef.current = programPtr
@@ -567,7 +566,7 @@ export function useAnalyserWidget({
     spectrumCacheRef.current.clear()
     seenRef.current.clear()
     renderedThisFrameRef.current.clear()
-  }, [analyserKey, isLive, program1])
+  }, [analyserKey, program1])
 
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return

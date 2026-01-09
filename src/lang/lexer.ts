@@ -259,6 +259,12 @@ export function lex(
       add('shift_ur', start, startLine, startCol)
       continue
     }
+    if (three === '===') {
+      advance()
+      advance()
+      add('eq_eq_eq', start, startLine, startCol)
+      continue
+    }
     if (two === '&&') {
       advance()
       add('and_and', start, startLine, startCol)

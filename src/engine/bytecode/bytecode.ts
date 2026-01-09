@@ -905,7 +905,7 @@ function transformExpr(context: AstTransformContext, expr: any): any {
         const ident = { kind: 'ident', name: p.name, loc: pLoc }
         const test = {
           kind: 'binary',
-          op: '==',
+          op: '===',
           left: ident,
           right: { kind: 'undefined', loc: pLoc },
           loc: pLoc,

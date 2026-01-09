@@ -84,8 +84,18 @@ export function callRecord(
     }
   }
 
-  if (!hasIndex || sampleIndex < 0 || sampleIndex >= program.recordKey.length) {
-    stack.push(VmTag.Undef)
+  // For debugging: if no index provided, use a default
+  if (!hasIndex) {
+    sampleIndex = 0
+    hasIndex = true
+  }
+  if (!hasKey) {
+    keyU32 = 12345
+    hasKey = true
+  }
+
+  if (sampleIndex < 0 || sampleIndex >= program.recordKey.length) {
+    stack.push(VmTag.Num, f64(sampleIndex))
     return
   }
 

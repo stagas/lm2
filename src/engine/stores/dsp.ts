@@ -1239,6 +1239,11 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
 
         const prevPlayingLoopId = useEngineRuntimeStore.getState().playingLoopId
         useEngineRuntimeStore.getState().setPlayingLoopId(null)
+        const restorePlayingLoopIdIfUnset = () => {
+          const st = useEngineRuntimeStore.getState()
+          if (st.playingLoopId != null) return
+          st.setPlayingLoopId(prevPlayingLoopId)
+        }
 
         try {
           const comparisonReference = get().lastSuccessfulProgramData
@@ -1253,7 +1258,10 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
             vm,
           })
 
-          if (playToken !== playLoopToken) return
+          if (playToken !== playLoopToken) {
+            restorePlayingLoopIdIfUnset()
+            return
+          }
 
           if (runtime.worklet && runtime.audioContext) {
             void scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true })
@@ -1379,18 +1387,26 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
             if (playToken === playLoopToken) {
               useEngineRuntimeStore.getState().setPlayingLoopId(prevPlayingLoopId)
             }
+            else {
+              restorePlayingLoopIdIfUnset()
+            }
             return
           }
 
-          if (playToken !== playLoopToken) return
+          if (playToken !== playLoopToken) {
+            restorePlayingLoopIdIfUnset()
+            return
+          }
           useEngineRuntimeStore.getState().setPlayingLoopId(loopId)
           return
         }
         catch (err) {
           if (playToken === playLoopToken) {
             useEngineRuntimeStore.getState().setPlayingLoopId(prevPlayingLoopId)
+            throw err
           }
-          throw err
+          restorePlayingLoopIdIfUnset()
+          return
         }
       }
 

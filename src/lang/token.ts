@@ -37,6 +37,7 @@ export type TokenKind =
   | "gt"
   | "gte"
   | "eq_eq"
+  | "eq_eq_eq"
   | "and_and"
   | "or_or"
   | "shift_l"

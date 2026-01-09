@@ -212,7 +212,7 @@ export function vmBinaryOp(
 
     if (
       code === VmBinary.Lt || code === VmBinary.Lte || code === VmBinary.Gt || code === VmBinary.Gte
-      || code === VmBinary.Eq
+      || code === VmBinary.Eq || code === VmBinary.StrictEq
     ) {
       if (code === VmBinary.Eq) {
         let eq = false
@@ -223,6 +223,21 @@ export function vmBinaryOp(
         else if (aTag === VmTag.Sym && bTag === VmTag.Sym) eq = stack.aux[a] === stack.aux[b]
         else if (aTag === VmTag.Bool && bTag === VmTag.Num) eq = (aNum != 0.0) === (bNum != 0.0)
         else if (aTag === VmTag.Num && bTag === VmTag.Bool) eq = (aNum != 0.0) === (bNum != 0.0)
+        stack.push(VmTag.Bool, eq ? 1.0 : 0.0)
+        return
+      }
+
+      if (code === VmBinary.StrictEq) {
+        let eq = false
+        if (aTag === bTag) {
+          if (aTag === VmTag.Undef || aTag === VmTag.Null) eq = true
+          else if (aTag === VmTag.Arr) eq = aAux === bAux
+          else if (aTag === VmTag.Num) eq = aNum === bNum
+          else if (aTag === VmTag.Bool) eq = (aNum != 0.0) === (bNum != 0.0)
+          else if (aTag === VmTag.Sym) eq = stack.aux[a] === stack.aux[b]
+          else if (aTag === VmTag.Func) eq = aAux === bAux
+          else if (aTag === VmTag.Builtin) eq = stack.aux[a] === stack.aux[b]
+        }
         stack.push(VmTag.Bool, eq ? 1.0 : 0.0)
         return
       }

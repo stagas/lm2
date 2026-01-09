@@ -532,9 +532,10 @@ class Parser {
 
   private parseEq(): Expr {
     let expr = this.parseCmp()
-    while (this.match('eq_eq')) {
+    while (this.match('eq_eq_eq') || this.match('eq_eq')) {
+      const op = this.prev().kind === 'eq_eq_eq' ? '===' : '=='
       const right = this.parseCmp()
-      expr = { kind: 'binary', op: '==', left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
+      expr = { kind: 'binary', op, left: expr, right, loc: this.locFrom(expr.loc, right.loc) }
     }
     return expr
   }

@@ -71,7 +71,15 @@ export class Slicer extends Gen {
 
   private refreshSlices(threshold: f32): void {
     const count = hostSampleSlices(this.sampleIndex, threshold, this.slices.dataStart, MAX_SLICES)
-    this.slicesCount = count > 0 ? count : 0
+    if (count <= 0) {
+      this.slicesCount = 0
+    }
+    else if (count > MAX_SLICES) {
+      this.slicesCount = MAX_SLICES
+    }
+    else {
+      this.slicesCount = count
+    }
     this.lastThreshold = threshold
   }
 

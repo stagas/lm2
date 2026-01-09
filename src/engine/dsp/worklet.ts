@@ -222,10 +222,11 @@ export class DspProcessor extends AudioWorkletProcessor {
               const key = ((threshold || 0) * 1000) | 0
               if (!s.slices || s.slices.k !== key) {
                 const res = detectSlices(s.ch0, threshold || 0, m)
-                s.slices = { k: key, count: res.count | 0, points: res.points }
-                out.set(res.points.subarray(0, Math.min(m, res.count)))
-                if (res.count < m) out.fill(0, res.count)
-                return res.count | 0
+                const n = Math.min(m, res.count | 0)
+                s.slices = { k: key, count: n, points: res.points }
+                out.set(res.points.subarray(0, n))
+                if (n < m) out.fill(0, n)
+                return n | 0
               }
 
               const points = s.slices.points
