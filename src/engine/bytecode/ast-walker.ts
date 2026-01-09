@@ -78,9 +78,19 @@ function visitExpr(expr: any, visitors: VisitorFunctions[], ctx: VisitorContext)
   }
 
   if (expr.kind === 'func') {
-    // Visit parameter defaults
-    for (const param of expr.params ?? []) {
-      if (param.default) visitExpr(param.default, visitors, ctx)
+    // Check if function body has been transformed with desugared default arguments.
+    // If so, skip visiting parameter defaults since they're already in the body.
+    const bodyIsTransformed = expr.body?.kind === 'block' &&
+      expr.body.body?.[0]?.kind === 'expr_stmt' &&
+      expr.body.body[0].expr?.kind === 'assign' &&
+      expr.body.body[0].expr.value?.kind === 'if' &&
+      (expr.body.body[0].expr.value as any).__noBranchMark === true
+
+    // Visit parameter defaults only if body hasn't been transformed
+    if (!bodyIsTransformed) {
+      for (const param of expr.params ?? []) {
+        if (param.default) visitExpr(param.default, visitors, ctx)
+      }
     }
     // Visit function body
     if (expr.body?.kind === 'block') visitStmt(expr.body, visitors, ctx)

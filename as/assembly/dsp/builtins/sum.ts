@@ -67,7 +67,8 @@ export function callSum(
     for (let i: i32 = 0; i < n; i++) {
       const srcIndex = dsp.arrays.elemAux[start + i]
       if (srcIndex < 0) continue
-      const src$ = program.getOutBuffer(srcIndex)
+      // Use raw pool access since map stores raw indices in arrays
+      const src$ = program.outsPool.get(srcIndex)
       addAudio(out$, out$, src$, length)
     }
 

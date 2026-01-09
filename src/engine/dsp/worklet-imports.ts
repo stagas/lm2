@@ -1,6 +1,6 @@
 import { detectSlices } from './detect-slices.ts'
 
-type Sample = {
+export type Sample = {
   ver: number
   sampleRate: number
   len: number

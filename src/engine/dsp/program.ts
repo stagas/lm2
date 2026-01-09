@@ -70,6 +70,7 @@ import {
   type TimelineLabel,
   type TimelineSequenceDef,
   type TimelineSequenceRef,
+  type TramSequenceRef,
 } from '../bytecode/bytecode.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import {

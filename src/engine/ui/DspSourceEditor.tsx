@@ -1163,6 +1163,32 @@ function DspSourceEditorReady(
     if (e.key === 'r' && metaKey) {
       return false
     }
+    if (e.key === 'r' && e.altKey) {
+      const runtime = useEngineRuntimeStore.getState()
+      if (runtime.worklet && runtime.program1 && runtime.program2 && code && !hasCompileErrors && isProgramReady) {
+        void (async () => {
+          await runtime.worklet.invalidateRecordings(runtime.program1.program.ptr$)
+          await runtime.worklet.invalidateRecordings(runtime.program2.program.ptr$)
+          const target = previewTargetRef.current
+          const vm: VmCompileSnapshot | undefined = target && previewCompile.errors.length === 0
+            ? {
+              source: code,
+              ops: new Int32Array(target.ops),
+              literals: new Float32Array(target.literals),
+              result: previewCompile,
+            }
+            : undefined
+          try {
+            onDspError(undefined)
+            await updateDspSource(code, vm)
+          }
+          catch (err) {
+            onDspError(err instanceof Error ? err.message : String(err))
+          }
+        })()
+      }
+      return false
+    }
     if (e.key === ' ' && metaKey) {
       // Don't handle keyboard shortcuts when docs are open
       if (docsIsOpen) {
@@ -1192,7 +1218,7 @@ function DspSourceEditorReady(
       return false
     }
     return true
-  }, [currentLoop, docsIsOpen])
+  }, [currentLoop, docsIsOpen, code, hasCompileErrors, isProgramReady, previewCompile, updateDspSource, onDspError])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)

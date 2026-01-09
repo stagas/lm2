@@ -31,9 +31,12 @@ export class Dsp {
   // Preserve caller stack entries across vmInvokeFuncInternal.
   // Some builtins (notably play/mini) reset the stack while invoking callbacks,
   // and user-defined functions should not clobber the caller's in-flight expression stack.
-  private callSavedTag: StaticArray<i32> = new StaticArray<i32>(128)
-  private callSavedNum: StaticArray<f64> = new StaticArray<f64>(128)
-  private callSavedAux: StaticArray<i32> = new StaticArray<i32>(128)
+  // Support nested callbacks by using a stack of frames (similar to if-stack).
+  private callStackDepth: i32 = 0
+  private callSavedSp: StaticArray<i32> = new StaticArray<i32>(16)
+  private callSavedTag: StaticArray<i32> = new StaticArray<i32>(2048)
+  private callSavedNum: StaticArray<f64> = new StaticArray<f64>(2048)
+  private callSavedAux: StaticArray<i32> = new StaticArray<i32>(2048)
 
   // Runtime directive globals (segment-scoped; saved/restored across vmInvokeFunc)
   tuneTag: i32 = VmTag.Num
@@ -526,18 +529,29 @@ export class Dsp {
     const bodyPc = funcPc + 2 + paramCount
 
     // Save caller stack so the callee can freely use/reset the stack.
+    // Support nested callbacks by using a frame-based stack (similar to if-stack).
+    const maxFrames: i32 = 16
+    const maxStackPerFrame: i32 = 128
+    const callDepth: i32 = this.callStackDepth
     const callerSp: i32 = this.stack.sp
-    const maxSave: i32 = this.callSavedTag.length
-    if (callerSp < 0 || callerSp > maxSave) {
+    if (callDepth >= maxFrames) {
       setVmError(10, funcPc)
       this.stack.push(VmTag.Undef)
       return
     }
-    for (let i: i32 = 0; i < callerSp; i++) {
-      this.callSavedTag[i] = this.stack.tag[i]
-      this.callSavedNum[i] = this.stack.num[i]
-      this.callSavedAux[i] = this.stack.aux[i]
+    if (callerSp < 0 || callerSp > maxStackPerFrame) {
+      setVmError(10, funcPc)
+      this.stack.push(VmTag.Undef)
+      return
     }
+    const frameBase: i32 = callDepth * maxStackPerFrame
+    this.callSavedSp[callDepth] = callerSp
+    for (let i: i32 = 0; i < callerSp; i++) {
+      this.callSavedTag[frameBase + i] = this.stack.tag[i]
+      this.callSavedNum[frameBase + i] = this.stack.num[i]
+      this.callSavedAux[frameBase + i] = this.stack.aux[i]
+    }
+    this.callStackDepth = callDepth + 1
     this.stack.sp = 0
 
     const savedEnv = this.env.count
@@ -622,12 +636,15 @@ export class Dsp {
     this.scaleIndex = savedScaleIndex
 
     // Restore caller stack and push return value as the call result.
-    for (let i: i32 = 0; i < callerSp; i++) {
-      this.stack.tag[i] = this.callSavedTag[i]
-      this.stack.num[i] = this.callSavedNum[i]
-      this.stack.aux[i] = this.callSavedAux[i]
+    this.callStackDepth = callDepth
+    const savedCallerSp: i32 = this.callSavedSp[callDepth]
+    const restoreFrameBase: i32 = callDepth * 128
+    for (let i: i32 = 0; i < savedCallerSp; i++) {
+      this.stack.tag[i] = this.callSavedTag[restoreFrameBase + i]
+      this.stack.num[i] = this.callSavedNum[restoreFrameBase + i]
+      this.stack.aux[i] = this.callSavedAux[restoreFrameBase + i]
     }
-    this.stack.sp = callerSp
+    this.stack.sp = savedCallerSp
     this.stack.push(retTag, retNum, retAux)
   }
 

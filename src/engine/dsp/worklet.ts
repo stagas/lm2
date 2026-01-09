@@ -255,6 +255,11 @@ export class DspProcessor extends AudioWorkletProcessor {
     this.core.wasm.updateBpm(oldBpm, newBpm)
   }
 
+  async invalidateRecordings(program$: number) {
+    if (!this.core) return
+    this.core.wasm.invalidateRecordings(program$)
+  }
+
   async createDsp(program$?: number) {
     return this.addDsp(program$)
   }

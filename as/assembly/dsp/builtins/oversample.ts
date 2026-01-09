@@ -1,5 +1,6 @@
 // dprint-ignore-file
 import { Program } from '../../program'
+import { addAudio, clearAudio, mulAudioScalar } from '../audio-ops'
 import { Dsp } from '../dsp'
 import { VM_FUNC_HEADER, VmOp, VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
@@ -134,7 +135,7 @@ export function callOversample(
   // Fast path: if times=1, just run the callback without oversampling
   if (times === 1) {
     program.pushHistoryWriteEnabled(program.historyWriteEnabled !== 0 ? 1 : 0)
-    dsp.vmInvokeFunc(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
+    dsp.vmInvokeFuncKeepOuts(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
     program.popHistoryWriteEnabled()
     return
   }
@@ -271,7 +272,7 @@ export function callOversample(
 
     const allowHistory: i32 = c === 0 ? 1 : 0
     program.pushHistoryWriteEnabled(program.historyWriteEnabled !== 0 && allowHistory !== 0 ? 1 : 0)
-    dsp.vmInvokeFunc(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
+    dsp.vmInvokeFuncKeepOuts(cbAux, 0, cbArgTags, cbArgNums, cbArgAux, length, left$, right$)
     program.popHistoryWriteEnabled()
 
     // Restore captured env bindings (even if the callback errored).
@@ -287,23 +288,64 @@ export function callOversample(
     let lTag: VmTag = resTag
     let lNum: f64 = stack.num[resIdx]
     let lAux: i32 = stack.aux[resIdx]
+    let lFromArray: bool = false
     let rTag: VmTag = VmTag.Undef
     let rNum: f64 = 0.0
     let rAux: i32 = 0
+    let rFromArray: bool = false
 
     if (resTag === VmTag.Arr) {
       const arrId = stack.aux[resIdx]
       if (arrId >= 0 && arrId < dsp.arrays.count) {
         const n = dsp.arrays.len[arrId]
-        if (n >= 2) {
+        const start = dsp.arrays.start[arrId]
+        const elemType = dsp.arrays.elemType[arrId] as VmTag
+        if (n === 2) {
+          // Exactly 2 elements: stereo L/R
           stereo = true
-          const start = dsp.arrays.start[arrId]
           lTag = dsp.arrays.elemTag[start + 0] as VmTag
           lNum = dsp.arrays.elemNum[start + 0]
           lAux = dsp.arrays.elemAux[start + 0]
+          lFromArray = true
           rTag = dsp.arrays.elemTag[start + 1] as VmTag
           rNum = dsp.arrays.elemNum[start + 1]
           rAux = dsp.arrays.elemAux[start + 1]
+          rFromArray = true
+        } else if (n === 1) {
+          // Single element: extract it
+          lTag = dsp.arrays.elemTag[start] as VmTag
+          lNum = dsp.arrays.elemNum[start]
+          lAux = dsp.arrays.elemAux[start]
+          lFromArray = true
+        } else if (n > 2) {
+          // More than 2 elements: average them (like .avg())
+          if (elemType === VmTag.Audio) {
+            const outIndex = audio.allocOut(program)
+            // Use raw pool access consistently - both for reading array elements and writing output
+            const out$ = program.outsPool.get(outIndex)
+            clearAudio(out$, length)
+            for (let j: i32 = 0; j < n; j++) {
+              const srcIndex = dsp.arrays.elemAux[start + j]
+              if (srcIndex >= 0) {
+                const src$ = program.outsPool.get(srcIndex)
+                addAudio(out$, out$, src$, length)
+              }
+            }
+            const inv: f32 = (1.0 as f32) / f32(n)
+            mulAudioScalar(out$, out$, inv, length)
+            lTag = VmTag.Audio
+            lNum = 0.0
+            lAux = outIndex
+            lFromArray = true  // Use raw access since we wrote via raw access
+          } else if (elemType === VmTag.Num) {
+            let sum: f64 = 0.0
+            for (let j: i32 = 0; j < n; j++) {
+              sum += dsp.arrays.elemNum[start + j]
+            }
+            lTag = VmTag.Num
+            lNum = sum / (n as f64)
+            lAux = 0
+          }
         }
       }
     }
@@ -313,12 +355,13 @@ export function callOversample(
 
     const lSmoothed: bool = lTag === VmTag.Num && lAux < 0
     const lIsAudio: bool = lTag === VmTag.Audio || lSmoothed
-    const l$ = lIsAudio ? (lTag === VmTag.Audio ? program.getOutBuffer(lAux) : audio.toAudioPtr(lTag, lNum, lAux, length, program)) : 0
+    // Use raw pool access for array-sourced audio (map stores raw indices)
+    const l$ = lIsAudio ? (lTag === VmTag.Audio ? (lFromArray ? program.outsPool.get(lAux) : program.getOutBuffer(lAux)) : audio.toAudioPtr(lTag, lNum, lAux, length, program)) : 0
     const lConst: f32 = lIsAudio ? 0.0 : (lTag === VmTag.Bool ? (lNum != 0.0 ? 1.0 : 0.0) : lTag === VmTag.Num ? (lNum as f32) : 0.0)
 
     const rSmoothed: bool = stereo && rTag === VmTag.Num && rAux < 0
     const rIsAudio: bool = stereo && (rTag === VmTag.Audio || rSmoothed)
-    const r$ = rIsAudio ? (rTag === VmTag.Audio ? program.getOutBuffer(rAux) : audio.toAudioPtr(rTag, rNum, rAux, length, program)) : 0
+    const r$ = rIsAudio ? (rTag === VmTag.Audio ? (rFromArray ? program.outsPool.get(rAux) : program.getOutBuffer(rAux)) : audio.toAudioPtr(rTag, rNum, rAux, length, program)) : 0
     const rConst: f32 = stereo ? (rIsAudio ? 0.0 : (rTag === VmTag.Bool ? (rNum != 0.0 ? 1.0 : 0.0) : rTag === VmTag.Num ? (rNum as f32) : 0.0)) : 0.0
 
     // Store this callback's output in the temp buffer

@@ -149,6 +149,16 @@ export function getProgramRecordActive(program$: usize): i32 {
   return program.recordActive
 }
 
+export function invalidateRecordings(program$: usize): void {
+  if (program$ === 0) return
+  const program = changetype<Program>(program$)
+  for (let i = 0; i < program.recordKey.length; i++) {
+    program.recordKey[i] = 0
+    program.recordBuf$[i] = 0
+    program.recordPos[i] = 0
+  }
+}
+
 export function updateBpm(oldBpm: f32, newBpm: f32): void {
   if (oldBpm <= 0 || newBpm <= 0) return
 
