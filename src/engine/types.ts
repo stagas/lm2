@@ -24,6 +24,7 @@ import {
   type SlewRef,
   type SlicerRef,
   type TimelineSequenceRef,
+  type TramSequenceRef,
 } from './bytecode/bytecode.ts'
 
 export type TimelineWindow = {
@@ -37,6 +38,7 @@ export type WidgetCompileResult = {
   sequences: string[]
   miniRefs: MiniSequenceRef[]
   miniPlayBars: Array<number | undefined>
+  tramRefs: TramSequenceRef[]
   timelineRefs: TimelineSequenceRef[]
   miniSourceMaps: Array<Map<number, SourceLocation> | undefined>
   adRefs: AdRef[]

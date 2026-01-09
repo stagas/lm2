@@ -1,5 +1,5 @@
 import type { EditorWidget } from 'mini-code'
-import { useCallback, useMemo, useRef } from 'preact/hooks'
+import { useMemo, useRef } from 'preact/hooks'
 import {
   FUTURE_BARS,
   HISTORY_DATA_OFFSET,
@@ -13,6 +13,7 @@ import {
 import type { SourceLocation } from '../../lib/mini-source-map.ts'
 import { splitValueAndModifiers } from '../../mini/tokenizer.ts'
 import { extractScaleFromSource } from '../bytecode/bytecode.ts'
+import { TRIG_FADEOUT_SECONDS } from '../constants.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
@@ -230,7 +231,6 @@ export function useSequenceWidget({
     const playbackState = useEngineRuntimeStore.getState().playbackState
     if (playbackState === 'paused') return
     const visualWasm = useEngineRuntimeStore.getState().visualWasm
-    const FADEOUT_SECONDS = 0.3
     const runtime = useEngineRuntimeStore.getState()
     const pred = runtime.predictedSampleCountResult
     const sampleRate = audioContext?.sampleRate || pred?.sampleRate || 0
@@ -374,13 +374,13 @@ export function useSequenceWidget({
       const currentSwing = st.swingHistory?.opIndex ?? null
 
       st.fadingOctave = updateFadingControl(st.fadingOctave, currentOctave, prevOctaveOp, st.octaveHistory,
-        currentSampleCount, sampleRate, FADEOUT_SECONDS)
+        currentSampleCount, sampleRate, TRIG_FADEOUT_SECONDS)
       st.fadingTranspose = updateFadingControl(st.fadingTranspose, currentTranspose, prevTransposeOp,
-        st.transposeHistory, currentSampleCount, sampleRate, FADEOUT_SECONDS)
+        st.transposeHistory, currentSampleCount, sampleRate, TRIG_FADEOUT_SECONDS)
       st.fadingScale = updateFadingControl(st.fadingScale, currentScale, prevScaleOp, st.scaleHistory,
-        currentSampleCount, sampleRate, FADEOUT_SECONDS)
+        currentSampleCount, sampleRate, TRIG_FADEOUT_SECONDS)
       st.fadingSwing = updateFadingControl(st.fadingSwing, currentSwing, prevSwingOp, st.swingHistory,
-        currentSampleCount, sampleRate, FADEOUT_SECONDS)
+        currentSampleCount, sampleRate, TRIG_FADEOUT_SECONDS)
 
       const events = new Map<number, number>()
       for (const [opIndex, { endSample, velocity }] of eventData.entries()) {
@@ -390,8 +390,8 @@ export function useSequenceWidget({
           continue
         }
         const fadeAge = (currentSampleCount - endSample) / sampleRate
-        if (fadeAge <= FADEOUT_SECONDS) {
-          events.set(opIndex, (1 - fadeAge / FADEOUT_SECONDS) * velocityClamped)
+        if (fadeAge <= TRIG_FADEOUT_SECONDS) {
+          events.set(opIndex, (1 - fadeAge / TRIG_FADEOUT_SECONDS) * velocityClamped)
         }
       }
 
@@ -401,11 +401,14 @@ export function useSequenceWidget({
       if (st.scaleHistory) controls.set(st.scaleHistory.opIndex, 1)
       if (st.swingHistory) controls.set(st.swingHistory.opIndex, 1)
 
-      st.fadingOctave = applyFadeToControls(st.fadingOctave, controls, currentSampleCount, sampleRate, FADEOUT_SECONDS)
+      st.fadingOctave = applyFadeToControls(st.fadingOctave, controls, currentSampleCount, sampleRate,
+        TRIG_FADEOUT_SECONDS)
       st.fadingTranspose = applyFadeToControls(st.fadingTranspose, controls, currentSampleCount, sampleRate,
-        FADEOUT_SECONDS)
-      st.fadingScale = applyFadeToControls(st.fadingScale, controls, currentSampleCount, sampleRate, FADEOUT_SECONDS)
-      st.fadingSwing = applyFadeToControls(st.fadingSwing, controls, currentSampleCount, sampleRate, FADEOUT_SECONDS)
+        TRIG_FADEOUT_SECONDS)
+      st.fadingScale = applyFadeToControls(st.fadingScale, controls, currentSampleCount, sampleRate,
+        TRIG_FADEOUT_SECONDS)
+      st.fadingSwing = applyFadeToControls(st.fadingSwing, controls, currentSampleCount, sampleRate,
+        TRIG_FADEOUT_SECONDS)
 
       controlStateRef.current?.set(seqIndex, st)
       nextFrame[seqIndex] = { events, controls }
@@ -447,8 +450,7 @@ export function useSequenceWidget({
                 const f = frameRef.current?.[seqIndex]
                 const a = f?.controls.get(opIndex) ?? 0
                 if (a <= 0) return
-                const [r, g, b] = [255, 255, 255]
-                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.25 * (a ** 0.25)})`
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * (a ** 0.25)})`
                 ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
               },
             })

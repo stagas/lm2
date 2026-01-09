@@ -1401,10 +1401,14 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       if (runtime.globalSampleCount) {
         Atomics.store(runtime.globalSampleCount, 0, startSample)
       }
+      // If another play request superseded this one (e.g. intro boot vs user click),
+      // don't "claim" the loop or start the transport from this stale invocation.
+      if (playToken !== playLoopToken) return
       useEngineRuntimeStore.getState().setPlayingLoopId(loopId)
 
       // Start after the seek has had a chance to apply in the worklet.
       setTimeout(() => {
+        if (playToken !== playLoopToken) return
         useEngineRuntimeStore.getState().start()
       }, 2.5)
     },

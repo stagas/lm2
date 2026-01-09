@@ -2,6 +2,7 @@ import type { EditorWidget } from 'mini-code'
 import { useCallback, useMemo, useRef } from 'preact/hooks'
 import { ARRAY_HISTORY_ENTRY_SIZE, ARRAY_HISTORY_SIZE } from '../../../as/assembly/constants.ts'
 import type { ArrayLiteralRef } from '../bytecode/bytecode.ts'
+import { TRIG_FADEOUT_SECONDS } from '../constants.ts'
 import type { ProgramInstance } from '../dsp/program.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
@@ -156,7 +157,6 @@ export function useArrayAccessWidget({
       if (pending.length > 4096) pending.splice(0, pending.length - 4096)
     }
 
-    const FADEOUT_SECONDS = 0.25
     const frame = frameRef.current
     frame.clear()
 
@@ -168,11 +168,11 @@ export function useArrayAccessWidget({
     // fading entries: compute alpha, remove expired
     for (const [key, t0] of Array.from(fading.entries())) {
       const age = nowSec - t0
-      if (age >= FADEOUT_SECONDS) {
+      if (age >= TRIG_FADEOUT_SECONDS) {
         fading.delete(key)
         continue
       }
-      const a = 1 - age / FADEOUT_SECONDS
+      const a = 1 - age / TRIG_FADEOUT_SECONDS
       if (a > 0) frame.set(key, a)
     }
   }, [showWidgets, program1, pcToItems, pcToLocKeyByIdx])
@@ -206,7 +206,7 @@ export function useArrayAccessWidget({
                 if (v > a) a = v
               }
               if (a <= 0) return
-              ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
+              ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * (a ** 0.25)})`
               ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
               // ctx.strokeStyle = `rgba(255, 255, 255, ${a})`
               // ctx.lineWidth = 1

@@ -35,6 +35,7 @@ import { useSlicerWidget } from '../useSlicerWidget.ts'
 import { useSliderWidget } from '../useSliderWidget.ts'
 import { useTimelineSequenceWidget } from '../useTimelineSequenceWidget.ts'
 import { useTimelineWidget } from '../useTimelineWidget.ts'
+import { useTramWidget } from '../useTramWidget.ts'
 import { useTrigWidget } from '../useTrigWidget.ts'
 
 type InlineEditorProps = {
@@ -107,6 +108,7 @@ function buildWidgetCompileState(code: string, preview: ReturnType<typeof encode
       sequences: preview.miniSequences ?? [],
       miniRefs: preview.miniRefs ?? [],
       miniPlayBars: preview.miniPlayBars ?? [],
+      tramRefs: preview.tramRefs ?? [],
       timelineRefs: preview.timelineRefs ?? [],
       miniSourceMaps: [] as Array<Map<number, SourceLocation> | undefined>,
       analyserRefs: preview.analyserRefs ?? [],
@@ -146,6 +148,7 @@ function buildWidgetCompileState(code: string, preview: ReturnType<typeof encode
     sequences,
     miniRefs: preview.miniRefs ?? [],
     miniPlayBars: preview.miniPlayBars ?? [],
+    tramRefs: preview.tramRefs ?? [],
     timelineRefs: preview.timelineRefs ?? [],
     miniSourceMaps,
     analyserRefs: preview.analyserRefs ?? [],
@@ -474,6 +477,17 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     resetKey,
   })
 
+  const { widgets: tramWidgets, onBeforeDraw: onBeforeDrawTram } = useTramWidget({
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    tramRefs: widgetCompileState.tramRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    resetKey,
+  })
+
   const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
     program1: runtimeProgram,
     ringPos,
@@ -696,6 +710,7 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     onBeforeDrawTrig()
     onBeforeDrawTimeline()
     onBeforeDrawTimelineSequence()
+    onBeforeDrawTram()
     onBeforeDrawPianoroll()
     onBeforeDrawSequence()
     onBeforeDrawArrayAccess()
@@ -718,6 +733,7 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     onBeforeDrawSlicer,
     onBeforeDrawTimeline,
     onBeforeDrawTimelineSequence,
+    onBeforeDrawTram,
     onBeforeDrawTrig,
     showWidgets,
   ])
@@ -736,6 +752,7 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
       ...trigWidgets,
       ...timelineWidgets,
       ...timelineSequenceWidgets,
+      ...tramWidgets,
       ...pianorollWidgets,
       ...sequenceWidgets,
       ...arrayAccessWidgets,
@@ -756,6 +773,7 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     trigWidgets,
     timelineWidgets,
     timelineSequenceWidgets,
+    tramWidgets,
     pianorollWidgets,
     sequenceWidgets,
     arrayAccessWidgets,

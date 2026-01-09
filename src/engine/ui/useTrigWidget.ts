@@ -6,6 +6,7 @@ import {
   TRIG_HISTORY_SIZE,
 } from '../../../as/assembly/constants.ts'
 import type { AtRef, EuclidRef, EveryRef } from '../bytecode/bytecode.ts'
+import { TRIG_FADEOUT_SECONDS } from '../constants.ts'
 import type { ProgramInstance, VmTrigHistory } from '../dsp/program.ts'
 import { useEngineRuntimeStore } from '../store.ts'
 import { buildLineStarts, spanToWidgetSpans } from './editor-spans.ts'
@@ -164,7 +165,6 @@ export function useTrigWidget({
 
     const MOD = 1 << 20
     const nowMod = (Math.floor(pred.sampleCount) >>> 0) & (MOD - 1)
-    const fadeSeconds = 0.25
 
     readTrigHistory(
       trigHistory,
@@ -174,7 +174,7 @@ export function useTrigWidget({
       TRIG_ENTRY_SIZE,
       TRIG_HISTORY_SIZE,
     )
-    updateTrigStates(everyStRef, nowMod, pred.sampleRate, fadeSeconds)
+    updateTrigStates(everyStRef, nowMod, pred.sampleRate, TRIG_FADEOUT_SECONDS)
 
     readTrigHistory(
       trigHistory,
@@ -184,7 +184,7 @@ export function useTrigWidget({
       TRIG_ENTRY_SIZE,
       TRIG_HISTORY_SIZE,
     )
-    updateTrigStates(atStRef, nowMod, pred.sampleRate, fadeSeconds)
+    updateTrigStates(atStRef, nowMod, pred.sampleRate, TRIG_FADEOUT_SECONDS)
 
     readTrigHistory(
       trigHistory,
@@ -194,7 +194,7 @@ export function useTrigWidget({
       TRIG_ENTRY_SIZE,
       TRIG_HISTORY_SIZE,
     )
-    updateTrigStates(euclidStRef, nowMod, pred.sampleRate, fadeSeconds)
+    updateTrigStates(euclidStRef, nowMod, pred.sampleRate, TRIG_FADEOUT_SECONDS)
   }, [showWidgets, isLive, playbackState, everies.length, ats.length, euclids.length, program1?.program.trigHistory,
     audioContext, globalSampleCount])
 
@@ -218,7 +218,7 @@ export function useTrigWidget({
           render: (ctx, x, y, w, h) => {
             const a = everyStRef.current[ref.everyIndex | 0]?.a ?? 0
             if (a <= 0) return
-            ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * (a ** 0.25)})`
             ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
           },
         })
@@ -238,7 +238,7 @@ export function useTrigWidget({
           render: (ctx, x, y, w, h) => {
             const a = atStRef.current[ref.atIndex | 0]?.a ?? 0
             if (a <= 0) return
-            ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * (a ** 0.25)})`
             ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
           },
         })
@@ -258,7 +258,7 @@ export function useTrigWidget({
           render: (ctx, x, y, w, h) => {
             const a = euclidStRef.current[ref.euclidIndex | 0]?.a ?? 0
             if (a <= 0) return
-            ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * (a ** 0.25)})`
             ctx.fillRect(x - 2, y - 2, w + 4, h - 1)
           },
         })

@@ -54,6 +54,7 @@ import { useSlicerWidget } from './useSlicerWidget.ts'
 import { useSliderWidget } from './useSliderWidget.ts'
 import { useTimelineSequenceWidget } from './useTimelineSequenceWidget.ts'
 import { useTimelineWidget } from './useTimelineWidget.ts'
+import { useTramWidget } from './useTramWidget.ts'
 import { useTrigWidget } from './useTrigWidget.ts'
 import { useVisualizerBackground } from './useVisualizerBackground.ts'
 
@@ -413,6 +414,7 @@ function DspSourceEditorReady(
         sequences,
         miniRefs,
         miniPlayBars,
+        tramRefs: previewCompile.tramRefs ?? [],
         timelineRefs,
         miniSourceMaps,
         adRefs,
@@ -447,6 +449,7 @@ function DspSourceEditorReady(
         sequences,
         miniRefs,
         miniPlayBars,
+        tramRefs: previewCompile.tramRefs ?? [],
         timelineRefs,
         miniSourceMaps,
         adRefs,
@@ -485,6 +488,7 @@ function DspSourceEditorReady(
       sequences: previewSequences,
       miniRefs: previewCompile.miniRefs ?? [],
       miniPlayBars: previewCompile.miniPlayBars ?? [],
+      tramRefs: previewCompile.tramRefs ?? [],
       timelineRefs: previewCompile.timelineRefs ?? [],
       miniSourceMaps: previewMiniSourceMaps,
       adRefs: previewCompile.adRefs ?? adRefs,
@@ -781,6 +785,17 @@ function DspSourceEditorReady(
     resetKey,
   })
 
+  const { widgets: tramWidgets, onBeforeDraw: onBeforeDrawTram } = useTramWidget({
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    tramRefs: widgetCompileState.tramRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    resetKey,
+  })
+
   const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
     program1: runtimeProgram,
     ringPos,
@@ -1016,6 +1031,7 @@ function DspSourceEditorReady(
     onBeforeDrawPianoroll()
     onBeforeDrawTimeline()
     onBeforeDrawTimelineSequence()
+    onBeforeDrawTram()
     onBeforeDrawAnalyser()
     onBeforeDrawCompressor()
     onBeforeDrawEnvelope()
@@ -1034,6 +1050,7 @@ function DspSourceEditorReady(
     onBeforeDrawPianoroll,
     onBeforeDrawTimeline,
     onBeforeDrawTimelineSequence,
+    onBeforeDrawTram,
     onBeforeDrawAnalyser,
     onBeforeDrawCompressor,
     onBeforeDrawEnvelope,
@@ -1065,6 +1082,7 @@ function DspSourceEditorReady(
       ...trigWidgets,
       ...timelineWidgets,
       ...timelineSequenceWidgets,
+      ...tramWidgets,
       ...pianorollWidgets,
       ...sequenceWidgets,
       ...arrayAccessWidgets,
@@ -1073,8 +1091,8 @@ function DspSourceEditorReady(
       ...knobWidgets,
     ]
   }, [showWidgets, envelopeWidgets, analyserWidgets, timelineWidgets, timelineSequenceWidgets, pianorollWidgets,
-    sequenceWidgets, arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets, filterWidgets,
-    reverbWidgets, slicerWidgets, lfoWidgets, trigWidgets, knobWidgets])
+    tramWidgets, sequenceWidgets, arrayAccessWidgets, branchWidgets, sliderWidgets, sampleWidgets, compressorWidgets,
+    filterWidgets, reverbWidgets, slicerWidgets, lfoWidgets, trigWidgets, knobWidgets])
 
   const codeEditorKey = useMemo(() => {
     const codeFile = currentLoop?.codeFile
@@ -1122,6 +1140,7 @@ function DspSourceEditorReady(
     || (widgetCompileState.branchMarks?.length ?? 0) > 0
     || (widgetCompileState.timelineRefs?.length ?? 0) > 0
     || (widgetCompileState.sequences?.length ?? 0) > 0
+    || (widgetCompileState.tramRefs?.length ?? 0) > 0
     || (widgetCompileState.numberParams?.length ?? 0) > 0
     || knobs.length > 0
   )

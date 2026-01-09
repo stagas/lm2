@@ -1,4 +1,5 @@
 export const DEBUG = true
+export const TRIG_FADEOUT_SECONDS = 0.1
 export const PIANOROLL_KEY_WIDTH = 20
 export const PIANOROLL_BAR_COLOR_ODD = 'rgba(255, 255, 255, 0.09)'
 export const PIANOROLL_BAR_COLOR_EVEN = 'rgba(255, 255, 255, 0.12)'

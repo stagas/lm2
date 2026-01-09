@@ -1,5 +1,5 @@
 import type { Loc } from '../../lang/ast.ts'
-import { buildLineStarts, locToIndex } from './helpers.ts'
+import { buildLineStarts, locToIndex, tryEvalConstNumber } from './helpers.ts'
 import { type TramSequenceRef } from './types.ts'
 
 export function createTramSequencesVisitor(
@@ -9,6 +9,7 @@ export function createTramSequencesVisitor(
 ) {
   const sequenceToIndex = new Map<string, number>()
   const lineStarts = buildLineStarts(src)
+  let lastBar: number | null = null
 
   function ensureIndex(sequence: string): number {
     const prev = sequenceToIndex.get(sequence)
@@ -25,6 +26,7 @@ export function createTramSequencesVisitor(
     refs.push({
       seqIndex,
       sequence,
+      bar: lastBar == null || !Number.isFinite(lastBar) || lastBar <= 0 ? undefined : lastBar,
       start: quoteStart + 1,
       end: quoteStart + Math.max(0, loc.length - 1),
       loc,
@@ -43,13 +45,26 @@ export function createTramSequencesVisitor(
     return null
   }
 
+  function findStaticBar(args: any[]): number | null {
+    const namedBar = args.find((a: any) => a.kind === 'named' && a.name === 'bar')
+    if (namedBar?.kind === 'named') {
+      return tryEvalConstNumber(namedBar.value)
+    }
+
+    const posArgs = args.filter((a: any) => a.kind === 'pos')
+    const posBar = posArgs[1]
+    return tryEvalConstNumber(posBar?.value)
+  }
+
   return {
     visitCall(call: any) {
       if (call.callee?.name === 'tram' || call.callee?.kind === 'ident' && call.callee.name === 'tram') {
-        const seqIndex = findSeqIndex(call.args ?? [])
+        const args = call.args ?? []
+        lastBar = findStaticBar(args)
+        const seqIndex = findSeqIndex(args)
         if (seqIndex !== null) {
           // Find the sequence argument to record the reference
-          const seqArg = call.args?.find((a: any) => a.kind === 'pos')
+          const seqArg = args.find((a: any) => a.kind === 'pos')
           if (seqArg?.value?.kind === 'string') {
             addRef(String(seqArg.value.value ?? ''), seqArg.value.loc)
           }
