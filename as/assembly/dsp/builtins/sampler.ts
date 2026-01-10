@@ -1,5 +1,6 @@
 // dprint-ignore-file
 import { Sampler } from '../../gen/sampler'
+import { hostSampleLen } from '../../sample-host'
 import { Program } from '../../program'
 import { Op } from '../../shared'
 import { VmTag } from '../types'
@@ -103,6 +104,22 @@ export function callSampler(
 
   const outIndex: i32 = audio.allocOut(program)
   const out$: usize = program.getOutBuffer(outIndex)
+
+  // If the sample is currently being recorded, check if there's an existing published sample.
+  // If there is, continue using it to avoid discontinuity during normal playback.
+  // Only output silence if there's no existing sample (e.g., during program swaps with new recordings).
+  if (sampleIndex >= 0 && sampleIndex < program.recordBuf$.length && program.recordBuf$[sampleIndex] !== 0) {
+    const existingLen: i32 = hostSampleLen(sampleIndex)
+    if (existingLen <= 0) {
+      // No existing sample, output silence to avoid playing incomplete recordings
+      for (let i = 0; i < length; i++) {
+        store<f32>(out$ + (i << 2) as usize, 0.0)
+      }
+      stack.push(VmTag.Audio, 0.0, outIndex)
+      return
+    }
+    // Existing sample available, continue using it (fall through to normal processing)
+  }
 
   const gen = program.gensPool.get(Op.Sampler) as Sampler
   gen.sampleIndex = sampleIndex

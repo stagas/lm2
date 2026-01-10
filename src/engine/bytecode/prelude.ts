@@ -363,8 +363,8 @@ cs80=(
 }
 
 bd=(
-  trig=every(1/4),
-  base=c2,
+  trig=tram('x-x-x-x-'),
+  base=#1*o2,
   punch=25000k,
   offset=0.0006,
   cutoff=5k,
@@ -374,7 +374,7 @@ bd=(
   filter=trig->ad(.000147,.25,50.000,trig),
 )->{
   kicksample=record(.3,()->{
-    trig=1 sine(base+punch*fm(trig),offset,trig)*amp(trig) |> slp($,base+cutoff*filter(trig),q) |> limiter($)
+    kt=1 sine(base+punch*fm(trig:kt),offset,trig:kt)*amp(trig:kt) |> slp($,base+cutoff*filter(trig:kt),q) |> limiter($)
   })
   sampler(trig,sample:kicksample)
 }
@@ -392,6 +392,24 @@ hh=(width=.4,seq=mini('[.15 .2 1 .2]*4'))->{
 
     slicer(trig,sample:hhsample)*(v>.65?v:v*2)*(v>.65?ad(0.0001,.0173+.5*v,trig):ad(0.0001,.01+.15*v,4,trig))
   })
+}
+
+snaresynth=(seed=7,base=#5*o2,trig=step(1-phasor(1),.9))->{
+  amp=ad(.0001,1.7366,20,trig)
+  noise=adsr(.0001,.0231 ,.870 ,.3159 ,8.000,trig)
+  click = ad(.0001, .02, 4, trig)
+  pitch = ad(.0001, .3095 , 20, trig)
+  pitchAmt=base*2
+  ;(sine(base+pitch*pitchAmt,trig)*.3 |> sbp($, base * 2, .8))*amp
+
+  +(white(seed,trig) |> shp($, 1800,.4) |> sbp($, 7100, .4))*noise
+  +(white(8,trig) |> shp($, 4000,.6))*click
+  |> tube($,2,.01)*.3
+}
+
+sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
+  snaresample=record(1,()->snaresynth(seed,base))
+  sampler(snaresample,trig) |> out($)
 }
 
 // Generate metronome sound with major/minor chord progression

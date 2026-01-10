@@ -109,6 +109,9 @@ export function useTramWidget({
     const samplesPerWhole = (60 / safeBpm) * sampleRate * 4
 
     for (const ref of tramRefs) {
+      // Exclude prelude tram refs (have kernel flag or are outside source bounds)
+      if (ref.loc.kernel || ref.start >= dspSource.length || ref.start <= 1) continue
+
       const key = ref.start
       const prevSample = lastSampleByRefKeyRef.current.get(key)
       if (prevSample != null && sampleCount < prevSample) {
@@ -216,6 +219,9 @@ export function useTramWidget({
     const out: EditorWidget[] = []
 
     for (const ref of tramRefs) {
+      // Exclude prelude tram refs (have kernel flag or are outside source bounds)
+      if (ref.loc.kernel || ref.start >= dspSource.length || ref.start <= 1) continue
+
       const key = ref.start
       const seq = ref.sequence ?? ''
       if (!seq) continue
@@ -225,6 +231,8 @@ export function useTramWidget({
         if (ch !== 'x' && ch !== 'X') continue
         const absStart = ref.start + i
         const absEnd = absStart + 1
+        // Skip if position is outside source bounds
+        if (absStart >= dspSource.length) continue
         for (const span of spanToWidgetSpans(lineStarts, absStart, absEnd)) {
           out.push({
             type: 'overlay',

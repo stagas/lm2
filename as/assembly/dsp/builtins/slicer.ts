@@ -136,6 +136,16 @@ export function callSlicer(
   const outIndex: i32 = audio.allocOut(program)
   const out$: usize = program.getOutBuffer(outIndex)
 
+  // If the sample is currently being recorded, output silence to avoid playing incomplete recordings
+  // This prevents discontinuities when programs swap during recording
+  if (sampleIndex >= 0 && sampleIndex < program.recordBuf$.length && program.recordBuf$[sampleIndex] !== 0) {
+    for (let i = 0; i < length; i++) {
+      store<f32>(out$ + (i << 2) as usize, 0.0)
+    }
+    stack.push(VmTag.Audio, 0.0, outIndex)
+    return
+  }
+
   const gen = program.gensPool.get(Op.Slicer) as Slicer
   gen.sampleIndex = sampleIndex
   gen.speed$ = speed$

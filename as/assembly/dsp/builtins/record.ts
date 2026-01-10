@@ -1,4 +1,5 @@
 // dprint-ignore-file
+import { recordContentHash } from '../../lib/record-hash'
 import { Program } from '../../program'
 import { hostSampleLen, hostSampleSet } from '../../sample-host'
 import { Dsp } from '../dsp'
@@ -83,18 +84,8 @@ export function callRecord(
     }
   }
 
-  // For debugging: if no index provided, use a default
-  if (!hasIndex) {
-    sampleIndex = 0
-    hasIndex = true
-  }
-  if (!hasKey) {
-    keyU32 = 12345
-    hasKey = true
-  }
-
-  if (sampleIndex < 0 || sampleIndex >= program.recordKey.length) {
-    stack.push(VmTag.Num, f64(sampleIndex))
+  if (!hasIndex || sampleIndex < 0 || sampleIndex >= program.recordKey.length) {
+    stack.push(VmTag.Num, f64(-1))
     return
   }
 
@@ -129,16 +120,14 @@ export function callRecord(
   if (frames > i32(sampleRate)) frames = i32(sampleRate)
 
   const existingLen: i32 = hostSampleLen(sampleIndex)
-  const storedKey: u32 = program.recordKey[sampleIndex]
-  const storedSec: f32 = program.recordSeconds[sampleIndex]
-  const storedLen: i32 = program.recordLen[sampleIndex]
+  let storedKey: u32 = program.recordKey[sampleIndex]
+  let storedSec: f32 = program.recordSeconds[sampleIndex]
+  let storedLen: i32 = program.recordLen[sampleIndex]
 
   let buf$: usize = program.recordBuf$[sampleIndex]
   let pos: i32 = program.recordPos[sampleIndex]
   let curLen: i32 = storedLen
   const recording: bool = buf$ !== 0 || pos > 0
-
-  const paramsChanged: bool = storedKey !== keyU32 || storedLen !== frames || storedSec !== sec
 
   // Compute dependency hash: scan callback bytecode for Load operations and hash captured variables
   // Do this early so we can check if dependencies changed
@@ -232,11 +221,9 @@ export function callRecord(
               depsHash = depsHash * 16777619
             }
             else if (tag === VmTag.Func) {
-              // Hash the function PC for consistency with VmOp.Func handling
+              // Treat function references as dependencies by scanning their bodies,
+              // but do NOT hash the function PC (PC changes across recompiles).
               const funcPc: i32 = aux
-              depsHash = depsHash ^ u32(funcPc)
-              depsHash = depsHash * 16777619
-              // Add function to scan stack - bytecode will be hashed when scanned
               if (funcPc >= 0 && funcPc < ops.length && ops[funcPc] === VM_FUNC_HEADER) {
                 if (funcStackTop < funcStack.length) {
                   funcStack[funcStackTop++] = funcPc
@@ -306,20 +293,15 @@ export function callRecord(
         continue
       }
       if (op === VmOp.Jump || op === VmOp.JumpIfFalse) {
-        const jumpTarget: i32 = ops[pc++]
-        depsHash = depsHash ^ u32(jumpTarget)
-        depsHash = depsHash * 16777619
+        // Do NOT hash jump targets (absolute PCs change across recompiles).
+        pc++
         continue
       }
       if (op === VmOp.Func) {
-        // Hash the Func opcode
-        depsHash = depsHash ^ u32(op)
-        depsHash = depsHash * 16777619
         // This is a nested function reference - add it to the stack to scan
         // Bytecode will be hashed when the function is popped from the stack
         const nestedFuncPc: i32 = ops[pc++]
-        depsHash = depsHash ^ u32(nestedFuncPc)
-        depsHash = depsHash * 16777619
+        // Do NOT hash nested function PC (PC changes across recompiles).
         if (nestedFuncPc >= 0 && nestedFuncPc < ops.length && ops[nestedFuncPc] === VM_FUNC_HEADER) {
           if (funcStackTop < funcStack.length) {
             funcStack[funcStackTop++] = nestedFuncPc
@@ -328,25 +310,50 @@ export function callRecord(
         continue
       }
       if (op === VmOp.Array) {
-        depsHash = depsHash ^ u32(op)
-        depsHash = depsHash * 16777619
         const arrayLen: i32 = ops[pc++]
         depsHash = depsHash ^ u32(arrayLen)
         depsHash = depsHash * 16777619
         continue
       }
       if (op === VmOp.Return || op === VmOp.Throw || op === VmOp.End) {
-        depsHash = depsHash ^ u32(op)
-        depsHash = depsHash * 16777619
         break
       }
     }
   }
 
-  const storedDepsHash: u32 = program.recordDepsHash[sampleIndex]
-  const depsChanged: bool = depsHash !== storedDepsHash
+  let storedDepsHash: u32 = program.recordDepsHash[sampleIndex]
+
+  // Check content-hash lookup for matching recording from previous program (when indices differ)
+  // This allows recordings to be preserved across swaps even when programs have different numbers of recordings
+  // Check this BEFORE computing paramsChanged/depsChanged so we can match even when stored values are empty
+  const currentHash = recordContentHash(keyU32, sec, depsHash)
+  const lookupCount = program.recordContentHashCount
+  for (let i = 0; i < lookupCount; i++) {
+    if (program.recordContentHashLookup[i] === currentHash) {
+      // Found matching recording from source - copy its state to current index
+      program.recordKey[sampleIndex] = program.recordContentHashKey[i]
+      program.recordSeconds[sampleIndex] = program.recordContentHashSeconds[i]
+      program.recordLen[sampleIndex] = program.recordContentHashLen[i]
+      program.recordDepsHash[sampleIndex] = program.recordContentHashDepsHash[i]
+      // Update stored values
+      storedKey = program.recordKey[sampleIndex]
+      storedSec = program.recordSeconds[sampleIndex]
+      storedLen = program.recordLen[sampleIndex]
+      storedDepsHash = program.recordDepsHash[sampleIndex]
+      // Also update buf$, pos, curLen from stored state
+      buf$ = program.recordBuf$[sampleIndex]
+      pos = program.recordPos[sampleIndex]
+      curLen = storedLen
+      break
+    }
+  }
+
+  // Now compute paramsChanged and depsChanged with potentially updated stored values
+  let paramsChanged: bool = storedKey !== keyU32 || storedLen !== frames || storedSec !== sec
+  let depsChanged: bool = depsHash !== storedDepsHash
 
   if (paramsChanged) {
+    console.log('params changed')
     const oldBuf$ = program.recordBuf$[sampleIndex]
     if (oldBuf$ !== 0) {
       program.releaseRecordBuf(oldBuf$)
@@ -363,6 +370,7 @@ export function callRecord(
 
   // Always update deps hash, and if it changed, invalidate the recording
   if (depsChanged) {
+    console.log('deps changed')
     const oldBuf$ = program.recordBuf$[sampleIndex]
     if (oldBuf$ !== 0) {
       program.releaseRecordBuf(oldBuf$)
@@ -477,6 +485,7 @@ export function callRecord(
   program.recordPos[sampleIndex] = pos
 
   if (pos >= curLen) {
+    console.log(`record ${sampleIndex}`)
     hostSampleSet(sampleIndex, sampleRate, curLen, buf$)
     program.releaseRecordBuf(buf$)
     program.recordBuf$[sampleIndex] = 0

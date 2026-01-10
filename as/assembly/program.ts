@@ -33,6 +33,7 @@ import {
 import { ExpanderOutsPool } from './expander-outs-pool'
 import { GateOutsPool } from './gate-outs-pool'
 import { GensPool } from './gens-pool'
+import { recordContentHash } from './lib/record-hash'
 import { Smoothed } from './lib/smoothed'
 import { LimiterOutsPool } from './limiter-outs-pool'
 import { OutsPool } from './outs-pool'
@@ -87,6 +88,15 @@ export class Program {
   recordPos: StaticArray<i32> = new StaticArray<i32>(1024)
   recordBuf$: StaticArray<usize> = new StaticArray<usize>(1024)
   recordDepsHash: StaticArray<u32> = new StaticArray<u32>(1024)
+
+  // Content-hash lookup for matching recordings across program swaps (when indices differ)
+  // Maps content hash -> recording state (key, seconds, len, depsHash)
+  recordContentHashLookup: StaticArray<u32> = new StaticArray<u32>(1024) // content hashes
+  recordContentHashKey: StaticArray<u32> = new StaticArray<u32>(1024) // corresponding keys
+  recordContentHashSeconds: StaticArray<f32> = new StaticArray<f32>(1024) // corresponding seconds
+  recordContentHashLen: StaticArray<i32> = new StaticArray<i32>(1024) // corresponding lens
+  recordContentHashDepsHash: StaticArray<u32> = new StaticArray<u32>(1024) // corresponding deps hashes
+  recordContentHashCount: i32 = 0 // number of entries in lookup
 
   // Preallocated buffers for record() - 16 buffers of 1 second each (192000 frames max)
   private recordBufPool: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(16)
@@ -159,6 +169,7 @@ export class Program {
     this.gensPool.reset()
     this.recordGensPool.reset()
     this.recordLockSample = -1
+    this.recordContentHashCount = 0
   }
 
   // Get a preallocated buffer from the pool, returns 0 if all buffers are in use
@@ -327,20 +338,43 @@ export class Program {
 
     this.gensPool.copyFrom(source.gensPool)
 
-    // Keep record() state stable across crossfade swaps so it doesn't re-trigger unless the callback changes.
-    //
-    // NOTE: This is commented because it's faulty - it creates stale recordings and we haven't figured a way to solve it
-    //
-    // for (let i = 0; i < this.recordKey.length; i++) {
-    //   this.recordKey[i] = source.recordKey[i]
-    //   this.recordSeconds[i] = source.recordSeconds[i]
-    //   this.recordLen[i] = source.recordLen[i]
-    //   this.recordPos[i] = 0
-    //   this.recordBuf$[i] = 0
-    // }
+    // Match recordings by content hash (key + seconds + depsHash) instead of index,
+    // so recordings are preserved across swaps even when indices change.
 
-    for (let i = 0; i < this.recordDepsHash.length; i++) {
-      this.recordDepsHash[i] = source.recordDepsHash[i]
+    // Clear all destination recording state first
+    for (let i = 0; i < this.recordKey.length; i++) {
+      this.recordKey[i] = 0
+      this.recordSeconds[i] = 0.0
+      this.recordLen[i] = 0
+      this.recordDepsHash[i] = 0
+      this.recordBuf$[i] = 0
+      this.recordPos[i] = 0
+    }
+
+    // Build content-hash lookup table from completed source recordings
+    // callRecord will use this to match recordings by content instead of index
+    this.recordContentHashCount = 0
+    for (let srcIdx = 0; srcIdx < source.recordKey.length; srcIdx++) {
+      const sourceBuf$ = source.recordBuf$[srcIdx]
+      const sourcePos = source.recordPos[srcIdx]
+      // Only store completed recordings (no active buffer/position)
+      if (sourceBuf$ !== 0 || sourcePos !== 0) continue
+      const sourceKey = source.recordKey[srcIdx]
+      const sourceSec = source.recordSeconds[srcIdx]
+      const sourceDepsHash = source.recordDepsHash[srcIdx]
+      // Skip empty slots
+      if (sourceKey === 0 && sourceSec === 0.0 && sourceDepsHash === 0) continue
+
+      const count = this.recordContentHashCount
+      if (count >= this.recordContentHashLookup.length) break
+
+      const sourceHash = recordContentHash(sourceKey, sourceSec, sourceDepsHash)
+      this.recordContentHashLookup[count] = sourceHash
+      this.recordContentHashKey[count] = sourceKey
+      this.recordContentHashSeconds[count] = sourceSec
+      this.recordContentHashLen[count] = source.recordLen[srcIdx]
+      this.recordContentHashDepsHash[count] = sourceDepsHash
+      this.recordContentHashCount = count + 1
     }
 
     this.recordActive = source.recordActive

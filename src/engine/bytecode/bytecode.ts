@@ -1648,19 +1648,26 @@ export function encodeLangToVmOps(
 
     if (errors.length) return { errors: errors.map(mapError), visualizerVertex, visualizerFragment }
 
+    // Create shared sampleKeyToIndex map for both prelude and user code
+    const sharedSampleKeyToIndex = new Map<string, number>(persistentSampleKeyToIndex)
+
     // Extract all early data in a single AST traversal
-    const earlyData = extractEarlyDataFromProgram(src, userParsed.program, errors)
+    const earlyData = extractEarlyDataFromProgram(src, userParsed.program, errors, sharedSampleKeyToIndex)
     if (errors.length) return { errors: errors.map(mapError) }
 
     // Also extract sequences and samples from prelude (for default argument mini() and record() calls)
+    // Use the same sampleKeyToIndex map so prelude and user record calls don't collide
     const preludeSequences: string[] = []
     const preludeMiniRefs: MiniSequenceRef[] = []
     const preludeMiniPlayBars: Array<number | undefined> = []
+    const preludeTramSequences: string[] = []
+    const preludeTramRefs: TramSequenceRef[] = []
     const preludeSamples: SampleDef[] = []
     const preludeBpmResult = { bpm: undefined as number | undefined }
     const preludeVisitors = [
       createMiniSequencesVisitor('', preludeSequences, preludeMiniRefs, preludeMiniPlayBars),
-      createSamplesVisitor('', preludeSamples, errors),
+      createTramSequencesVisitor('', preludeTramSequences, preludeTramRefs),
+      createSamplesVisitor('', preludeSamples, errors, sharedSampleKeyToIndex),
       createBpmVisitor('', errors, preludeBpmResult),
     ]
     walkAst(preludeKernel.program, preludeVisitors)
@@ -1672,8 +1679,8 @@ export function encodeLangToVmOps(
       sequences: userSequences,
       miniRefs: allMiniRefs,
       miniPlayBars: allMiniPlayBars,
-      tramSequences,
-      tramRefs,
+      tramSequences: userTramSequences,
+      tramRefs: userTramRefs,
       timelineSequences: allTimelineSequences,
       timelineRefs: allTimelineRefs,
       timelineLabels: allTimelineLabels,
@@ -1690,8 +1697,18 @@ export function encodeLangToVmOps(
     const sequences = [...preludeSequences, ...userSequences]
     const samples = [...preludeSamples, ...allSamples]
 
-    const miniRefs = allMiniRefs
-    const miniPlayBars = allMiniPlayBars
+    // Combine prelude tram sequences with user tram sequences (prelude first so indices are stable)
+    const tramSequences = [...preludeTramSequences, ...userTramSequences]
+    const preludeTramSeqCount = preludeTramSequences.length
+    const tramRefs = [
+      ...preludeTramRefs,
+      ...userTramRefs.map(ref => ({ ...ref, seqIndex: ref.seqIndex + preludeTramSeqCount })),
+    ]
+
+    // Offset user mini refs by prelude sequence count so they point to correct indices in combined array
+    const preludeSeqCount = preludeSequences.length
+    const miniRefs = allMiniRefs.map(ref => ({ ...ref, seqIndex: ref.seqIndex + preludeSeqCount }))
+    const miniPlayBars = [...new Array(preludeSeqCount).fill(undefined), ...allMiniPlayBars]
     const timelineSequences = allTimelineSequences
     const timelineRefs = allTimelineRefs
     const timelineLabels = allTimelineLabels
@@ -1728,11 +1745,9 @@ export function encodeLangToVmOps(
     const timelineKeyToIndex = new Map<string, number>()
     timelineSequences.forEach((s, idx) => timelineKeyToIndex.set(s.sequence, idx))
     const miniCount = sequences.length + tramSequences.length
-    const sampleKeyToIndex = new Map<string, number>()
-    for (const s of samples) {
-      if (s.provider === 'freesound') sampleKeyToIndex.set(`freesound:${s.id}`, s.sampleIndex)
-      else if (s.provider === 'record') sampleKeyToIndex.set(s.key, s.sampleIndex)
-    }
+    // Use the shared sampleKeyToIndex map that was populated during extraction
+    // This ensures prelude and user record calls use the same mapping
+    const sampleKeyToIndex = sharedSampleKeyToIndex
 
     const allocAnalyserIndex = createIndexAllocator({
       start: 0,
