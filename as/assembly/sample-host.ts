@@ -20,4 +20,12 @@ export declare function hostSampleSet(sampleIndex: i32, sampleRate: f32, length:
 @external("host", "sampleSlices")
 export declare function hostSampleSlices(sampleIndex: i32, threshold: f32, out$: usize, max: i32): i32
 
+// @ts-ignore
+@external("host", "recordCacheLoad")
+export declare function hostRecordCacheLoad(hash: u32, sampleIndex: i32): i32
+
+// @ts-ignore
+@external("host", "recordCacheStore")
+export declare function hostRecordCacheStore(hash: u32, sampleIndex: i32): void
+
 

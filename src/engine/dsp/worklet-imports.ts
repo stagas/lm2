@@ -13,6 +13,13 @@ function clamp(v: number, lo: number, hi: number) {
 }
 
 export function workletImports(memory: WebAssembly.Memory, samples: Map<number, Sample>) {
+  // Cache of record() results keyed by the final content hash (u32 from Wasm).
+  // Stored on the shared `samples` map so it survives across wasm re-instantiations / import re-creation.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recordCache: Map<number, Sample> = ((samples as any).__recordCache as Map<number, Sample>) ?? new Map()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(samples as any).__recordCache = recordCache
+
   return {
     host: {
       sampleVersion: (sampleIndex: number) => {
@@ -57,6 +64,26 @@ export function workletImports(memory: WebAssembly.Memory, samples: Map<number, 
         const prev = samples.get(idx)
         const ver = ((prev?.ver ?? 0) + 1) | 0
         samples.set(idx, { ver, sampleRate, len: copy.length | 0, ch0: copy })
+      },
+      recordCacheLoad: (hash: number, sampleIndex: number) => {
+        const h = hash >>> 0
+        const idx = sampleIndex | 0
+        const s = recordCache.get(h)
+        if (!s) return 0
+
+        // Rebind cached sample to the requested index.
+        const prev = samples.get(idx)
+        const ver = ((prev?.ver ?? 0) + 1) | 0
+        samples.set(idx, { ver, sampleRate: s.sampleRate | 0, len: s.len | 0, ch0: s.ch0 })
+        return s.len | 0
+      },
+      recordCacheStore: (hash: number, sampleIndex: number) => {
+        const h = hash >>> 0
+        const idx = sampleIndex | 0
+        const s = samples.get(idx)
+        if (!s || !s.ch0 || (s.len | 0) <= 0) return
+        // Store by hash; keep the Float32Array as-is to avoid extra copies.
+        recordCache.set(h, s)
       },
       sampleSlices: (sampleIndex: number, threshold: number, outPtr: number, max: number) => {
         const s = samples.get(sampleIndex | 0)

@@ -28,6 +28,7 @@ type UseSampleWidgetParams = {
   dspSource: string
   showWidgets: boolean
   playbackState: 'stopped' | 'running' | 'paused'
+  isLive: boolean
 }
 
 type NeedleState = {
@@ -222,6 +223,7 @@ export function useSampleWidget({
   dspSource,
   showWidgets,
   playbackState,
+  isLive,
 }: UseSampleWidgetParams): { widgets: EditorWidget[]; onBeforeDraw: () => void } {
   const lastWritePosRef = useRef<number>(0)
   const needleRef = useRef<Map<number, NeedleState>>(new Map())
@@ -250,7 +252,12 @@ export function useSampleWidget({
       offline: recordOfflineRef.current,
     })
 
-    // Handle needle tracking only when running
+    // Handle needle tracking only when live
+    if (!isLive) {
+      needleRef.current.clear()
+      return
+    }
+
     const history = program1?.program.sampleNeedleHistory
     if (!history) return
 
@@ -357,7 +364,7 @@ export function useSampleWidget({
       const a = 1 - Math.exp(-deltaTime / tau)
       st.posFrames = st.posFrames + diff * a
     }
-  }, [showWidgets, program1, audioContext, globalSampleCount, playbackState, sampleDefs])
+  }, [showWidgets, program1, audioContext, globalSampleCount, playbackState, sampleDefs, isLive])
 
   const draw = useCallback((
     c: CanvasRenderingContext2D,

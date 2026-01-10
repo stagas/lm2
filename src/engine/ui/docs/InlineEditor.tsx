@@ -592,6 +592,7 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     playbackState,
+    isLive: isPlaying,
   })
 
   const { widgets: envelopeWidgets, onBeforeDraw: onBeforeDrawEnvelope } = useEnvelopeWidget({

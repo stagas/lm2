@@ -1,7 +1,7 @@
 // dprint-ignore-file
 import { recordContentHash } from '../../lib/record-hash'
 import { Program } from '../../program'
-import { hostSampleLen, hostSampleSet } from '../../sample-host'
+import { hostRecordCacheLoad, hostRecordCacheStore, hostSampleLen, hostSampleSet } from '../../sample-host'
 import { Dsp } from '../dsp'
 import { VM_FUNC_HEADER, VmOp, VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
@@ -352,6 +352,22 @@ export function callRecord(
   let paramsChanged: bool = storedKey !== keyU32 || storedLen !== frames || storedSec !== sec
   let depsChanged: bool = depsHash !== storedDepsHash
 
+  // Try to satisfy from the host cache when this index is missing or wrong.
+  // This allows instant reuse across program swaps even when indices differ, and also overwrites
+  // stale samples that happen to sit at the same index.
+  if (!recording && (existingLen <= 0 || paramsChanged || depsChanged)) {
+    const loadedLen: i32 = hostRecordCacheLoad(currentHash, sampleIndex)
+    if (loadedLen > 0) {
+      // Seed local state so subsequent blocks treat it as stable.
+      program.recordKey[sampleIndex] = keyU32
+      program.recordSeconds[sampleIndex] = sec
+      program.recordLen[sampleIndex] = frames
+      program.recordDepsHash[sampleIndex] = depsHash
+      stack.push(VmTag.Num, f64(sampleIndex))
+      return
+    }
+  }
+
   if (paramsChanged) {
     console.log('params changed')
     const oldBuf$ = program.recordBuf$[sampleIndex]
@@ -487,6 +503,7 @@ export function callRecord(
   if (pos >= curLen) {
     console.log(`record ${sampleIndex}`)
     hostSampleSet(sampleIndex, sampleRate, curLen, buf$)
+    hostRecordCacheStore(currentHash, sampleIndex)
     program.releaseRecordBuf(buf$)
     program.recordBuf$[sampleIndex] = 0
     program.recordPos[sampleIndex] = 0

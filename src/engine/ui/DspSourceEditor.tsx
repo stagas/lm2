@@ -898,6 +898,7 @@ function DspSourceEditorReady(
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     playbackState,
+    isLive,
   })
 
   const { widgets: envelopeWidgets, onBeforeDraw: onBeforeDrawEnvelope } = useEnvelopeWidget({
