@@ -153,9 +153,14 @@ export function invalidateRecordings(program$: usize): void {
   if (program$ === 0) return
   const program = changetype<Program>(program$)
   for (let i = 0; i < program.recordKey.length; i++) {
+    const buf$ = program.recordBuf$[i]
+    if (buf$ !== 0) {
+      program.releaseRecordBuf(buf$)
+    }
     program.recordKey[i] = 0
     program.recordBuf$[i] = 0
     program.recordPos[i] = 0
+    program.recordDepsHash[i] = 0
   }
 }
 

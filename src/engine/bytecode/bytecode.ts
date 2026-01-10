@@ -336,7 +336,7 @@ function stripMiniColorArg(args: any[]): any[] {
 
 function transformExpr(context: AstTransformContext, expr: any): any {
   if (!expr) return expr
-  if (expr.loc?.kernel) return expr
+  // Don't skip kernel code - we need to transform default arguments in prelude functions
 
   if (expr.kind === 'ident') {
     const om = expr.name.match(/^o(\d+)$/)
@@ -961,7 +961,7 @@ function transformExpr(context: AstTransformContext, expr: any): any {
 
 function transformStmt(context: AstTransformContext, stmt: any): any {
   if (!stmt) return stmt
-  if (stmt.loc?.kernel) return stmt
+  // Don't skip kernel code - we need to transform default arguments in prelude functions
   if (stmt.kind === 'expr_stmt') {
     if (context.isVisualizerAssign(stmt)) return null
     const isBpmStmt = !!(
@@ -1652,11 +1652,24 @@ export function encodeLangToVmOps(
     const earlyData = extractEarlyDataFromProgram(src, userParsed.program, errors)
     if (errors.length) return { errors: errors.map(mapError) }
 
+    // Also extract sequences and samples from prelude (for default argument mini() and record() calls)
+    const preludeSequences: string[] = []
+    const preludeMiniRefs: MiniSequenceRef[] = []
+    const preludeMiniPlayBars: Array<number | undefined> = []
+    const preludeSamples: SampleDef[] = []
+    const preludeBpmResult = { bpm: undefined as number | undefined }
+    const preludeVisitors = [
+      createMiniSequencesVisitor('', preludeSequences, preludeMiniRefs, preludeMiniPlayBars),
+      createSamplesVisitor('', preludeSamples, errors),
+      createBpmVisitor('', errors, preludeBpmResult),
+    ]
+    walkAst(preludeKernel.program, preludeVisitors)
+
     const {
       bpm,
       bars,
       scale,
-      sequences,
+      sequences: userSequences,
       miniRefs: allMiniRefs,
       miniPlayBars: allMiniPlayBars,
       tramSequences,
@@ -1670,12 +1683,18 @@ export function encodeLangToVmOps(
       numberLiterals: allNumberLiterals,
     } = earlyData
 
+    // Use prelude BPM as default, but allow user source to override
+    const finalBpm = bpm ?? preludeBpmResult.bpm
+
+    // Combine prelude sequences/samples with user sequences/samples (prelude first so indices are stable)
+    const sequences = [...preludeSequences, ...userSequences]
+    const samples = [...preludeSamples, ...allSamples]
+
     const miniRefs = allMiniRefs
     const miniPlayBars = allMiniPlayBars
     const timelineSequences = allTimelineSequences
     const timelineRefs = allTimelineRefs
     const timelineLabels = allTimelineLabels
-    const samples = allSamples
     const explicitNumberParams = allExplicitNumberParams
     const numberLiterals = allNumberLiterals
 
@@ -1763,9 +1782,15 @@ export function encodeLangToVmOps(
     }
 
     transformedBodyScratch.length = 0
-    for (const s of preludeKernel.program?.body ?? []) transformedBodyScratch.push(s)
+    for (const s of preludeKernel.program?.body ?? []) {
+      const t = transformStmt(transformContext, s)
+      if (t) transformedBodyScratch.push(t)
+    }
     for (const s of transformedUserBodyScratch) transformedBodyScratch.push(s)
-    for (const s of postludeKernel.program?.body ?? []) transformedBodyScratch.push(s)
+    for (const s of postludeKernel.program?.body ?? []) {
+      const t = transformStmt(transformContext, s)
+      if (t) transformedBodyScratch.push(t)
+    }
 
     const transformedProgram: Program = {
       kind: 'program',
@@ -1985,7 +2010,7 @@ export function encodeLangToVmOps(
         errors: [],
         visualizerVertex,
         visualizerFragment,
-        bpm,
+        bpm: finalBpm,
         bars,
         scale,
         miniSequences: sequences,

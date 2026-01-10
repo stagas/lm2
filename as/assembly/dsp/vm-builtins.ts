@@ -857,7 +857,7 @@ export class VmBuiltins {
       const ops = program.data.ops
       const maxPos = 16
 
-      if (calleeAux >= 0 && calleeAux < ops.length && ops[calleeAux] === VM_FUNC_HEADER && namedCount > 0) {
+      if (calleeAux >= 0 && calleeAux < ops.length && ops[calleeAux] === VM_FUNC_HEADER) {
         const tmpTags = this.callTmpTags
         const tmpNums = this.callTmpNums
         const tmpAux = this.callTmpAux
@@ -883,21 +883,23 @@ export class VmBuiltins {
           posAux[i] = 0
         }
 
-        for (let i: i32 = 0; i < namedCount; i++) {
-          const sym: i32 = nameSyms[i]
-          let idx: i32 = -1
-          for (let j: i32 = 0; j < n; j++) {
-            if (paramSyms[j] === sym) {
-              idx = j
-              break
+        if (namedCount > 0) {
+          for (let i: i32 = 0; i < namedCount; i++) {
+            const sym: i32 = nameSyms[i]
+            let idx: i32 = -1
+            for (let j: i32 = 0; j < n; j++) {
+              if (paramSyms[j] === sym) {
+                idx = j
+                break
+              }
             }
-          }
-          if (idx >= 0) {
-            posTags[idx] = nameTags[i]
-            posNums[idx] = nameNums[i]
-            posAux[idx] = nameAux[i]
-            reserved[idx] = 1
-            has[idx] = 1
+            if (idx >= 0) {
+              posTags[idx] = nameTags[i]
+              posNums[idx] = nameNums[i]
+              posAux[idx] = nameAux[i]
+              reserved[idx] = 1
+              has[idx] = 1
+            }
           }
         }
 
@@ -916,7 +918,7 @@ export class VmBuiltins {
         for (let i: i32 = 0; i < n; i++) {
           if (has[i] !== 0) maxIdx = i
         }
-        posCount = maxIdx + 1
+        posCount = maxIdx >= 0 ? maxIdx + 1 : n
       }
 
       if (this.tryAutoLiftFunc(calleeAux, posCount, posTags, posNums, posAux, stack, audio, program, length, left$,

@@ -43,12 +43,21 @@ export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string
   const samples = new Map<number, Sample>()
   let currentSampleRate = 48000
 
-  const core = await wasmSetup<typeof WasmExports>({
-    binary,
-    sourcemapUrl,
-    config,
-    imports: ({ memory }) => workletImports(memory, samples),
-  })
+  let core: Awaited<ReturnType<typeof wasmSetup<typeof WasmExports>>>
+
+  try {
+    core = await wasmSetup<typeof WasmExports>({
+      binary,
+      sourcemapUrl,
+      config,
+      imports: ({ memory }) => workletImports(memory, samples),
+    })
+  }
+  catch (error) {
+    console.error(error)
+    location.reload()
+    throw error
+  }
 
   const wasm = core.wasm
   const memory = core.memory

@@ -897,7 +897,18 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     const binary = await fetchWasmBinary()
     const visualBinary = binary.slice(0)
     const sourcemapUrl = new URL('/as/build/index.wasm.map', location.origin).toString()
-    const { memory, dsp$ } = await runtime.worklet.setWasmBinary(binary)
+    async function setWasmBinaryWithReloadIfFailure() {
+      if (!runtime.worklet) throw new Error('Worklet not initialized')
+      try {
+        return await runtime.worklet.setWasmBinary(binary)
+      }
+      catch (error) {
+        console.error('Failed to set WASM binary:', error)
+        location.reload()
+        throw error
+      }
+    }
+    const { memory, dsp$ } = await setWasmBinaryWithReloadIfFailure()
     const wasmMemory = memory
     const wasmDsp = DspStruct(wasmMemory.buffer, dsp$)
     const wasmDspPtr = dsp$
@@ -1420,13 +1431,20 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       // If another play request superseded this one (e.g. intro boot vs user click),
       // don't "claim" the loop or start the transport from this stale invocation.
       if (playToken !== playLoopToken) return
+
+      // Set view sample count to ensure it's synchronized
+      ui.setViewSampleCount(loopId, startSample)
       useEngineRuntimeStore.getState().setPlayingLoopId(loopId)
 
-      // Start after the seek has had a chance to apply in the worklet.
-      setTimeout(() => {
-        if (playToken !== playLoopToken) return
-        useEngineRuntimeStore.getState().start()
-      }, 2.5)
+      // setSampleCount already waited for the seek to complete (checks globalSampleCount).
+      // Start playback directly - don't call start() which would do another seek when stopped.
+      const current = useEngineRuntimeStore.getState()
+      if (current.control) {
+        await current.audioContext?.resume()
+        await new Promise<void>(resolve => setTimeout(resolve))
+        Atomics.store(current.control, 0, ControlOp.Start)
+        useEngineRuntimeStore.setState({ playbackState: 'running' })
+      }
     },
 
     setUiCompilePreview: next => {

@@ -13,7 +13,7 @@ export interface VisitorFunctions {
 
 function visitExpr(expr: any, visitors: VisitorFunctions[], ctx: VisitorContext): void {
   if (!expr) return
-  if (expr.loc?.kernel) return
+  // Don't skip kernel code - we need to extract sequences/samples from prelude
 
   // Call all visitExpr visitors
   for (const visitor of visitors) {
@@ -101,7 +101,7 @@ function visitExpr(expr: any, visitors: VisitorFunctions[], ctx: VisitorContext)
 
 function visitStmt(stmt: any, visitors: VisitorFunctions[], ctx: VisitorContext): void {
   if (!stmt) return
-  if (stmt.loc?.kernel) return
+  // Don't skip kernel code - we need to extract sequences/samples from prelude
 
   // Call all visitStmt visitors
   for (const visitor of visitors) {

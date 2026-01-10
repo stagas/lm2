@@ -2,7 +2,7 @@
 import { Program } from '../../program'
 import { hostSampleLen, hostSampleSet } from '../../sample-host'
 import { Dsp } from '../dsp'
-import { VmTag } from '../types'
+import { VM_FUNC_HEADER, VmOp, VmTag } from '../types'
 import { VmAudio } from '../vm-audio'
 import { VmStack } from '../vm-stack'
 import { VmSym } from '../vm-sym'
@@ -139,7 +139,218 @@ export function callRecord(
   const recording: bool = buf$ !== 0 || pos > 0
 
   const paramsChanged: bool = storedKey !== keyU32 || storedLen !== frames || storedSec !== sec
+
+  // Compute dependency hash: scan callback bytecode for Load operations and hash captured variables
+  // Do this early so we can check if dependencies changed
+  // We need to recursively scan nested function bodies (e.g. callbacks inside oversample)
+  let depsHash: u32 = 0x811c9dc5 // FNV-1a offset basis
+  const ops = program.data.ops
+  const seenSyms = program.recordSeenSyms
+  let seenSymsCount: i32 = 0
+  const seenFuncs = program.recordSeenFuncs
+  let seenFuncsCount: i32 = 0
+  const funcStack = program.recordFuncStack
+  let funcStackTop: i32 = 0
+
+  // Start with the main callback
+  if (cbAux >= 0 && cbAux < ops.length && ops[cbAux] === VM_FUNC_HEADER) {
+    funcStack[funcStackTop++] = cbAux
+  }
+
+  while (funcStackTop > 0) {
+    const funcPc: i32 = funcStack[--funcStackTop]
+
+    // Mark this function as seen
+    let funcSeen: bool = false
+    for (let i = 0; i < seenFuncsCount; i++) {
+      if (seenFuncs[i] === funcPc) {
+        funcSeen = true
+        break
+      }
+    }
+    if (funcSeen) continue
+    if (seenFuncsCount < seenFuncs.length) {
+      seenFuncs[seenFuncsCount++] = funcPc
+    }
+
+    if (funcPc < 0 || funcPc >= ops.length || ops[funcPc] !== VM_FUNC_HEADER) continue
+
+    // Hash this function's bytecode
+    const paramCount: i32 = ops[funcPc + 1]
+    depsHash = depsHash ^ u32(paramCount)
+    depsHash = depsHash * 16777619
+    for (let p = 0; p < paramCount; p++) {
+      if (funcPc + 2 + p < ops.length) {
+        depsHash = depsHash ^ u32(ops[funcPc + 2 + p])
+        depsHash = depsHash * 16777619
+      }
+    }
+
+    let pc: i32 = funcPc + 2 + paramCount
+
+    while (pc >= 0 && pc < ops.length) {
+      const op = ops[pc++] as VmOp
+      if (op === VmOp.Load) {
+        // Hash the Load opcode
+        depsHash = depsHash ^ u32(op)
+        depsHash = depsHash * 16777619
+        const sym: i32 = ops[pc++]
+        // Hash the symbol
+        depsHash = depsHash ^ u32(sym)
+        depsHash = depsHash * 16777619
+        let symSeen: bool = false
+        for (let i = 0; i < seenSymsCount; i++) {
+          if (seenSyms[i] === sym) {
+            symSeen = true
+            break
+          }
+        }
+        if (!symSeen) {
+          if (seenSymsCount < seenSyms.length) {
+            seenSyms[seenSymsCount++] = sym
+          }
+          const envIdx: i32 = dsp.vmEnvFind(sym)
+          if (envIdx >= 0) {
+            const tag: VmTag = dsp.vmEnvTagAt(envIdx)
+            const num: f64 = dsp.vmEnvNumAt(envIdx)
+            const aux: i32 = dsp.vmEnvAuxAt(envIdx)
+            // Hash: combine symbol, tag, and value using FNV-1a
+            depsHash = depsHash ^ u32(sym)
+            depsHash = depsHash * 16777619
+            depsHash = depsHash ^ u32(tag)
+            depsHash = depsHash * 16777619
+            if (tag === VmTag.Num || tag === VmTag.Bool) {
+              // Hash float bits directly to detect any change in value
+              const numBits = reinterpret<u64>(num)
+              depsHash = depsHash ^ u32(numBits)
+              depsHash = depsHash * 16777619
+              depsHash = depsHash ^ u32(numBits >> 32)
+              depsHash = depsHash * 16777619
+            }
+            else if (tag === VmTag.Audio) {
+              depsHash = depsHash ^ u32(aux)
+              depsHash = depsHash * 16777619
+            }
+            else if (tag === VmTag.Func) {
+              // Hash the function PC for consistency with VmOp.Func handling
+              const funcPc: i32 = aux
+              depsHash = depsHash ^ u32(funcPc)
+              depsHash = depsHash * 16777619
+              // Add function to scan stack - bytecode will be hashed when scanned
+              if (funcPc >= 0 && funcPc < ops.length && ops[funcPc] === VM_FUNC_HEADER) {
+                if (funcStackTop < funcStack.length) {
+                  funcStack[funcStackTop++] = funcPc
+                }
+              }
+            }
+          }
+          else {
+            // Symbol not found in environment - hash it to detect when it appears
+            depsHash = depsHash ^ u32(sym)
+            depsHash = depsHash * 16777619
+            depsHash = depsHash ^ 0xffffffff
+            depsHash = depsHash * 16777619
+          }
+        }
+        continue
+      }
+      // Hash all opcodes we encounter
+      depsHash = depsHash ^ u32(op)
+      depsHash = depsHash * 16777619
+      if (op === VmOp.Store) {
+        const storeSym: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(storeSym)
+        depsHash = depsHash * 16777619
+        continue
+      }
+      if (op === VmOp.PushNum || op === VmOp.PushNumSmoothed) {
+        const litIdx: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(litIdx)
+        depsHash = depsHash * 16777619
+        // Hash the actual literal value
+        if (litIdx >= 0 && litIdx < program.data.literals.length) {
+          const litVal: f64 = program.data.literals[litIdx]
+          const litBits = reinterpret<u64>(litVal)
+          depsHash = depsHash ^ u32(litBits)
+          depsHash = depsHash * 16777619
+          depsHash = depsHash ^ u32(litBits >> 32)
+          depsHash = depsHash * 16777619
+        }
+        continue
+      }
+      if (op === VmOp.PushBool) {
+        const boolVal: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(boolVal)
+        depsHash = depsHash * 16777619
+        continue
+      }
+      if (op === VmOp.PushSym) {
+        const pushSym: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(pushSym)
+        depsHash = depsHash * 16777619
+        continue
+      }
+      if (op === VmOp.Unary || op === VmOp.Binary) {
+        const opCode: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(opCode)
+        depsHash = depsHash * 16777619
+        continue
+      }
+      if (op === VmOp.Call) {
+        const callPos: i32 = ops[pc++]
+        const callNamed: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(callPos)
+        depsHash = depsHash * 16777619
+        depsHash = depsHash ^ u32(callNamed)
+        depsHash = depsHash * 16777619
+        continue
+      }
+      if (op === VmOp.Jump || op === VmOp.JumpIfFalse) {
+        const jumpTarget: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(jumpTarget)
+        depsHash = depsHash * 16777619
+        continue
+      }
+      if (op === VmOp.Func) {
+        // Hash the Func opcode
+        depsHash = depsHash ^ u32(op)
+        depsHash = depsHash * 16777619
+        // This is a nested function reference - add it to the stack to scan
+        // Bytecode will be hashed when the function is popped from the stack
+        const nestedFuncPc: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(nestedFuncPc)
+        depsHash = depsHash * 16777619
+        if (nestedFuncPc >= 0 && nestedFuncPc < ops.length && ops[nestedFuncPc] === VM_FUNC_HEADER) {
+          if (funcStackTop < funcStack.length) {
+            funcStack[funcStackTop++] = nestedFuncPc
+          }
+        }
+        continue
+      }
+      if (op === VmOp.Array) {
+        depsHash = depsHash ^ u32(op)
+        depsHash = depsHash * 16777619
+        const arrayLen: i32 = ops[pc++]
+        depsHash = depsHash ^ u32(arrayLen)
+        depsHash = depsHash * 16777619
+        continue
+      }
+      if (op === VmOp.Return || op === VmOp.Throw || op === VmOp.End) {
+        depsHash = depsHash ^ u32(op)
+        depsHash = depsHash * 16777619
+        break
+      }
+    }
+  }
+
+  const storedDepsHash: u32 = program.recordDepsHash[sampleIndex]
+  const depsChanged: bool = depsHash !== storedDepsHash
+
   if (paramsChanged) {
+    const oldBuf$ = program.recordBuf$[sampleIndex]
+    if (oldBuf$ !== 0) {
+      program.releaseRecordBuf(oldBuf$)
+    }
     program.recordKey[sampleIndex] = keyU32
     program.recordSeconds[sampleIndex] = sec
     program.recordLen[sampleIndex] = frames
@@ -150,18 +361,39 @@ export function callRecord(
     curLen = frames
   }
 
+  // Always update deps hash, and if it changed, invalidate the recording
+  if (depsChanged) {
+    const oldBuf$ = program.recordBuf$[sampleIndex]
+    if (oldBuf$ !== 0) {
+      program.releaseRecordBuf(oldBuf$)
+    }
+    program.recordDepsHash[sampleIndex] = depsHash
+    // Force re-recording by clearing buffer and position
+    program.recordPos[sampleIndex] = 0
+    program.recordBuf$[sampleIndex] = 0
+    buf$ = 0
+    pos = 0
+    curLen = frames
+    program.recordLen[sampleIndex] = frames
+  }
+  else {
+    // Even if deps didn't change, update the stored hash (handles initialization case)
+    program.recordDepsHash[sampleIndex] = depsHash
+  }
+
   if (frames <= 0) {
     stack.push(VmTag.Num, f64(sampleIndex))
     return
   }
-  // If we already have a published sample, params didn't change, and we're not mid-recording, keep it.
-  if (existingLen > 0 && !paramsChanged && !recording) {
+  // If we already have a published sample, params and deps didn't change, and we're not mid-recording, keep it.
+  // IMPORTANT: If depsChanged is true, we must re-record even if existingLen > 0
+  if (existingLen > 0 && !paramsChanged && !depsChanged && !recording) {
     stack.push(VmTag.Num, f64(sampleIndex))
     return
   }
 
   if (buf$ === 0) {
-    buf$ = changetype<usize>(new StaticArray<f32>(frames))
+    buf$ = program.getRecordBuf()
     program.recordBuf$[sampleIndex] = buf$
     pos = 0
     program.recordPos[sampleIndex] = 0
@@ -193,7 +425,7 @@ export function callRecord(
   const savedTOutIndex: i32 = audio.tOutIndex
   const savedPool = program.gensPool
 
-  if (paramsChanged || pos === 0) {
+  if (paramsChanged || depsChanged || pos === 0) {
     program.recordGensPool.reset()
   }
   else {
@@ -246,6 +478,7 @@ export function callRecord(
 
   if (pos >= curLen) {
     hostSampleSet(sampleIndex, sampleRate, curLen, buf$)
+    program.releaseRecordBuf(buf$)
     program.recordBuf$[sampleIndex] = 0
     program.recordPos[sampleIndex] = 0
     program.recordLockSample = -1

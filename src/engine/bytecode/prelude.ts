@@ -362,6 +362,38 @@ cs80=(
   s
 }
 
+bd=(
+  trig=every(1/4),
+  base=c2,
+  punch=25000k,
+  offset=0.0006,
+  cutoff=5k,
+  q=.25,
+  amp=trig->ad(.0001,.5,40,trig),
+  fm=trig->ad(.00008,.013,900,trig),
+  filter=trig->ad(.000147,.25,50.000,trig),
+)->{
+  kicksample=record(.3,()->{
+    trig=1 sine(base+punch*fm(trig),offset,trig)*amp(trig) |> slp($,base+cutoff*filter(trig),q) |> limiter($)
+  })
+  sampler(trig,sample:kicksample)
+}
+
+hh=(width=.4,seq=mini('[.15 .2 1 .2]*4'))->{
+
+  hhsample=record(.3,()->{
+
+    trig=step(1-inc(2.5),.5) env=adsr(.06,.05 ,.950 ,.1 ,32,trig)
+    oversample(32,()->[205.3,369.6,304.4,522.7,800,540].map(x->pwm(x,width)).avg()*env
+    |> bp($,8000,.85)|>bp($,10k,.85)|>hp($,11k,.85)) |> tanh($*6)
+  })
+
+  play(seq,(trig,v)->{
+
+    slicer(trig,sample:hhsample)*(v>.65?v:v*2)*(v>.65?ad(0.0001,.0173+.5*v,trig):ad(0.0001,.01+.15*v,4,trig))
+  })
+}
+
 // Generate metronome sound with major/minor chord progression
 metronome=()->{
   trig=every(1/4)

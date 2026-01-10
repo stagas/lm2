@@ -86,6 +86,16 @@ export class Program {
   recordLen: StaticArray<i32> = new StaticArray<i32>(1024)
   recordPos: StaticArray<i32> = new StaticArray<i32>(1024)
   recordBuf$: StaticArray<usize> = new StaticArray<usize>(1024)
+  recordDepsHash: StaticArray<u32> = new StaticArray<u32>(1024)
+
+  // Preallocated buffers for record() - 16 buffers of 1 second each (192000 frames max)
+  private recordBufPool: StaticArray<StaticArray<f32>> = new StaticArray<StaticArray<f32>>(16)
+  private recordBufPoolUsed: StaticArray<bool> = new StaticArray<bool>(16)
+
+  // Reusable arrays for record() dependency tracking
+  recordSeenSyms: StaticArray<i32> = new StaticArray<i32>(1024)
+  recordSeenFuncs: StaticArray<i32> = new StaticArray<i32>(256)
+  recordFuncStack: StaticArray<i32> = new StaticArray<i32>(128)
 
   // Set to 1 by record() when it performs work in the current audio block.
   recordActive: i32 = 0
@@ -117,6 +127,11 @@ export class Program {
     for (let i = 0; i < this.literalsSmoothed.length; i++) {
       this.literalsSmoothed[i] = new Smoothed()
     }
+    // Preallocate 16 buffers of 1 second each (192000 frames = 1 second at 192kHz)
+    for (let i = 0; i < this.recordBufPool.length; i++) {
+      this.recordBufPool[i] = new StaticArray<f32>(192000)
+      this.recordBufPoolUsed[i] = false
+    }
   }
 
   @inline
@@ -144,6 +159,27 @@ export class Program {
     this.gensPool.reset()
     this.recordGensPool.reset()
     this.recordLockSample = -1
+  }
+
+  // Get a preallocated buffer from the pool, returns 0 if all buffers are in use
+  getRecordBuf(): usize {
+    for (let i = 0; i < this.recordBufPool.length; i++) {
+      if (!this.recordBufPoolUsed[i]) {
+        this.recordBufPoolUsed[i] = true
+        return changetype<usize>(this.recordBufPool[i])
+      }
+    }
+    return 0
+  }
+
+  // Release a buffer back to the pool
+  releaseRecordBuf(buf$: usize): void {
+    for (let i = 0; i < this.recordBufPool.length; i++) {
+      if (changetype<usize>(this.recordBufPool[i]) === buf$) {
+        this.recordBufPoolUsed[i] = false
+        return
+      }
+    }
   }
 
   pushCallbackScope(bodyBufferBase: i32, remapBase: i32): void {
@@ -303,7 +339,11 @@ export class Program {
     //   this.recordBuf$[i] = 0
     // }
 
-    this.recordActive = 0
-    this.recordLockSample = -1
+    for (let i = 0; i < this.recordDepsHash.length; i++) {
+      this.recordDepsHash[i] = source.recordDepsHash[i]
+    }
+
+    this.recordActive = source.recordActive
+    this.recordLockSample = source.recordLockSample
   }
 }
