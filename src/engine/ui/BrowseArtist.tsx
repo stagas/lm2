@@ -1,5 +1,5 @@
 import { ArrowLeftIcon } from '@phosphor-icons/react'
-import { useMemo } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
@@ -30,8 +30,59 @@ export function BrowseArtist() {
   const hotLoops = useAppStore(state => state.hotLoopsCache)
   const bestLoops = useAppStore(state => state.bestLoopsCache)
   const likedLoops = useAppStore(state => state.likedLoopsCache)
+  const hasFetchedPublicLoops = useAppStore(state => state.hasFetchedPublicLoops)
+  const isPublicLoopsCacheStale = useAppStore(state => state.isPublicLoopsCacheStale)
+  const isHotLoopsCacheStale = useAppStore(state => state.isHotLoopsCacheStale)
+  const isBestLoopsCacheStale = useAppStore(state => state.isBestLoopsCacheStale)
+  const isLikedLoopsCacheStale = useAppStore(state => state.isLikedLoopsCacheStale)
+  const refreshPublicLoops = useAppStore(state => state.refreshPublicLoops)
+  const refreshHotLoops = useAppStore(state => state.refreshHotLoops)
+  const refreshBestLoops = useAppStore(state => state.refreshBestLoops)
+  const refreshLikedLoops = useAppStore(state => state.refreshLikedLoops)
 
   const routeArtistId = useMemo(() => artistIdFromPathname(pathname), [pathname])
+
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    if (!routeArtistId) return
+    const promises: Promise<void>[] = []
+
+    if (!hasFetchedPublicLoops || isPublicLoopsCacheStale) {
+      promises.push(refreshPublicLoops())
+    }
+
+    if (hotLoops.length === 0 || isHotLoopsCacheStale) {
+      promises.push(refreshHotLoops())
+    }
+
+    if (bestLoops.length === 0 || isBestLoopsCacheStale) {
+      promises.push(refreshBestLoops())
+    }
+
+    if (sessionData && sessionData.likedLoopIds.length > 0 && (likedLoops.length === 0 || isLikedLoopsCacheStale)) {
+      promises.push(refreshLikedLoops())
+    }
+
+    if (promises.length === 0) return
+    setIsLoading(true)
+    Promise.all(promises).finally(() => setIsLoading(false))
+  }, [
+    routeArtistId,
+    hasFetchedPublicLoops,
+    isPublicLoopsCacheStale,
+    hotLoops.length,
+    isHotLoopsCacheStale,
+    bestLoops.length,
+    isBestLoopsCacheStale,
+    sessionData,
+    likedLoops.length,
+    isLikedLoopsCacheStale,
+    refreshPublicLoops,
+    refreshHotLoops,
+    refreshBestLoops,
+    refreshLikedLoops,
+  ])
 
   const artistView = useMemo(() => {
     const artistId = routeArtistId ?? sessionData?.user.id ?? null
@@ -63,7 +114,7 @@ export function BrowseArtist() {
     )
   }
 
-  if (!artistView.artistId) {
+  if (!artistView.artistId || isLoading) {
     return (
       <div className="min-h-screen bg-black text-white relative">
         <RadialGradient>

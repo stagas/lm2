@@ -1,4 +1,4 @@
-import { ChatIcon, HeartIcon, PlayIcon, RepeatIcon, StopIcon, UserIcon } from '@phosphor-icons/react'
+import { ChatIcon, CodeIcon, HeartIcon, PlayIcon, RepeatIcon, StopIcon, UserIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
@@ -255,6 +255,11 @@ export function BrowseList(
           <RadialGradient>
             <SpinnerSmall />
           </RadialGradient>
+        </div>
+      )}
+      {!hasMore && loops.length > 0 && (
+        <div className="flex items-center justify-center py-8">
+          <CodeIcon size={24} className="text-neutral-600" />
         </div>
       )}
     </div>

@@ -49,27 +49,31 @@ export function BrowseLoop() {
     return match ? match[1] : null
   }, [pathname])
 
+  const publicLoopsCache = useAppStore(state => state.publicLoopsCache)
+  const hotLoopsCache = useAppStore(state => state.hotLoopsCache)
+  const bestLoopsCache = useAppStore(state => state.bestLoopsCache)
+  const likedLoopsCache = useAppStore(state => state.likedLoopsCache)
+
   const loop = useMemo(() => {
     if (!loopId) return null
-    return useAppStore.getState().publicLoopsCache.find(l => l.id === loopId)
-      ?? useAppStore.getState().hotLoopsCache.find(l => l.id === loopId)
-      ?? useAppStore.getState().bestLoopsCache.find(l => l.id === loopId)
-      ?? useAppStore.getState().likedLoopsCache.find(l => l.id === loopId)
+    return publicLoopsCache.find(l => l.id === loopId)
+      ?? hotLoopsCache.find(l => l.id === loopId)
+      ?? bestLoopsCache.find(l => l.id === loopId)
+      ?? likedLoopsCache.find(l => l.id === loopId)
       ?? null
-  }, [loopId])
+  }, [loopId, publicLoopsCache, hotLoopsCache, bestLoopsCache, likedLoopsCache])
 
   const remixOf = useMemo(() => {
     if (!loop?.remixOfId) return null
-    return useAppStore.getState().publicLoopsCache.find(l => l.id === loop.remixOfId)
-      ?? useAppStore.getState().hotLoopsCache.find(l => l.id === loop.remixOfId)
-      ?? useAppStore.getState().bestLoopsCache.find(l => l.id === loop.remixOfId)
-      ?? useAppStore.getState().likedLoopsCache.find(l => l.id === loop.remixOfId)
+    return publicLoopsCache.find(l => l.id === loop.remixOfId)
+      ?? hotLoopsCache.find(l => l.id === loop.remixOfId)
+      ?? bestLoopsCache.find(l => l.id === loop.remixOfId)
+      ?? likedLoopsCache.find(l => l.id === loop.remixOfId)
       ?? null
-  }, [loop?.remixOfId])
+  }, [loop?.remixOfId, publicLoopsCache, hotLoopsCache, bestLoopsCache, likedLoopsCache])
 
   const [code, setCode] = useState<string>('')
   const [isLoadingCode, setIsLoadingCode] = useState(true)
-  const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isCommentsLoading, setIsCommentsLoading] = useState(false)
   const [isRemixesOpen, setIsRemixesOpen] = useState(false)
   const [isRemixesLoading, setIsRemixesLoading] = useState(false)
@@ -114,12 +118,11 @@ export function BrowseLoop() {
   }, [loopId, getPublicLoopCode])
 
   useEffect(() => {
-    if (!isCommentsOpen) return
     if (cachedComments != null) return
     setIsCommentsLoading(true)
     if (!loopId) return
     void getLoopComments(loopId).finally(() => setIsCommentsLoading(false))
-  }, [isCommentsOpen, cachedComments, loopId, getLoopComments])
+  }, [cachedComments, loopId, getLoopComments])
 
   useEffect(() => {
     if (!isRemixesOpen) return
@@ -243,13 +246,13 @@ export function BrowseLoop() {
                         <HeartIcon weight={isLiked ? 'fill' : 'regular'} size={20} />
                         <span>{loop.likesCount}</span>
                       </button>
-                      <button
+                      <a
+                        href="#comments"
                         className="flex flex-row items-center gap-1 hover:text-white cursor-pointer"
-                        onClick={() => setIsCommentsOpen(!isCommentsOpen)}
                       >
                         <ChatIcon size={20} />
                         <span>{loop.commentsCount}</span>
-                      </button>
+                      </a>
                       <button
                         className="flex flex-row items-center gap-1 hover:text-white cursor-pointer"
                         onClick={() => setIsRemixesOpen(!isRemixesOpen)}
@@ -276,9 +279,8 @@ export function BrowseLoop() {
               </div>
             ) : null}
 
-            {isCommentsOpen && (
-              <div className="border-2 border-orange-600 bg-black rounded-lg p-6 mb-8">
-                <h3 className="text-xl font-semibold mb-4 text-white">Comments</h3>
+            <div id="comments" className="bg-black rounded-lg p-6 mb-8">
+              <h3 className="text-xl font-semibold mb-4 text-white">Comments</h3>
                 {isCommentsLoading && cachedComments == null ? (
                   <div className="flex items-center justify-center py-8">
                     <RadialGradient>
@@ -351,8 +353,7 @@ export function BrowseLoop() {
                     )}
                   </div>
                 )}
-              </div>
-            )}
+            </div>
 
             {isRemixesOpen && (
               <div className="border-2 border-orange-600 bg-black rounded-lg p-6">
