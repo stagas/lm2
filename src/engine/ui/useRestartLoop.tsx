@@ -11,7 +11,7 @@ export function useRestartLoop() {
     if (isLooping && loop) await seekToSampleImmediate(Atomics.load(loop, 1))
     else await seekToSampleImmediate(0)
     const runtime = useEngineRuntimeStore.getState()
-    if (runtime.playbackState !== 'running') runtime.start()
+    if (runtime.playbackState !== 'running') await runtime.start()
   }, [seekToSampleImmediate])
 
   return restartLoop

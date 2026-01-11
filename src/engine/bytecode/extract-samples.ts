@@ -27,7 +27,10 @@ function stableAstString(v: any): string {
   }) ?? ''
 }
 
-function recordKeyFromAssign(targetName: string): string {
+function recordKeyFromAssign(targetName: string, loc?: Loc): string {
+  if (loc) {
+    return `record:${targetName}:${loc.line}:${loc.column}`
+  }
   return `record:${targetName}`
 }
 
@@ -131,7 +134,7 @@ export function createSamplesVisitor(
         && expr.value.callee.name === 'record'
       ) {
         const call = expr.value
-        const key = recordKeyFromAssign(expr.target.name)
+        const key = recordKeyFromAssign(expr.target.name, expr.loc)
         const cbKey = getRecordCbKey(call)
         ensureRecordSample(key, call.loc ?? expr.loc, cbKey)
         handledRecordCalls.add(locKey(call.loc ?? expr.loc))

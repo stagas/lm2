@@ -552,6 +552,8 @@ export function useAnalyserWidget({
     }
   }, [])
 
+  const lastLoopIdRef = useRef<string>('')
+
   useEffect(() => {
     const programPtr = program1?.program?.ptr$ ?? 0
     if (lastLiveProgramPtrRef.current === programPtr && lastLiveAnalyserKeyRef.current === analyserKey) return
@@ -568,6 +570,18 @@ export function useAnalyserWidget({
     renderedThisFrameRef.current.clear()
   }, [analyserKey, program1])
 
+  useEffect(() => {
+    if (lastLoopIdRef.current === loopId) return
+    lastLoopIdRef.current = loopId
+
+    // When switching loops/projects, reset animated state so widgets don't show stale animations
+    animatedSpectrumHeightsRef.current.length = 0
+    levelRef.current.length = 0
+    for (const ampState of ampCanvasRef.current) {
+      if (ampState) ampState.col = 0
+    }
+  }, [loopId])
+
   const onBeforeDraw = useCallback(() => {
     if (!showWidgets) return
     if (analyserRefs.length === 0) return
@@ -582,15 +596,23 @@ export function useAnalyserWidget({
     // When not viewing the currently-loaded (playingLoopId) loop, clear analyser floats
     // so widgets show placeholders instead of stale data, unless nothing is currently playing
     // (in which case we preserve the last data).
-    if (!isLive) {
-      const shouldClear = playingLoopId !== null && playingLoopId !== loopId
+    const shouldClear = playingLoopId !== null && playingLoopId !== loopId
+    if (shouldClear) {
       for (const ref of analyserRefs) {
         const analyserIndex = ref.analyserIndex | 0
         const st = stArr[analyserIndex]
-        if (st && shouldClear) st.floats = null
+        if (st) st.floats = null
+      }
+      // Reset animated state when clearing to prevent stale animations
+      animatedSpectrumHeightsRef.current.length = 0
+      levelRef.current.length = 0
+      for (const ampState of ampCanvasRef.current) {
+        if (ampState) ampState.col = 0
       }
       return
     }
+
+    if (!isLive) return
 
     const canRead = !!program1?.program?.analyserOuts && !!ringPos
     if (!canRead) return
@@ -615,7 +637,7 @@ export function useAnalyserWidget({
       const floats = st.waveform.update(ring, currentChunkPos)
       if (floats) st.floats = floats
     }
-  }, [showWidgets, analyserRefs, isLive, playbackState, program1, ringPos])
+  }, [showWidgets, analyserRefs, isLive, playbackState, program1, ringPos, loopId, playingLoopId])
 
   const drawWidget = useCallback((
     c: CanvasRenderingContext2D,

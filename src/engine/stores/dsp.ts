@@ -1225,7 +1225,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         if (startSample != null) await setSampleCount(startSample)
 
         // Start playback
-        runtime.start()
+        await runtime.start()
         return
       }
 
@@ -1487,7 +1487,7 @@ async function fetchWasmBinary() {
 }
 
 async function createWorklet() {
-  const audioContext = new AudioContext({ latencyHint: 1 })
+  const audioContext = new AudioContext({ latencyHint: 1.0 })
   window.addEventListener('pointerdown', () => {
     audioContext.resume()
   }, { once: true })

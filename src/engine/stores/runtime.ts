@@ -47,7 +47,7 @@ export type EngineRuntimeState = {
   setCurrentLoop: (loop: Loop | null) => void
 
   setPlayingLoopId: (loopId: string | null) => void
-  start: () => void
+  start: () => Promise<void>
   pause: () => void
   stop: () => void
   setLoop: (startSample: number, endSample: number) => void
@@ -126,12 +126,13 @@ export const useEngineRuntimeStore = create<EngineRuntimeState>((set, get) => {
       })
     },
 
-    start: () => {
+    start: async () => {
       const state = get()
       if (!state.control) return
       // AudioContext can become suspended after initialization (tab switch, device change, etc).
       // `start()` is always invoked from a user intent path, so resume opportunistically here.
-      void state.audioContext?.resume()
+      await state.audioContext?.resume()
+      await new Promise<void>(resolve => setTimeout(resolve))
       if (state.playbackState === 'stopped' && state.seekSampleCount && state.playingLoopId) {
         const uiTarget = useEngineUiStore.getState().viewSampleCountByLoopId[state.playingLoopId]
         const prevTarget = Atomics.load(state.seekSampleCount, 0)

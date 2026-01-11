@@ -69,13 +69,16 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   '.glide': {
     name: '[].glide',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Step duration in bars (1 = 4 beats).' },
+      { name: 'bar', type: 'number', description: 'Step duration in bars (1 = 4 beats).', min: 0.0001, step: 0.0001 },
       {
         name: 'exponent',
         type: 'number',
         optional: true,
         defaultValue: 1,
         description: 'Curve shape: 1=linear, >0 uses pow(t,exp), <0 uses logarithmic curve base=-exp.',
+        min: -10,
+        max: 10,
+        step: 0.1,
       },
     ],
     returnType: 'number',
@@ -161,11 +164,11 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     name: '[].walk',
     parameters: [
       { name: 'bar', type: 'number',
-        description: 'Interval in bars for stepping through array elements (1/16 = sixteenth note).' },
+        description: 'Interval in bars for stepping through array elements (1/16 = sixteenth note).', min: 0.0001, step: 0.0001 },
       { name: 'swing', type: 'number', optional: true, defaultValue: 0,
-        description: 'Swing amount (0..1) shifts odd beats earlier' },
+        description: 'Swing amount (0..1) shifts odd beats earlier', min: 0, max: 1, step: 0.01 },
       { name: 'offset', type: 'number', optional: true, defaultValue: 0,
-        description: 'Seconds to delay the entire walk sequence' },
+        description: 'Seconds to delay the entire walk sequence', min: 0, step: 0.001 },
     ],
     returnType: 'number',
     description: 'Steps through array elements at beat-locked intervals, deterministically based on global time.',
@@ -192,7 +195,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   oversample: {
     name: 'oversample',
     parameters: [
-      { name: 'times', type: 'number', description: 'Oversampling factor (1..16).' },
+      { name: 'times', type: 'number', description: 'Oversampling factor (1..16).', min: 1, max: 16, step: 1 },
       { name: 'callback', type: '() -> number | [L:number, R:number]', description: 'Signal generator callback.' },
     ],
     returnType: 'number | [L:number, R:number]',
@@ -277,13 +280,16 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   sine: {
     name: 'sine',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -304,13 +310,16 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   tri: {
     name: 'tri',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -330,13 +339,16 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   saw: {
     name: 'saw',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -356,13 +368,16 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   ramp: {
     name: 'ramp',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -382,13 +397,16 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   sqr: {
     name: 'sqr',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -403,17 +421,21 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
       'sqr(55) |> out($)',
       'sqr(hz, .01, trig) * .2 |> out($)',
     ],
+    category: 'generators',
   },
   pwm: {
     name: 'pwm',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz.' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz.', min: 0, max: 20000, step: 1, slope: 'log2' },
       {
         name: 'width',
         type: 'number',
         optional: true,
         defaultValue: 0.5,
         description: 'Pulse width control (0..1).',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'offset',
@@ -421,6 +443,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 0,
         description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -435,17 +459,21 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
       'pwm(110, width:.2) |> out($)',
       'pwm(hz, lfotri(1)) |> out($)',
     ],
+    category: 'generators',
   },
   phasor: {
     name: 'phasor',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Start offset in seconds applied when the trigger fires (0 = start at 0).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -464,13 +492,16 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   impulse: {
     name: 'impulse',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -491,13 +522,16 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   inc: {
     name: 'inc',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).' },
+      { name: 'hz', type: 'number', description: 'Frequency in hertz (negative values clamp to zero).', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
       {
         name: 'width',
         type: 'number',
         optional: true,
         defaultValue: 1.0,
         description: 'Maximum value (ceiling) that the oscillator will reach before stopping.',
+        min: 0,
+        step: 0.01,
       },
       {
         name: 'offset',
@@ -505,6 +539,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 0,
         description: 'Phase offset in seconds applied when the trigger fires (0 = no offset).',
+        min: 0,
+        step: 0.001,
       },
       {
         name: 'trig',
@@ -532,6 +568,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
       'sine(1) |> zerox($) |> out($)',
       'saw(0.1) |> zerox($) |> ad(0.01, 0.1, trig:$) |> sine(440) |> out($)',
     ],
+    category: 'utilities',
   },
   pitchshift: {
     name: 'pitchshift',
@@ -541,6 +578,10 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         name: 'ratio',
         type: 'number',
         description: 'Pitch shift ratio (0.5 = octave down, 2 = octave up, 1 = same).',
+        min: 0.1,
+        max: 4,
+        step: 0.01,
+        slope: 'log2',
       },
     ],
     returnType: 'number',
@@ -549,12 +590,15 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
       'sine(440) |> pitchshift($, 2) |> out($)',
       'sine(440) |> pitchshift($, 0.5) |> out($)',
     ],
+    category: 'effects',
   },
   ad: {
     name: 'ad',
     parameters: [
-      { name: 'attack', type: 'number', description: 'Time in seconds to ramp from 0 up to 1.' },
-      { name: 'decay', type: 'number', description: 'Time in seconds to fall back from 1 to 0.' },
+      { name: 'attack', type: 'number', description: 'Time in seconds to ramp from 0 up to 1.', min: 0, max: 10,
+        step: 0.001, slope: 'log2' },
+      { name: 'decay', type: 'number', description: 'Time in seconds to fall back from 1 to 0.', min: 0, max: 10,
+        step: 0.001, slope: 'log2' },
       {
         name: 'exponent',
         type: 'number',
@@ -562,6 +606,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         defaultValue: 1,
         description:
           'Curve shape: 0/1/-1=linear, >1=exponential, 0>..<1=subexponential <-1=logarithmic -0>..<-1=sublogarithmic.',
+        min: -10,
+        max: 10,
+        step: 0.1,
       },
       {
         name: 'trig',
@@ -580,10 +627,14 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
   adsr: {
     name: 'adsr',
     parameters: [
-      { name: 'attack', type: 'number', description: 'Time to ramp from 0 to 1.' },
-      { name: 'decay', type: 'number', description: 'Time to fall from 1 to the sustain level.' },
-      { name: 'sustain', type: 'number', description: 'Level (0–1) held while the trigger is high.' },
-      { name: 'release', type: 'number', description: 'Time to fall from sustain back to 0 once the trigger drops.' },
+      { name: 'attack', type: 'number', description: 'Time to ramp from 0 to 1.', min: 0, max: 10, step: 0.001,
+        slope: 'log2' },
+      { name: 'decay', type: 'number', description: 'Time to fall from 1 to the sustain level.', min: 0, max: 10,
+        step: 0.001, slope: 'log2' },
+      { name: 'sustain', type: 'number', description: 'Level (0–1) held while the trigger is high.', min: 0, max: 1,
+        step: 0.01 },
+      { name: 'release', type: 'number', description: 'Time to fall from sustain back to 0 once the trigger drops.',
+        min: 0, max: 10, step: 0.001, slope: 'log2' },
       {
         name: 'exponent',
         type: 'number',
@@ -591,6 +642,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         defaultValue: 1,
         description:
           'Curve shape: 0/1/-1=linear, >1=exponential, 0>..<1=subexponential <-1=logarithmic -0>..<-1=sublogarithmic.',
+        min: -10,
+        max: 10,
+        step: 0.1,
       },
       {
         name: 'trig',
@@ -617,6 +671,10 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 0.01,
         description: 'Attack time in seconds (how quickly it responds to signal increases).',
+        min: 0,
+        max: 10,
+        step: 0.001,
+        slope: 'log2',
       },
       {
         name: 'release',
@@ -624,6 +682,10 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 0.1,
         description: 'Release time in seconds (how quickly it responds to signal decreases).',
+        min: 0,
+        max: 10,
+        step: 0.001,
+        slope: 'log2',
       },
     ],
     returnType: 'number',
@@ -717,11 +779,13 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     name: 'compressor',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
-      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
-      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)' },
-      { name: 'ratio', type: 'number', description: 'Compression ratio (1 .. 20)' },
-      { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
+      { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)', min: 0.0001, max: 1,
+        step: 0.0001, slope: 'log2' },
+      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)', min: 0.0001, max: 5,
+        step: 0.0001, slope: 'log2' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)', min: -60, max: 0, step: 0.1 },
+      { name: 'ratio', type: 'number', description: 'Compression ratio (1 .. 20)', min: 1, max: 20, step: 0.1 },
+      { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)', min: 0, max: 40, step: 0.1 },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
     ],
     returnType: 'number',
@@ -737,11 +801,13 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     name: 'expander',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
-      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
-      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)' },
-      { name: 'ratio', type: 'number', description: 'Expansion ratio (1 .. 100)' },
-      { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
+      { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)', min: 0.0001, max: 1,
+        step: 0.0001, slope: 'log2' },
+      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)', min: 0.0001, max: 5,
+        step: 0.0001, slope: 'log2' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)', min: -60, max: 0, step: 0.1 },
+      { name: 'ratio', type: 'number', description: 'Expansion ratio (1 .. 100)', min: 1, max: 100, step: 0.1 },
+      { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)', min: 0, max: 40, step: 0.1 },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
     ],
     returnType: 'number',
@@ -757,11 +823,14 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     name: 'gate',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)' },
-      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
-      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)' },
-      { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)' },
-      { name: 'hold', type: 'number', description: 'Hold time in seconds (0 .. 1)' },
+      { name: 'attack', type: 'number', description: 'Attack time in seconds (0.0001 .. 1)', min: 0.0001, max: 1,
+        step: 0.0001, slope: 'log2' },
+      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)', min: 0.0001, max: 5,
+        step: 0.0001, slope: 'log2' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-60 .. 0)', min: -60, max: 0, step: 0.1 },
+      { name: 'knee', type: 'number', description: 'Knee width in dB (0 .. 40)', min: 0, max: 40, step: 0.1 },
+      { name: 'hold', type: 'number', description: 'Hold time in seconds (0 .. 1)', min: 0, max: 1, step: 0.001,
+        slope: 'log2' },
       { name: 'key', type: 'number', optional: true, description: 'Optional sidechain key signal' },
     ],
     returnType: 'number',
@@ -777,8 +846,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     name: 'limiter',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)' },
-      { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)' },
+      { name: 'release', type: 'number', description: 'Release time in seconds (0.0001 .. 5)', min: 0.0001, max: 5,
+        step: 0.0001, slope: 'log2' },
+      { name: 'threshold', type: 'number', description: 'Threshold in dB (-80 .. 0)', min: -80, max: 0, step: 0.1 },
     ],
     returnType: 'number',
     description:
@@ -822,6 +892,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         type: 'number',
         optional: true,
         description: 'Override automatic voice allocation with a fixed number of voices (1..16)',
+        min: 1,
+        max: 16,
+        step: 1,
       },
       {
         name: 'bar',
@@ -829,6 +902,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 1,
         description: 'Duration in bars for a full cycle of the pattern',
+        min: 0.0001,
+        step: 0.0001,
       },
     ],
     returnType: 'number',
@@ -870,7 +945,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         description: 'Sample reference (usually returned by `freesound(id:…)`)',
       },
       { name: 'speed', type: 'number', optional: true, defaultValue: 1,
-        description: 'Playback speed (negative values play backwards)' },
+        description: 'Playback speed (negative values play backwards)', min: -10, max: 10, step: 0.01, slope: 'log2' },
       {
         name: 'offset',
         type: 'number',
@@ -878,6 +953,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         defaultValue: 0,
         description:
           'Normalized start offset (0=beginning, 1=end); defaults to 1 when speed is a constant negative number',
+        min: 0,
+        max: 1,
+        step: 0.001,
       },
       {
         name: 'repeat',
@@ -907,15 +985,18 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         description: 'Sample reference returned by `freesound(id:…)`',
       },
       { name: 'speed', type: 'number', optional: true, defaultValue: 1,
-        description: 'Playback speed (-1 for reverse)' },
+        description: 'Playback speed (-1 for reverse)', min: -10, max: 10, step: 0.01, slope: 'log2' },
       { name: 'offset', type: 'number', optional: true, defaultValue: 0,
-        description: 'Normalized offset inside the slice' },
+        description: 'Normalized offset inside the slice', min: 0, max: 1, step: 0.001 },
       {
         name: 'slice',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Normalized slice index (0..1) that selects which detected slice to play',
+        min: 0,
+        max: 1,
+        step: 0.001,
       },
       {
         name: 'threshold',
@@ -923,6 +1004,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 0,
         description: 'Slice detection threshold (0..1); higher values produce fewer slices',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'repeat',
@@ -948,6 +1032,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         name: 'bar',
         type: 'number',
         description: 'Interval in bars at which the gate can fire (1 = one bar, 0.25 = quarter note)',
+        min: 0.0001,
+        step: 0.0001,
       },
       {
         name: 'prob',
@@ -955,6 +1041,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 1,
         description: 'Probability (0..1) that each eligible bar actually fires',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'seed',
@@ -962,6 +1051,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 1234,
         description: 'Seed for the built-in pseudorandom generator',
+        min: 0,
+        step: 1,
       },
       {
         name: 'swing',
@@ -969,6 +1060,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 0,
         description: 'Swing amount (0..1) shifts odd beats earlier',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'offset',
@@ -976,6 +1070,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 0,
         description: 'Seconds to delay the entire gate sequence',
+        min: 0,
+        step: 0.001,
       },
     ],
     returnType: 'number',
@@ -993,6 +1089,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         name: 'bar',
         type: 'number',
         description: 'Absolute bar position where the gate should fire',
+        min: 0,
+        step: 0.0001,
       },
       {
         name: 'every',
@@ -1000,6 +1098,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 0,
         description: 'Repeat interval in bars (leave zero to fire only once)',
+        min: 0,
+        step: 0.0001,
       },
       {
         name: 'prob',
@@ -1007,6 +1107,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 1,
         description: 'Probability that a hit actually happens',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'seed',
@@ -1014,6 +1117,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         optional: true,
         defaultValue: 1234,
         description: 'Seed used when sampling probability',
+        min: 0,
+        step: 1,
       },
     ],
     returnType: 'number',
@@ -1038,11 +1143,17 @@ every=1/2 q=.5
         name: 'pulses',
         type: 'number',
         description: 'Number of hits (beats) to distribute across the step grid',
+        min: 0,
+        max: 128,
+        step: 1,
       },
       {
         name: 'steps',
         type: 'number',
         description: 'Number of steps in the grid',
+        min: 1,
+        max: 128,
+        step: 1,
       },
       {
         name: 'offset',
@@ -1050,6 +1161,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0,
         description: 'Rotation offset in steps (positive values shift the pattern left)',
+        min: -128,
+        max: 128,
+        step: 1,
       },
       {
         name: 'bar',
@@ -1057,6 +1171,8 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 1,
         description: 'Duration in bars for a full cycle of the pattern',
+        min: 0.0001,
+        step: 0.0001,
       },
     ],
     returnType: 'number',
@@ -1072,12 +1188,16 @@ every=1/2 q=.5
     name: 'slew',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be slewed (limited)' },
-      { name: 'up', type: 'number', description: 'Rise rate factor when signal increases' },
+      { name: 'up', type: 'number', description: 'Rise rate factor when signal increases', min: 0, step: 0.001,
+        slope: 'log2' },
       {
         name: 'down',
         type: 'number',
         optional: true,
         description: 'Fall rate when signal decreases (defaults to up rate if ≤ 0)',
+        min: 0,
+        step: 0.001,
+        slope: 'log2',
       },
       {
         name: 'exponent',
@@ -1085,8 +1205,12 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 1,
         description: 'Curve shape: 1=linear, >1=exponential, <1=logarithmic.',
+        min: 0.1,
+        max: 10,
+        step: 0.1,
       },
     ],
+    category: 'utilities',
     returnType: 'number',
     description:
       'Rate-limits a signal to prevent sudden jumps. Useful for smoothing control signals, portamento effects, or creating more natural parameter changes.',
@@ -1097,7 +1221,7 @@ every=1/2 q=.5
   freesound: {
     name: 'freesound',
     parameters: [
-      { name: 'id', type: 'number', description: 'Integer ID of a FreeSound sample' },
+      { name: 'id', type: 'number', description: 'Integer ID of a FreeSound sample', min: 0, step: 1 },
     ],
     returnType: 'number',
     description:
@@ -1106,11 +1230,13 @@ every=1/2 q=.5
       'kick = freesound(id: 123456)',
       'sampler(sample: kick, trig)',
     ],
+    category: 'utilities',
   },
   record: {
     name: 'record',
     parameters: [
-      { name: 'seconds', type: 'number', description: 'Duration to record in seconds (clamped to 0..1)' },
+      { name: 'seconds', type: 'number', description: 'Duration to record in seconds (clamped to 0..1)', min: 0, max: 1,
+        step: 0.001 },
       { name: 'cb', type: '() -> number',
         description: 'Callback to generate the sample signal (called at audio rate)' },
     ],
@@ -1121,18 +1247,23 @@ every=1/2 q=.5
       'tone = record(.5, () -> sine(220))',
       'sampler(sample: tone, trig)',
     ],
+    category: 'utilities',
   },
   delay: {
     name: 'delay',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be delayed' },
-      { name: 'seconds', type: 'number', description: 'Delay time in seconds (clamped to 0..10)' },
+      { name: 'seconds', type: 'number', description: 'Delay time in seconds (clamped to 0..10)', min: 0, max: 10,
+        step: 0.001, slope: 'log2' },
       {
         name: 'feedback',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Feedback amount; 0 produces a single echo only',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'cb',
@@ -1142,6 +1273,7 @@ every=1/2 q=.5
         description: 'Applied to the feedback signal',
       },
     ],
+    category: 'effects',
     returnType: 'number',
     description: 'Delay effect as a signal method; returns the delayed signal (wet only).',
     examples: [
@@ -1159,6 +1291,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'Room size (0..1); higher values increase decay/feedback',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'damping',
@@ -1166,8 +1301,12 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'High-frequency damping (0..1); higher values damp more',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
     ],
+    category: 'reverbs',
     returnType: '[L:number, R:number]',
     description: 'Freeverb-style reverb effect; returns wet stereo signal.',
     examples: [
@@ -1186,6 +1325,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'Room size/decay (0..1); higher values increase decay/feedback',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'damping',
@@ -1193,6 +1335,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.005,
         description: 'High-frequency damping (0..1); higher values damp more',
+        min: 0,
+        max: 1,
+        step: 0.001,
       },
       {
         name: 'bandwidth',
@@ -1200,6 +1345,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.9999,
         description: 'Input low-pass filter cutoff (0..1)',
+        min: 0,
+        max: 1,
+        step: 0.0001,
       },
       {
         name: 'inputDiffusion1',
@@ -1207,6 +1355,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.75,
         description: 'First input diffuser amount (0..1)',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'inputDiffusion2',
@@ -1214,6 +1365,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.625,
         description: 'Second input diffuser amount (0..1)',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'decayDiffusion1',
@@ -1221,6 +1375,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.7,
         description: 'First decay diffuser amount (0..<1)',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'decayDiffusion2',
@@ -1228,6 +1385,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'Second decay diffuser amount (0..<1)',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'excursionRate',
@@ -1235,6 +1395,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'Modulation rate (0..2)',
+        min: 0,
+        max: 2,
+        step: 0.01,
       },
       {
         name: 'excursionDepth',
@@ -1242,6 +1405,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.7,
         description: 'Modulation depth (0..2)',
+        min: 0,
+        max: 2,
+        step: 0.01,
       },
       {
         name: 'preDelay',
@@ -1249,8 +1415,11 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0,
         description: 'Pre-delay time in samples (0..sampleRate-1)',
+        min: 0,
+        step: 1,
       },
     ],
+    category: 'reverbs',
     returnType: '[L:number, R:number]',
     description: 'Dattorro-style plate reverb effect; returns wet stereo signal.',
     examples: [
@@ -1270,6 +1439,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 1.0,
         description: 'Room size scaling (0..1); affects delay line lengths',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'damping',
@@ -1277,6 +1449,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'High-frequency damping (0..1); 0=bright, 1=dark',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'decay',
@@ -1284,6 +1459,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'Global feedback gain (0..1); higher values increase decay time',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'modulationDepth',
@@ -1291,8 +1469,12 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 1.0,
         description: 'Modulation depth scalar (0..1); affects chorus-like modulation',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
     ],
+    category: 'reverbs',
     returnType: '[L:number, R:number]',
     description:
       'Feedback Delay Network (FDN) reverb with 8 delay lines, Hadamard feedback matrix, and modulated fractional delays; returns wet stereo signal.',
@@ -1312,6 +1494,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'Room size scaling (0.1..2.0); affects delay line lengths',
+        min: 0.1,
+        max: 2.0,
+        step: 0.01,
       },
       {
         name: 'damping',
@@ -1319,6 +1504,9 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'High-frequency damping (0..1); higher values damp more',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
       {
         name: 'decay',
@@ -1326,8 +1514,12 @@ every=1/2 q=.5
         optional: true,
         defaultValue: 0.5,
         description: 'Decay time control (0..1); higher values produce longer reverb tails',
+        min: 0,
+        max: 1,
+        step: 0.01,
       },
     ],
+    category: 'reverbs',
     returnType: '[L:number, R:number]',
     description:
       'Velvet noise reverb using 8 delay lines with rich texture and stereo decorrelation; returns wet stereo signal.',
@@ -1348,28 +1540,31 @@ every=1/2 q=.5
       'saw(110) |> dc($) |> out($)',
       'sine(440) + 0.1 |> dc($) |> out($)',
     ],
+    category: 'filters',
   },
   note: {
     name: 'note',
     parameters: [
-      { name: 'midi', type: 'number', description: 'MIDI note number' },
+      { name: 'midi', type: 'number', description: 'MIDI note number', min: 0, max: 127, step: 1 },
     ],
     returnType: 'number',
     description: 'Converts a MIDI note number to a frequency.',
     examples: [
       'note(60) |> out($)',
     ],
+    category: 'utilities',
   },
   degree: {
     name: 'degree',
     parameters: [
-      { name: 'degree', type: 'number', description: 'Degree of the scale' },
+      { name: 'degree', type: 'number', description: 'Degree of the scale', min: 0, step: 1 },
     ],
     returnType: 'number',
     description: 'Converts a degree of the scale to a frequency.',
     examples: [
       'degree(1) |> out($)',
     ],
+    category: 'utilities',
   },
   getScale: {
     name: 'getScale',
@@ -1381,11 +1576,12 @@ every=1/2 q=.5
       'scale=\'pentatonic\'\n#scale // [0, 3, 5, 7, 10]',
       'scale=\'dorian\'\n#scale // [0, 2, 3, 5, 7, 9, 10]',
     ],
+    category: 'utilities',
   },
   label: {
     name: 'label',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Bar position of the label' },
+      { name: 'bar', type: 'number', description: 'Bar position of the label', min: 0, step: 0.25 },
       { name: 'text', type: 'string', description: 'Label text' },
       { name: 'color', type: 'string', optional: true, defaultValue: '#ff0', description: 'Color of the label' },
     ],
@@ -1395,14 +1591,17 @@ every=1/2 q=.5
       'label(0, \'intro\')',
       'label(64, \'groove\', \'#f00\')',
     ],
+    category: 'sequencing',
   },
   lp: {
     name: 'lp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be low-passed' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
+    category: 'filters',
     returnType: 'number',
     description: 'Low-pass filter that attenuates high frequencies.',
     examples: [
@@ -1413,9 +1612,11 @@ every=1/2 q=.5
     name: 'hp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be high-passed' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
+    category: 'filters',
     returnType: 'number',
     description: 'High-pass filter that attenuates low frequencies.',
     examples: [
@@ -1426,9 +1627,11 @@ every=1/2 q=.5
     name: 'bp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be band-passed' },
-      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
+    category: 'filters',
     returnType: 'number',
     description: 'Band-pass filter that attenuates frequencies outside a specific range.',
     examples: [
@@ -1439,9 +1642,11 @@ every=1/2 q=.5
     name: 'bs',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be band-stopped' },
-      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
+    category: 'filters',
     returnType: 'number',
     description: 'Band-stop filter that attenuates frequencies within a specific range.',
     examples: [
@@ -1452,9 +1657,11 @@ every=1/2 q=.5
     name: 'ls',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be low-shelved' },
-      { name: 'cutoff', type: 'number', description: 'Corner frequency in hertz' },
-      { name: 'gain', type: 'number', description: 'Gain in decibels' },
+      { name: 'cutoff', type: 'number', description: 'Corner frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'gain', type: 'number', description: 'Gain in decibels', min: -60, max: 60, step: 0.1 },
     ],
+    category: 'filters',
     returnType: 'number',
     description: 'Low-shelf filter that boosts or cuts low frequencies.',
     examples: [
@@ -1465,9 +1672,11 @@ every=1/2 q=.5
     name: 'hs',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be high-shelved' },
-      { name: 'cutoff', type: 'number', description: 'Corner frequency in hertz' },
-      { name: 'gain', type: 'number', description: 'Gain in decibels' },
+      { name: 'cutoff', type: 'number', description: 'Corner frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'gain', type: 'number', description: 'Gain in decibels', min: -60, max: 60, step: 0.1 },
     ],
+    category: 'filters',
     returnType: 'number',
     description: 'High-shelf filter that boosts or cuts high frequencies.',
     examples: [
@@ -1478,10 +1687,12 @@ every=1/2 q=.5
     name: 'peak',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be peaked' },
-      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
-      { name: 'gain', type: 'number', description: 'Gain in decibels' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
+      { name: 'gain', type: 'number', description: 'Gain in decibels', min: -60, max: 60, step: 0.1 },
     ],
+    category: 'filters',
     returnType: 'number',
     description: 'Peaking filter that boosts or cuts frequencies around a center point.',
     examples: [
@@ -1492,9 +1703,11 @@ every=1/2 q=.5
     name: 'ap',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be all-passed' },
-      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
+    category: 'filters',
     returnType: 'number',
     description: 'All-pass filter that changes phase without affecting frequency response.',
     examples: [
@@ -1505,79 +1718,91 @@ every=1/2 q=.5
     name: 'slp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be low-passed' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Low-pass filter with resonance.',
     examples: [
       'saw(hz) |> slp($, cutoff:500) |> out($)',
     ],
+    category: 'filters',
   },
   shp: {
     name: 'shp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be high-passed' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'High-pass filter with resonance.',
     examples: [
       'saw(hz) |> shp($, cutoff:200) |> out($)',
     ],
+    category: 'filters',
   },
   sbp: {
     name: 'sbp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be band-passed' },
-      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Band-pass filter with resonance.',
     examples: [
       'saw(hz) |> sbp($, cutoff:1000, q:2) |> out($)',
     ],
+    category: 'filters',
   },
   sbs: {
     name: 'sbs',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be band-stopped' },
-      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Band-stop filter with resonance.',
     examples: [
       'saw(hz) |> sbs($, cutoff:1000, q:5) |> out($)',
     ],
+    category: 'filters',
   },
   speak: {
     name: 'speak',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be peaked' },
-      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Peaking filter with resonance.',
     examples: [
       'saw(hz) |> speak($, cutoff:1000, q:5) |> out($)',
     ],
+    category: 'filters',
   },
   sap: {
     name: 'sap',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be all-passed' },
-      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Q factor' },
+      { name: 'cutoff', type: 'number', description: 'Center frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Q factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'All-pass filter with resonance for phase shifting.',
     examples: [
       'saw(hz) |> sap($, cutoff:1000, q:1) |> out($)',
     ],
+    category: 'filters',
   },
   sah: {
     name: 'sah',
@@ -1591,82 +1816,95 @@ every=1/2 q=.5
       'sine(440) |> sah($, every(1/4)) |> out($)',
       'noise() |> sah($, at(1/16)) |> out($)',
     ],
+    category: 'utilities',
   },
   diodeladder: {
     name: 'diodeladder',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be filtered' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Resonance amount (0-1)' },
-      { name: 'k', type: 'number', description: 'Special coefficient (0-1)' },
-      { name: 'saturation', type: 'number', description: 'Input saturation amount' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Resonance amount (0-1)', min: 0, max: 1, step: 0.01 },
+      { name: 'k', type: 'number', description: 'Special coefficient (0-1)', min: 0, max: 1, step: 0.01 },
+      { name: 'saturation', type: 'number', description: 'Input saturation amount', min: 0, step: 0.1 },
     ],
     returnType: 'number',
     description: 'Low-pass filter with diode-style saturation and resonance.',
     examples: [
       'saw(hz) |> diodeladder($, cutoff:1000, q:0.5, k:0.2) |> out($)',
     ],
+    category: 'filters',
   },
   olp: {
     name: 'olp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be low-passed' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Simple low-pass filter.',
     examples: [
       'saw(hz) |> olp($, cutoff:1000) |> out($)',
     ],
+    category: 'filters',
   },
   ohp: {
     name: 'ohp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be high-passed' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Simple high-pass filter.',
     examples: [
       'saw(hz) |> ohp($, cutoff:1000) |> out($)',
     ],
+    category: 'filters',
   },
   mlp: {
     name: 'mlp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be low-passed' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Resonance factor' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Resonance factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Low-pass filter with Moog-style resonance.',
     examples: [
       'saw(hz) |> mlp($, cutoff:1000) |> out($)',
     ],
+    category: 'filters',
   },
   mhp: {
     name: 'mhp',
     parameters: [
       { name: 'in', type: 'number', description: 'Signal to be high-passed' },
-      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz' },
-      { name: 'q', type: 'number', description: 'Resonance factor' },
+      { name: 'cutoff', type: 'number', description: 'Cutoff frequency in hertz', min: 0, max: 20000, step: 1,
+        slope: 'log2' },
+      { name: 'q', type: 'number', description: 'Resonance factor', min: 0.1, max: 20, step: 0.1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'High-pass filter with Moog-style resonance.',
     examples: [
       'saw(hz) |> mhp($, cutoff:200) |> out($)',
     ],
+    category: 'filters',
   },
   lfosine: {
     name: 'lfosine',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)', min: 0.0001,
+        step: 0.0001 },
       {
         name: 'offset',
         type: 'number',
         optional: true,
         defaultValue: 0,
         description: 'Beat offset in whole-note units',
+        step: 0.0001,
       },
       {
         name: 'trig',
@@ -1683,13 +1921,15 @@ every=1/2 q=.5
       'lfosine(1/16, 0, trig)',
       'lfosine(bar:1/16, offset:1/64, trig)',
     ],
+    category: 'generators',
   },
   lfotri: {
     name: 'lfotri',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0,
-        description: 'Beat offset in whole-note units' },
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)', min: 0.0001,
+        step: 0.0001 },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units',
+        step: 0.0001 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0' },
     ],
@@ -1700,13 +1940,15 @@ every=1/2 q=.5
       'lfotri(1/8, 0, trig)',
       'lfotri(bar:1/8, offset:-1/32, trig)',
     ],
+    category: 'generators',
   },
   lfosaw: {
     name: 'lfosaw',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0,
-        description: 'Beat offset in whole-note units' },
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)', min: 0.0001,
+        step: 0.0001 },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units',
+        step: 0.0001 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0' },
     ],
@@ -1717,13 +1959,15 @@ every=1/2 q=.5
       'lfosaw(1/4, 0, trig)',
       'lfosaw(bar:1/4, offset:1/16, trig)',
     ],
+    category: 'generators',
   },
   lforamp: {
     name: 'lforamp',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0,
-        description: 'Beat offset in whole-note units' },
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)', min: 0.0001,
+        step: 0.0001 },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units',
+        step: 0.0001 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0' },
     ],
@@ -1734,13 +1978,15 @@ every=1/2 q=.5
       'lforamp(1/4, 0, trig)',
       'lforamp(bar:1/4, offset:-1/16, trig)',
     ],
+    category: 'generators',
   },
   lfosqr: {
     name: 'lfosqr',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)' },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0,
-        description: 'Beat offset in whole-note units' },
+      { name: 'bar', type: 'number', description: 'Beat-locked period in whole-note units (e.g. 1/16)', min: 0.0001,
+        step: 0.0001 },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units',
+        step: 0.0001 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the LFO phase to the offset position when it crosses from ≤0 to >0' },
     ],
@@ -1751,20 +1997,24 @@ every=1/2 q=.5
       'lfosqr(1/8, 0, trig)',
       'lfosqr(bar:1/8, offset:1/32, trig)',
     ],
+    category: 'generators',
   },
   lfosah: {
     name: 'lfosah',
     parameters: [
-      { name: 'bar', type: 'number', description: 'Hold interval in whole-note units (e.g. 1/16)' },
+      { name: 'bar', type: 'number', description: 'Hold interval in whole-note units (e.g. 1/16)', min: 0.0001,
+        step: 0.0001 },
       {
         name: 'seed',
         type: 'number',
         optional: true,
         defaultValue: 1234,
         description: 'Deterministic seed used for the held random values',
+        min: 0,
+        step: 1,
       },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0,
-        description: 'Beat offset in whole-note units' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Beat offset in whole-note units',
+        step: 0.0001 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the cycle alignment to the offset position when it crosses from ≤0 to >0' },
     ],
@@ -1775,12 +2025,14 @@ every=1/2 q=.5
       'lfosah(1/16, 1234, 0, trig)',
       'lfosah(bar:1/16, seed:42, offset:1/64, trig)',
     ],
+    category: 'generators',
   },
   white: {
     name: 'white',
     parameters: [
       { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
+        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)',
+        min: 0, step: 1 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the seed to the current seed value when it crosses from ≤0 to >0' },
     ],
@@ -1790,12 +2042,14 @@ every=1/2 q=.5
       'white() |> out($)',
       'white(1234, trig) |> out($)',
     ],
+    category: 'generators',
   },
   gauss: {
     name: 'gauss',
     parameters: [
       { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
+        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)',
+        min: 0, step: 1 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the seed to the current seed value when it crosses from ≤0 to >0' },
     ],
@@ -1805,12 +2059,14 @@ every=1/2 q=.5
       'gauss() |> out($)',
       'gauss(1234, trig) |> out($)',
     ],
+    category: 'generators',
   },
   pink: {
     name: 'pink',
     parameters: [
       { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
+        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)',
+        min: 0, step: 1 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the seed to the current seed value when it crosses from ≤0 to >0' },
     ],
@@ -1820,12 +2076,14 @@ every=1/2 q=.5
       'pink() |> out($)',
       'pink(1234, trig) |> out($)',
     ],
+    category: 'generators',
   },
   brown: {
     name: 'brown',
     parameters: [
       { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
+        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)',
+        min: 0, step: 1 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the seed to the current seed value when it crosses from ≤0 to >0' },
     ],
@@ -1834,12 +2092,13 @@ every=1/2 q=.5
     examples: [
       'brown() |> out($)',
     ],
+    category: 'generators',
   },
   random: {
     name: 'random',
     parameters: [
       { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (resets the random sequence when it changes, default: 1234)' },
+        description: 'Initial seed (resets the random sequence when it changes, default: 1234)', min: 0, step: 1 },
     ],
     returnType: 'number',
     description: 'True random noise stream in 0..1 (stateful, advances every sample, no wavetable).',
@@ -1847,16 +2106,19 @@ every=1/2 q=.5
       'random() |> out($)',
       'random(5678) * 2 - 1 |> out($)',
     ],
+    category: 'generators',
   },
   smooth: {
     name: 'smooth',
     parameters: [
       { name: 'rate', type: 'number', optional: true, defaultValue: 1,
-        description: 'Change rate in Hz (higher values produce faster variation)' },
+        description: 'Change rate in Hz (higher values produce faster variation)', min: 0, max: 100, step: 0.1,
+        slope: 'log2' },
       { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
+        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)',
+        min: 0, step: 1 },
       { name: 'curve', type: 'number', optional: true, defaultValue: 0.5,
-        description: 'Interpolation curve (0..1): 0=linear, 1=quintic smoothstep' },
+        description: 'Interpolation curve (0..1): 0=linear, 1=quintic smoothstep', min: 0, max: 1, step: 0.01 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the seed to the current seed value when it crosses from ≤0 to >0' },
     ],
@@ -1866,18 +2128,20 @@ every=1/2 q=.5
       'smooth() |> out($)',
       'smooth(1234, rate:4, trig:trig) |> out($)',
     ],
+    category: 'generators',
   },
   fractal: {
     name: 'fractal',
     parameters: [
       { name: 'rate', type: 'number', optional: true, defaultValue: 1,
-        description: 'Base change rate in Hz for the first octave' },
+        description: 'Base change rate in Hz for the first octave', min: 0, max: 100, step: 0.1, slope: 'log2' },
       { name: 'seed', type: 'number', optional: true, defaultValue: 1234,
-        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)' },
+        description: 'Initial seed (deterministically initializes the noise stream when it changes, default: 1234)',
+        min: 0, step: 1 },
       { name: 'octaves', type: 'number', optional: true, defaultValue: 4,
-        description: 'Number of octaves to sum (higher = more detail)' },
+        description: 'Number of octaves to sum (higher = more detail)', min: 1, max: 16, step: 1 },
       { name: 'gain', type: 'number', optional: true, defaultValue: 0.5,
-        description: 'Amplitude multiplier per octave (0..1)' },
+        description: 'Amplitude multiplier per octave (0..1)', min: 0, max: 1, step: 0.01 },
       { name: 'trig', type: 'number', optional: true, defaultValue: 0,
         description: 'Trigger that resets the seed to the current seed value when it crosses from ≤0 to >0' },
     ],
@@ -1887,6 +2151,7 @@ every=1/2 q=.5
       'fractal() |> out($)',
       'fractal(1234, rate:2, octaves:6, gain:.6, trig:trig) |> out($)',
     ],
+    category: 'generators',
   },
   sin: {
     name: 'sin',
@@ -1894,6 +2159,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Sine function.',
     examples: ['sin(t * 440 * 2 * 3.14159) |> out($)'],
+    category: 'math',
   },
   cos: {
     name: 'cos',
@@ -1901,6 +2167,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Cosine function.',
     examples: ['cos(t * 440 * 2 * 3.14159) |> out($)'],
+    category: 'math',
   },
   tan: {
     name: 'tan',
@@ -1908,12 +2175,16 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Tangent function.',
     examples: ['tan(x) |> out($)'],
+    category: 'math',
   },
   tram: {
     name: 'tram',
     parameters: [
-      { name: 'sequence', type: 'string', description: 'Rhythm sequence string using "x" for hits and "-" for pauses. Square brackets [x x] subdivide a single beat. Whitespace is ignored for readability.' },
-      { name: 'bar', type: 'number', optional: true, defaultValue: 1, description: 'Bar duration to fit the sequence into' },
+      { name: 'sequence', type: 'string',
+        description:
+          'Rhythm sequence string using "x" for hits and "-" for pauses. Square brackets [x x] subdivide a single beat. Whitespace is ignored for readability.' },
+      { name: 'bar', type: 'number', optional: true, defaultValue: 1,
+        description: 'Bar duration to fit the sequence into', min: 0.0001, step: 0.0001 },
     ],
     returnType: 'number',
     description: 'Rhythm impulse generator with microtiming support. Brackets subdivide beats for complex polyrhythms.',
@@ -1928,17 +2199,19 @@ every=1/2 q=.5
   },
   asin: {
     name: 'asin',
-    parameters: [{ name: 'x', type: 'number', description: 'Input value (-1..1)' }],
+    parameters: [{ name: 'x', type: 'number', description: 'Input value (-1..1)', min: -1, max: 1, step: 0.01 }],
     returnType: 'number',
     description: 'Arcsine function.',
     examples: ['asin(sine(440)) |> out($)'],
+    category: 'math',
   },
   acos: {
     name: 'acos',
-    parameters: [{ name: 'x', type: 'number', description: 'Input value (-1..1)' }],
+    parameters: [{ name: 'x', type: 'number', description: 'Input value (-1..1)', min: -1, max: 1, step: 0.01 }],
     returnType: 'number',
     description: 'Arccosine function.',
     examples: ['sine(110) |> acos($) |> out($)'],
+    category: 'math',
   },
   tanh: {
     name: 'tanh',
@@ -1946,6 +2219,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Hyperbolic tangent function; useful for soft clipping.',
     examples: ['sine(220) * 5 |> tanh($) |> out($)'],
+    category: 'math',
   },
   atan: {
     name: 'atan',
@@ -1953,6 +2227,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Arctangent function.',
     examples: ['karplus([c4,a4,f4,e4].step(every(1/4)),trig:every(1/8)) |> atan($) |> out($)'],
+    category: 'math',
   },
   abs: {
     name: 'abs',
@@ -1960,13 +2235,15 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Absolute value.',
     examples: ['sine(110) |> abs($) |> out($)'],
+    category: 'math',
   },
   sqrt: {
     name: 'sqrt',
-    parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
+    parameters: [{ name: 'x', type: 'number', description: 'Input value', min: 0, step: 0.01 }],
     returnType: 'number',
     description: 'Square root.',
     examples: ['sqrt(x) |> out($)'],
+    category: 'math',
   },
   square: {
     name: 'square',
@@ -1974,6 +2251,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Square function (x²).',
     examples: ['square(sine(220)) |> out($)'],
+    category: 'math',
   },
   cube: {
     name: 'cube',
@@ -1981,6 +2259,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Cube function (x³).',
     examples: ['cube(sine(220)) |> out($)'],
+    category: 'math',
   },
   hypot: {
     name: 'hypot',
@@ -1991,13 +2270,15 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Euclidean distance sqrt(x² + y²).',
     examples: ['hypot(3, 4) |> out($)'],
+    category: 'math',
   },
   log: {
     name: 'log',
-    parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
+    parameters: [{ name: 'x', type: 'number', description: 'Input value', min: 0.0001, step: 0.01 }],
     returnType: 'number',
     description: 'Natural logarithm.',
     examples: ['log(x) |> out($)'],
+    category: 'math',
   },
   exp: {
     name: 'exp',
@@ -2005,20 +2286,23 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Exponential function (e^x).',
     examples: ['exp(x) |> out($)'],
+    category: 'math',
   },
   log10: {
     name: 'log10',
-    parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
+    parameters: [{ name: 'x', type: 'number', description: 'Input value', min: 0.0001, step: 0.01 }],
     returnType: 'number',
     description: 'Base-10 logarithm.',
     examples: ['log10(x) |> out($)'],
+    category: 'math',
   },
   log2: {
     name: 'log2',
-    parameters: [{ name: 'x', type: 'number', description: 'Input value' }],
+    parameters: [{ name: 'x', type: 'number', description: 'Input value', min: 0.0001, step: 0.01 }],
     returnType: 'number',
     description: 'Base-2 logarithm.',
     examples: ['log2(x) |> out($)'],
+    category: 'math',
   },
   exp2: {
     name: 'exp2',
@@ -2026,6 +2310,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Base-2 exponential function (2^x).',
     examples: ['exp2(x) |> out($)'],
+    category: 'math',
   },
   min: {
     name: 'min',
@@ -2036,6 +2321,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Minimum of two values.',
     examples: ['min(sine(220), 0.5) |> out($)'],
+    category: 'math',
   },
   max: {
     name: 'max',
@@ -2046,6 +2332,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Maximum of two values.',
     examples: ['max(sine(220), 0.5) |> out($)'],
+    category: 'math',
   },
   clamp: {
     name: 'clamp',
@@ -2057,6 +2344,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Clamps value between lo and hi.',
     examples: ['sine(220) * 2 |> clamp($, -0.5, 0.5) |> out($)'],
+    category: 'math',
   },
   wrap: {
     name: 'wrap',
@@ -2068,16 +2356,18 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Wraps value into range [lo, hi) with sawtooth pattern.',
     examples: ['t * 10 |> wrap($, 0, 1) |> out($)'],
+    category: 'math',
   },
   mod: {
     name: 'mod',
     parameters: [
       { name: 'x', type: 'number', description: 'Dividend' },
-      { name: 'y', type: 'number', description: 'Divisor' },
+      { name: 'y', type: 'number', description: 'Divisor', min: 0.0001, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Modulo operation: x - y * floor(x / y).',
     examples: ['mod(t * 10, 1) |> out($)'],
+    category: 'math',
   },
   pingpong: {
     name: 'pingpong',
@@ -2089,6 +2379,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Wraps value back and forth between lo and hi, producing a triangle-wave pattern.',
     examples: ['t * 10 |> pingpong($, 0, 1) |> out($)'],
+    category: 'math',
   },
   fold: {
     name: 'fold',
@@ -2100,6 +2391,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Folds value at boundaries.',
     examples: ['sine(220) * 3 |> fold($, -0.5, 0.5) |> out($)'],
+    category: 'math',
   },
   floor: {
     name: 'floor',
@@ -2107,6 +2399,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Rounds down to nearest integer.',
     examples: ['floor(sine([c4,a4,f4,e4].step(every(1/8))) * 2)*ad(.01,.2,trig:every(1/8)) |> tanh($) |> out($)'],
+    category: 'math',
   },
   ceil: {
     name: 'ceil',
@@ -2114,6 +2407,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Rounds up to nearest integer.',
     examples: ['ceil(sine([c4,a4,f4,e4].step(every(1/8))) * 2)*ad(.01,.2,trig:every(1/8)) |> tanh($) |> out($)'],
+    category: 'math',
   },
   round: {
     name: 'round',
@@ -2121,6 +2415,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Rounds to nearest integer.',
     examples: ['floor(sine([c4,a4,f4,e4].step(every(1/8))) * 2)*ad(.01,.2,trig:every(1/8)) |> tanh($) |> out($)'],
+    category: 'math',
   },
   trunc: {
     name: 'trunc',
@@ -2128,16 +2423,18 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Truncates to integer (rounds toward zero).',
     examples: ['trunc(sine([c4,a4,f4,e4].step(every(1/8))) * 2)*ad(.01,.2,trig:every(1/8)) |> tanh($) |> out($)'],
+    category: 'math',
   },
   snap: {
     name: 'snap',
     parameters: [
       { name: 'x', type: 'number', description: 'Value to snap' },
-      { name: 'step', type: 'number', description: 'Step size' },
+      { name: 'step', type: 'number', description: 'Step size', min: 0.0001, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Snaps value to nearest multiple of step: round(x / step) * step.',
     examples: ['sine(220) |> snap($, 0.25) |> out($)'],
+    category: 'math',
   },
   fract: {
     name: 'fract',
@@ -2145,6 +2442,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Fractional part (x - floor(x)).',
     examples: ['fract(t * 10) |> out($)'],
+    category: 'math',
   },
   sign: {
     name: 'sign',
@@ -2152,17 +2450,19 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Sign function: -1 for negative, 0 for zero, 1 for positive.',
     examples: ['sign(sine(220)) |> out($)'],
+    category: 'math',
   },
   lerp: {
     name: 'lerp',
     parameters: [
       { name: 'a', type: 'number', description: 'Start value' },
       { name: 'b', type: 'number', description: 'End value' },
-      { name: 't', type: 'number', description: 'Interpolation factor (0..1)' },
+      { name: 't', type: 'number', description: 'Interpolation factor (0..1)', min: 0, max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Linear interpolation: a + (b - a) * t.',
     examples: ['lerp(0, 1, sine(1)) |> out($)'],
+    category: 'math',
   },
   smoothstep: {
     name: 'smoothstep',
@@ -2174,6 +2474,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Smooth Hermite interpolation between 0 and 1 when x is between edge0 and edge1.',
     examples: ['smoothstep(sine(1), -0.5, 0.5) |> out($)'],
+    category: 'math',
   },
   smootherstep: {
     name: 'smootherstep',
@@ -2185,6 +2486,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Even smoother interpolation (6t⁵ - 15t⁴ + 10t³) between 0 and 1.',
     examples: ['smootherstep(sine(1), -0.5, 0.5) |> out($)'],
+    category: 'math',
   },
   step: {
     name: 'step',
@@ -2195,6 +2497,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Step function: 0 if x < edge, 1 otherwise.',
     examples: ['step(sine(220), 0) |> out($)'],
+    category: 'math',
   },
   heaviside: {
     name: 'heaviside',
@@ -2202,6 +2505,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Heaviside step function: 0 for x < 0, 0.5 for x = 0, 1 for x > 0.',
     examples: ['heaviside(sine(220)) |> out($)'],
+    category: 'math',
   },
   select: {
     name: 'select',
@@ -2213,6 +2517,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Selects between two values based on condition.',
     examples: ['select(0, 1, sine(220) > 0) |> out($)'],
+    category: 'math',
   },
   isnan: {
     name: 'isnan',
@@ -2220,6 +2525,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Returns 1 if x is NaN, 0 otherwise.',
     examples: ['isnan(x) |> out($)'],
+    category: 'math',
   },
   isinf: {
     name: 'isinf',
@@ -2227,6 +2533,7 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Returns 1 if x is infinite, 0 otherwise.',
     examples: ['isinf(x) |> out($)'],
+    category: 'math',
   },
   safediv: {
     name: 'safediv',
@@ -2237,25 +2544,28 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Safe division: returns 0 when y is 0, otherwise x / y.',
     examples: ['safediv(sine(220), sine(110)) |> out($)'],
+    category: 'math',
   },
   db: {
     name: 'db',
-    parameters: [{ name: 'x', type: 'number', description: 'Gain in decibels' }],
+    parameters: [{ name: 'x', type: 'number', description: 'Gain in decibels', min: -120, max: 120, step: 0.1 }],
     returnType: 'number',
     description: 'Converts gain in decibels to linear gain.',
     examples: [
       'signal * db(6) |> out($)',
       'signal * db(-3) |> out($)',
     ],
+    category: 'utilities',
   },
   semis: {
     name: 'semis',
-    parameters: [{ name: 'x', type: 'number', description: 'Number of semitones' }],
+    parameters: [{ name: 'x', type: 'number', description: 'Number of semitones', min: -48, max: 48, step: 0.1 }],
     returnType: 'number',
     description: 'Converts semitones to frequency multiplier.',
     examples: [
       'note(60) * semis(7) |> sine(hz:$) |> out($)',
     ],
+    category: 'utilities',
   },
   swing: {
     name: 'swing',
@@ -2263,7 +2573,11 @@ every=1/2 q=.5
       { name: 't', type: 'number', description: 'Time value to swing' },
       { name: 'amount', type: 'number',
         description:
-          'Swing amount (-1..1), where 0 = no swing, positive compresses first half and expands second half, negative does the opposite' },
+          'Swing amount (-1..1), where 0 = no swing, positive compresses first half and expands second half, negative does the opposite',
+        min: -1,
+        max: 1,
+        step: 0.01,
+      },
     ],
     returnType: 'number',
     description: 'Applies rhythmic swing to time values by warping the phase within each beat cycle.',
@@ -2271,12 +2585,13 @@ every=1/2 q=.5
       'sine(440, swing(t, 0.1)) |> out($)',
       'phasor(swing(t, 0.1) * 440) |> out($)',
     ],
+    category: 'utilities',
   },
   stereo: {
     name: 'stereo',
     parameters: [
       { name: 'in', type: 'number', description: 'Mono input signal' },
-      { name: 'width', type: 'number', optional: true, defaultValue: 0, description: 'Stereo width in seconds' },
+      { name: 'width', type: 'number', optional: true, defaultValue: 0, description: 'Stereo width in seconds', min: 0, max: 0.1, step: 0.0001, slope: 'log2' },
     ],
     returnType: '[L:number, R:number]',
     description: 'Converts mono signal to stereo, optionally with delay-based widening.',
@@ -2284,6 +2599,7 @@ every=1/2 q=.5
       'sine(440) |> stereo($) |> out($)',
       'saw(220) |> stereo($, width:0.01) |> out($)',
     ],
+    category: 'mixing',
   },
   mono: {
     name: 'mono',
@@ -2293,12 +2609,13 @@ every=1/2 q=.5
     examples: [
       '[saw(220), saw(221)] |> mono($) |> out($)',
     ],
+    category: 'mixing',
   },
   stereowidth: {
     name: 'stereowidth',
     parameters: [
       { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
-      { name: 'width', type: 'number', optional: true, defaultValue: 1, description: 'Width multiplier' },
+      { name: 'width', type: 'number', optional: true, defaultValue: 1, description: 'Width multiplier', min: 0, max: 2, step: 0.01 },
     ],
     returnType: '[L:number, R:number]',
     description: 'Adjusts stereo width using mid-side processing.',
@@ -2306,84 +2623,90 @@ every=1/2 q=.5
       '[saw(220), saw(221)] |> stereowidth($, width:2) |> out($)',
       'stereo(saw(220)) |> stereowidth($, width:0.5) |> out($)',
     ],
+    category: 'mixing',
   },
   widen: {
     name: 'widen',
     parameters: [
       { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
-      { name: 'seconds', type: 'number', optional: true, defaultValue: 0.0001, description: 'Delay time in seconds' },
+      { name: 'seconds', type: 'number', optional: true, defaultValue: 0.0001, description: 'Delay time in seconds', min: 0, max: 0.1, step: 0.0001, slope: 'log2' },
     ],
     returnType: '[L:number, R:number]',
     description: 'Widens stereo signal by delaying high frequencies in right channel.',
     examples: [
       '[saw(220), saw(221)] |> widen($, seconds:0.005) |> out($)',
     ],
+    category: 'mixing',
   },
   pan: {
     name: 'pan',
     parameters: [
       { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
       { name: 'balance', type: 'number', optional: true, defaultValue: 0.5,
-        description: 'Pan position (0=left, 1=right)' },
+        description: 'Pan position (0=left, 1=right)', min: 0, max: 1, step: 0.01 },
     ],
     returnType: '[L:number, R:number]',
     description: 'Pans stereo signal left or right.',
     examples: [
       '[saw(220), saw(221)] |> pan($, balance:0.2) |> out($)',
     ],
+    category: 'mixing',
   },
   modDelay: {
     name: 'modDelay',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'baseDelay', type: 'number', description: 'Base delay time in seconds' },
-      { name: 'depth', type: 'number', description: 'Modulation depth' },
-      { name: 'rate', type: 'number', description: 'LFO rate in Hz' },
-      { name: 'feedback', type: 'number', description: 'Feedback amount' },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset' },
+      { name: 'baseDelay', type: 'number', description: 'Base delay time in seconds', min: 0, max: 10, step: 0.001, slope: 'log2' },
+      { name: 'depth', type: 'number', description: 'Modulation depth', min: 0, max: 0.1, step: 0.0001, slope: 'log2' },
+      { name: 'rate', type: 'number', description: 'LFO rate in Hz', min: 0, max: 20, step: 0.1, slope: 'log2' },
+      { name: 'feedback', type: 'number', description: 'Feedback amount', min: 0, max: 1, step: 0.01 },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset', min: 0, max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Modulated delay effect with LFO-controlled delay time.',
     examples: [
       'sine(440) |> modDelay($, 0.1, 0.05, 1, 0.3) |> out($)',
     ],
+    category: 'effects',
   },
   flanger: {
     name: 'flanger',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'rate', type: 'number', optional: true, defaultValue: 1, description: 'LFO rate in Hz' },
-      { name: 'depth', type: 'number', optional: true, defaultValue: 0.00125, description: 'Modulation depth' },
-      { name: 'base', type: 'number', optional: true, defaultValue: 0.00125, description: 'Base delay time' },
-      { name: 'feedback', type: 'number', optional: true, defaultValue: 0.7, description: 'Feedback amount' },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 1, description: 'LFO rate in Hz', min: 0, max: 20, step: 0.1, slope: 'log2' },
+      { name: 'depth', type: 'number', optional: true, defaultValue: 0.00125, description: 'Modulation depth', min: 0, max: 0.01, step: 0.0001, slope: 'log2' },
+      { name: 'base', type: 'number', optional: true, defaultValue: 0.00125, description: 'Base delay time', min: 0, max: 0.01, step: 0.0001, slope: 'log2' },
+      { name: 'feedback', type: 'number', optional: true, defaultValue: 0.7, description: 'Feedback amount', min: 0, max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Classic flanger effect using modulated comb filtering.',
     examples: [
       'saw(220) |> flanger($, rate:0.5, depth:0.005) |> out($)',
     ],
+    category: 'effects',
   },
   chorus: {
     name: 'chorus',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'voices', type: 'number', optional: true, defaultValue: 3, description: 'Number of chorus voices' },
-      { name: 'base', type: 'number', optional: true, defaultValue: 0.02, description: 'Base delay time' },
-      { name: 'depth', type: 'number', optional: true, defaultValue: 0.006, description: 'Modulation depth' },
-      { name: 'rate', type: 'number', optional: true, defaultValue: 0.25, description: 'LFO rate' },
-      { name: 'spread', type: 'number', optional: true, defaultValue: 0.5, description: 'Voice spread' },
+      { name: 'voices', type: 'number', optional: true, defaultValue: 3, description: 'Number of chorus voices', min: 1, max: 16, step: 1 },
+      { name: 'base', type: 'number', optional: true, defaultValue: 0.02, description: 'Base delay time', min: 0, max: 0.1, step: 0.001, slope: 'log2' },
+      { name: 'depth', type: 'number', optional: true, defaultValue: 0.006, description: 'Modulation depth', min: 0, max: 0.02, step: 0.0001, slope: 'log2' },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 0.25, description: 'LFO rate', min: 0, max: 20, step: 0.1, slope: 'log2' },
+      { name: 'spread', type: 'number', optional: true, defaultValue: 0.5, description: 'Voice spread', min: 0, max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Multi-voice chorus effect with spread and modulation.',
     examples: [
       'sine(440) |> chorus($, voices:5, rate:0.3) |> out($)',
     ],
+    category: 'effects',
   },
   tap: {
     name: 'tap',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'seconds', type: 'number', description: 'Delay time in seconds' },
+      { name: 'seconds', type: 'number', description: 'Delay time in seconds', min: 0, max: 10, step: 0.001, slope: 'log2' },
       { name: 'cb', type: 'function', description: 'Callback function for feedback processing' },
     ],
     returnType: 'number',
@@ -2391,13 +2714,14 @@ every=1/2 q=.5
     examples: [
       'sine(440) |> tap($, 0.25, x -> x * 0.5) |> out($)',
     ],
+    category: 'effects',
   },
   comb: {
     name: 'comb',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'seconds', type: 'number', description: 'Delay time in seconds' },
-      { name: 'feedback', type: 'number', description: 'Feedback amount' },
+      { name: 'seconds', type: 'number', description: 'Delay time in seconds', min: 0, max: 10, step: 0.001, slope: 'log2' },
+      { name: 'feedback', type: 'number', description: 'Feedback amount', min: 0, max: 1, step: 0.01 },
       { name: 'cb', type: 'function', description: 'Callback function for feedback processing' },
     ],
     returnType: 'number',
@@ -2405,63 +2729,67 @@ every=1/2 q=.5
     examples: [
       'saw(110) |> comb($, 0.1, 0.8, x -> lp(x, 1000)) |> out($)',
     ],
+    category: 'effects',
   },
   eq3: {
     name: 'eq3',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'low', type: 'number', optional: true, defaultValue: 0, description: 'Low frequency gain in dB' },
-      { name: 'mid', type: 'number', optional: true, defaultValue: 0, description: 'Mid frequency gain in dB' },
-      { name: 'high', type: 'number', optional: true, defaultValue: 0, description: 'High frequency gain in dB' },
-      { name: 'lf', type: 'number', optional: true, defaultValue: 500, description: 'Low frequency cutoff' },
-      { name: 'mf', type: 'number', optional: true, defaultValue: 2000, description: 'Mid frequency cutoff' },
-      { name: 'hf', type: 'number', optional: true, defaultValue: 8000, description: 'High frequency cutoff' },
+      { name: 'low', type: 'number', optional: true, defaultValue: 0, description: 'Low frequency gain in dB', min: -60, max: 60, step: 0.1 },
+      { name: 'mid', type: 'number', optional: true, defaultValue: 0, description: 'Mid frequency gain in dB', min: -60, max: 60, step: 0.1 },
+      { name: 'high', type: 'number', optional: true, defaultValue: 0, description: 'High frequency gain in dB', min: -60, max: 60, step: 0.1 },
+      { name: 'lf', type: 'number', optional: true, defaultValue: 500, description: 'Low frequency cutoff', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'mf', type: 'number', optional: true, defaultValue: 2000, description: 'Mid frequency cutoff', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'hf', type: 'number', optional: true, defaultValue: 8000, description: 'High frequency cutoff', min: 0, max: 20000, step: 1, slope: 'log2' },
     ],
     returnType: 'number',
     description: '3-band equalizer with adjustable low, mid, and high frequency gains.',
     examples: [
       'saw(220) |> eq3($, low:6, mid:-3, high:2) |> out($)',
     ],
+    category: 'filters',
   },
   grain: {
     name: 'grain',
     parameters: [
-      { name: 'speed', type: 'number', optional: true, defaultValue: 1, description: 'Playback speed' },
-      { name: 'seed', type: 'number', description: 'Random seed' },
+      { name: 'speed', type: 'number', optional: true, defaultValue: 1, description: 'Playback speed', min: 0.1, max: 10, step: 0.1, slope: 'log2' },
+      { name: 'seed', type: 'number', description: 'Random seed', min: 0, step: 1 },
     ],
     returnType: 'number',
     description: 'Granular synthesis-inspired trigger generator based on speed.',
     examples: [
       'grain(speed:2, seed:123) |> out($)',
     ],
+    category: 'generators',
   },
   vocoder: {
     name: 'vocoder',
     parameters: [
       { name: 'carrier', type: 'number', description: 'Carrier signal' },
       { name: 'modulator', type: 'number', description: 'Modulator signal' },
-      { name: 'numBands', type: 'number', optional: true, defaultValue: 16, description: 'Number of frequency bands' },
-      { name: 'attack', type: 'number', optional: true, defaultValue: 0.01, description: 'Envelope attack time' },
-      { name: 'release', type: 'number', optional: true, defaultValue: 0.04, description: 'Envelope release time' },
-      { name: 'freqMin', type: 'number', optional: true, defaultValue: 100, description: 'Minimum frequency' },
-      { name: 'freqMax', type: 'number', optional: true, defaultValue: 8000, description: 'Maximum frequency' },
+      { name: 'numBands', type: 'number', optional: true, defaultValue: 16, description: 'Number of frequency bands', min: 4, max: 64, step: 1 },
+      { name: 'attack', type: 'number', optional: true, defaultValue: 0.01, description: 'Envelope attack time', min: 0, max: 1, step: 0.001, slope: 'log2' },
+      { name: 'release', type: 'number', optional: true, defaultValue: 0.04, description: 'Envelope release time', min: 0, max: 1, step: 0.001, slope: 'log2' },
+      { name: 'freqMin', type: 'number', optional: true, defaultValue: 100, description: 'Minimum frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'freqMax', type: 'number', optional: true, defaultValue: 8000, description: 'Maximum frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Vocoder effect using bandpass filters and envelope following.',
     examples: [
       'vocoder(carrier:saw(220), modulator:sine(110)) |> out($)',
     ],
+    category: 'effects',
   },
   karplus: {
     name: 'karplus',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
+      { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
       { name: 'pluck', type: 'function', optional: true, defaultValue: 'pink', description: 'Pluck function' },
-      { name: 'seed', type: 'number', optional: true, defaultValue: 334, description: 'Random seed' },
-      { name: 'attack', type: 'number', optional: true, defaultValue: 0.0001, description: 'Attack time' },
-      { name: 'decay', type: 'number', optional: true, defaultValue: 0.1, description: 'Decay time' },
-      { name: 'exponent', type: 'number', optional: true, defaultValue: 40, description: 'Envelope exponent' },
-      { name: 'damping', type: 'number', optional: true, defaultValue: 0.5, description: 'Damping amount' },
+      { name: 'seed', type: 'number', optional: true, defaultValue: 334, description: 'Random seed', min: 0, step: 1 },
+      { name: 'attack', type: 'number', optional: true, defaultValue: 0.0001, description: 'Attack time', min: 0, max: 1, step: 0.0001, slope: 'log2' },
+      { name: 'decay', type: 'number', optional: true, defaultValue: 0.1, description: 'Decay time', min: 0, max: 10, step: 0.001, slope: 'log2' },
+      { name: 'exponent', type: 'number', optional: true, defaultValue: 40, description: 'Envelope exponent', min: 1, max: 100, step: 1 },
+      { name: 'damping', type: 'number', optional: true, defaultValue: 0.5, description: 'Damping amount', min: 0, max: 1, step: 0.01 },
       { name: 'trig', type: 'number', description: 'Trigger signal' },
     ],
     returnType: 'number',
@@ -2469,6 +2797,7 @@ every=1/2 q=.5
     examples: [
       'karplus(220, trig:every(1/2)) |> out($)',
     ],
+    category: 'generators',
   },
   metronome: {
     name: 'metronome',
@@ -2478,14 +2807,15 @@ every=1/2 q=.5
     examples: [
       'metronome() |> out($)',
     ],
+    category: 'utilities',
   },
   harmonics: {
     name: 'harmonics',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
-      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 3, description: 'Number of harmonics' },
-      { name: 'tilt', type: 'number', optional: true, defaultValue: 3, description: 'Spectral tilt' },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset' },
+      { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 3, description: 'Number of harmonics', min: 1, max: 32, step: 1 },
+      { name: 'tilt', type: 'number', optional: true, defaultValue: 3, description: 'Spectral tilt', min: 0.1, max: 10, step: 0.1 },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset', min: 0, step: 0.001 },
       { name: 'trig', type: 'number', description: 'Trigger signal' },
     ],
     returnType: 'number',
@@ -2493,49 +2823,53 @@ every=1/2 q=.5
     examples: [
       'harmonics(110, numHarmonics:5, tilt:2, trig:every(1/4)) |> out($)',
     ],
+    category: 'generators',
   },
   folded: {
     name: 'folded',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
-      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 2, description: 'Number of harmonics' },
-      { name: 'amount', type: 'number', optional: true, defaultValue: 2, description: 'Folding amount' },
+      { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 2, description: 'Number of harmonics', min: 1, max: 32, step: 1 },
+      { name: 'amount', type: 'number', optional: true, defaultValue: 2, description: 'Folding amount', min: 0.1, max: 10, step: 0.1 },
     ],
     returnType: 'number',
     description: 'Wave folding synthesis with harmonic enhancement.',
     examples: [
       'folded(220, numHarmonics:4, amount:3) |> out($)',
     ],
+    category: 'generators',
   },
   pulsar: {
     name: 'pulsar',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Frequency' },
-      { name: 'density', type: 'number', optional: true, defaultValue: 1, description: 'Pulse density' },
+      { name: 'hz', type: 'number', description: 'Frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'density', type: 'number', optional: true, defaultValue: 1, description: 'Pulse density', min: 0.1, max: 10, step: 0.1 },
     ],
     returnType: 'number',
     description: 'Pulsar synthesis with phasor-controlled envelope.',
     examples: [
       'pulsar(110, density:2) |> out($)',
     ],
+    category: 'generators',
   },
   supersaw: {
     name: 'supersaw',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
-      { name: 'voices', type: 'number', optional: true, defaultValue: 5, description: 'Number of detuned voices' },
-      { name: 'spread', type: 'number', optional: true, defaultValue: 0.05, description: 'Detuning spread' },
+      { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'voices', type: 'number', optional: true, defaultValue: 5, description: 'Number of detuned voices', min: 1, max: 32, step: 1 },
+      { name: 'spread', type: 'number', optional: true, defaultValue: 0.05, description: 'Detuning spread', min: 0, max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Supersaw oscillator with multiple detuned sawtooth voices.',
     examples: [
       'supersaw(110, voices:7, spread:0.1) |> out($)',
     ],
+    category: 'generators',
   },
   drawbar: {
     name: 'drawbar',
     parameters: [
-      { name: 'hz', type: 'number', description: 'Fundamental frequency' },
+      { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
       { name: 'bars', type: 'array', description: 'Drawbar settings array' },
     ],
     returnType: 'number',
@@ -2543,6 +2877,7 @@ every=1/2 q=.5
     examples: [
       'drawbar(110, bars:[1,0.7,0.5,0.3,0.2]) |> out($)',
     ],
+    category: 'generators',
   },
   drum: {
     name: 'drum',
@@ -2558,66 +2893,207 @@ every=1/2 q=.5
       'drum(trig:every(1/2)) |> out($)',
     ],
   },
+  bd: {
+    name: 'bd',
+    parameters: [
+      { name: 'trig', type: 'number', optional: true,
+        description: 'Trigger pattern for kick hits (default: tram(\'x-x-x-x-\'))' },
+      { name: 'base', type: 'number', optional: true, description: 'Base frequency (default: #1*o2)' },
+      { name: 'punch', type: 'number', optional: true, description: 'Punch frequency for FM (default: 25000k)' },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0.0006, description: 'Phase offset' },
+      { name: 'cutoff', type: 'number', optional: true, description: 'Filter cutoff frequency (default: 5k)' },
+      { name: 'q', type: 'number', optional: true, defaultValue: 0.25, description: 'Filter Q factor' },
+      { name: 'amp', type: 'function', optional: true,
+        description: 'Amplitude envelope function (default: trig->ad(.0001,.5,40,trig))' },
+      { name: 'fm', type: 'function', optional: true,
+        description: 'FM envelope function (default: trig->ad(.00008,.013,900,trig))' },
+      { name: 'filter', type: 'function', optional: true,
+        description: 'Filter envelope function (default: trig->ad(.000147,.25,50.000,trig))' },
+    ],
+    returnType: 'number',
+    description: 'Kick drum synthesizer with FM synthesis and dynamic filtering.',
+    examples: [
+      'bd() |> out($)',
+      'bd(trig:euclid(3,8)) |> out($)',
+    ],
+    category: 'generators',
+  },
+  hh: {
+    name: 'hh',
+    parameters: [
+      { name: 'width', type: 'number', optional: true, defaultValue: 0.4,
+        description: 'Pulse width for PWM oscillators', min: 0, max: 1, step: 0.01 },
+      { name: 'seq', type: 'sequence', optional: true,
+        description: 'Sequence pattern for hi-hat hits (default: mini(\'[.15 .2 1 .2]*4\'))' },
+    ],
+    returnType: 'number',
+    description: 'Hi-hat synthesizer using multiple PWM oscillators with filtering and saturation.',
+    examples: [
+      'hh() |> out($)',
+      'hh(width:0.3, seq:mini("x-x-x-")) |> out($)',
+    ],
+    category: 'generators',
+  },
+  sd: {
+    name: 'sd',
+    parameters: [
+      { name: 'seed', type: 'number', optional: true, defaultValue: 7,
+        description: 'Random seed for noise generation' },
+      { name: 'base', type: 'number', optional: true, description: 'Base frequency (default: #5*o2)' },
+      { name: 'trig', type: 'number', optional: true,
+        description: 'Trigger pattern for snare hits (default: tram(\'-x\',1/2))' },
+    ],
+    returnType: 'number',
+    description: 'Snare drum synthesizer combining pitched sine waves with filtered noise.',
+    examples: [
+      'sd() |> out($)',
+      'sd(seed:42, trig:euclid(2,8)) |> out($)',
+    ],
+    category: 'generators',
+  },
+  cowbell: {
+    name: 'cowbell',
+    parameters: [
+      { name: 'osc', type: 'function', optional: true, description: 'Oscillator function (default: hz->pwm(hz,.04))' },
+      { name: 'tone', type: 'number', optional: true, description: 'Tone frequency (default: #2*o5*1.002)' },
+      { name: 'trig', type: 'number', optional: true,
+        description: 'Trigger pattern for cowbell hits (default: euclid(3,8,1,bar:1/2))' },
+    ],
+    returnType: 'number',
+    description: 'Cowbell synthesizer using two inharmonic PWM oscillators.',
+    examples: [
+      'cowbell() |> out($)',
+      'cowbell(trig:euclid(5,8)) |> out($)',
+    ],
+    category: 'generators',
+  },
+  tom: {
+    name: 'tom',
+    parameters: [
+      { name: 'seq', type: 'sequence', optional: true,
+        description: 'Sequence pattern for tom hits (default: mini(\'[~ ~ 1 ~  ~ ~ ~ 3]*2\'))' },
+    ],
+    returnType: 'number',
+    description: 'Tom drum synthesizer with pitch envelope and dual oscillators.',
+    examples: [
+      'tom() |> out($)',
+      'tom(seq:mini("x---x---")) |> out($)',
+    ],
+    category: 'generators',
+  },
+  claves: {
+    name: 'claves',
+    parameters: [
+      { name: 'base', type: 'number', optional: true, description: 'Base frequency (default: #2*o7)' },
+      { name: 'trig', type: 'number', optional: true,
+        description: 'Trigger pattern for claves hits (default: tram(\'--x---xx\',1/2))' },
+    ],
+    returnType: 'number',
+    description: 'Claves synthesizer combining sine waves with filtered noise.',
+    examples: [
+      'claves() |> out($)',
+      'claves(trig:euclid(3,8)) |> out($)',
+    ],
+    category: 'generators',
+  },
+  clap: {
+    name: 'clap',
+    parameters: [
+      { name: 'seed', type: 'number', optional: true, defaultValue: 552,
+        description: 'Random seed for noise generation' },
+      { name: 'trig', type: 'number', optional: true,
+        description: 'Trigger pattern for clap hits (default: tram(\'-----x-x\',1))' },
+    ],
+    returnType: 'number',
+    description: 'Clap synthesizer using multiple overlapping noise envelopes.',
+    examples: [
+      'clap() |> out($)',
+      'clap(seed:123, trig:euclid(2,8)) |> out($)',
+    ],
+    category: 'generators',
+  },
+  rimshot: {
+    name: 'rimshot',
+    parameters: [
+      { name: 'seed', type: 'number', optional: true, defaultValue: 12349,
+        description: 'Random seed for noise generation' },
+      { name: 'base', type: 'number', optional: true, description: 'Base frequency (default: #6*o5)' },
+      { name: 'trig', type: 'number', optional: true,
+        description: 'Trigger pattern for rimshot hits (default: tram(\'--x-xx\',1/2))' },
+    ],
+    returnType: 'number',
+    description: 'Rimshot synthesizer combining stick click, wooden body, and low thunk components.',
+    examples: [
+      'rimshot() |> out($)',
+      'rimshot(seed:42, trig:euclid(3,8)) |> out($)',
+    ],
+    category: 'generators',
+  },
   vowel: {
     name: 'vowel',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'vowelName', type: 'number', description: 'Vowel index (0=a, 1=e, 2=i, 3=o, 4=u)' },
+      { name: 'vowelName', type: 'number', description: 'Vowel index (0=a, 1=e, 2=i, 3=o, 4=u)', min: 0, max: 4, step: 1 },
     ],
     returnType: 'number',
     description: 'Formant filter for vowel sounds.',
     examples: [
       'sine(110) |> vowel($, va) |> out($)',
     ],
+    category: 'filters',
   },
   ring: {
     name: 'ring',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'hz', type: 'number', description: 'Modulation frequency' },
+      { name: 'hz', type: 'number', description: 'Modulation frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Ring modulation effect.',
     examples: [
       'saw(220) |> ring($, 330) |> out($)',
     ],
+    category: 'effects',
   },
   tube: {
     name: 'tube',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'drive', type: 'number', optional: true, defaultValue: 3, description: 'Drive amount' },
-      { name: 'bias', type: 'number', optional: true, defaultValue: 0.2, description: 'Bias offset' },
+      { name: 'drive', type: 'number', optional: true, defaultValue: 3, description: 'Drive amount', min: 0, max: 20, step: 0.1 },
+      { name: 'bias', type: 'number', optional: true, defaultValue: 0.2, description: 'Bias offset', min: 0, max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Tube saturation/distortion using hyperbolic tangent.',
     examples: [
       'saw(220) |> tube($, drive:5, bias:0.1) |> out($)',
     ],
+    category: 'effects',
   },
   clip: {
     name: 'clip',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'x', type: 'number', optional: true, defaultValue: 1, description: 'Clipping threshold' },
+      { name: 'x', type: 'number', optional: true, defaultValue: 1, description: 'Clipping threshold', min: 0.0001, max: 10, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Hard clipping distortion.',
     examples: [
       'saw(220) * 2 |> clip($, 0.5) |> out($)',
     ],
+    category: 'effects',
   },
   bitcrush: {
     name: 'bitcrush',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'rate', type: 'number', optional: true, defaultValue: 8000, description: 'Sample rate' },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 8000, description: 'Sample rate', min: 100, max: 48000, step: 100, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Bit crushing effect using sample and hold.',
     examples: [
       'saw(a3) |> bitcrush($, rate:404  (50 5k 3)) |> out($)',
     ],
+    category: 'effects',
   },
   mix: {
     name: 'mix',
@@ -2627,6 +3103,7 @@ every=1/2 q=.5
     examples: [
       'signal |> mix($)',
     ],
+    category: 'mixing',
   },
   uni: {
     name: 'uni',
@@ -2636,6 +3113,7 @@ every=1/2 q=.5
     examples: [
       'sine(440) |> uni($) |> out($)',
     ],
+    category: 'utilities',
   },
   bi: {
     name: 'bi',
@@ -2645,19 +3123,21 @@ every=1/2 q=.5
     examples: [
       'phasor(220) |> bi($)*ad(.01,.2,trig:every(1/8)) |> out($)',
     ],
+    category: 'utilities',
   },
   crossfade: {
     name: 'crossfade',
     parameters: [
       { name: 'a', type: 'number', description: 'First signal' },
       { name: 'b', type: 'number', description: 'Second signal' },
-      { name: 't', type: 'number', description: 'Crossfade position (0 = all A, 1 = all B)' },
+      { name: 't', type: 'number', description: 'Crossfade position (0 = all A, 1 = all B)', min: 0, max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Crossfade between two signals.',
     examples: [
       'crossfade(sine(220), saw(220), lfosine(1)) |> out($)',
     ],
+    category: 'mixing',
   },
   va: {
     name: 'va',
@@ -2667,6 +3147,7 @@ every=1/2 q=.5
     examples: [
       'sine(110) |> vowel($, va) |> out($)',
     ],
+    category: 'utilities',
   },
   ve: {
     name: 've',
@@ -2676,6 +3157,7 @@ every=1/2 q=.5
     examples: [
       'sine(110) |> vowel($, ve) |> out($)',
     ],
+    category: 'utilities',
   },
   vi: {
     name: 'vi',
@@ -2685,6 +3167,7 @@ every=1/2 q=.5
     examples: [
       'sine(110) |> vowel($, vi) |> out($)',
     ],
+    category: 'utilities',
   },
   vo: {
     name: 'vo',
@@ -2694,6 +3177,7 @@ every=1/2 q=.5
     examples: [
       'sine(110) |> vowel($, vo) |> out($)',
     ],
+    category: 'utilities',
   },
   vu: {
     name: 'vu',
@@ -2703,5 +3187,6 @@ every=1/2 q=.5
     examples: [
       'sine(110) |> vowel($, vu) |> out($)',
     ],
+    category: 'utilities',
   },
 }

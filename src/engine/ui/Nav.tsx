@@ -64,7 +64,7 @@ export function PlaybackControls({
           // If we're already "running", still kick the transport so a stale/suspended audio
           // context or latched worklet state doesn't make Play a no-op.
           if (isSameLoop) {
-            start()
+            void start()
             return
           }
 
@@ -80,7 +80,7 @@ export function PlaybackControls({
           }
         }
         else {
-          start()
+          void start()
         }
       }} />
       <PlaybackButton icon={<StopGradientIcon />} onClick={stop} />

@@ -21,8 +21,20 @@ import { useSeekToSampleImmediate } from './useSeekToSample.ts'
 import { useTimelineHeader } from './useTimelineHeader.ts'
 
 function Intro(
-  { isFadingOut = false, isFadingIn = true }: { isFadingOut?: boolean; isFadingIn?: boolean },
+  {
+    isFadingOut = false,
+    isFadingIn = true,
+    audioContextState,
+    onResumeClick,
+  }: {
+    isFadingOut?: boolean
+    isFadingIn?: boolean
+    audioContextState?: AudioContextState
+    onResumeClick?: () => void
+  },
 ) {
+  const needsUserInteraction = audioContextState && audioContextState !== 'running'
+
   return (
     <div
       className={`z-[99999999999] fixed inset-0 w-[100dvw] h-[100dvh] transition-opacity duration-[1000ms] ease-in-out ${
@@ -30,6 +42,7 @@ function Intro(
           ? 'opacity-0 pointer-events-none'
           : 'opacity-100'
       }`}
+      onClick={needsUserInteraction ? onResumeClick : undefined}
     >
       <div className="w-full h-full bg-black flex items-center justify-center">
         <div
@@ -49,7 +62,9 @@ function Intro(
             >
               <div className="absolute w-full h-full inset-0 z-10 flex flex-col gap-1 items-center justify-center">
                 <Logo size="3.5em" text="loopmaster" />
-                <SpinnerLarge />
+                {needsUserInteraction
+                  ? <div className="text-white text-lg mt-2">Click anywhere to start</div>
+                  : <SpinnerLarge />}
               </div>
             </div>
           </RadialGradient>
@@ -78,6 +93,8 @@ function AppContent({
   setDocsIsOpen,
   docsSelectedId,
   setDocsSelectedId,
+  audioContextState,
+  onResumeClick,
 }: {
   showIntro: boolean
   isFadingIn: boolean
@@ -92,6 +109,8 @@ function AppContent({
   setDocsIsOpen: (value: boolean) => void
   docsSelectedId: string | null
   setDocsSelectedId: (value: string | null) => void
+  audioContextState?: AudioContextState
+  onResumeClick?: () => void
 }) {
   const { navigate } = useRouter()
   const previousUrlRef = useRef<string>('/')
@@ -113,6 +132,8 @@ function AppContent({
         docsSelectedId={docsSelectedId}
         setDocsSelectedId={setDocsSelectedId}
         previousUrlRef={previousUrlRef}
+        audioContextState={audioContextState}
+        onResumeClick={onResumeClick}
       />
       <Docs
         externalIsOpen={docsIsOpen}
@@ -142,6 +163,8 @@ function RouterContent({
   docsSelectedId,
   setDocsSelectedId,
   previousUrlRef,
+  audioContextState,
+  onResumeClick,
 }: {
   showIntro: boolean
   isFadingIn: boolean
@@ -157,6 +180,8 @@ function RouterContent({
   docsSelectedId: string | null
   setDocsSelectedId: (value: string | null) => void
   previousUrlRef: preact.RefObject<string>
+  audioContextState?: AudioContextState
+  onResumeClick?: () => void
 }) {
   // Parse loop ID from URL path like /loop/<id>
   const { pathname, navigate } = useRouter()
@@ -265,7 +290,14 @@ function RouterContent({
 
   return (
     <>
-      {showIntro && <Intro isFadingIn={isFadingIn} isFadingOut={isFadingOut} />}
+      {showIntro && (
+        <Intro
+          isFadingIn={isFadingIn}
+          isFadingOut={isFadingOut}
+          audioContextState={audioContextState}
+          onResumeClick={onResumeClick}
+        />
+      )}
       <div className="flex flex-col">
         <SyncSampleCount currentLoop={currentLoop} />
         <Nav
@@ -323,6 +355,48 @@ export function EngineUI() {
 
   const [dspError, setDspError] = useState<string>()
   const { timelineHeader, timelineWindowRef } = useTimelineHeader(currentLoop?.data.id ?? null)
+  const [audioContextState, setAudioContextState] = useState<AudioContextState | undefined>(
+    audioContext?.state,
+  )
+
+  useEffect(() => {
+    if (!audioContext) {
+      setAudioContextState(undefined)
+      return
+    }
+    const updateState = () => setAudioContextState(audioContext.state)
+    audioContext.addEventListener('statechange', updateState)
+    updateState()
+    return () => audioContext.removeEventListener('statechange', updateState)
+  }, [audioContext])
+
+  const handleResumeClick = async () => {
+    if (!audioContext) return
+    if (didStartIntroExitRef.current) return
+    await audioContext.resume()
+    if (audioContext.state === 'running') {
+      didStartIntroExitRef.current = true
+      const deltaTime = performance.now() - animationIntroTimeRef.current
+      const t1 = window.setTimeout(() => {
+        setIsFadingOut(true)
+        const t2 = window.setTimeout(() => {
+          setIsFadingOut(false)
+          setShowIntro(false)
+        }, 2000)
+      }, deltaTime < 700 ? (700 - deltaTime) + (3000 - 700) : 3000)
+      ;(async () => {
+        for (let i = 0; i < 100; i++) {
+          const audioContext = useEngineRuntimeStore.getState().audioContext
+          if (!audioContext || audioContext.state !== 'running') {
+            await new Promise<void>(resolve => setTimeout(resolve, 100))
+            continue
+          }
+          await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_PROGRAM)
+          break
+        }
+      })()
+    }
+  }
 
   useEffect(() => {
     if (!fontsLoaded) return
@@ -352,6 +426,7 @@ export function EngineUI() {
 
   useEffect(() => {
     if (shouldWait || !showIntro) return
+    if (audioContext?.state !== 'running') return
     if (didStartIntroExitRef.current) return
     didStartIntroExitRef.current = true
 
@@ -367,26 +442,16 @@ export function EngineUI() {
     ;(async () => {
       for (let i = 0; i < 100; i++) {
         const audioContext = useEngineRuntimeStore.getState().audioContext
-        audioContext?.resume()
         if (!audioContext || audioContext.state !== 'running') {
           await new Promise<void>(resolve => setTimeout(resolve, 100))
           continue
         }
         await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_PROGRAM)
-        // const resPromise = fetch('/cowbell.ogg')
-        // await new Promise<void>(resolve => setTimeout(resolve, 1500))
-        // const res = await resPromise
-        // const arrayBuffer = await res.arrayBuffer()
-        // const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-        // const source = audioContext.createBufferSource()
-        // source.buffer = audioBuffer
-        // source.connect(audioContext.destination)
-        // source.start()
         break
       }
     })()
     return () => window.clearTimeout(t1)
-  }, [shouldWait, showIntro])
+  }, [shouldWait, showIntro, audioContext])
 
   return (
     <RouterProvider>
@@ -404,6 +469,8 @@ export function EngineUI() {
         setDocsIsOpen={setDocsIsOpen}
         docsSelectedId={docsSelectedId}
         setDocsSelectedId={setDocsSelectedId}
+        audioContextState={audioContextState}
+        onResumeClick={handleResumeClick}
       />
     </RouterProvider>
   )

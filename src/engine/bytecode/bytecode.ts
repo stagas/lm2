@@ -229,7 +229,10 @@ function getRecordCbKey(call: any): number {
   return fnv1a32(stableAstString({ seconds: secondsExpr, cb: cbExpr }))
 }
 
-function recordKeyFromAssign(targetName: string): string {
+function recordKeyFromAssign(targetName: string, loc?: Loc): string {
+  if (loc) {
+    return `record:${targetName}:${loc.line}:${loc.column}`
+  }
   return `record:${targetName}`
 }
 
@@ -837,7 +840,7 @@ function transformExpr(context: AstTransformContext, expr: any): any {
           a: any,
         ) => (a.kind === 'pos' || a.kind === 'named' ? { ...a, value: transformExpr(context, a.value) } : a))
         : inArgs
-      const key = recordKeyFromAssign(expr.target.name)
+      const key = recordKeyFromAssign(expr.target.name, expr.loc)
       return { ...expr, target, value: injectRecordArgs(context.sampleKeyToIndex, call, callee, args, key) }
     }
     return { ...expr, target: transformExpr(context, expr.target), value: transformExpr(context, expr.value) }

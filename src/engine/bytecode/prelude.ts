@@ -412,6 +412,126 @@ sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
   sampler(snaresample,trig) |> out($)
 }
 
+cowbell=(
+  osc=hz->pwm(hz,.04),
+  tone=#2*o5*1.002,
+  trig=euclid(3,8,1,bar:1/2),
+)->{
+  cowbellsample=record(.4,()->{
+    kt=step(1-phasor(1),.96)
+    env=adsr(.001,.06,.9,.25,2,trig:kt)
+    // Two square waves (inharmonic)
+    freq1=tone
+    freq2=freq1*1.44
+
+    oversample(16,()->{
+      osc1=osc(freq1)
+      osc2=osc(freq2)
+      ;(osc1+osc2)*env/2.5
+    })
+  })
+  sampler(cowbellsample,trig)*.055
+}
+
+tom=(seq=mini('[~ ~ 1 ~  ~ ~ ~ 3]*2'))->{
+  play(seq,(trig,velocity,hz)->{
+
+    pitch=ad(.0001,1.0,-.25,trig)
+    env=ad(.0001,.2262,10,trig)
+    freq=(hz/16)*(1+pitch*11)+5000k*ad(.0001,.02,40,trig)
+    osc1=tri(freq,trig)*.5
+    osc2=sqr(freq*0.97,trig)*.5
+
+    ;(osc1+osc2)*env/2
+
+    |> slp($,freq*4.8,.8)*.7
+  })
+}
+
+claves=(
+  base=#2*o7,
+  trig=tram('--x---xx',1/2),
+)->{
+  clavessample=record(.25,()->{
+    env=ad(.0001,.2539 ,40,trig:1)
+    click=ad(.0001,.0871 ,100,trig:1)
+    ;(sine(base,trig:1)*.6
+    + sine(base*2.1,trig:1)*.4
+    + white(333,trig:1)*click*.5)*env
+    |> shp($,1200,.8)
+    |> sbp($,base*1.5,3)
+    |> tanh($*3)
+  })
+  sampler(clavessample,trig)*.2
+}
+
+clapsynth=(
+  seed=552,
+  trig=tram('-----x-x',1),
+)->{
+
+  env1=ad(.0001,1.2053,90,trig)
+
+  env2=ad(.0185,.8105 ,90,trig)
+
+  env3=ad(.0320,1.3933,90,trig)
+
+  env4=ad(.0217,.9363 ,18.000,trig)
+
+  noise=oversample(16,()->white(seed,trig))
+
+  noise*(env1*.3+env2*.3+env3*.3+env4*.3) |> shp($,800.01 ,.8)
+
+  |> tanh($*10)*.3
+}
+
+clap=(seed=552,trig=tram('-----x-x',1))->{
+
+  sample=record(.5,()->clapsynth(seed,trig:1))
+  sampler(sample,trig)
+}
+
+rimshot=(
+  seed=12349,
+  base=#6*o5,
+  trig=tram('--x-xx',1/2),
+)->{
+
+  sample=record(.05,()->{
+    kt=1
+
+    // envelopes
+    clickEnv = ad(.00004,.0465,160,trig:kt)
+    bodyEnv  = ad(.0001 ,.1013,55 ,trig:kt)
+    thunkEnv = ad(.0001 ,.0448,90 ,trig:kt)
+
+    // stick click (very short, lowpassed noise)
+    click =
+      oversample(8,()->white(seed,trig:kt))
+      |> lp($,3200,.8)
+      |> hp($,900,.7)
+      * clickEnv * 5.7
+
+    // wooden body (two close modes, no inharmonic metal)
+    body =
+      oversample(8,()->{
+        sqr(base*0.97,trig:kt)
+        + sine(base*1.04,trig:kt)
+      }) * bodyEnv * .75
+
+    // low woody thunk
+    thunk =
+      tri(base*0.48,trig:kt)
+      * thunkEnv * .4
+
+    ;(click + body + thunk)
+      |> sbp($,base*2.4,.85)
+      |> tanh($*2.2)
+  })
+
+  sampler(sample,trig)*.3
+}
+
 // Generate metronome sound with major/minor chord progression
 metronome=()->{
   trig=every(1/4)
