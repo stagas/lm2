@@ -362,8 +362,7 @@ cs80=(
   s
 }
 
-bd=(
-  trig=tram('x-x-x-x-'),
+bdsynth=(
   base=#1*o2,
   punch=25000k,
   offset=0.0006,
@@ -372,24 +371,39 @@ bd=(
   amp=trig->ad(.0001,.5,40,trig),
   fm=trig->ad(.00008,.013,900,trig),
   filter=trig->ad(.000147,.25,50.000,trig),
+  trig=tram('x-x-x-x-'),
+)->sine(base+punch*fm(trig),offset,trig)*amp(trig) |> slp($,base+cutoff*filter(trig),q) |> limiter($)
+
+bd=(
+  base=#1*o2,
+  punch=25000k,
+  offset=0.0006,
+  cutoff=5k,
+  q=.25,
+  amp=trig->ad(.0001,.5,40,trig),
+  fm=trig->ad(.00008,.013,900,trig),
+  filter=trig->ad(.000147,.25,50.000,trig),
+  trig=tram('x-x-x-x-'),
 )->{
   kicksample=record(.3,()->{
-    kt=1 sine(base+punch*fm(trig:kt),offset,trig:kt)*amp(trig:kt) |> slp($,base+cutoff*filter(trig:kt),q) |> limiter($)
+    bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig:1)
   })
   sampler(trig,sample:kicksample)
 }
 
+hhsynth=(width=.4,trig)->{
+  env=adsr(.06,.05 ,.950 ,.1 ,32,trig)
+  oversample(32,()->[205.3,369.6,304.4,522.7,800,540].map(x->pwm(x,width)).avg()*env
+  |> bp($,8000,.85)|>bp($,10k,.85)|>hp($,11k,.85)) |> tanh($*6)
+}
+
 hh=(width=.4,seq=mini('[.15 .2 1 .2]*4'))->{
-
   hhsample=record(.3,()->{
-
-    trig=step(1-inc(2.5),.5) env=adsr(.06,.05 ,.950 ,.1 ,32,trig)
-    oversample(32,()->[205.3,369.6,304.4,522.7,800,540].map(x->pwm(x,width)).avg()*env
-    |> bp($,8000,.85)|>bp($,10k,.85)|>hp($,11k,.85)) |> tanh($*6)
+    trig=step(1-inc(2.5),.5)
+    hhsynth(width,trig)
   })
 
   play(seq,(trig,v)->{
-
     slicer(trig,sample:hhsample)*(v>.65?v:v*2)*(v>.65?ad(0.0001,.0173+.5*v,trig):ad(0.0001,.01+.15*v,4,trig))
   })
 }
@@ -409,7 +423,7 @@ snaresynth=(seed=7,base=#5*o2,trig=step(1-phasor(1),.9))->{
 
 sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
   snaresample=record(1,()->snaresynth(seed,base))
-  sampler(snaresample,trig) |> out($)
+  sampler(snaresample,trig)
 }
 
 cowbell=(

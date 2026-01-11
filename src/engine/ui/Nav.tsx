@@ -9,6 +9,7 @@ import type { TimelineWindow } from '../types.ts'
 import { PauseGradientIcon, PlayGradientIcon, StopGradientIcon } from './Icons.tsx'
 import type { Loop } from './loop.ts'
 import { MinimapScrollbar } from './MinimapScrollbar.tsx'
+import { Link } from './router.tsx'
 import { usePlayingState } from './usePlayingState.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
 
@@ -109,7 +110,7 @@ function LoopTitle(
   const commentsCount = loopData?.commentsCount ?? 0
   const remixesCount = loopData?.remixesCount ?? 0
 
-  const trackUrl = loopData ? `${window.location.origin}/loop/${loopData.id}` : ''
+  const trackUrl = loopData ? `${window.location.origin}/app/browse/loop/${loopData.id}` : ''
   const trackTitle = title
   const userName = artist
 
@@ -169,7 +170,9 @@ export function Nav({
 
   return (
     <div className="h-[60px] flex items-center justify-center pl-3 border-b-2 border-orange-600">
-      <Logo />
+      <Link to="/">
+        <Logo />
+      </Link>
       <PlaybackControls
         currentLoop={currentLoop}
         onDspError={onDspError}

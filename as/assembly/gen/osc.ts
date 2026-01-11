@@ -1,4 +1,4 @@
-import { clamp11, clampNyquist } from '../util'
+import { clamp01, clamp11, clampNyquist } from '../util'
 import { Gen } from './gen'
 
 export class Osc extends Gen {
@@ -267,31 +267,15 @@ export class Osc extends Gen {
       lastTrig = trig
 
       const phaseInc: f32 = hz / sampleRate
-      const pulseWidth: f32 = clamp11(load<f32>(width$))
+      const pulseWidth: f32 = clamp01(load<f32>(width$)) * .985 + .0075
 
-      const sawPhase: f32 = phase
-      let sawValue: f32 = 2.0 * sawPhase - 1.0
-      sawValue -= this.polyBlep(sawPhase, phaseInc)
+      let value: f32 = phase < pulseWidth ? 1.0 : -1.0
 
-      const offset: f32 = pulseWidth * 0.5
-      let rampPhase: f32 = (phase + offset) % 1.0
-      if (rampPhase < 0.0) rampPhase += 1.0
-      let rampValue: f32 = 1.0 - 2.0 * rampPhase
-      rampValue += this.polyBlep(rampPhase, phaseInc)
+      value += this.polyBlep(phase, phaseInc)
 
-      let value: f32 = sawValue > rampValue ? 1.0 : -1.0
-
-      let crossingPhase: f32 = (0.5 - offset * 0.5 + 1.0) % 1.0
-      if (crossingPhase < 0.0) crossingPhase += 1.0
-
-      let crossingRelative: f32 = phase - crossingPhase
-      if (crossingRelative < 0.0) crossingRelative += 1.0
-      if (crossingRelative > 1.0) crossingRelative -= 1.0
-
-      value += this.polyBlep(crossingRelative, phaseInc)
-
-      const oppositeRelative: f32 = (crossingRelative + 0.5) % 1.0
-      value -= this.polyBlep(oppositeRelative, phaseInc)
+      let fallingPhase: f32 = phase - pulseWidth
+      if (fallingPhase < 0.0) fallingPhase += 1.0
+      value -= this.polyBlep(fallingPhase, phaseInc)
 
       store<f32>(out$, value)
 

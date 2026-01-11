@@ -9,6 +9,8 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
   const base = useAppStore(state => (loopId ? state.bases[loopId]?.code : undefined))
   const publicLoopsCache = useAppStore(state => state.publicLoopsCache)
   const likedLoopsCache = useAppStore(state => state.likedLoopsCache)
+  const hotLoopsCache = useAppStore(state => state.hotLoopsCache)
+  const bestLoopsCache = useAppStore(state => state.bestLoopsCache)
   const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
   const setLoopBase = useAppStore(state => state.setLoopBase)
   const getCodeFile = useAppStore(state => state.getCodeFile)
@@ -41,12 +43,18 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
       return
     }
 
-    const isPublicLoop = publicLoopsCache.some(l => l.id === loopId) || likedLoopsCache.some(l => l.id === loopId)
+    const isPublicLoop = publicLoopsCache.some(l => l.id === loopId)
+      || likedLoopsCache.some(l => l.id === loopId)
+      || hotLoopsCache.some(l => l.id === loopId)
+      || bestLoopsCache.some(l => l.id === loopId)
     const fetchKey = `${loopId}:${isPublicLoop ? 'public' : 'private'}`
     if (isPublicLoop) {
-      const meta = publicLoopsCache.find(l => l.id === loopId) ?? likedLoopsCache.find(l => l.id === loopId)
+      const meta = publicLoopsCache.find(l => l.id === loopId)
+        ?? likedLoopsCache.find(l => l.id === loopId)
+        ?? hotLoopsCache.find(l => l.id === loopId)
+        ?? bestLoopsCache.find(l => l.id === loopId)
       const needsMeta = meta?.artistId === 'unknown'
-      const hasCode = base != null || currentLoop?.data.code != null
+      const hasCode = base != null || (typeof currentLoop?.data.code === 'string')
 
       if (hasCode) {
         if (didFetchKeyRef.current !== fetchKey) {
@@ -65,6 +73,8 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
         const state = useAppStore.getState()
         const ts = state.publicLoopsCache.find(l => l.id === loopId)?.timestamp
           ?? state.likedLoopsCache.find(l => l.id === loopId)?.timestamp
+          ?? state.hotLoopsCache.find(l => l.id === loopId)?.timestamp
+          ?? state.bestLoopsCache.find(l => l.id === loopId)?.timestamp
           ?? currentLoop?.data.timestamp
         setLoopBase(loopId, code, ts)
         const codeFile = getCodeFile(loopId, code)
@@ -77,7 +87,8 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
       return
     }
 
-    if (base != null || currentLoop?.data.code != null) {
+    const hasCode = base != null || (typeof currentLoop?.data.code === 'string')
+    if (hasCode) {
       didFetchKeyRef.current = fetchKey
       setLoopData(null)
       setIsLoading(false)
@@ -100,6 +111,8 @@ export function useLoopData(loopId: string | null, currentLoop: Loop | undefined
     currentLoop?.data.timestamp,
     getCodeFile,
     getPublicLoopCode,
+    hotLoopsCache,
+    bestLoopsCache,
     likedLoopsCache,
     loopId,
     publicLoopsCache,

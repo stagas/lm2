@@ -390,38 +390,41 @@ export function Docs({
     const tutorials = list.filter(i => i.group === 'tutorial')
     const api = list.filter(i => i.group === 'api')
     const about = list.filter(i => i.group === 'about')
+    const hasQuery = query.trim().length > 0
 
-    // Group API items by category
+    // Group API items by category (only when not searching)
     const apiByCategory = new Map<string, DocItem[]>()
     const categoryOrder: string[] = []
 
-    for (const item of api) {
-      const category = item.category || 'Other'
-      if (!apiByCategory.has(category)) {
-        apiByCategory.set(category, [])
-        categoryOrder.push(category)
+    if (!hasQuery) {
+      for (const item of api) {
+        const category = item.category || 'Other'
+        if (!apiByCategory.has(category)) {
+          apiByCategory.set(category, [])
+          categoryOrder.push(category)
+        }
+        apiByCategory.get(category)!.push(item)
       }
-      apiByCategory.get(category)!.push(item)
+
+      // Sort items within each category
+      for (const [category, items] of apiByCategory.entries()) {
+        items.sort((a, b) => a.title.localeCompare(b.title))
+      }
+
+      // Sort categories by predefined order, then alphabetically for any extras
+      const predefinedOrder = Object.values(functionCategories)
+      categoryOrder.sort((a, b) => {
+        const aIndex = predefinedOrder.indexOf(a)
+        const bIndex = predefinedOrder.indexOf(b)
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+        if (aIndex !== -1) return -1
+        if (bIndex !== -1) return 1
+        return a.localeCompare(b)
+      })
     }
 
-    // Sort items within each category
-    for (const [category, items] of apiByCategory.entries()) {
-      items.sort((a, b) => a.title.localeCompare(b.title))
-    }
-
-    // Sort categories by predefined order, then alphabetically for any extras
-    const predefinedOrder = Object.values(functionCategories)
-    categoryOrder.sort((a, b) => {
-      const aIndex = predefinedOrder.indexOf(a)
-      const bIndex = predefinedOrder.indexOf(b)
-      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
-      if (aIndex !== -1) return -1
-      if (bIndex !== -1) return 1
-      return a.localeCompare(b)
-    })
-
-    return { tutorials, api, apiByCategory, categoryOrder, about }
-  }, [filtered.list])
+    return { tutorials, api, apiByCategory, categoryOrder, about, hasQuery }
+  }, [filtered.list, query])
 
   const selected = useMemo(() => {
     if (!effectiveSelectedId) return null
@@ -603,45 +606,80 @@ export function Docs({
                 <div className="mt-5">
                   <div className="text-sm font-semibold text-white">API</div>
                   <div className="mt-2 flex flex-col gap-3">
-                    {sidebarGroups.categoryOrder.map(category => {
-                      const items = sidebarGroups.apiByCategory.get(category) || []
-                      if (items.length === 0) return null
-                      return (
-                        <div key={category}>
-                          <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
-                            {category}
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            {items.map(it => {
-                              const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : ''
-                              return externalIsOpen !== undefined && it.functionName
-                                ? (
-                                  <Link
-                                    key={it.id}
-                                    to={`/docs/api/${urlSlug}`}
-                                    className={`block text-left text-sm hover:text-white font-mono whitespace-nowrap ${
-                                      it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
-                                    }`}
-                                  >
-                                    {it.title}
-                                  </Link>
-                                )
-                                : (
-                                  <button
-                                    key={it.id}
-                                    className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
-                                      it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
-                                    }`}
-                                    onClick={() => setSelectedId(it.id)}
-                                  >
-                                    {it.title}
-                                  </button>
-                                )
-                            })}
-                          </div>
+                    {sidebarGroups.hasQuery
+                      ? (
+                        // Flat list when searching (results already sorted by relevance)
+                        <div className="flex flex-col gap-1">
+                          {sidebarGroups.api.map(it => {
+                            const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : ''
+                            return externalIsOpen !== undefined && it.functionName
+                              ? (
+                                <Link
+                                  key={it.id}
+                                  to={`/docs/api/${urlSlug}`}
+                                  className={`block text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                                    it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                                  }`}
+                                >
+                                  {it.title}
+                                </Link>
+                              )
+                              : (
+                                <button
+                                  key={it.id}
+                                  className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                                    it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                                  }`}
+                                  onClick={() => setSelectedId(it.id)}
+                                >
+                                  {it.title}
+                                </button>
+                              )
+                          })}
                         </div>
                       )
-                    })}
+                      : (
+                        // Grouped by category when not searching
+                        sidebarGroups.categoryOrder.map(category => {
+                          const items = sidebarGroups.apiByCategory.get(category) || []
+                          if (items.length === 0) return null
+                          return (
+                            <div key={category}>
+                              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                                {category}
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                {items.map(it => {
+                                  const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : ''
+                                  return externalIsOpen !== undefined && it.functionName
+                                    ? (
+                                      <Link
+                                        key={it.id}
+                                        to={`/docs/api/${urlSlug}`}
+                                        className={`block text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                                          it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                                        }`}
+                                      >
+                                        {it.title}
+                                      </Link>
+                                    )
+                                    : (
+                                      <button
+                                        key={it.id}
+                                        className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                                          it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                                        }`}
+                                        onClick={() => setSelectedId(it.id)}
+                                      >
+                                        {it.title}
+                                      </button>
+                                    )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
                   </div>
                 </div>
               )}

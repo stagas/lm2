@@ -9,6 +9,10 @@ import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { Docs } from './docs/Docs.tsx'
 import { DspSourceEditor } from './DspSourceEditor.tsx'
 import { functionDefinitions } from './function-definitions.ts'
+import { Browse } from './Browse.tsx'
+import { BrowseArtist } from './BrowseArtist.tsx'
+import { BrowseLoop } from './BrowseLoop.tsx'
+import { Landing } from './Landing.tsx'
 import type { Loop } from './loop.ts'
 import { Nav } from './Nav.tsx'
 import { RouterProvider, useRouter } from './router.tsx'
@@ -183,10 +187,10 @@ function RouterContent({
   audioContextState?: AudioContextState
   onResumeClick?: () => void
 }) {
-  // Parse loop ID from URL path like /loop/<id>
+  // Parse loop ID from URL path like /app/browse/loop/<id>
   const { pathname, navigate } = useRouter()
   const loopIdFromUrl = useMemo(() => {
-    const match = pathname.match(/^\/loop\/([^/]+)$/)
+    const match = pathname.match(/^\/app\/browse\/loop\/([^/]+)$/)
     return match ? match[1] : null
   }, [pathname])
 
@@ -276,17 +280,77 @@ function RouterContent({
     }
   }, [hasHydrated, loopIdFromUrl])
 
-  // Navigate to /my if we're at / and the current loop is new (only at init)
-  useEffect(() => {
-    if (hasCheckedInitialNavigation.current) return
-    if (!hasHydrated) return
-    if (!currentLoop) return
-    if (pathname !== '/') return
-    if (!currentLoop.isNew) return
+  // Show landing page when at root path
+  const showLanding = pathname === '/'
 
-    hasCheckedInitialNavigation.current = true
-    navigate('/my')
-  }, [hasHydrated, currentLoop, pathname, navigate])
+  // Check for browse routes
+  const isBrowseRoute = pathname.startsWith('/browse')
+  const isBrowseLoopRoute = pathname.match(/^\/browse\/loop\/([^/]+)$/)
+  const isBrowseArtistRoute = pathname.startsWith('/browse/artist/') && pathname.match(/^\/browse\/artist\/[^/]+\//)
+
+  if (showLanding) {
+    return (
+      <>
+        {showIntro && (
+          <Intro
+            isFadingIn={isFadingIn}
+            isFadingOut={isFadingOut}
+            audioContextState={audioContextState}
+            onResumeClick={onResumeClick}
+          />
+        )}
+        <Landing />
+      </>
+    )
+  }
+
+  if (isBrowseLoopRoute) {
+    return (
+      <>
+        {showIntro && (
+          <Intro
+            isFadingIn={isFadingIn}
+            isFadingOut={isFadingOut}
+            audioContextState={audioContextState}
+            onResumeClick={onResumeClick}
+          />
+        )}
+        <BrowseLoop />
+      </>
+    )
+  }
+
+  if (isBrowseArtistRoute) {
+    return (
+      <>
+        {showIntro && (
+          <Intro
+            isFadingIn={isFadingIn}
+            isFadingOut={isFadingOut}
+            audioContextState={audioContextState}
+            onResumeClick={onResumeClick}
+          />
+        )}
+        <BrowseArtist />
+      </>
+    )
+  }
+
+  if (isBrowseRoute) {
+    return (
+      <>
+        {showIntro && (
+          <Intro
+            isFadingIn={isFadingIn}
+            isFadingOut={isFadingOut}
+            audioContextState={audioContextState}
+            onResumeClick={onResumeClick}
+          />
+        )}
+        <Browse />
+      </>
+    )
+  }
 
   return (
     <>
@@ -334,7 +398,7 @@ export function EngineUI() {
 
   const routeLoopId = useMemo(() => {
     const pathname = window.location.pathname || '/'
-    const match = pathname.match(/^\/loop\/([^/]+)$/)
+    const match = pathname.match(/^\/app\/browse\/loop\/([^/]+)$/)
     return match ? match[1] : null
   }, [])
 

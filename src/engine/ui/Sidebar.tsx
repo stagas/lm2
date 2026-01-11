@@ -14,7 +14,7 @@ import {
 import { DEBUG } from '../constants.ts'
 import { useEngineUiStore } from '../store.ts'
 import { BytecodeInspector } from './BytecodeInspector.tsx'
-import { useRouter } from './router.tsx'
+import { Link, useRouter } from './router.tsx'
 import { SidebarBrowse } from './SidebarBrowse.tsx'
 import { SidebarLoops } from './SidebarLoops.tsx'
 import { SidebarSettings } from './SidebarSettings.tsx'
@@ -40,10 +40,9 @@ const sidebarTabFromPathname = (pathname: string): SidebarTab | null => {
   if (pathname.startsWith('/docs')) return null
 
   if (pathname === '/settings') return 'settings'
-  if (pathname === '/my') return 'loops'
+  if (pathname === '/app') return 'loops'
   if (pathname === '/compiled') return DEBUG ? 'compiled' : 'browse'
-  if (pathname === '/' || pathname === '/hot' || pathname === '/best' || pathname === '/likes'
-    || pathname.startsWith('/artist'))
+  if (pathname.startsWith('/app/browse'))
   {
     return 'browse'
   }
@@ -72,26 +71,27 @@ export function Sidebar() {
       {sidebarOpen && (
         <div className="flex flex-col w-full h-full">
           <div className="h-[40px] bg-black flex shrink-0">
-            {Object.entries(SidebarTabIcon).filter(([tab]) => DEBUG || tab !== 'compiled').map(([tab, icon]) => (
-              <button
-                key={tab}
-                title={SidebarTitles[tab as SidebarTab]}
-                onPointerDown={() => {
-                  const t = tab as SidebarTab
-                  if (t === 'loops') navigate('/my')
-                  else if (t === 'browse') navigate('/')
-                  else if (t === 'settings') navigate('/settings')
-                  else if (t === 'compiled') navigate('/compiled')
-                }}
-                className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
-                  (activeTab ?? sidebarTab) === tab
-                    ? 'bg-black text-white'
-                    : 'bg-gradient-to-b from-black to-neutral-800 text-neutral-500 hover:text-white'
-                }`}
-              >
-                {icon}
-              </button>
-            ))}
+            {Object.entries(SidebarTabIcon).filter(([tab]) => DEBUG || tab !== 'compiled').map(([tab, icon]) => {
+              const t = tab as SidebarTab
+              let to = '/app'
+              if (t === 'browse') to = '/app/browse'
+              else if (t === 'settings') to = '/settings'
+              else if (t === 'compiled') to = '/compiled'
+              return (
+                <Link
+                  key={tab}
+                  to={to}
+                  title={SidebarTitles[t]}
+                  className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
+                    (activeTab ?? sidebarTab) === tab
+                      ? 'bg-black text-white'
+                      : 'bg-gradient-to-b from-black to-neutral-800 text-neutral-500 hover:text-white'
+                  }`}
+                >
+                  {icon}
+                </Link>
+              )
+            })}
           </div>
           <div className="flex flex-1 flex-col w-full h-full overflow-y-auto" ref={scrollContainerRef}>
             {(activeTab ?? sidebarTab) === 'loops' && (

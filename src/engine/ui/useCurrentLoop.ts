@@ -27,11 +27,11 @@ export function useCurrentLoop(): Loop | null {
   const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
   const upsertPublicLoopCache = useAppStore(state => state.upsertPublicLoopCache)
 
-  // When landing on /loop/<id>, prefer that loop immediately (before picking defaults).
+  // When landing on /app/browse/loop/<id>, prefer that loop immediately (before picking defaults).
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
     const pathname = window.location.pathname || '/'
-    const match = pathname.match(/^\/loop\/([^/]+)$/)
+    const match = pathname.match(/^\/app\/browse\/loop\/([^/]+)$/)
     const id = match ? match[1] : null
     if (!id) return
 

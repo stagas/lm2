@@ -42,6 +42,8 @@ type InlineEditorProps = {
   id: string
   initialCode: string
   onPlayRequest?: () => void
+  autoHeight?: boolean
+  hidePlayButton?: boolean
 }
 
 const inlineHeader: EditorHeader = {
@@ -172,7 +174,7 @@ function buildWidgetCompileState(code: string, preview: ReturnType<typeof encode
   }
 }
 
-export function InlineEditor({ id, initialCode }: InlineEditorProps) {
+export function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButton = false }: InlineEditorProps) {
   const loopId = `docs:${id}`
   const codeFileRef = useRef<{ id: string; file: CodeFile } | null>(null)
   if (!codeFileRef.current || codeFileRef.current.id !== loopId) {
@@ -367,7 +369,7 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
       }
 
       const t = window.setTimeout(() => {
-        void useEngineDspStore.getState().applyDocsSource(loopId, code, vm)
+        void useEngineDspStore.getState().updateDspSource(code, vm)
       }, 175)
       return () => window.clearTimeout(t)
     }
@@ -784,33 +786,37 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
   ])
 
   return (
-    <div className="my-3 w-full border border-[#333] bg-neutral-950 rounded-md overflow-hidden" data-inline-editor={id}>
-      <div className="w-full relative">
-        <div className="absolute bottom-0 right-0 flex items-center justify-end z-50 gap-2 px-2 py-1.5 border-b border-[#333]">
-          {!canPlay && (
-            <div className="text-xs text-red-300 truncate">
-              {preview.errors[0]?.message ?? 'Compile error'}
-            </div>
-          )}
-          <button
-            className={`h-8 w-8 flex items-center justify-center rounded text-white ${
-              (canPlay || isPlaying) ? 'bg-gradient-to-br from-orange-400 to-red-600' : 'bg-neutral-800'
-            }`}
-            disabled={!canPlay && !isPlaying}
-            onClick={() => {
-              const runtime = useEngineRuntimeStore.getState()
-              if (isPlaying) {
-                runtime.stop()
-                return
-              }
-              void useEngineDspStore.getState().playLoop(loopId, code, 0)
-            }}
-            aria-label={isPlaying ? 'Stop' : 'Play'}
-            title={isPlaying ? 'Stop' : (canPlay ? 'Play' : 'Fix errors to play')}
-          >
-            {isPlaying ? <StopIcon weight="fill" size={18} /> : <PlayIcon weight="fill" size={18} />}
-          </button>
-        </div>
+    <div className="my-3 w-full h-full border border-[#333] bg-neutral-950 rounded-md overflow-hidden"
+      data-inline-editor={id}
+    >
+      <div className="w-full h-full relative">
+        {!hidePlayButton && (
+          <div className="absolute bottom-0 right-0 flex items-center justify-end z-50 gap-2 px-2 py-1.5 border-b border-[#333]">
+            {!canPlay && (
+              <div className="text-xs text-red-300 truncate">
+                {preview.errors[0]?.message ?? 'Compile error'}
+              </div>
+            )}
+            <button
+              className={`h-8 w-8 flex items-center justify-center rounded text-white ${
+                (canPlay || isPlaying) ? 'bg-gradient-to-br from-orange-400 to-red-600' : 'bg-neutral-800'
+              }`}
+              disabled={!canPlay && !isPlaying}
+              onPointerDown={() => {
+                const runtime = useEngineRuntimeStore.getState()
+                if (isPlaying) {
+                  runtime.stop()
+                  return
+                }
+                void useEngineDspStore.getState().playLoop(loopId, code, 0)
+              }}
+              aria-label={isPlaying ? 'Stop' : 'Play'}
+              title={isPlaying ? 'Stop' : (canPlay ? 'Play' : 'Fix errors to play')}
+            >
+              {isPlaying ? <StopIcon weight="fill" size={18} /> : <PlayIcon weight="fill" size={18} />}
+            </button>
+          </div>
+        )}
         <CodeEditor
           codeFile={codeFile}
           widgets={widgets}
@@ -822,9 +828,9 @@ export function InlineEditor({ id, initialCode }: InlineEditorProps) {
           functionDefinitions={functionDefinitions}
           hideFunctionSignatures={false}
           hideHoverFunctionSignatures={false}
-          isAnimating={true}
+          isAnimating={isPlaying}
           gutter={true}
-          autoHeight={true}
+          autoHeight={autoHeight}
           wordWrap={true}
           keyOverride={e => {
             const metaKey = e.ctrlKey || e.metaKey

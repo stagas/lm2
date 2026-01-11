@@ -104,6 +104,7 @@ export class Program {
 
   // Reusable arrays for record() dependency tracking
   recordSeenSyms: StaticArray<i32> = new StaticArray<i32>(1024)
+  recordStoredSyms: StaticArray<i32> = new StaticArray<i32>(1024)
   recordSeenFuncs: StaticArray<i32> = new StaticArray<i32>(256)
   recordFuncStack: StaticArray<i32> = new StaticArray<i32>(128)
 

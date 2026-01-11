@@ -5,29 +5,29 @@ import { useAppStore } from '../../app/store.ts'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
 import { SpinnerSmall } from '../../components/Spinner.tsx'
 import { AuthForm } from './AuthForm.tsx'
-import { useRouter } from './router.tsx'
+import { Link, useRouter } from './router.tsx'
 import { SidebarBrowseList } from './SidebarBrowseList.tsx'
 import { toSlug } from './util.ts'
 
 const browseTabFromPathname = (pathname: string) => {
-  if (pathname === '/hot') return 'hot'
-  if (pathname === '/best') return 'best'
-  if (pathname === '/likes') return 'liked'
-  if (pathname === '/' || pathname === '') return 'new'
-  if (pathname === '/artist' || pathname.startsWith('/artist/')) return 'artist'
+  if (pathname === '/app/browse/hot') return 'hot'
+  if (pathname === '/app/browse/best') return 'best'
+  if (pathname === '/app/browse/likes') return 'liked'
+  if (pathname === '/app/browse' || pathname === '/app') return 'new'
+  if (pathname === '/app/browse/artist' || pathname.startsWith('/app/browse/artist/')) return 'artist'
   return 'new'
 }
 
 const artistIdFromPathname = (pathname: string) => {
-  if (!pathname.startsWith('/artist/')) return null
-  const rest = pathname.slice('/artist/'.length)
+  if (!pathname.startsWith('/app/browse/artist/')) return null
+  const rest = pathname.slice('/app/browse/artist/'.length)
   const id = rest.split('/')[0] || ''
   return id.length > 0 ? id : null
 }
 
 const artistNameFromPathname = (pathname: string) => {
-  if (!pathname.startsWith('/artist/')) return ''
-  const rest = pathname.slice('/artist/'.length)
+  if (!pathname.startsWith('/app/browse/artist/')) return ''
+  const rest = pathname.slice('/app/browse/artist/'.length)
   const slug = rest.split('/')[1] || ''
   const raw = decodeURIComponent(slug).trim()
   if (!raw) return ''
@@ -35,14 +35,14 @@ const artistNameFromPathname = (pathname: string) => {
 }
 
 const isArtistWithoutIdPath = (pathname: string) =>
-  pathname === '/artist' || (pathname.startsWith('/artist/') && artistIdFromPathname(pathname) == null)
+  pathname === '/app/browse/artist' || (pathname.startsWith('/app/browse/artist/') && artistIdFromPathname(pathname) == null)
 
 const isBrowsePathname = (pathname: string) => {
-  if (pathname === '/' || pathname === '') return true
-  if (pathname === '/hot') return true
-  if (pathname === '/best') return true
-  if (pathname === '/likes') return true
-  if (pathname === '/artist' || pathname.startsWith('/artist/')) return true
+  if (pathname === '/app/browse' || pathname === '/app') return true
+  if (pathname === '/app/browse/hot') return true
+  if (pathname === '/app/browse/best') return true
+  if (pathname === '/app/browse/likes') return true
+  if (pathname === '/app/browse/artist' || pathname.startsWith('/app/browse/artist/')) return true
   return false
 }
 
@@ -104,16 +104,16 @@ export function SidebarBrowse() {
 
     if (sessionData) return
     const initPath = initPathRef.current ?? pathname
-    if (initPath === '/likes' || isArtistWithoutIdPath(initPath)) {
-      navigate('/', { replace: true })
+    if (initPath === '/app/browse/likes' || isArtistWithoutIdPath(initPath)) {
+      navigate('/app/browse', { replace: true })
     }
   }, [navigate, pathname, sessionData, sessionFetchState])
 
   useEffect(() => {
-    if (pathname !== '/artist') return
+    if (pathname !== '/app/browse/artist') return
     const ownId = sessionData?.user.id
     if (!ownId) return
-    navigate(`/artist/${ownId}/${toSlug(sessionData?.user.name ?? '')}`, { replace: true })
+    navigate(`/app/browse/artist/${ownId}/${toSlug(sessionData?.user.name ?? '')}`, { replace: true })
   }, [navigate, pathname, sessionData?.user.id, sessionData?.user.name])
 
   useEffect(() => {
@@ -126,7 +126,6 @@ export function SidebarBrowse() {
   useEffect(() => {
     if (tab !== 'artist') return
     if (!routeArtistId) return
-    if (sessionData?.user.id && routeArtistId === sessionData.user.id) return
     if (hasFetchedPublicLoops && !isPublicLoopsCacheStale) return
     setIsArtistLoading(true)
     void refreshPublicLoops().finally(() => setIsArtistLoading(false))
@@ -135,7 +134,6 @@ export function SidebarBrowse() {
     isPublicLoopsCacheStale,
     refreshPublicLoops,
     routeArtistId,
-    sessionData?.user.id,
     tab,
   ])
 
@@ -210,22 +208,11 @@ export function SidebarBrowse() {
     const artistId = routeArtistId ?? sessionData?.user.id ?? null
     if (!artistId) return { artistId: null, artistName: '', loops: [] as LoopData[] }
 
-    if (sessionData?.user.id && artistId === sessionData.user.id) {
-      const loops = (sessionData.loops ?? []).map(loop => {
-        // Merge with public loop metadata for likes/comments counts
-        const publicLoop = [...publicLoops, ...hotLoops, ...bestLoops, ...likedLoops]
-          .find(l => l.id === loop.id)
-        if (publicLoop) {
-          return { ...loop, likesCount: publicLoop.likesCount, commentsCount: publicLoop.commentsCount }
-        }
-        return loop
-      }).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
-      return { artistId, artistName: sessionData.user.name, loops }
-    }
-
+    // Only show public loops on artist page
     const byId = new Map<string, LoopData>()
     for (const loop of [...publicLoops, ...hotLoops, ...bestLoops, ...likedLoops]) {
       if (loop.artistId !== artistId) continue
+      if (!loop.isPublic) continue
       byId.set(loop.id, loop)
     }
     const loops = Array.from(byId.values()).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
@@ -247,7 +234,7 @@ export function SidebarBrowse() {
     if (tab === 'artist') {
       const artistName = artistView?.artistName ?? ''
       const loops = artistView?.loops ?? []
-      const showSpinner = loops.length === 0 && (isArtistLoading || !hasFetchedPublicLoops)
+      const showSpinner = loops.length === 0 && isArtistLoading
       if (!artistName && !sessionData) {
         return (
           <div className="p-3 flex flex-col gap-2 border-b border-neutral-800">
@@ -309,9 +296,9 @@ export function SidebarBrowse() {
   return (
     <div className="flex flex-col w-full h-full">
       <div className="h-[40px] bg-black flex shrink-0">
-        <button
+        <Link
+          to="/app/browse"
           title="New"
-          onPointerDown={() => navigate('/')}
           className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
             tab === 'new'
               ? 'bg-black text-white'
@@ -319,10 +306,10 @@ export function SidebarBrowse() {
           }`}
         >
           <TimerIcon weight="regular" size={16} />
-        </button>
-        <button
+        </Link>
+        <Link
+          to="/app/browse/hot"
           title="Hot"
-          onPointerDown={() => navigate('/hot')}
           className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
             tab === 'hot'
               ? 'bg-black text-white'
@@ -330,10 +317,10 @@ export function SidebarBrowse() {
           }`}
         >
           <FireSimpleIcon weight="regular" size={16} />
-        </button>
-        <button
+        </Link>
+        <Link
+          to="/app/browse/best"
           title="Best"
-          onPointerDown={() => navigate('/best')}
           className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
             tab === 'best'
               ? 'bg-black text-white'
@@ -341,10 +328,10 @@ export function SidebarBrowse() {
           }`}
         >
           <StarIcon weight="regular" size={16} />
-        </button>
-        <button
+        </Link>
+        <Link
+          to="/app/browse/likes"
           title="Liked"
-          onPointerDown={() => navigate('/likes')}
           className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
             tab === 'liked'
               ? 'bg-black text-white'
@@ -352,25 +339,32 @@ export function SidebarBrowse() {
           }`}
         >
           <HeartIcon weight="regular" size={16} />
-        </button>
-        <button
-          title={'Artist'}
-          onPointerDown={() => {
-            const id = sessionData?.user.id
-            if (!id) {
-              navigate('/artist')
-              return
-            }
-            navigate(`/artist/${id}/${toSlug(sessionData?.user.name ?? '')}`)
-          }}
-          className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 disabled:opacity-30 ${
-            tab === 'artist'
-              ? 'bg-black text-white'
-              : 'bg-gradient-to-b from-black to-neutral-800 text-neutral-500 hover:text-white'
-          }`}
-        >
-          <UserIcon weight="regular" size={16} />
-        </button>
+        </Link>
+        {sessionData?.user.id ? (
+          <Link
+            to={`/app/browse/artist/${sessionData.user.id}/${toSlug(sessionData.user.name ?? '')}`}
+            title="Artist"
+            className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 ${
+              tab === 'artist'
+                ? 'bg-black text-white'
+                : 'bg-gradient-to-b from-black to-neutral-800 text-neutral-500 hover:text-white'
+            }`}
+          >
+            <UserIcon weight="regular" size={16} />
+          </Link>
+        ) : (
+          <Link
+            to="/app/browse/artist"
+            title="Artist"
+            className={`flex-1 font-semibold text-xs flex items-center justify-center gap-2 disabled:opacity-30 ${
+              tab === 'artist'
+                ? 'bg-black text-white'
+                : 'bg-gradient-to-b from-black to-neutral-800 text-neutral-500 hover:text-white'
+            }`}
+          >
+            <UserIcon weight="regular" size={16} />
+          </Link>
+        )}
       </div>
       {content}
     </div>

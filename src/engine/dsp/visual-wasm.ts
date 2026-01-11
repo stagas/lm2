@@ -55,9 +55,8 @@ export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string
   }
   catch (error) {
     console.error(error)
-    setTimeout(() => {
-      location.reload()
-    }, 1000)
+    // @ts-ignore
+    Guru.meditate('Catastrophic failure - Open in a new tab')
     throw error
   }
 

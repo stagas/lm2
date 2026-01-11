@@ -287,9 +287,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Phase-continuous sine oscillator; the optional trigger lets you restart the wave from zero.',
     examples: [
-      'sine(440) |> out($)',
-      'env = adsr(attack:.01, decay:.1, sustain:.4, release:.3, trig)\nsine(hz, 0, trig) * env |> out($)',
-      'sine(hz, .05, trig) * env |> out($)',
+      `sine(a2)*.3 |> out($)`,
     ],
     category: 'generators',
   },
@@ -317,8 +315,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Triangle wave oscillator.',
     examples: [
-      'tri(220) |> out($)',
-      'tri(hz, .01, trig) * .2 |> out($)',
+      `tri(a2)*.3 |> out($)`,
     ],
     category: 'generators',
   },
@@ -346,8 +343,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Sawtooth wave oscillator.',
     examples: [
-      'saw(110) |> out($)',
-      'saw(hz, .02, trig) * .2 |> out($)',
+      `saw(a2)*.3 |> out($)`,
     ],
     category: 'generators',
   },
@@ -375,8 +371,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Ramp wave oscillator (inverted sawtooth).',
     examples: [
-      'ramp(110) |> out($)',
-      'ramp(hz, .02, trig) * .2 |> out($)',
+      `ramp(a2)*.3 |> out($)`,
     ],
     category: 'generators',
   },
@@ -404,8 +399,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Square wave oscillator.',
     examples: [
-      'sqr(55) |> out($)',
-      'sqr(hz, .01, trig) * .2 |> out($)',
+      `sqr(a2)*.3 |> out($)`,
     ],
     category: 'generators',
   },
@@ -442,8 +436,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Pulse width modulation oscillator.',
     examples: [
-      'pwm(110, width:.2) |> out($)',
-      'pwm(hz, lfotri(1)) |> out($)',
+      `pwm(a1,lfosine(2)) |> out($)`,
     ],
     category: 'generators',
   },
@@ -501,8 +494,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     description:
       'Impulse oscillator that produces steady impulses (1 sample of value 1, rest 0) at the given frequency.',
     examples: [
-      'impulse(440) |> out($)',
-      'impulse(hz, 0, trig) |> out($)',
+      `rimshot(trig:impulse(1)) |> out($)`,
     ],
     category: 'generators',
   },
@@ -539,8 +531,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Incremental oscillator that increases linearly from 0 to the width value at the given frequency.',
     examples: [
-      'inc(1) |> out($)',
-      'inc(hz, width, offset, trig) |> out($)',
+      `pink()*inc(.1)|>out($)`,
     ],
     category: 'generators',
   },
@@ -644,7 +635,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     description:
       'Full attack/decay/sustain/release envelope. Always reaches 1, settles at sustain while trig is high, then decays to 0.',
     examples: [
-      `trig=step(lfosaw(1/2),.5) supersaw(a4) * adsr(.1,.2,.3,.75,trig) |> out($)`,
+      `trig=step(lfosaw(1),.5) supersaw(a4) * adsr(.1,.2,.3,.75,trig) |> out($)`,
     ],
     category: 'generators',
   },
@@ -854,14 +845,15 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         name: 'color',
         type: 'string',
         optional: true,
-        description: 'UI color hint for the sequence (e.g. \'#05f\')',
+        description: 'UI color hint for the sequence (e.g. \'#4af\')',
       },
     ],
     returnType: 'number',
     description: 'Defines a Mini notation sequence. It compiles and returns a sequence reference.',
     examples: [
-      'mel = mini(\'scale dorian [i ii v]$.5/2\', \'#05f\')',
-      'play(mel, (trig, velocity, hz) -> sine(hz, trig) * velocity) |> out($)',
+      `scale='aeolian'
+play(mini('[i iv v ii]/2$.75','#4af'), (trig,velocity,hz)->sqr(hz,trig)*(env=ad(.01,.8,4,trig))|>slp($,300+5k*env**10,.7))*.2
++bd()+hh()+sd() |> out($*.8)`,
     ],
     category: 'sequencing',
   },
@@ -896,9 +888,9 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Plays a sequence reference with the provided callback.',
     examples: [
-      'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity) |> out($)',
-      'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity, voices:4) |> out($)',
-      'play(seq, (trig, velocity, hz) -> sine(hz, trig) * velocity, bar:2) |> out($)',
+      `scale='aeolian'
+play(mini('[i iv v ii]/2$.75','#4af'), (trig,velocity,hz)->sqr(hz,trig)*(env=ad(.01,.8,4,trig))|>slp($,300+5k*env**10,.7))*.2
++bd()+hh()+sd() |> out($*.8)`,
     ],
     category: 'sequencing',
   },
@@ -918,8 +910,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     description:
       'Plays back a sequence of interpolated values defined in timeline notation; useful for automations or gating.',
     examples: [
-      'tl = timeline(\'1,0 3,1l2 8,0\', \'#f00\')',
-      'tl * (0 1) |> out($)',
+      `auto=timeline('1,1e3 2,0e-3 3,1e-2 -', '#f09')`,
     ],
     category: 'sequencing',
   },
@@ -958,8 +949,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     description:
       'Plays a sample that was uploaded from the main thread. Triggering, looping, and negative playback are supported.',
     examples: [
-      'kick = freesound(id: 123456)',
-      'sampler(sample: kick, trig)',
+      `sample=freesound(807998)
+sampler(sample,trig:every(2)) |> out($)`,
     ],
     category: 'generators',
   },
@@ -1008,7 +999,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Chooses one of the detected slices from a sample and plays it back with the requested speed/offset.',
     examples: [
-      'slice = freesound(id: 123456)\nslicer(sample: slice, slice: .5, threshold: .4, trig)',
+      `slicer(sample:freesound(45730),threshold:0.05,slice:random(),trig:every(1/16,prob:.5))
+|> out($)`,
     ],
     category: 'generators',
   },
@@ -1064,8 +1056,10 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Emits 1.0 whenever the playhead crosses the requested bars/probability, otherwise 0.',
     examples: [
-      'pulse = every(1/4, prob:.6, swing:.1)',
-      'pulse |> out($)',
+      `scale='zhi'
+trig=every(1/6)+every(3/4) env=ad(.02,.2,5,trig)
+saw(#scale.random(trig)*o4)*ad(.02,.2,5,trig) |> slp($,500+10k*env**10,.5)*.5 |> out($)
+bd()+sd() |> out($*.8)`,
     ],
     category: 'sequencing',
   },
@@ -1167,8 +1161,8 @@ every=1/2 q=.5
     examples: [
       `scale='aeolian'
 trig=euclid(3,8,bar:1/2) env=ad(.001,.2,2,trig)
-saw([#1,#6,#5,#3].step(trig)*o2)*env |> slp($,500+ 10k*env**15,.5) |> out($)
-bd()+hh()+sd() |> out($)`,
+saw([#1,#6,#5,#3].step(trig)*o2)*env |> slp($,500+ 10k*env**15,.5)*.7 |> out($)
+bd()+hh()+sd() |> out($*.8)`,
     ],
     category: 'sequencing',
   },
@@ -1819,7 +1813,14 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Low-pass filter with diode-style saturation and resonance.',
     examples: [
-      'saw(hz) |> diodeladder($, cutoff:1000, q:0.5, k:0.2) |> out($)',
+      `scale='aeolian'
+tb303=(hz,cutoff,q,k,sat,trig)->{
+  s=ramp(hz)
+  s=diodeladder(s,cutoff,q,k,sat)
+  s |> tanh($*6)*.5 |> dc($)
+}
+trig=every(1/16) tb303([#1*o2,#1*o2,#7*o2,#5*o3].glide(1/8,10),cutoff:100+(300+2k*fractal(6)**3)*ad(.01,3,30,trig),q:.91,k:.002,sat:1.15,trig) |> out($*.5)
+bd()+hh()+sd() |> out($)`,
     ],
     category: 'filters',
   },
@@ -1905,9 +1906,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Beat-locked sine LFO in 0..1 synced to the global sample clock.',
     examples: [
-      'lfosine(1/16)',
-      'lfosine(1/16, 0, trig)',
-      'lfosine(bar:1/16, offset:1/64, trig)',
+      `supersaw(#1*o2) |> slp($,100+15k*lfosine(1/2)**4) |> out($)`,
     ],
     category: 'generators',
   },
@@ -1924,9 +1923,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Beat-locked triangle LFO in 0..1 synced to the global sample clock.',
     examples: [
-      'lfotri(1/8)',
-      'lfotri(1/8, 0, trig)',
-      'lfotri(bar:1/8, offset:-1/32, trig)',
+      `supersaw(#1*o2) |> slp($,100+15k*lfotri(1/2)**4) |> out($)`,
     ],
     category: 'generators',
   },
@@ -1943,9 +1940,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Beat-locked saw LFO in 0..1 synced to the global sample clock.',
     examples: [
-      'lfosaw(1/4)',
-      'lfosaw(1/4, 0, trig)',
-      'lfosaw(bar:1/4, offset:1/16, trig)',
+      `supersaw(#1*o2) |> slp($,100+15k*lfosaw(1/2)**4) |> out($)`,
     ],
     category: 'generators',
   },
@@ -1962,9 +1957,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Beat-locked ramp LFO in 0..1 synced to the global sample clock.',
     examples: [
-      'lforamp(1/4)',
-      'lforamp(1/4, 0, trig)',
-      'lforamp(bar:1/4, offset:-1/16, trig)',
+      `supersaw(#1*o2) |> slp($,100+15k*lforamp(1/2)**4) |> out($)`,
     ],
     category: 'generators',
   },
@@ -1981,9 +1974,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Beat-locked square LFO in 0..1 synced to the global sample clock.',
     examples: [
-      'lfosqr(1/8)',
-      'lfosqr(1/8, 0, trig)',
-      'lfosqr(bar:1/8, offset:1/32, trig)',
+      `supersaw(#1*o2) |> slp($,100+15k*lfosqr(1/2)**4) |> out($)`,
     ],
     category: 'generators',
   },
@@ -2009,9 +2000,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Beat-locked sample-and-hold LFO in 0..1, deterministic per (seed, cycle).',
     examples: [
-      'lfosah(1/16)',
-      'lfosah(1/16, 1234, 0, trig)',
-      'lfosah(bar:1/16, seed:42, offset:1/64, trig)',
+      `supersaw(#1*o2) |> slp($,100+15k*lfosah(1/2)**4) |> out($)`,
     ],
     category: 'generators',
   },
@@ -2113,8 +2102,8 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Continuous smooth noise stream in 0..1 (stateful, band-limited-ish).',
     examples: [
-      'smooth() |> out($)',
-      'smooth(1234, rate:4, trig:trig) |> out($)',
+      `saw(#i.walk(1/16)*o2) |> slp($,100+15k*smooth()**4)*.75
+|> out($)`,
     ],
     category: 'generators',
   },
@@ -2136,8 +2125,8 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Multi-octave smooth variation (fBm-style) stream in 0..1 (stateful).',
     examples: [
-      'fractal() |> out($)',
-      'fractal(1234, rate:2, octaves:6, gain:.6, trig:trig) |> out($)',
+      `saw(#i.walk(1/16)*o2) |> slp($,100+15k*fractal()**4)*.75
+|> out($)`,
     ],
     category: 'generators',
   },
@@ -2177,11 +2166,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Rhythm impulse generator with microtiming support. Brackets subdivide beats for complex polyrhythms.',
     examples: [
-      'hihats = tram("--x-", 1/4)',
-      'kick = tram("x---x---x---x-x-")',
-      'snare = tram("  x  -  x  ", 1/2)',
-      'microtiming = tram("x-[x x]-x", 1)', // 5 beats: x, -, [x x], -, x
-      'polyrhythm = tram("[x x x]-[x x]")', // 3 beats: [x x x], -, [x x]
+      `bd(trig:tram('x-x- x-[x-x]-'))+rimshot(trig:tram('--x- --xx',1/2)) |> out($)`,
     ],
     category: 'sequencing',
   },
@@ -2766,7 +2751,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Granular synthesis-inspired trigger generator based on speed.',
     examples: [
-      'grain(speed:2, seed:123) |> out($)',
+      'rimshot(trig:grain(speed:.2)) |> out($)',
     ],
     category: 'generators',
   },
@@ -2812,7 +2797,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Karplus-Strong plucked string synthesis algorithm.',
     examples: [
-      'karplus(220, trig:every(1/2)) |> out($)',
+      `trig=grain(.2) karplus(#scale.random(trig)*[o3,o4].random(trig),pink,trig) |> out($)`,
     ],
     category: 'generators',
   },
@@ -2841,7 +2826,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Additive synthesis with harmonic series and tilt control.',
     examples: [
-      'harmonics(110, numHarmonics:5, tilt:2, trig:every(1/4)) |> out($)',
+      `harmonics(#scale.random(grain(.2))*o2,numHarmonics:16,tilt:.5)*.8 |> out($)`,
     ],
     category: 'generators',
   },
@@ -2857,7 +2842,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Wave folding synthesis with harmonic enhancement.',
     examples: [
-      'folded(220, numHarmonics:4, amount:3) |> out($)',
+      `scale='zhi' trig=euclid(5,8) folded(#scale.random(trig)*o2, numHarmonics:5, amount:3)*ad(.01,.2,3,trig) |> out($)`,
     ],
     category: 'generators',
   },
@@ -2900,7 +2885,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Hammond organ-style drawbar oscillator.',
     examples: [
-      'drawbar(110, bars:[1,0.7,0.5,0.3,0.2]) |> out($)',
+      `scale='zhi' trig=euclid(3,8,0,1/2) drawbar(#scale.random(trig)*o4,bars:[.8,.3,.8,.7,.4])*ad(.01,.2,3,trig) |> out($)`,
     ],
     category: 'generators',
   },
@@ -2915,7 +2900,7 @@ bd()+hh()+sd() |> out($)`,
     returnType: 'number',
     description: 'Drum synthesis using filtered noise excitation.',
     examples: [
-      'drum(trig:every(1/2)) |> out($)',
+      `trig=euclid(3,8) drum(trig)*ad(.001,.4,4,trig) |> out($)`,
     ],
     category: 'generators',
   },
@@ -2956,7 +2941,7 @@ bd()+hh()+sd() |> out($)`,
     description: 'Hi-hat synthesizer using multiple PWM oscillators with filtering and saturation.',
     examples: [
       'hh() |> out($)',
-      'hh(width:0.3, seq:mini("x-x-x-")) |> out($)',
+      `hh(width:0.01,seq:mini('[.3 .4 .8 .9]*4')) |> out($)`,
     ],
     category: 'generators',
   },
@@ -3003,7 +2988,7 @@ bd()+hh()+sd() |> out($)`,
     description: 'Tom drum synthesizer with pitch envelope and dual oscillators.',
     examples: [
       'tom() |> out($)',
-      'tom(seq:mini("x---x---")) |> out($)',
+      `tom(seq:mini('[1 3] [2 4]*1.5')) |> out($)`,
     ],
     category: 'generators',
   },
@@ -3034,7 +3019,7 @@ bd()+hh()+sd() |> out($)`,
     description: 'Clap synthesizer using multiple overlapping noise envelopes.',
     examples: [
       'clap() |> out($)',
-      'clap(seed:123, trig:euclid(2,8)) |> out($)',
+      'clap(seed:123, trig:euclid(3,8)) |> out($)',
     ],
     category: 'generators',
   },

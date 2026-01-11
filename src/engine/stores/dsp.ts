@@ -134,7 +134,6 @@ export type EngineDspState = {
   dispose: () => void
   updateWasmBinary: () => Promise<void>
   updateDspSource: (source: string, vm?: VmCompileSnapshot) => Promise<string[] | undefined>
-  applyDocsSource: (loopId: string, source: string, vm?: VmCompileSnapshot) => Promise<void>
   preloadSamples: (source: string) => Promise<void>
   playLoop: (loopId: string, source: string, startSample?: number) => Promise<void>
   setUiCompilePreview: (next: {
@@ -177,7 +176,6 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
   let sampleUploadToken = 0
   let samplePreloadId = 0
   let playLoopToken = 0
-  let docsUpdateToken = 0
   const samplePreviewTarget = {
     ops: new Int32Array(OPS_COUNT),
     literals: new Float32Array(LITERALS_COUNT),
@@ -446,12 +444,16 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const sampleDefs: SampleDef[] = primaryResult.sampleDefs ?? []
 
       if (!primaryResult.diff.significantChange) {
+        // Determine which program is currently active (important when a loop is playing)
+        const activePtr = runtime.wasmDsp?.program
+        const activeProgram = (activePtr && stagingProgram.program.ptr$ === activePtr) ? stagingProgram : primaryProgram
+
         if (primaryResult.bpm !== undefined && runtime.bpmValue) {
           const oldBpm = runtime.bpmValue[0]
           runtime.bpmValue[0] = primaryResult.bpm
           runtime.worklet?.syncBpm(oldBpm, primaryResult.bpm)
         }
-        await primaryProgram.program.applyPreparedData(primaryResult.data)
+        await activeProgram.program.applyPreparedData(primaryResult.data)
         set({
           dspSource: source,
           sequences,
@@ -525,9 +527,19 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       const control = runtime.control
       const dspPtr = runtime.wasmDspPtr
       const swapStatus = runtime.programSwapStatus
+      const seekSampleCount = runtime.seekSampleCount
       if (!swap || !control || !dspPtr || !swapStatus) {
         throw new Error('Program swap buffers not initialized')
       }
+
+      // Determine which program is currently active
+      const activePtr = runtime.wasmDsp?.program
+      const isPlaying = runtime.playbackState === 'running' && runtime.playingLoopId != null
+      const useRestart = isPlaying && activePtr != null
+      const actualPrimaryProgram = (activePtr && stagingProgram.program.ptr$ === activePtr)
+        ? stagingProgram
+        : primaryProgram
+      const actualStagingProgram = actualPrimaryProgram === primaryProgram ? stagingProgram : primaryProgram
 
       // Early UI update: we already have the compiled refs/source maps, but the worklet
       // crossfade swap can take a few chunks to finish.
@@ -573,20 +585,33 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         runtime.worklet?.syncBpm(oldBpm, stagingResult.bpm)
       }
 
-      Atomics.store(swap, 0, primaryProgram.program.ptr$)
-      Atomics.store(swap, 1, stagingProgram.program.ptr$)
-      Atomics.store(swap, 2, dspPtr)
-      Atomics.store(control, 0, ControlOp.Swap)
+      if (useRestart) {
+        const startSample = runtime.globalSampleCount ? Math.max(0, Atomics.load(runtime.globalSampleCount, 0)) : 0
+        const bpmBits = f32ToU32(runtime.bpmValue?.[0] ?? 60)
+        Atomics.store(swap, 0, bpmBits)
+        Atomics.store(swap, 1, actualStagingProgram.program.ptr$)
+        Atomics.store(swap, 2, dspPtr)
+        if (seekSampleCount) {
+          Atomics.store(seekSampleCount, 0, startSample)
+        }
+        Atomics.store(control, 0, ControlOp.RestartWithProgram)
+      }
+      else {
+        Atomics.store(swap, 0, actualPrimaryProgram.program.ptr$)
+        Atomics.store(swap, 1, actualStagingProgram.program.ptr$)
+        Atomics.store(swap, 2, dspPtr)
+        Atomics.store(control, 0, ControlOp.Swap)
+      }
 
       const swapResult = await waitForSwapResult(swapStatus, 0, 1)
       Atomics.store(swapStatus, 0, 0)
 
       const swappedPrograms = {
-        program1: stagingProgram,
-        program2: primaryProgram,
+        program1: actualStagingProgram,
+        program2: actualPrimaryProgram,
       }
 
-      if (swapResult === 0) {
+      if (!useRestart && swapResult === 0) {
         const nextControl = useEngineRuntimeStore.getState().playbackState === 'running'
           ? ControlOp.Start
           : ControlOp.Pause
@@ -633,10 +658,12 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
 
       useEngineRuntimeStore.setState(swappedPrograms)
 
-      const nextControl = useEngineRuntimeStore.getState().playbackState === 'running'
-        ? ControlOp.Start
-        : ControlOp.Pause
-      Atomics.store(control, 0, nextControl)
+      if (!useRestart) {
+        const nextControl = useEngineRuntimeStore.getState().playbackState === 'running'
+          ? ControlOp.Start
+          : ControlOp.Pause
+        Atomics.store(control, 0, nextControl)
+      }
 
       const committedBars = stagingResult.bars
       const committedLabels = buildTimelineLabels(stagingResult.timelineLabels, committedBars)
@@ -714,124 +741,6 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
     }
   }
 
-  async function applyDocsSourceInner(
-    loopId: string,
-    source: string,
-    vm: VmCompileSnapshot | undefined,
-    token: number,
-  ): Promise<void> {
-    const runtime = useEngineRuntimeStore.getState()
-    if (runtime.playingLoopId !== loopId) return
-    if (runtime.playbackState !== 'running') return
-    if (token !== docsUpdateToken) return
-    const program1 = runtime.program1
-    const program2 = runtime.program2
-    if (!program1 || !program2) return
-
-    const activePtr = runtime.wasmDsp?.program
-    const primaryProgram = (activePtr && program2.program.ptr$ === activePtr) ? program2 : program1
-    const stagingProgram = primaryProgram === program1 ? program2 : program1
-
-    const comparisonReference = primaryProgram.program.data ?? stagingProgram.program.data
-    const primaryResult = await primaryProgram.program.compileSource(source, {
-      apply: false,
-      setData: false,
-      compareAgainst: comparisonReference,
-      vm,
-    })
-    if (token !== docsUpdateToken) return
-
-    if (runtime.worklet && runtime.audioContext) {
-      if (token !== docsUpdateToken) return
-      void scheduleSampleLoad(primaryResult.sampleDefs, { uploadToWorklet: true, updateStore: false })
-    }
-
-    if (runtime.bpmValue) {
-      const oldBpm = runtime.bpmValue[0]
-      const newBpm = primaryResult.bpm ?? 60 // Default to prelude BPM
-      runtime.bpmValue[0] = newBpm
-      runtime.worklet?.syncBpm(oldBpm, newBpm)
-    }
-
-    if (!primaryResult.diff.significantChange) {
-      if (useEngineRuntimeStore.getState().playingLoopId !== loopId) return
-      if (token !== docsUpdateToken) return
-      await primaryProgram.program.applyPreparedData(primaryResult.data)
-      // Update DSP store so subsequent updateDspSource calls use correct state.
-      set({
-        dspSource: source,
-        lastSuccessfulProgramData: primaryResult.data,
-        numberLiterals: primaryResult.numberLiterals ?? [],
-        numberParams: primaryResult.numberParams ?? [],
-      })
-      return
-    }
-
-    const prevData = primaryResult.previousData ?? comparisonReference
-    const stagingResult = await stagingProgram.program.compileSource(source, {
-      apply: false,
-      setData: true,
-      compareAgainst: prevData,
-      copyVersionFrom: prevData,
-      vm,
-    })
-    if (token !== docsUpdateToken) return
-
-    if (runtime.worklet && runtime.audioContext) {
-      if (token !== docsUpdateToken) return
-      void scheduleSampleLoad(stagingResult.sampleDefs, { uploadToWorklet: true, updateStore: false })
-    }
-
-    if (runtime.bpmValue) {
-      const oldBpm = runtime.bpmValue[0]
-      const newBpm = stagingResult.bpm ?? 60 // Default to prelude BPM
-      runtime.bpmValue[0] = newBpm
-      runtime.worklet?.syncBpm(oldBpm, newBpm)
-    }
-
-    const control = runtime.control
-    const swap = runtime.programSwap
-    const swapStatus = runtime.programSwapStatus
-    const seekSampleCount = runtime.seekSampleCount
-    const dspPtr = runtime.wasmDspPtr
-    if (!control || !swap || !swapStatus || !seekSampleCount || !dspPtr) return
-
-    if (useEngineRuntimeStore.getState().playingLoopId !== loopId) return
-    if (token !== docsUpdateToken) return
-
-    const startSample = runtime.globalSampleCount ? Math.max(0, Atomics.load(runtime.globalSampleCount, 0)) : 0
-    const bpmBits = f32ToU32(runtime.bpmValue?.[0] ?? 60)
-
-    swapStatus.fill(0)
-    swap.fill(0)
-    Atomics.store(swap, 0, bpmBits)
-    Atomics.store(swap, 1, stagingProgram.program.ptr$)
-    Atomics.store(swap, 2, dspPtr)
-    Atomics.store(seekSampleCount, 0, startSample)
-    Atomics.store(control, 0, ControlOp.RestartWithProgram)
-
-    // Wait for the worklet to acknowledge the swap, then update program refs
-    // so widgets read from the correct (now-active) program's ring buffers.
-    const restartResult = await waitForSwapResult(swapStatus, 0, 1)
-    Atomics.store(swapStatus, 0, 0)
-    if (restartResult !== 1) return
-    if (token !== docsUpdateToken) return
-
-    useEngineRuntimeStore.setState({
-      program1: stagingProgram,
-      program2: primaryProgram,
-    })
-
-    // Update DSP store so subsequent updateDspSource calls don't use stale
-    // literal indices or early-return due to source mismatch.
-    set({
-      dspSource: source,
-      lastSuccessfulProgramData: stagingProgram.program.data,
-      numberLiterals: stagingResult.numberLiterals ?? [],
-      numberParams: stagingResult.numberParams ?? [],
-    })
-  }
-
   async function processDspQueue() {
     if (dspUpdateQueue.isProcessing) return
     dspUpdateQueue.isProcessing = true
@@ -904,9 +813,8 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       }
       catch (error) {
         console.error('Failed to set WASM binary:', error)
-        setTimeout(() => {
-          location.reload()
-        }, 1000)
+        // @ts-ignore
+        Guru.meditate('Catastrophic failure - Open in a new tab')
         throw error
       }
     }
@@ -1135,14 +1043,6 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
         return Promise.resolve(undefined)
       }
       return enqueueDspUpdate(source, vm)
-    },
-
-    applyDocsSource: async (loopId: string, source: string, vm?: VmCompileSnapshot) => {
-      const runtime = useEngineRuntimeStore.getState()
-      if (runtime.playingLoopId !== loopId) return
-      if (runtime.playbackState !== 'running') return
-      const token = ++docsUpdateToken
-      await applyDocsSourceInner(loopId, source, vm, token)
     },
 
     updateWasmBinary: async () => {
@@ -1558,11 +1458,11 @@ async function waitForSwapResult(
   return await waitForNonZero(status, resultIndex, eventIndex, timeoutMs, { pollMs: 8 })
 }
 
-if (import.meta.hot) {
-  import.meta.hot.on('vite:beforeUpdate', async () => {
-    const { isInitialized } = useEngineRuntimeStore.getState()
-    if (isInitialized) {
-      await useEngineDspStore.getState().updateWasmBinary()
-    }
-  })
-}
+// if (import.meta.hot) {
+//   import.meta.hot.on('vite:beforeUpdate', async () => {
+//     const { isInitialized } = useEngineRuntimeStore.getState()
+//     if (isInitialized) {
+//       await useEngineDspStore.getState().updateWasmBinary()
+//     }
+//   })
+// }

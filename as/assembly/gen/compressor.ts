@@ -55,6 +55,7 @@ export class Compressor extends Gen {
     const releaseCoeff: f32 = Mathf.exp(-3.0 / (rel * sr))
 
     const ratioFactor: f32 = 1.0 - 1.0 / r
+    const safeK: f32 = Mathf.max(k, 1e-12)
 
     const levelDbBase$: usize = this.telemetryLevelDb$
     const grDbBase$: usize = this.telemetryGrDb$
@@ -64,7 +65,7 @@ export class Compressor extends Gen {
       reductionDb: f32, targetGain: f32, d: f32, w: i32, halfK: f32, delta: f32, aboveKnee: f32, belowKnee: f32,
       inKnee: f32, linearReduction: f32, kneeReduction: f32, hasKnee: f32, noKnee: f32, kneeResult: f32,
       noKneeResult: f32, hasReduction: f32, isAttack: f32, attackGain: f32, releaseGain: f32, levelOffset: usize,
-      grOffset: usize; i < length; i += 16)
+      grOffset: usize, kneeInput: f32, kneeOvershoot: f32, overThreshold: f32; i < length; i += 16)
     {
       unroll(16, () => {
         inSample = load<f32>(in$)
@@ -75,32 +76,47 @@ export class Compressor extends Gen {
         inputDb = 20.0 * Mathf.log10(safeLevel)
 
         // Branchless soft-knee transfer (reduction in dB)
+        // For compressor: compress when inputDb > threshold
+        // kneeStart = th - k/2, kneeEnd = th + k/2
         halfK = k * 0.5
         delta = inputDb - th
 
         // Three regions (branchless selection):
-        // above knee: delta >= halfK -> reductionDb = 0
-        // in knee: -halfK < delta < halfK -> quadratic
-        // below knee: delta <= -halfK -> linear
+        // below knee: inputDb < th - k/2 (delta < -halfK) -> reduction = 0
+        // in knee: th - k/2 <= inputDb <= th + k/2 (-halfK <= delta <= halfK) -> soft reduction
+        // above knee: inputDb > th + k/2 (delta > halfK) -> full linear reduction
 
-        aboveKnee = f32(delta >= halfK)
-        belowKnee = f32(delta <= -halfK)
+        belowKnee = f32(delta < -halfK)
+        aboveKnee = f32(delta > halfK)
         inKnee = (1.0 - aboveKnee) * (1.0 - belowKnee)
 
+        // Linear reduction for above threshold: (inputDb - th) * ratioFactor
         linearReduction = delta * ratioFactor
-        kneeReduction = ratioFactor * (delta * delta) / (2.0 * k)
+
+        // Knee reduction: quadratic interpolation in knee region
+        // Based on reference: reduction = overThreshold * ratioFactor * kneeOvershoot
+        // where kneeOvershoot = (inputDb - kneeStart) / k
+        // and overThreshold = (inputDb - kneeStart) - k/2 = delta + halfK
+        kneeInput = delta + halfK
+        kneeOvershoot = kneeInput / safeK
+        overThreshold = kneeInput - halfK
+        kneeReduction = overThreshold * ratioFactor * kneeOvershoot
 
         // Select based on knee width
         hasKnee = f32(k > 0.0)
         noKnee = 1.0 - hasKnee
 
         // With knee: use region-based selection
-        kneeResult = inKnee * kneeReduction + belowKnee * linearReduction
+        // belowKnee contributes 0, inKnee contributes kneeReduction, aboveKnee contributes linearReduction
+        kneeResult = inKnee * kneeReduction + aboveKnee * linearReduction
 
-        // Without knee: simple threshold
+        // Without knee: simple threshold - compress when inputDb > th
         noKneeResult = f32(inputDb > th) * linearReduction
 
         reductionDb = hasKnee * kneeResult + noKnee * noKneeResult
+
+        // Clamp reduction to non-negative (compressor only reduces, never increases)
+        reductionDb = Mathf.max(0.0, reductionDb)
 
         hasReduction = f32(reductionDb > 0.0)
         targetGain = hasReduction * Mathf.max(0.0, Mathf.pow(10.0, -reductionDb / 20.0)) + (1.0 - hasReduction) * 1.0

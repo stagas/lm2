@@ -14,7 +14,7 @@ import { RadialGradient } from '../../components/RadialGradient.tsx'
 import { SpinnerSmall } from '../../components/Spinner.tsx'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { PauseGradientIcon, PlayGradientIcon } from './Icons.tsx'
-import { useRouter } from './router.tsx'
+import { Link, useRouter } from './router.tsx'
 import { useIsEditorBusy } from './useIsEditorBusy.ts'
 import { useRestartLoop } from './useRestartLoop.tsx'
 import { toSlug } from './util.ts'
@@ -264,8 +264,8 @@ function BrowseItem(
   const isPlaying = playbackState === 'running'
 
   const handleOpen = () => {
-    // Navigate to /loop/<id> for browse loops (they should be public)
-    navigate(`/loop/${loop.id}`)
+    // Navigate to /app/browse/loop/<id> for browse loops (they should be public)
+    navigate(`/app/browse/loop/${loop.id}`)
     if (sessionData?.loops.some(l => l.id === loop.id)) {
       setSelectedLoopId(loop.id)
       return
@@ -273,7 +273,7 @@ function BrowseItem(
     setSelectedLoopId(loop.id)
   }
 
-  const handleTogglePlay = (e: preact.TargetedPointerEvent<HTMLDivElement>) => {
+  const handleTogglePlay = (e: preact.TargetedPointerEvent<HTMLButtonElement>) => {
     const isRight = (e.buttons & MouseButtons.Right) !== 0
     const isRestart = ((e.buttons & MouseButtons.Middle) !== 0) || e.ctrlKey
 
@@ -375,13 +375,16 @@ function BrowseItem(
 
   return (
     <>
-      <div
+      <Link
+        to={`/app/browse/loop/${loop.id}`}
         data-loop-id={loop.id}
         className={`flex flex-row px-3 py-2 border-b border-neutral-700 gap-2 justify-between select-none cursor-pointer
           bg-gradient-to-b ${isSelected ? 'from-neutral-700 to-neutral-900' : 'from-black to-neutral-900'}
           hover:to-neutral-800
         `}
-        onPointerDown={handleOpen}
+        onPointerDown={() => {
+          setSelectedLoopId(loop.id)
+        }}
       >
         <div className="flex flex-col gap-1">
           <div className="flex flex-row gap-2">
@@ -389,35 +392,39 @@ function BrowseItem(
               <span className="text-sm">
                 {!hideArtist && (
                   <>
-                    <span className="cursor-pointer hover:text-orange-500" onPointerDown={e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      navigate(`/artist/${loop.artistId}/${toSlug(loop.artist)}`)
-                    }}>
+                    <Link
+                      to={`/app/browse/artist/${loop.artistId}/${toSlug(loop.artist)}`}
+                      className="cursor-pointer hover:text-orange-500"
+                      onPointerDown={e => {
+                        e.stopPropagation()
+                      }}
+                      onClick={e => {
+                        e.stopPropagation()
+                      }}
+                    >
                       {loop.artist}
-                    </span>{' '}
-                    <span className="cursor-pointer hover:text-orange-500" onClick={handleOpen}>
-                      -{' '}
-                    </span>
+                    </Link>{' '}
+                    <span className="cursor-pointer hover:text-orange-500">- </span>
                   </>
                 )}
-                <span className="cursor-pointer hover:text-orange-500" onClick={handleOpen}>
-                  {loop.title}
-                </span>
+                <span className="cursor-pointer hover:text-orange-500">{loop.title}</span>
               </span>
               {remixOf && (
                 <div className="flex flex-row text-xs text-neutral-500 font-normal items-center gap-1">
                   <span className="">remix of:</span>
-                  <button
+                  <Link
+                    to={`/app/browse/loop/${remixOf.id}`}
+                    className="hover:text-orange-500 hover:font-light"
                     onPointerDown={e => {
                       e.stopPropagation()
-                      e.preventDefault()
                       setSelectedLoopId(remixOf.id)
                     }}
-                    className="hover:text-orange-500 hover:font-light"
+                    onClick={e => {
+                      e.stopPropagation()
+                    }}
                   >
                     {remixOf.artist} - {remixOf.title}
-                  </button>
+                  </Link>
                 </div>
               )}
             </div>
@@ -426,9 +433,14 @@ function BrowseItem(
             <button
               className={`text-neutral-500 flex flex-row items-center justify-center font-normal ${likeClass}`}
               onPointerDown={e => {
+                e.preventDefault()
                 e.stopPropagation()
                 if (!canLike) return
                 onToggleLike()
+              }}
+              onClick={e => {
+                e.preventDefault()
+                e.stopPropagation()
               }}
             >
               <HeartIcon weight={heartWeight} size={16} />
@@ -437,8 +449,13 @@ function BrowseItem(
             <button
               className="text-neutral-500 flex flex-row items-center justify-center font-normal hover:text-white cursor-pointer"
               onPointerDown={e => {
+                e.preventDefault()
                 e.stopPropagation()
                 handleToggleComments()
+              }}
+              onClick={e => {
+                e.preventDefault()
+                e.stopPropagation()
               }}
             >
               <ChatIcon size={16} />
@@ -447,8 +464,13 @@ function BrowseItem(
             <button
               className="text-neutral-500 flex flex-row items-center justify-center font-normal hover:text-white cursor-pointer"
               onPointerDown={e => {
+                e.preventDefault()
                 e.stopPropagation()
                 handleToggleRemixes()
+              }}
+              onClick={e => {
+                e.preventDefault()
+                e.stopPropagation()
               }}
             >
               <RepeatIcon size={16} className="relative top-[.3px]" />
@@ -462,12 +484,18 @@ function BrowseItem(
         </div>
         {isLive
           ? (
-            <div
+            <button
+              type="button"
               className="flex flex-col items-center justify-center group cursor-pointer"
               onContextMenu={e => e.preventDefault()}
               onPointerDown={e => {
+                e.preventDefault()
                 e.stopPropagation()
                 handleTogglePlay(e)
+              }}
+              onClick={e => {
+                e.preventDefault()
+                e.stopPropagation()
               }}
             >
               <div className="block group-hover:hidden text-neutral-700">
@@ -476,15 +504,21 @@ function BrowseItem(
               <div className="hidden group-hover:block">
                 <PauseGradientIcon size={24} />
               </div>
-            </div>
+            </button>
           )
           : (
-            <div
+            <button
+              type="button"
               className="flex flex-col items-center justify-center group cursor-pointer"
               onContextMenu={e => e.preventDefault()}
               onPointerDown={e => {
+                e.preventDefault()
                 e.stopPropagation()
                 handleTogglePlay(e)
+              }}
+              onClick={e => {
+                e.preventDefault()
+                e.stopPropagation()
               }}
             >
               <div className="block group-hover:hidden text-neutral-700">
@@ -493,9 +527,9 @@ function BrowseItem(
               <div className="hidden group-hover:block">
                 <PlayGradientIcon size={24} />
               </div>
-            </div>
+            </button>
           )}
-      </div>
+      </Link>
       {isCommentsOpen && (
         <CommentsPanel
           loopOwnerId={loop.artistId}

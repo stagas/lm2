@@ -322,7 +322,7 @@ function DspSourceEditorReady(
       runtime.setPlayingLoopId(localId)
     }
     setSelectedLoopId(localId)
-    navigate('/my')
+    navigate('/app')
   }, [
     addLocalLoop,
     code,

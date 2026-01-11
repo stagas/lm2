@@ -46,14 +46,17 @@ function parseHierarchicalBeats(input: string): TramBeat[] {
       // Parse bracketed content
       const bracketContent = parseBracketContent(input, i)
 
-      // Parse bracket content as a sequence of hits only (ignore rests and separators inside brackets)
+      // Parse bracket content as a sequence of hits and pauses
       const subdivisions: boolean[] = []
       for (let j = 0; j < bracketContent.content.length; j++) {
         const char = bracketContent.content[j]
         if (char === 'x' || char === 'X') {
           subdivisions.push(true)
         }
-        // Ignore '-', whitespace, and other characters inside brackets
+        else if (char === '-') {
+          subdivisions.push(false)
+        }
+        // Ignore whitespace and other characters inside brackets
       }
 
       beats.push({ subdivisions })

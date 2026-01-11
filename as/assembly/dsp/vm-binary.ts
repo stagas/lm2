@@ -52,6 +52,19 @@ export function vmBinaryOp(
       return
     }
 
+    // For strict equality, arrays are only equal to other arrays (by reference)
+    // If one is an array and the other is not, they are not equal
+    if (code === VmBinary.StrictEq) {
+      if (aTag === VmTag.Arr && bTag === VmTag.Arr) {
+        const eq = aAux === bAux
+        stack.push(VmTag.Bool, eq ? 1.0 : 0.0)
+      } else {
+        // One is array, other is not - not equal
+        stack.push(VmTag.Bool, 0.0)
+      }
+      return
+    }
+
     if (aTag === VmTag.Arr && bTag === VmTag.Arr) {
       const aArrId = aAux
       const bArrId = bAux
@@ -133,6 +146,22 @@ export function vmBinaryOp(
       arrays.create(n, stack, pc, audio, program, length)
       return
     }
+  }
+
+  // For strict equality, functions are only equal to other functions (by reference)
+  // If one is a function and the other is not, they are not equal
+  if (code === VmBinary.StrictEq && (aTag === VmTag.Func || bTag === VmTag.Func || aTag === VmTag.Builtin || bTag === VmTag.Builtin)) {
+    if (aTag === VmTag.Func && bTag === VmTag.Func) {
+      const eq = aAux === bAux
+      stack.push(VmTag.Bool, eq ? 1.0 : 0.0)
+    } else if (aTag === VmTag.Builtin && bTag === VmTag.Builtin) {
+      const eq = stack.aux[a] === stack.aux[b]
+      stack.push(VmTag.Bool, eq ? 1.0 : 0.0)
+    } else {
+      // One is function/builtin, other is not - not equal
+      stack.push(VmTag.Bool, 0.0)
+    }
+    return
   }
 
   if (aTag !== VmTag.Audio && bTag !== VmTag.Audio) {

@@ -136,6 +136,8 @@ export function callRecord(
   const ops = program.data.ops
   const seenSyms = program.recordSeenSyms
   let seenSymsCount: i32 = 0
+  const storedSyms = program.recordStoredSyms
+  let storedSymsCount: i32 = 0
   const seenFuncs = program.recordSeenFuncs
   let seenFuncsCount: i32 = 0
   const funcStack = program.recordFuncStack
@@ -187,6 +189,16 @@ export function callRecord(
         // Hash the symbol
         depsHash = depsHash ^ u32(sym)
         depsHash = depsHash * 16777619
+
+        // Check if this symbol has been stored locally (if so, it's not a dependency)
+        let symStored: bool = false
+        for (let i = 0; i < storedSymsCount; i++) {
+          if (storedSyms[i] === sym) {
+            symStored = true
+            break
+          }
+        }
+
         let symSeen: bool = false
         for (let i = 0; i < seenSymsCount; i++) {
           if (seenSyms[i] === sym) {
@@ -198,8 +210,9 @@ export function callRecord(
           if (seenSymsCount < seenSyms.length) {
             seenSyms[seenSymsCount++] = sym
           }
+          // Only hash as dependency if symbol exists in environment and hasn't been stored locally
           const envIdx: i32 = dsp.vmEnvFind(sym)
-          if (envIdx >= 0) {
+          if (envIdx >= 0 && !symStored) {
             const tag: VmTag = dsp.vmEnvTagAt(envIdx)
             const num: f64 = dsp.vmEnvNumAt(envIdx)
             const aux: i32 = dsp.vmEnvAuxAt(envIdx)
@@ -231,7 +244,7 @@ export function callRecord(
               }
             }
           }
-          else {
+          else if (envIdx < 0) {
             // Symbol not found in environment - hash it to detect when it appears
             depsHash = depsHash ^ u32(sym)
             depsHash = depsHash * 16777619
@@ -248,6 +261,17 @@ export function callRecord(
         const storeSym: i32 = ops[pc++]
         depsHash = depsHash ^ u32(storeSym)
         depsHash = depsHash * 16777619
+        // Track that this symbol is stored locally (not a dependency)
+        let symStored: bool = false
+        for (let i = 0; i < storedSymsCount; i++) {
+          if (storedSyms[i] === storeSym) {
+            symStored = true
+            break
+          }
+        }
+        if (!symStored && storedSymsCount < storedSyms.length) {
+          storedSyms[storedSymsCount++] = storeSym
+        }
         continue
       }
       if (op === VmOp.PushNum || op === VmOp.PushNumSmoothed) {
@@ -351,6 +375,7 @@ export function callRecord(
   // Now compute paramsChanged and depsChanged with potentially updated stored values
   let paramsChanged: bool = storedKey !== keyU32 || storedLen !== frames || storedSec !== sec
   let depsChanged: bool = depsHash !== storedDepsHash
+  if (depsChanged) console.log(`${depsHash} ${storedDepsHash}`)
 
   // Try to satisfy from the host cache when this index is missing or wrong.
   // This allows instant reuse across program swaps even when indices differ, and also overwrites
@@ -386,7 +411,7 @@ export function callRecord(
 
   // Always update deps hash, and if it changed, invalidate the recording
   if (depsChanged) {
-    console.log('deps changed')
+    console.warn('deps changed')
     const oldBuf$ = program.recordBuf$[sampleIndex]
     if (oldBuf$ !== 0) {
       program.releaseRecordBuf(oldBuf$)

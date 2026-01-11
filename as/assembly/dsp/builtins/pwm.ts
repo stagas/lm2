@@ -30,7 +30,7 @@ export function callPwm(
   let hzAux: i32 = 0
 
   let widthTag: VmTag = VmTag.Num
-  let widthNum: f64 = 0.0
+  let widthNum: f64 = 0.5
   let widthAux: i32 = 0
 
   let offsetTag: VmTag = VmTag.Num

@@ -155,10 +155,10 @@ export function SidebarLoops(
 
   const handleLoopSelect = useCallback((loopId: string) => {
     setCurrentLoopId(loopId)
-    // Navigate to /loop/<id> for public, non-new loops
+    // Navigate to /app/browse/loop/<id> for public, non-new loops
     const loop = loops.find(l => l.data.id === loopId)
     // if (loop && !loop.isNew && loop.data.isPublic) {
-    //   navigate(`/loop/${loopId}`)
+    //   navigate(`/app/browse/loop/${loopId}`)
     // }
   }, [loops, navigate])
 
