@@ -1,21 +1,21 @@
 import type { FunctionSignature } from 'mini-code'
 import { SCALE_INTERVALS } from '../../mini/scales.ts'
 
-type Category = 'globals' | 'math' | 'array' | 'generators' | 'filters' | 'reverbs' | 'effects' | 'mixing'
+type Category = 'variables' | 'math' | 'array' | 'generators' | 'filters' | 'reverbs' | 'effects' | 'mixing'
   | 'sequencing' | 'utilities' | 'analysis'
 
 export const functionCategories: Record<Category, string> = {
-  globals: 'Globals',
-  math: 'Math',
   array: 'Array',
+  sequencing: 'Sequencing',
   generators: 'Generators',
   filters: 'Filters',
-  reverbs: 'Reverbs',
   effects: 'Effects',
+  reverbs: 'Reverbs',
   mixing: 'Mixing',
-  sequencing: 'Sequencing',
+  math: 'Math',
   utilities: 'Utilities',
   analysis: 'Analysis',
+  variables: 'Variables',
 }
 
 export const functionDefinitions: Record<string, FunctionSignature & { category?: Category }> = {
@@ -28,7 +28,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
       'saw([c4,a4,f4,e4][t]) |> out($)',
     ],
     type: 'variable',
-    category: 'globals',
+    category: 'variables',
   },
   'scale': {
     name: 'scale',
@@ -39,7 +39,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     examples: [
       `scale='minor' trig=every(1/8) drawbar(#scale.step(trig)*o4)*ad(.01,.5,4,trig) |> out($)`,
     ],
-    category: 'globals',
+    category: 'variables',
   },
   '#scale': {
     name: '#scale',
@@ -51,7 +51,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
       `scale='minor' trig=every(1/8) drawbar(#scale.step(trig)*o4)*ad(.01,.5,4,trig) |> out($)`,
     ],
     type: 'variable',
-    category: 'globals',
+    category: 'variables',
   },
   '.map': {
     name: '[].map',
@@ -84,7 +84,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Iterates numeric array values on a beat-locked bar division and glides between them.',
     examples: [
-      `scale='aeolian' trig=euclid(3,8,bar:.25)
+      `scale='aeolian' trig=euclid(3,8,bar:1/2)
 ;[#1,#3,#5].glide(1/4,exponent:.2) |> cs80($*o3,trig) |> $+velvet($,.8) |> limiter($) |> out($)`,
     ],
     category: 'array',
@@ -117,7 +117,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Steps through array elements on trigger impulses, wrapping around when reaching the end.',
     examples: [
-      `scale='pentatonic' trig=euclid(5,8,bar:.25) env=ad(.01,.5,5,trig)
+      `scale='pentatonic' trig=euclid(5,8,bar:1/2) env=ad(.01,.5,5,trig)
 #scale.step(trig) |> rhodes70($*o4)*env |> out($)`,
     ],
     category: 'array',
@@ -131,7 +131,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Selects random array elements on trigger impulses.',
     examples: [
-      `scale='yu' trig=euclid(5,8,bar:.25) env=ad(.01,.5,5,trig)
+      `scale='yu' trig=euclid(5,8,bar:1/2) env=ad(.01,.5,5,trig)
 #scale.random(trig) |> drawbar($*[o3,o4,o5].random(trig))*env |> out($)`,
     ],
     category: 'array',
@@ -142,8 +142,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'array',
     description: 'Reverses the array in place and returns the reversed array.',
     examples: [
-      `scale='aeolian' trig=euclid(3,8,bar:.25) env=ad(.01,.75 ,5,trig)
-;((t+2)%4>2?#scale:#scale.reverse()).step(trig) |> rhodes($*o3)*env |> limiter($) |> out($)`,
+      `scale='aeolian' trig=euclid(3,8,bar:1/2) env=ad(.01,.75 ,5,trig)
+;((t/2+2)%4>2?#scale:#scale.reverse()).step(trig) |> rhodes($*o3)*env |> limiter($) |> out($)`,
     ],
     category: 'array',
   },
@@ -155,7 +155,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'array',
     description: 'Shuffles the array elements randomly and returns the shuffled array.',
     examples: [
-      `scale='yu' trig=euclid(3,8,bar:.25) env=ad(.01,.5,5,trig)
+      `scale='yu' trig=euclid(3,8,bar:1/2) env=ad(.01,.5,5,trig)
 #scale.shuffle(42).step(trig) |> drawbar($*o4)*env |> out($)`,
     ],
     category: 'array',
@@ -164,7 +164,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     name: '[].walk',
     parameters: [
       { name: 'bar', type: 'number',
-        description: 'Interval in bars for stepping through array elements (1/16 = sixteenth note).', min: 0.0001, step: 0.0001 },
+        description: 'Interval in bars for stepping through array elements (1/16 = sixteenth note).', min: 0.0001,
+        step: 0.0001 },
       { name: 'swing', type: 'number', optional: true, defaultValue: 0,
         description: 'Swing amount (0..1) shifts odd beats earlier', min: 0, max: 1, step: 0.01 },
       { name: 'offset', type: 'number', optional: true, defaultValue: 0,
@@ -173,22 +174,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
     returnType: 'number',
     description: 'Steps through array elements at beat-locked intervals, deterministically based on global time.',
     examples: [
-      `scale='pentatonic' env=ad(.01,.5,5)
-#scale.walk(1/8, swing:.1) |> rhodes70($*o4)*env |> out($)`,
-    ],
-    category: 'array',
-  },
-  'shuffle': {
-    name: 'shuffle',
-    parameters: [
-      { name: 'array', type: 'array', description: 'Array to shuffle.' },
-      { name: 'seed', type: 'number', description: 'Random seed (optional, default: random).', optional: true },
-    ],
-    returnType: 'array',
-    description: 'Shuffles the array elements randomly and returns the shuffled array.',
-    examples: [
-      'shuffle([1,2,3,4]) |> print($)',
-      'shuffle([1,2,3,4], 42) |> print($)',
+      `scale='pentatonic' #scale.walk(1/8) |> rhodes70($*o4) |> out($)`,
     ],
     category: 'array',
   },
@@ -488,6 +474,7 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
       'phasor(1, 0, trig) |> out($)',
       'phasor(1, .25, trig) |> out($)',
     ],
+    category: 'generators',
   },
   impulse: {
     name: 'impulse',
@@ -984,8 +971,8 @@ export const functionDefinitions: Record<string, FunctionSignature & { category?
         type: 'number',
         description: 'Sample reference returned by `freesound(id:…)`',
       },
-      { name: 'speed', type: 'number', optional: true, defaultValue: 1,
-        description: 'Playback speed (-1 for reverse)', min: -10, max: 10, step: 0.01, slope: 'log2' },
+      { name: 'speed', type: 'number', optional: true, defaultValue: 1, description: 'Playback speed (-1 for reverse)',
+        min: -10, max: 10, step: 0.01, slope: 'log2' },
       { name: 'offset', type: 'number', optional: true, defaultValue: 0,
         description: 'Normalized offset inside the slice', min: 0, max: 1, step: 0.001 },
       {
@@ -1178,9 +1165,10 @@ every=1/2 q=.5
     returnType: 'number',
     description: 'Generates trigger impulses using a Euclidean rhythm (Tidal-style).',
     examples: [
-      'trig = euclid(3, 8)',
-      'trig = euclid(3, 8, 1)',
-      'trig = euclid(5, 16, 0, 1/2)',
+      `scale='aeolian'
+trig=euclid(3,8,bar:1/2) env=ad(.001,.2,2,trig)
+saw([#1,#6,#5,#3].step(trig)*o2)*env |> slp($,500+ 10k*env**15,.5) |> out($)
+bd()+hh()+sd() |> out($)`,
     ],
     category: 'sequencing',
   },
@@ -2574,10 +2562,7 @@ every=1/2 q=.5
       { name: 'amount', type: 'number',
         description:
           'Swing amount (-1..1), where 0 = no swing, positive compresses first half and expands second half, negative does the opposite',
-        min: -1,
-        max: 1,
-        step: 0.01,
-      },
+        min: -1, max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Applies rhythmic swing to time values by warping the phase within each beat cycle.',
@@ -2591,7 +2576,8 @@ every=1/2 q=.5
     name: 'stereo',
     parameters: [
       { name: 'in', type: 'number', description: 'Mono input signal' },
-      { name: 'width', type: 'number', optional: true, defaultValue: 0, description: 'Stereo width in seconds', min: 0, max: 0.1, step: 0.0001, slope: 'log2' },
+      { name: 'width', type: 'number', optional: true, defaultValue: 0, description: 'Stereo width in seconds', min: 0,
+        max: 0.1, step: 0.0001, slope: 'log2' },
     ],
     returnType: '[L:number, R:number]',
     description: 'Converts mono signal to stereo, optionally with delay-based widening.',
@@ -2615,7 +2601,8 @@ every=1/2 q=.5
     name: 'stereowidth',
     parameters: [
       { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
-      { name: 'width', type: 'number', optional: true, defaultValue: 1, description: 'Width multiplier', min: 0, max: 2, step: 0.01 },
+      { name: 'width', type: 'number', optional: true, defaultValue: 1, description: 'Width multiplier', min: 0, max: 2,
+        step: 0.01 },
     ],
     returnType: '[L:number, R:number]',
     description: 'Adjusts stereo width using mid-side processing.',
@@ -2629,7 +2616,8 @@ every=1/2 q=.5
     name: 'widen',
     parameters: [
       { name: 'in', type: '[L:number, R:number]', description: 'Stereo input signal' },
-      { name: 'seconds', type: 'number', optional: true, defaultValue: 0.0001, description: 'Delay time in seconds', min: 0, max: 0.1, step: 0.0001, slope: 'log2' },
+      { name: 'seconds', type: 'number', optional: true, defaultValue: 0.0001, description: 'Delay time in seconds',
+        min: 0, max: 0.1, step: 0.0001, slope: 'log2' },
     ],
     returnType: '[L:number, R:number]',
     description: 'Widens stereo signal by delaying high frequencies in right channel.',
@@ -2656,11 +2644,13 @@ every=1/2 q=.5
     name: 'modDelay',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'baseDelay', type: 'number', description: 'Base delay time in seconds', min: 0, max: 10, step: 0.001, slope: 'log2' },
+      { name: 'baseDelay', type: 'number', description: 'Base delay time in seconds', min: 0, max: 10, step: 0.001,
+        slope: 'log2' },
       { name: 'depth', type: 'number', description: 'Modulation depth', min: 0, max: 0.1, step: 0.0001, slope: 'log2' },
       { name: 'rate', type: 'number', description: 'LFO rate in Hz', min: 0, max: 20, step: 0.1, slope: 'log2' },
       { name: 'feedback', type: 'number', description: 'Feedback amount', min: 0, max: 1, step: 0.01 },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset', min: 0, max: 1, step: 0.01 },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset', min: 0, max: 1,
+        step: 0.01 },
     ],
     returnType: 'number',
     description: 'Modulated delay effect with LFO-controlled delay time.',
@@ -2673,10 +2663,14 @@ every=1/2 q=.5
     name: 'flanger',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'rate', type: 'number', optional: true, defaultValue: 1, description: 'LFO rate in Hz', min: 0, max: 20, step: 0.1, slope: 'log2' },
-      { name: 'depth', type: 'number', optional: true, defaultValue: 0.00125, description: 'Modulation depth', min: 0, max: 0.01, step: 0.0001, slope: 'log2' },
-      { name: 'base', type: 'number', optional: true, defaultValue: 0.00125, description: 'Base delay time', min: 0, max: 0.01, step: 0.0001, slope: 'log2' },
-      { name: 'feedback', type: 'number', optional: true, defaultValue: 0.7, description: 'Feedback amount', min: 0, max: 1, step: 0.01 },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 1, description: 'LFO rate in Hz', min: 0, max: 20,
+        step: 0.1, slope: 'log2' },
+      { name: 'depth', type: 'number', optional: true, defaultValue: 0.00125, description: 'Modulation depth', min: 0,
+        max: 0.01, step: 0.0001, slope: 'log2' },
+      { name: 'base', type: 'number', optional: true, defaultValue: 0.00125, description: 'Base delay time', min: 0,
+        max: 0.01, step: 0.0001, slope: 'log2' },
+      { name: 'feedback', type: 'number', optional: true, defaultValue: 0.7, description: 'Feedback amount', min: 0,
+        max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Classic flanger effect using modulated comb filtering.',
@@ -2689,11 +2683,16 @@ every=1/2 q=.5
     name: 'chorus',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'voices', type: 'number', optional: true, defaultValue: 3, description: 'Number of chorus voices', min: 1, max: 16, step: 1 },
-      { name: 'base', type: 'number', optional: true, defaultValue: 0.02, description: 'Base delay time', min: 0, max: 0.1, step: 0.001, slope: 'log2' },
-      { name: 'depth', type: 'number', optional: true, defaultValue: 0.006, description: 'Modulation depth', min: 0, max: 0.02, step: 0.0001, slope: 'log2' },
-      { name: 'rate', type: 'number', optional: true, defaultValue: 0.25, description: 'LFO rate', min: 0, max: 20, step: 0.1, slope: 'log2' },
-      { name: 'spread', type: 'number', optional: true, defaultValue: 0.5, description: 'Voice spread', min: 0, max: 1, step: 0.01 },
+      { name: 'voices', type: 'number', optional: true, defaultValue: 3, description: 'Number of chorus voices', min: 1,
+        max: 16, step: 1 },
+      { name: 'base', type: 'number', optional: true, defaultValue: 0.02, description: 'Base delay time', min: 0,
+        max: 0.1, step: 0.001, slope: 'log2' },
+      { name: 'depth', type: 'number', optional: true, defaultValue: 0.006, description: 'Modulation depth', min: 0,
+        max: 0.02, step: 0.0001, slope: 'log2' },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 0.25, description: 'LFO rate', min: 0, max: 20,
+        step: 0.1, slope: 'log2' },
+      { name: 'spread', type: 'number', optional: true, defaultValue: 0.5, description: 'Voice spread', min: 0, max: 1,
+        step: 0.01 },
     ],
     returnType: 'number',
     description: 'Multi-voice chorus effect with spread and modulation.',
@@ -2706,7 +2705,8 @@ every=1/2 q=.5
     name: 'tap',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'seconds', type: 'number', description: 'Delay time in seconds', min: 0, max: 10, step: 0.001, slope: 'log2' },
+      { name: 'seconds', type: 'number', description: 'Delay time in seconds', min: 0, max: 10, step: 0.001,
+        slope: 'log2' },
       { name: 'cb', type: 'function', description: 'Callback function for feedback processing' },
     ],
     returnType: 'number',
@@ -2720,7 +2720,8 @@ every=1/2 q=.5
     name: 'comb',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'seconds', type: 'number', description: 'Delay time in seconds', min: 0, max: 10, step: 0.001, slope: 'log2' },
+      { name: 'seconds', type: 'number', description: 'Delay time in seconds', min: 0, max: 10, step: 0.001,
+        slope: 'log2' },
       { name: 'feedback', type: 'number', description: 'Feedback amount', min: 0, max: 1, step: 0.01 },
       { name: 'cb', type: 'function', description: 'Callback function for feedback processing' },
     ],
@@ -2735,12 +2736,18 @@ every=1/2 q=.5
     name: 'eq3',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'low', type: 'number', optional: true, defaultValue: 0, description: 'Low frequency gain in dB', min: -60, max: 60, step: 0.1 },
-      { name: 'mid', type: 'number', optional: true, defaultValue: 0, description: 'Mid frequency gain in dB', min: -60, max: 60, step: 0.1 },
-      { name: 'high', type: 'number', optional: true, defaultValue: 0, description: 'High frequency gain in dB', min: -60, max: 60, step: 0.1 },
-      { name: 'lf', type: 'number', optional: true, defaultValue: 500, description: 'Low frequency cutoff', min: 0, max: 20000, step: 1, slope: 'log2' },
-      { name: 'mf', type: 'number', optional: true, defaultValue: 2000, description: 'Mid frequency cutoff', min: 0, max: 20000, step: 1, slope: 'log2' },
-      { name: 'hf', type: 'number', optional: true, defaultValue: 8000, description: 'High frequency cutoff', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'low', type: 'number', optional: true, defaultValue: 0, description: 'Low frequency gain in dB', min: -60,
+        max: 60, step: 0.1 },
+      { name: 'mid', type: 'number', optional: true, defaultValue: 0, description: 'Mid frequency gain in dB', min: -60,
+        max: 60, step: 0.1 },
+      { name: 'high', type: 'number', optional: true, defaultValue: 0, description: 'High frequency gain in dB',
+        min: -60, max: 60, step: 0.1 },
+      { name: 'lf', type: 'number', optional: true, defaultValue: 500, description: 'Low frequency cutoff', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
+      { name: 'mf', type: 'number', optional: true, defaultValue: 2000, description: 'Mid frequency cutoff', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
+      { name: 'hf', type: 'number', optional: true, defaultValue: 8000, description: 'High frequency cutoff', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
     ],
     returnType: 'number',
     description: '3-band equalizer with adjustable low, mid, and high frequency gains.',
@@ -2752,7 +2759,8 @@ every=1/2 q=.5
   grain: {
     name: 'grain',
     parameters: [
-      { name: 'speed', type: 'number', optional: true, defaultValue: 1, description: 'Playback speed', min: 0.1, max: 10, step: 0.1, slope: 'log2' },
+      { name: 'speed', type: 'number', optional: true, defaultValue: 1, description: 'Playback speed', min: 0.1,
+        max: 10, step: 0.1, slope: 'log2' },
       { name: 'seed', type: 'number', description: 'Random seed', min: 0, step: 1 },
     ],
     returnType: 'number',
@@ -2767,11 +2775,16 @@ every=1/2 q=.5
     parameters: [
       { name: 'carrier', type: 'number', description: 'Carrier signal' },
       { name: 'modulator', type: 'number', description: 'Modulator signal' },
-      { name: 'numBands', type: 'number', optional: true, defaultValue: 16, description: 'Number of frequency bands', min: 4, max: 64, step: 1 },
-      { name: 'attack', type: 'number', optional: true, defaultValue: 0.01, description: 'Envelope attack time', min: 0, max: 1, step: 0.001, slope: 'log2' },
-      { name: 'release', type: 'number', optional: true, defaultValue: 0.04, description: 'Envelope release time', min: 0, max: 1, step: 0.001, slope: 'log2' },
-      { name: 'freqMin', type: 'number', optional: true, defaultValue: 100, description: 'Minimum frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
-      { name: 'freqMax', type: 'number', optional: true, defaultValue: 8000, description: 'Maximum frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
+      { name: 'numBands', type: 'number', optional: true, defaultValue: 16, description: 'Number of frequency bands',
+        min: 4, max: 64, step: 1 },
+      { name: 'attack', type: 'number', optional: true, defaultValue: 0.01, description: 'Envelope attack time', min: 0,
+        max: 1, step: 0.001, slope: 'log2' },
+      { name: 'release', type: 'number', optional: true, defaultValue: 0.04, description: 'Envelope release time',
+        min: 0, max: 1, step: 0.001, slope: 'log2' },
+      { name: 'freqMin', type: 'number', optional: true, defaultValue: 100, description: 'Minimum frequency', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
+      { name: 'freqMax', type: 'number', optional: true, defaultValue: 8000, description: 'Maximum frequency', min: 0,
+        max: 20000, step: 1, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Vocoder effect using bandpass filters and envelope following.',
@@ -2786,10 +2799,14 @@ every=1/2 q=.5
       { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
       { name: 'pluck', type: 'function', optional: true, defaultValue: 'pink', description: 'Pluck function' },
       { name: 'seed', type: 'number', optional: true, defaultValue: 334, description: 'Random seed', min: 0, step: 1 },
-      { name: 'attack', type: 'number', optional: true, defaultValue: 0.0001, description: 'Attack time', min: 0, max: 1, step: 0.0001, slope: 'log2' },
-      { name: 'decay', type: 'number', optional: true, defaultValue: 0.1, description: 'Decay time', min: 0, max: 10, step: 0.001, slope: 'log2' },
-      { name: 'exponent', type: 'number', optional: true, defaultValue: 40, description: 'Envelope exponent', min: 1, max: 100, step: 1 },
-      { name: 'damping', type: 'number', optional: true, defaultValue: 0.5, description: 'Damping amount', min: 0, max: 1, step: 0.01 },
+      { name: 'attack', type: 'number', optional: true, defaultValue: 0.0001, description: 'Attack time', min: 0,
+        max: 1, step: 0.0001, slope: 'log2' },
+      { name: 'decay', type: 'number', optional: true, defaultValue: 0.1, description: 'Decay time', min: 0, max: 10,
+        step: 0.001, slope: 'log2' },
+      { name: 'exponent', type: 'number', optional: true, defaultValue: 40, description: 'Envelope exponent', min: 1,
+        max: 100, step: 1 },
+      { name: 'damping', type: 'number', optional: true, defaultValue: 0.5, description: 'Damping amount', min: 0,
+        max: 1, step: 0.01 },
       { name: 'trig', type: 'number', description: 'Trigger signal' },
     ],
     returnType: 'number',
@@ -2813,9 +2830,12 @@ every=1/2 q=.5
     name: 'harmonics',
     parameters: [
       { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
-      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 3, description: 'Number of harmonics', min: 1, max: 32, step: 1 },
-      { name: 'tilt', type: 'number', optional: true, defaultValue: 3, description: 'Spectral tilt', min: 0.1, max: 10, step: 0.1 },
-      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset', min: 0, step: 0.001 },
+      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 3, description: 'Number of harmonics',
+        min: 1, max: 32, step: 1 },
+      { name: 'tilt', type: 'number', optional: true, defaultValue: 3, description: 'Spectral tilt', min: 0.1, max: 10,
+        step: 0.1 },
+      { name: 'offset', type: 'number', optional: true, defaultValue: 0, description: 'Phase offset', min: 0,
+        step: 0.001 },
       { name: 'trig', type: 'number', description: 'Trigger signal' },
     ],
     returnType: 'number',
@@ -2829,8 +2849,10 @@ every=1/2 q=.5
     name: 'folded',
     parameters: [
       { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
-      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 2, description: 'Number of harmonics', min: 1, max: 32, step: 1 },
-      { name: 'amount', type: 'number', optional: true, defaultValue: 2, description: 'Folding amount', min: 0.1, max: 10, step: 0.1 },
+      { name: 'numHarmonics', type: 'number', optional: true, defaultValue: 2, description: 'Number of harmonics',
+        min: 1, max: 32, step: 1 },
+      { name: 'amount', type: 'number', optional: true, defaultValue: 2, description: 'Folding amount', min: 0.1,
+        max: 10, step: 0.1 },
     ],
     returnType: 'number',
     description: 'Wave folding synthesis with harmonic enhancement.',
@@ -2843,7 +2865,8 @@ every=1/2 q=.5
     name: 'pulsar',
     parameters: [
       { name: 'hz', type: 'number', description: 'Frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
-      { name: 'density', type: 'number', optional: true, defaultValue: 1, description: 'Pulse density', min: 0.1, max: 10, step: 0.1 },
+      { name: 'density', type: 'number', optional: true, defaultValue: 1, description: 'Pulse density', min: 0.1,
+        max: 10, step: 0.1 },
     ],
     returnType: 'number',
     description: 'Pulsar synthesis with phasor-controlled envelope.',
@@ -2856,8 +2879,10 @@ every=1/2 q=.5
     name: 'supersaw',
     parameters: [
       { name: 'hz', type: 'number', description: 'Fundamental frequency', min: 0, max: 20000, step: 1, slope: 'log2' },
-      { name: 'voices', type: 'number', optional: true, defaultValue: 5, description: 'Number of detuned voices', min: 1, max: 32, step: 1 },
-      { name: 'spread', type: 'number', optional: true, defaultValue: 0.05, description: 'Detuning spread', min: 0, max: 1, step: 0.01 },
+      { name: 'voices', type: 'number', optional: true, defaultValue: 5, description: 'Number of detuned voices',
+        min: 1, max: 32, step: 1 },
+      { name: 'spread', type: 'number', optional: true, defaultValue: 0.05, description: 'Detuning spread', min: 0,
+        max: 1, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Supersaw oscillator with multiple detuned sawtooth voices.',
@@ -2892,6 +2917,7 @@ every=1/2 q=.5
     examples: [
       'drum(trig:every(1/2)) |> out($)',
     ],
+    category: 'generators',
   },
   bd: {
     name: 'bd',
@@ -3033,7 +3059,8 @@ every=1/2 q=.5
     name: 'vowel',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'vowelName', type: 'number', description: 'Vowel index (0=a, 1=e, 2=i, 3=o, 4=u)', min: 0, max: 4, step: 1 },
+      { name: 'vowelName', type: 'number', description: 'Vowel index (0=a, 1=e, 2=i, 3=o, 4=u)', min: 0, max: 4,
+        step: 1 },
     ],
     returnType: 'number',
     description: 'Formant filter for vowel sounds.',
@@ -3059,8 +3086,10 @@ every=1/2 q=.5
     name: 'tube',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'drive', type: 'number', optional: true, defaultValue: 3, description: 'Drive amount', min: 0, max: 20, step: 0.1 },
-      { name: 'bias', type: 'number', optional: true, defaultValue: 0.2, description: 'Bias offset', min: 0, max: 1, step: 0.01 },
+      { name: 'drive', type: 'number', optional: true, defaultValue: 3, description: 'Drive amount', min: 0, max: 20,
+        step: 0.1 },
+      { name: 'bias', type: 'number', optional: true, defaultValue: 0.2, description: 'Bias offset', min: 0, max: 1,
+        step: 0.01 },
     ],
     returnType: 'number',
     description: 'Tube saturation/distortion using hyperbolic tangent.',
@@ -3073,7 +3102,8 @@ every=1/2 q=.5
     name: 'clip',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'x', type: 'number', optional: true, defaultValue: 1, description: 'Clipping threshold', min: 0.0001, max: 10, step: 0.01 },
+      { name: 'x', type: 'number', optional: true, defaultValue: 1, description: 'Clipping threshold', min: 0.0001,
+        max: 10, step: 0.01 },
     ],
     returnType: 'number',
     description: 'Hard clipping distortion.',
@@ -3086,7 +3116,8 @@ every=1/2 q=.5
     name: 'bitcrush',
     parameters: [
       { name: 'in', type: 'number', description: 'Input signal' },
-      { name: 'rate', type: 'number', optional: true, defaultValue: 8000, description: 'Sample rate', min: 100, max: 48000, step: 100, slope: 'log2' },
+      { name: 'rate', type: 'number', optional: true, defaultValue: 8000, description: 'Sample rate', min: 100,
+        max: 48000, step: 100, slope: 'log2' },
     ],
     returnType: 'number',
     description: 'Bit crushing effect using sample and hold.',
@@ -3130,7 +3161,8 @@ every=1/2 q=.5
     parameters: [
       { name: 'a', type: 'number', description: 'First signal' },
       { name: 'b', type: 'number', description: 'Second signal' },
-      { name: 't', type: 'number', description: 'Crossfade position (0 = all A, 1 = all B)', min: 0, max: 1, step: 0.01 },
+      { name: 't', type: 'number', description: 'Crossfade position (0 = all A, 1 = all B)', min: 0, max: 1,
+        step: 0.01 },
     ],
     returnType: 'number',
     description: 'Crossfade between two signals.',
@@ -3139,54 +3171,48 @@ every=1/2 q=.5
     ],
     category: 'mixing',
   },
-  va: {
-    name: 'va',
+  'va,ve,vi,vo,vu': {
+    name: 'va,ve,vi,vo,vu',
     parameters: [],
     returnType: 'number',
-    description: 'Vowel constant for "a" sound (used with vowel function).',
+    description: 'Vowel constants for "a", "e", "i", "o", "u" sounds (used with vowel function).',
     examples: [
       'sine(110) |> vowel($, va) |> out($)',
     ],
-    category: 'utilities',
+    type: 'variable',
+    category: 'variables',
   },
-  ve: {
-    name: 've',
+  '#i,#ii,#iii,#iv,#v,#vi,#vii': {
+    name: '#i,#ii,#iii,#iv,#v,#vi,#vii',
     parameters: [],
     returnType: 'number',
-    description: 'Vowel constant for "e" sound (used with vowel function).',
+    description: 'Scale constants for "i", "ii", "iii", "iv", "v", "vi", "vii" chords.',
     examples: [
-      'sine(110) |> vowel($, ve) |> out($)',
+      '#iv.map(x->saw(x*o4)).avg() |> out($)',
     ],
-    category: 'utilities',
+    type: 'variable',
+    category: 'variables',
   },
-  vi: {
-    name: 'vi',
+  '#1,#2,#3,#4,#5,#6,#7': {
+    name: '#1,#2,#3,#4,#5,#6,#7',
     parameters: [],
     returnType: 'number',
-    description: 'Vowel constant for "i" sound (used with vowel function).',
+    description: 'Scale constants for "1", "2", "3", "4", "5", "6", "7" degrees.',
     examples: [
-      'sine(110) |> vowel($, vi) |> out($)',
+      '[#1,#3,#5].map(x->saw(x*o4)).avg() |> out($)',
     ],
-    category: 'utilities',
+    type: 'variable',
+    category: 'variables',
   },
-  vo: {
-    name: 'vo',
+  'c,d,e,f,g,a,b': {
+    name: 'c,d,e,f,g,a,b',
     parameters: [],
     returnType: 'number',
-    description: 'Vowel constant for "o" sound (used with vowel function).',
+    description: '',
     examples: [
-      'sine(110) |> vowel($, vo) |> out($)',
+      'drawbar([c4,a#4,f4,e4].walk(1/4))*ad(.0005,.5,trig:every(1/4)) |> out($)',
     ],
-    category: 'utilities',
-  },
-  vu: {
-    name: 'vu',
-    parameters: [],
-    returnType: 'number',
-    description: 'Vowel constant for "u" sound (used with vowel function).',
-    examples: [
-      'sine(110) |> vowel($, vu) |> out($)',
-    ],
-    category: 'utilities',
+    type: 'variable',
+    category: 'variables',
   },
 }

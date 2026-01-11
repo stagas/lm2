@@ -55,7 +55,9 @@ export async function createVisualWasm(binary: ArrayBuffer, sourcemapUrl: string
   }
   catch (error) {
     console.error(error)
-    location.reload()
+    setTimeout(() => {
+      location.reload()
+    }, 1000)
     throw error
   }
 

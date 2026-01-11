@@ -904,7 +904,9 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
       }
       catch (error) {
         console.error('Failed to set WASM binary:', error)
-        location.reload()
+        setTimeout(() => {
+          location.reload()
+        }, 1000)
         throw error
       }
     }

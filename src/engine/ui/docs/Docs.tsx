@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Logo } from '../../../components/Logo.tsx'
 import { Modal } from '../../../components/Modal.tsx'
 import { useEngineDspStore, useEngineRuntimeStore } from '../../store.ts'
-import { functionDefinitions } from '../function-definitions.ts'
+import { functionCategories, functionDefinitions } from '../function-definitions.ts'
 import { Link } from '../router.tsx'
 import { tokenizer } from '../tokenizer.ts'
 import { fuzzyScore } from './fuzzy.ts'
@@ -23,6 +23,7 @@ type DocItem = {
   searchText: string
   fileSlug?: string
   functionName?: string
+  category?: string
   render: () => preact.ComponentChild
 }
 
@@ -232,13 +233,14 @@ export function Docs({
         def.returnType ? `: ${def.returnType}` : ''
       }`
       const examples = (def.examples ?? []).join('\n\n')
-      const searchText = `${def.name}\n${sig}\n${def.description ?? ''}\n${params}\n${examples}`
+      const searchText = `${def.name}\n${sig}\n${def.description ?? ''}`
       out.push({
         id,
         title: def.name,
         group: 'api',
         searchText,
         functionName: def.name,
+        category: def.category ? functionCategories[def.category] : undefined,
         render: () => (
           <div className="flex flex-col gap-5">
             <h3 className="text-2xl font-semibold text-white -mt-4">{def.name}</h3>
@@ -388,7 +390,37 @@ export function Docs({
     const tutorials = list.filter(i => i.group === 'tutorial')
     const api = list.filter(i => i.group === 'api')
     const about = list.filter(i => i.group === 'about')
-    return { tutorials, api, about }
+
+    // Group API items by category
+    const apiByCategory = new Map<string, DocItem[]>()
+    const categoryOrder: string[] = []
+
+    for (const item of api) {
+      const category = item.category || 'Other'
+      if (!apiByCategory.has(category)) {
+        apiByCategory.set(category, [])
+        categoryOrder.push(category)
+      }
+      apiByCategory.get(category)!.push(item)
+    }
+
+    // Sort items within each category
+    for (const [category, items] of apiByCategory.entries()) {
+      items.sort((a, b) => a.title.localeCompare(b.title))
+    }
+
+    // Sort categories by predefined order, then alphabetically for any extras
+    const predefinedOrder = Object.values(functionCategories)
+    categoryOrder.sort((a, b) => {
+      const aIndex = predefinedOrder.indexOf(a)
+      const bIndex = predefinedOrder.indexOf(b)
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+      if (aIndex !== -1) return -1
+      if (bIndex !== -1) return 1
+      return a.localeCompare(b)
+    })
+
+    return { tutorials, api, apiByCategory, categoryOrder, about }
   }, [filtered.list])
 
   const selected = useMemo(() => {
@@ -570,32 +602,45 @@ export function Docs({
               {sidebarGroups.api.length > 0 && (
                 <div className="mt-5">
                   <div className="text-sm font-semibold text-white">API</div>
-                  <div className="mt-2 flex flex-col gap-1">
-                    {sidebarGroups.api.map(it => {
-                      const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : ''
-                      return externalIsOpen !== undefined && it.functionName
-                        ? (
-                          <Link
-                            key={it.id}
-                            to={`/docs/api/${urlSlug}`}
-                            className={`block text-left text-sm hover:text-white font-mono whitespace-nowrap ${
-                              it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
-                            }`}
-                          >
-                            {it.title}
-                          </Link>
-                        )
-                        : (
-                          <button
-                            key={it.id}
-                            className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
-                              it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
-                            }`}
-                            onClick={() => setSelectedId(it.id)}
-                          >
-                            {it.title}
-                          </button>
-                        )
+                  <div className="mt-2 flex flex-col gap-3">
+                    {sidebarGroups.categoryOrder.map(category => {
+                      const items = sidebarGroups.apiByCategory.get(category) || []
+                      if (items.length === 0) return null
+                      return (
+                        <div key={category}>
+                          <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                            {category}
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            {items.map(it => {
+                              const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : ''
+                              return externalIsOpen !== undefined && it.functionName
+                                ? (
+                                  <Link
+                                    key={it.id}
+                                    to={`/docs/api/${urlSlug}`}
+                                    className={`block text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                                      it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                                    }`}
+                                  >
+                                    {it.title}
+                                  </Link>
+                                )
+                                : (
+                                  <button
+                                    key={it.id}
+                                    className={`text-left text-sm hover:text-white font-mono whitespace-nowrap ${
+                                      it.id === effectiveSelectedId ? 'text-white' : 'text-neutral-300'
+                                    }`}
+                                    onClick={() => setSelectedId(it.id)}
+                                  >
+                                    {it.title}
+                                  </button>
+                                )
+                            })}
+                          </div>
+                        </div>
+                      )
                     })}
                   </div>
                 </div>
