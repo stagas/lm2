@@ -374,6 +374,23 @@ bdsynth=(
   trig=tram('x-x-x-x-'),
 )->sine(base+punch*fm(trig),offset,trig)*amp(trig) |> slp($,base+cutoff*filter(trig),q) |> limiter($)
 
+// bd=(
+//   base=#1*o2,
+//   punch=25000k,
+//   offset=0.0006,
+//   cutoff=5k,
+//   q=.25,
+//   amp=trig->ad(.0001,.5,40,trig),
+//   fm=trig->ad(.00008,.013,900,trig),
+//   filter=trig->ad(.000147,.25,50.000,trig),
+//   trig=tram('x-x-x-x-'),
+// )->{
+//   kicksample=record(.3,()->{
+//     bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig:1)
+//   })
+//   sampler(trig,sample:kicksample)
+// }
+
 bd=(
   base=#1*o2,
   punch=25000k,
@@ -385,10 +402,7 @@ bd=(
   filter=trig->ad(.000147,.25,50.000,trig),
   trig=tram('x-x-x-x-'),
 )->{
-  kicksample=record(.3,()->{
-    bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig:1)
-  })
-  sampler(trig,sample:kicksample)
+  bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig)
 }
 
 hhsynth=(width=.4,trig)->{
@@ -397,16 +411,26 @@ hhsynth=(width=.4,trig)->{
   |> bp($,8000,.85)|>bp($,10k,.85)|>hp($,11k,.85)) |> tanh($*6)
 }
 
-hh=(width=.4,seq=mini('[.15 .2 1 .2]*4'))->{
-  hhsample=record(.3,()->{
-    trig=step(1-inc(2.5),.5)
-    hhsynth(width,trig)
-  })
+// hh=(width=.4,seq=mini('[.15 .2 1 .2]*4'))->{
+//   hhsample=record(.3,()->{
+//     trig=step(1-inc(2.5),.5)
+//     hhsynth(width,trig)
+//   })
 
-  play(seq,(trig,v)->{
-    slicer(trig,sample:hhsample)*(v>.65?v:v*2)*(v>.65?ad(0.0001,.0173+.5*v,trig):ad(0.0001,.01+.15*v,4,trig))
-  })
+//   play(seq,(trig,v)->{
+//     slicer(trig,sample:hhsample)*(v>.65?v:v*2)*(v>.65?ad(0.0001,.0173+.5*v,trig):ad(0.0001,.01+.15*v,4,trig))
+//   })
+// }
+
+ch=(width=.01,trig=tram('xx-x',1/4))->{
+  hhsynth(width,trig)*ad(0.0001,.01+.15,4,trig)
 }
+
+oh=(width=.4,trig=tram('-x',1/4))->{
+  hhsynth(width,trig)*ad(0.0001,.0173+.5,trig)
+}
+
+hh=()->ch()+oh()
 
 snaresynth=(seed=7,base=#5*o2,trig=step(1-phasor(1),.9))->{
   amp=ad(.0001,1.7366,20,trig)
@@ -421,9 +445,13 @@ snaresynth=(seed=7,base=#5*o2,trig=step(1-phasor(1),.9))->{
   |> tube($,2,.01)*.3
 }
 
+// sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
+//   snaresample=record(1,()->snaresynth(seed,base))
+//   sampler(snaresample,trig)
+// }
+
 sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
-  snaresample=record(1,()->snaresynth(seed,base))
-  sampler(snaresample,trig)
+  snaresynth(seed,base,trig)
 }
 
 drums=()->bd()+hh()+sd()
