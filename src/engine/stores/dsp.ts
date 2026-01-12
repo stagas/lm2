@@ -846,6 +846,7 @@ export const useEngineDspStore = create<EngineDspState>((set, get) => {
 
     useEngineRuntimeStore.setState({
       wasmMemory,
+      wasmBinary: visualBinary,
       wasmDsp,
       wasmDspPtr,
       visualWasm,

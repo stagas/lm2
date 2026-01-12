@@ -18,6 +18,7 @@ export type EngineRuntimeState = {
   currentLoop: Loop | null
   currentLoopId: string | null
   wasmMemory?: WebAssembly.Memory
+  wasmBinary?: ArrayBuffer
   wasmDsp?: Dsp
   wasmDspPtr: number
   visualWasm?: VisualWasm

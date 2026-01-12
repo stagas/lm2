@@ -1,4 +1,3 @@
-import { useEffect } from 'preact/hooks'
 import { toRing } from 'utils/ring'
 import { rpc } from 'utils/rpc'
 import {
@@ -72,7 +71,6 @@ import {
   type TimelineSequenceRef,
   type TramSequenceRef,
 } from '../bytecode/bytecode.ts'
-import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import {
   AnalyserOutsPoolStruct,
   CompressorOutsPoolStruct,
@@ -830,17 +828,4 @@ export async function createProgramInstance(
   }
 
   return { program, cleanup }
-}
-
-export function useEngine() {
-  const isInitialized = useEngineRuntimeStore(state => state.isInitialized)
-  const initialize = useEngineDspStore(state => state.initialize)
-  const dispose = useEngineDspStore(state => state.dispose)
-
-  useEffect(() => {
-    void initialize()
-    return () => dispose()
-  }, [])
-
-  return { isInitialized }
 }

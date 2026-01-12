@@ -5,7 +5,6 @@ import { Logo } from '../../components/Logo.tsx'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
 import { SpinnerLarge } from '../../components/Spinner.tsx'
 import { INTRO_SOURCE } from '../constants.ts'
-import { useEngine } from '../dsp/program.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { Admin } from './Admin.tsx'
 import { Browse } from './Browse.tsx'
@@ -41,7 +40,6 @@ const Intro = forwardRef<
   onResumeClick?: () => void
 }, ref: preact.Ref<HTMLDivElement>) => {
   const needsUserInteraction = audioContextState && audioContextState !== 'running'
-  console.log({ isFadingOut, isFadingIn, audioContextState, needsUserInteraction })
   return createPortal(
     <div
       ref={ref}
@@ -314,7 +312,7 @@ function RouterContent({
 }
 
 export function EngineUI() {
-  const { isInitialized } = useEngine()
+  const isInitialized = useEngineRuntimeStore(state => state.isInitialized)
   const hasHydrated = useAppStore(state => state.hasHydrated)
   const isLoopLoading = useAppStore(state => state.isLoopLoading)
   const isProgramReady = useEngineRuntimeStore(state => state.isProgramReady)
@@ -324,6 +322,14 @@ export function EngineUI() {
   const isEditorBusy = useIsEditorBusy()
   const fontsLoaded = useFontsLoaded()
   const seekToSampleImmediate = useSeekToSampleImmediate()
+
+  const initialize = useEngineDspStore(state => state.initialize)
+  const dispose = useEngineDspStore(state => state.dispose)
+
+  useEffect(() => {
+    void initialize()
+    return () => dispose()
+  }, [])
 
   const [pathname, setPathname] = useState(() => window.location.pathname || '/')
 
