@@ -287,7 +287,8 @@ export function Docs({
                   {def.examples?.map((ex, i) => {
                     const editorId = `${id}:ex:${i}`
                     return (
-                      <InlineEditor key={editorId} id={`docs:${editorId}`} initialCode={`\n${ex.split('\n').join('\n\n')}`} />
+                      <InlineEditor key={editorId} id={`docs:${editorId}`}
+                        initialCode={`\n${ex.split('\n').join('\n\n')}`} />
                     )
                   })}
                 </div>
@@ -303,9 +304,8 @@ export function Docs({
         id: 'about-contact',
         title: 'Contact',
         text: [
-          'Email: support@loopmaster.app',
-          'Discord: discord.gg/loopmaster',
-          'If you found a bug or have a feature request, include your browser version and a short repro.',
+          'Discord: https://discord.gg/NSWaB9dRYh',
+          'Feedback: https://loopmaster.featurebase.app/',
         ].join('\n'),
       },
       {

@@ -29738,7 +29738,7 @@ function Link({
 }) {
   const { navigate } = useRouter();
   const handleClick = (e2) => {
-    if (e2.ctrlKey || e2.metaKey || e2.shiftKey || e2.button !== 0) {
+    if (to.startsWith("http") || e2.ctrlKey || e2.metaKey || e2.shiftKey || e2.button !== 0) {
       return;
     }
     e2.preventDefault();
@@ -40468,8 +40468,15 @@ ${def.description ?? ""}`;
             /* @__PURE__ */ u$1("div", { className: "font-semibold text-white", children: "Examples" }),
             /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-3", children: def.examples?.map((ex, i2) => {
               const editorId = `${id}:ex:${i2}`;
-              return /* @__PURE__ */ u$1(InlineEditor, { id: `docs:${editorId}`, initialCode: `
-${ex.split("\n").join("\n\n")}` }, editorId);
+              return /* @__PURE__ */ u$1(
+                InlineEditor,
+                {
+                  id: `docs:${editorId}`,
+                  initialCode: `
+${ex.split("\n").join("\n\n")}`
+                },
+                editorId
+              );
             }) })
           ] })
         ] })
@@ -40480,9 +40487,8 @@ ${ex.split("\n").join("\n\n")}` }, editorId);
         id: "about-contact",
         title: "Contact",
         text: [
-          "Email: support@loopmaster.app",
-          "Discord: discord.gg/loopmaster",
-          "If you found a bug or have a feature request, include your browser version and a short repro."
+          "Discord: https://discord.gg/NSWaB9dRYh",
+          "Feedback: https://loopmaster.featurebase.app/"
         ].join("\n")
       },
       {
@@ -42258,7 +42264,37 @@ function Landing() {
     /* @__PURE__ */ u$1("footer", { className: "py-12", children: /* @__PURE__ */ u$1("div", { className: "max-w-7xl mx-auto px-6", children: [
       /* @__PURE__ */ u$1("div", { className: "flex flex-col md:flex-row justify-between items-center gap-6", children: [
         /* @__PURE__ */ u$1("div", { children: /* @__PURE__ */ u$1(Logo, { text: "loopmaster", size: "2em" }) }),
-        /* @__PURE__ */ u$1("div", { className: "flex gap-6 text-neutral-400", children: [
+        /* @__PURE__ */ u$1("div", { className: "flex items-center justify-center gap-6 text-neutral-400", children: [
+          /* @__PURE__ */ u$1(
+            Link,
+            {
+              title: "Discord",
+              className: "text-sm border-none rounded-md cursor-pointer font-semibold text-white hover:text-[#4c6dee] flex items-center gap-2",
+              to: "https://discord.gg/NSWaB9dRYh",
+              target: "_blank",
+              children: /* @__PURE__ */ u$1(
+                "svg",
+                {
+                  xmlns: "http://www.w3.org/2000/svg",
+                  fill: "currentColor",
+                  width: "32",
+                  height: "32",
+                  viewBox: "0 0 20 20",
+                  children: /* @__PURE__ */ u$1("path", { d: "M16.074,4.361a14.243,14.243,0,0,0-3.61-1.134,10.61,10.61,0,0,0-.463.96,13.219,13.219,0,0,0-4,0,10.138,10.138,0,0,0-.468-.96A14.206,14.206,0,0,0,3.919,4.364,15.146,15.146,0,0,0,1.324,14.5a14.435,14.435,0,0,0,4.428,2.269A10.982,10.982,0,0,0,6.7,15.21a9.294,9.294,0,0,1-1.494-.727c.125-.093.248-.19.366-.289a10.212,10.212,0,0,0,8.854,0c.119.1.242.2.366.289a9.274,9.274,0,0,1-1.5.728,10.8,10.8,0,0,0,.948,1.562,14.419,14.419,0,0,0,4.431-2.27A15.128,15.128,0,0,0,16.074,4.361Zm-8.981,8.1a1.7,1.7,0,0,1-1.573-1.79A1.689,1.689,0,0,1,7.093,8.881a1.679,1.679,0,0,1,1.573,1.791A1.687,1.687,0,0,1,7.093,12.462Zm5.814,0a1.7,1.7,0,0,1-1.573-1.79,1.689,1.689,0,0,1,1.573-1.791,1.679,1.679,0,0,1,1.573,1.791A1.688,1.688,0,0,1,12.907,12.462Z" })
+                }
+              )
+            }
+          ),
+          /* @__PURE__ */ u$1(
+            Link,
+            {
+              title: "Feedback",
+              className: "hover:text-yellow-400 transition-colors border-b-2 border-transparent hover:border-yellow-400",
+              to: "https://loopmaster.featurebase.app/",
+              target: "_blank",
+              children: "Feedback"
+            }
+          ),
           /* @__PURE__ */ u$1(
             Link,
             {
@@ -46336,4 +46372,4 @@ const root = createRoot(document.getElementById("root"));
 root.render(
   /* @__PURE__ */ u$1(App, {})
 );
-//# sourceMappingURL=index-D0rVMLOu.js.map
+//# sourceMappingURL=index-PivYUaAO.js.map

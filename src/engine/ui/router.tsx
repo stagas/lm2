@@ -67,12 +67,13 @@ export function Link({
   children: preact.ComponentChildren
   className?: string
   replace?: boolean
-} & preact.JSX.HTMLAttributes<HTMLAnchorElement>) {
+  target?: string
+} & preact.HTMLAttributes<HTMLAnchorElement>) {
   const { navigate } = useRouter()
 
   const handleClick = (e: MouseEvent) => {
     // Allow default behavior for modified clicks (ctrl, cmd, shift, middle click)
-    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) {
+    if (to.startsWith('http') || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) {
       return
     }
 
