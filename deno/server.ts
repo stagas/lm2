@@ -40,8 +40,13 @@ async function hashPasswordSha256(password: string): Promise<string> {
 }
 
 async function validatePassword(password: string, passwordHash: string): Promise<boolean> {
-  const bcryptOk = verify(password, passwordHash)
-  if (bcryptOk) return true
+  try {
+    const bcryptOk = verify(password, passwordHash)
+    if (bcryptOk) return true
+  }
+  catch (error) {
+    console.error(error)
+  }
   const sha256Hash = await hashPasswordSha256(password)
   return sha256Hash === passwordHash
 }
