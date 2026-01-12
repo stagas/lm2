@@ -12573,19 +12573,155 @@ const Spinner = ({ lineWidth = 2.8 }) => /* @__PURE__ */ u$1(
 );
 const SpinnerSmall = () => /* @__PURE__ */ u$1("div", { className: "w-6 h-6", children: /* @__PURE__ */ u$1(Spinner, { lineWidth: 2 }) });
 const SpinnerLarge = () => /* @__PURE__ */ u$1("div", { className: "w-8 h-8", children: /* @__PURE__ */ u$1(Spinner, { lineWidth: 1.75 }) });
-function toRing(buffer, chunkSize = 128) {
-  const length = buffer.length / chunkSize;
-  if ((length | 0) !== length) {
-    throw new Error('Ring "buffer" must be divisible exactly by the "chunkSize".');
-  }
-  return Object.assign(
-    Array.from({ length }, (_2, x2) => buffer.subarray(
-      x2 * chunkSize,
-      (x2 + 1) * chunkSize
-    )),
-    { buffer }
-  );
+const DEBUG = true;
+const TRIG_FADEOUT_SECONDS = 0.3;
+const PIANOROLL_KEY_WIDTH = 20;
+const PIANOROLL_BAR_COLOR_ODD = "rgba(255, 255, 255, 0.09)";
+const PIANOROLL_BAR_COLOR_EVEN = "rgba(255, 255, 255, 0.12)";
+const SCROLL_SMOOTHING = 0.17;
+const DEFAULT_SEQUENCES = ["c4 e4 [g4 a4]*2", "a3 c4 [d4 f4 a4]*2"];
+const DEFAULT_DSP_SOURCE = `bpm=120
+
+drums() |> out($)`;
+const INTRO_SOURCE = `
+trig=at(1)
+sine(hz-hz+35631 (0 100k)*sine(4554 (0 10k),trig) *ad(.0001,10.0000,10,trig),trig)*ad(.0004,.1,trig)|>lp($,69.71  +200000*ad(.001,.0711,10,trig)) |> limiter($)*.5 |> out($)
+drums()
+`;
+const LANDING_PAGE_SOURCE = `tb303=(hz,cutoff,q,k,sat,trig)->
+
+  diodeladder(ramp(hz),cutoff,q,k,sat) |> tanh($*6)*.5 |> dc($)
+
+trig=every(1/16) tb303([#1*o2,#1*o2,#7*o2,#5*o3].glide(1/8,10),
+
+cutoff:100+(300 (0 5k) +2k*fractal(6)**3)*ad(.01,3,30,trig),
+
+q:.91,k:.002,sat:1.15,trig)*.2+drums() |> limiter($) |> out($)`;
+const KEYWORDS = [
+  "do",
+  "case",
+  "break",
+  "continue",
+  "else",
+  "for",
+  "of",
+  "if",
+  "return",
+  "switch",
+  "throw",
+  "try",
+  "while",
+  "null",
+  "true",
+  "false",
+  "undefined"
+];
+function Deferred() {
+  const _onwhen = () => {
+    deferred.hasSettled = true;
+    deferred.resolve = deferred.reject = noop;
+  };
+  const noop = () => {
+  };
+  let onwhen = _onwhen;
+  const deferred = {
+    hasSettled: false,
+    when: (fn2) => {
+      onwhen = () => {
+        _onwhen();
+        fn2();
+      };
+    }
+  };
+  deferred.promise = new Promise((resolve, reject) => {
+    deferred.resolve = (arg) => {
+      onwhen();
+      deferred.value = arg;
+      resolve(arg);
+    };
+    deferred.reject = (error) => {
+      onwhen();
+      deferred.error = error;
+      reject(error);
+    };
+  });
+  return deferred;
 }
+const Getter = (cb, target = {}) => new Proxy(target, { get: (_2, key) => cb(key) });
+const defaultTransferables = [
+  typeof OffscreenCanvas !== "undefined" ? OffscreenCanvas : void 0,
+  typeof MessagePort !== "undefined" ? MessagePort : void 0
+].filter(Boolean);
+const rpc = (port, api = {}, transferables = defaultTransferables) => {
+  const xfer = (args, transferables2) => args.reduce((p2, n2) => {
+    if (typeof n2 === "object") {
+      if (transferables2.some((ctor) => n2 instanceof ctor)) {
+        p2.push(n2);
+      } else
+        for (const key in n2) {
+          if (n2[key] && transferables2.some((ctor) => n2[key] instanceof ctor)) {
+            p2.push(n2[key]);
+          }
+        }
+    }
+    return p2;
+  }, []);
+  let callbackId = 0;
+  const calls = /* @__PURE__ */ new Map();
+  port.onmessage = async ({ data }) => {
+    const { cid } = data;
+    if (data.method) {
+      let result;
+      try {
+        if (!(data.method in api)) {
+          throw new TypeError(
+            `Method "${data.method}" does not exist in RPC API.`
+          );
+        }
+        if (typeof api[data.method] !== "function") {
+          throw new TypeError(
+            `Property "${data.method}" exists in RPC but is not type function, instead it is type: "${typeof api[data.method]}"`
+          );
+        }
+        result = await api[data.method](...data.args);
+        port.postMessage(
+          { cid, result },
+          xfer([result], transferables)
+        );
+      } catch (error) {
+        port.postMessage({ cid, error });
+      }
+    } else {
+      if (!calls.has(cid)) {
+        console.log(cid, calls.size, Object.keys(data.result));
+        throw new ReferenceError("Callback id not found: " + cid);
+      }
+      const { resolve, reject } = calls.get(cid);
+      calls.delete(data.cid);
+      if (data.error) reject(data.error);
+      else resolve(data.result);
+    }
+  };
+  const call = (method, ...args) => {
+    const cid = ++callbackId;
+    const deferred = Deferred();
+    calls.set(cid, deferred);
+    try {
+      port.postMessage(
+        { method, args, cid },
+        xfer(args, transferables)
+      );
+    } catch (error) {
+      console.error(`Rpc call failed: "${method}"`, args, error);
+    }
+    return deferred.promise;
+  };
+  const getter = Getter(
+    (key) => call.bind(null, key),
+    call
+  );
+  return getter;
+};
 const RING_BUFFER_SIZE = 16384;
 const CHUNK_SIZE = 128;
 const ANALYSER_OUTS_COUNT = 64;
@@ -12653,6 +12789,36 @@ const OP_CYCLE_START_SIZE = 4;
 const OP_CYCLE_END_SIZE = 1;
 const OP_EVENT_BASE_SIZE = 12 + MAX_EVENT_VALUES;
 const OP_SWING_SIZE = 2;
+class AnimationManager2 {
+  callbacks = /* @__PURE__ */ new Set();
+  animationId = null;
+  isRunning = false;
+  register(callback) {
+    this.callbacks.add(callback);
+  }
+  unregister(callback) {
+    this.callbacks.delete(callback);
+  }
+  start() {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this.animate();
+  }
+  stop() {
+    this.isRunning = false;
+    if (this.animationId !== null) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+  animate = () => {
+    if (!this.isRunning) return;
+    for (const callback of this.callbacks) {
+      callback();
+    }
+    this.animationId = requestAnimationFrame(this.animate);
+  };
+}
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -12717,304 +12883,8 @@ async function acquireSpinLock(lock, timeoutMs, {
     }
   }
 }
-function buildSourceMapFromNodes(nodes, _bytecode, offset, map) {
-  let currentOffset = offset;
-  for (const node of nodes) {
-    if (node.type === "event") {
-      const opIndex = currentOffset;
-      map.set(opIndex, {
-        text: node.source.text,
-        start: node.source.start,
-        end: node.source.start + node.source.length
-      });
-      currentOffset += OP_EVENT_BASE_SIZE;
-    } else if (node.type === "rest") {
-      const opIndex = currentOffset;
-      map.set(opIndex, {
-        text: node.source.text,
-        start: node.source.start,
-        end: node.source.start + node.source.length
-      });
-      currentOffset += OP_EVENT_BASE_SIZE;
-    } else if (node.type === "octave") {
-      const opIndex = currentOffset;
-      map.set(opIndex, {
-        text: node.source.text,
-        start: node.source.start,
-        end: node.source.start + node.source.length
-      });
-      currentOffset += OP_OCTAVE_SIZE;
-    } else if (node.type === "transpose") {
-      const opIndex = currentOffset;
-      map.set(opIndex, {
-        text: node.source.text,
-        start: node.source.start,
-        end: node.source.start + node.source.length
-      });
-      currentOffset += OP_TRANSPOSE_SIZE;
-    } else if (node.type === "scale") {
-      const opIndex = currentOffset;
-      map.set(opIndex, {
-        text: node.source.text,
-        start: node.source.start,
-        end: node.source.start + node.source.length
-      });
-      currentOffset += OP_SCALE_SIZE;
-    } else if (node.type === "swing") {
-      const opIndex = currentOffset;
-      map.set(opIndex, {
-        text: node.source.text,
-        start: node.source.start,
-        end: node.source.start + node.source.length
-      });
-      currentOffset += OP_SWING_SIZE;
-    } else if (node.type === "group") {
-      currentOffset += OP_GROUP_START_SIZE;
-      currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map);
-      currentOffset += OP_GROUP_END_SIZE;
-    } else if (node.type === "at") {
-      currentOffset += OP_CYCLE_START_SIZE;
-      currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map);
-      currentOffset += OP_CYCLE_END_SIZE;
-    }
-  }
-  return currentOffset;
-}
-const cacheByMiniSourceMap = /* @__PURE__ */ new Map();
-function buildMiniSourceMap(src, nodes, bytecode) {
-  const cached = cacheByMiniSourceMap.get(src);
-  if (cached) return cached;
-  if (cacheByMiniSourceMap.size > 1e3) {
-    cacheByMiniSourceMap.clear();
-  }
-  const map = /* @__PURE__ */ new Map();
-  buildSourceMapFromNodes(nodes, bytecode, OP_GROUP_START_SIZE, map);
-  const result = map;
-  cacheByMiniSourceMap.set(src, result);
-  return result;
-}
-function allocateBytecode(operationCount) {
-  const size = MINI_HEADER_SIZE + operationCount * Math.max(OP_EVENT_BASE_SIZE, OP_GROUP_START_SIZE, OP_SCALE_SIZE);
-  return new Float32Array(size);
-}
-function writeEventOp(buffer, offset, values, modifiers) {
-  const base = MINI_HEADER_SIZE + offset;
-  let pc = 0;
-  function emit(op) {
-    buffer[base + pc] = op;
-    pc++;
-  }
-  emit(OP_EVENT);
-  const valueCount = Math.min(values.length, MAX_EVENT_VALUES);
-  emit(valueCount);
-  emit(modifiers.velocity);
-  emit(modifiers.hold);
-  emit(modifiers.replicate);
-  emit(modifiers.elongate);
-  emit(modifiers.density);
-  emit(modifiers.offset);
-  emit(modifiers.jitter);
-  emit(modifiers.prob);
-  emit(modifiers.glide);
-  emit(modifiers.strum);
-  for (let i2 = 0; i2 < MAX_EVENT_VALUES; i2++) {
-    emit(values[i2] ?? 0);
-  }
-  return OP_EVENT_BASE_SIZE;
-}
-function writeGroupStartOp(buffer, offset, childCount, mode, modifiers) {
-  const base = MINI_HEADER_SIZE + offset;
-  let pc = 0;
-  function emit(op) {
-    buffer[base + pc] = op;
-    pc++;
-  }
-  emit(OP_GROUP_START);
-  emit(childCount);
-  emit(mode === 2 ? 2 : mode === 1 ? 1 : 0);
-  emit(modifiers.velocity);
-  emit(modifiers.hold);
-  emit(modifiers.replicate);
-  emit(modifiers.elongate);
-  emit(modifiers.density);
-  emit(modifiers.offset);
-  emit(modifiers.jitter);
-  emit(modifiers.prob);
-  emit(modifiers.glide);
-  emit(modifiers.strum);
-  return OP_GROUP_START_SIZE;
-}
-function writeGroupEndOp(buffer, offset) {
-  const base = MINI_HEADER_SIZE + offset;
-  buffer[base + 0] = OP_GROUP_END;
-  return OP_GROUP_END_SIZE;
-}
-function writeCycleStartOp(buffer, offset, pos, loop, childCount) {
-  const base = MINI_HEADER_SIZE + offset;
-  buffer[base + 0] = OP_CYCLE_START;
-  buffer[base + 1] = pos;
-  buffer[base + 2] = loop;
-  buffer[base + 3] = childCount;
-  return OP_CYCLE_START_SIZE;
-}
-function writeCycleEndOp(buffer, offset) {
-  const base = MINI_HEADER_SIZE + offset;
-  buffer[base + 0] = OP_CYCLE_END;
-  return OP_CYCLE_END_SIZE;
-}
-function writeOctaveOp(buffer, offset, delta) {
-  const base = MINI_HEADER_SIZE + offset;
-  buffer[base + 0] = OP_OCTAVE;
-  buffer[base + 1] = delta;
-  return OP_OCTAVE_SIZE;
-}
-function writeTransposeOp(buffer, offset, delta) {
-  const base = MINI_HEADER_SIZE + offset;
-  buffer[base + 0] = OP_TRANSPOSE;
-  buffer[base + 1] = delta;
-  return OP_TRANSPOSE_SIZE;
-}
-function writeScaleOp(buffer, offset, rootMidi, scaleIndex) {
-  const base = MINI_HEADER_SIZE + offset;
-  buffer[base + 0] = OP_SCALE;
-  buffer[base + 1] = rootMidi;
-  buffer[base + 2] = scaleIndex;
-  return OP_SCALE_SIZE;
-}
-function writeSwingOp(buffer, offset, amount) {
-  const base = MINI_HEADER_SIZE + offset;
-  buffer[base + 0] = OP_SWING;
-  buffer[base + 1] = amount;
-  return OP_SWING_SIZE;
-}
-function euclidHit(pulses, steps, step, offset = 0) {
-  if (steps <= 0) return false;
-  if (pulses <= 0) return false;
-  if (pulses >= steps) return true;
-  let s2 = step + offset;
-  s2 %= steps;
-  if (s2 < 0) s2 += steps;
-  const v2 = s2 * pulses % steps;
-  return v2 < pulses;
-}
-function parseChordSuffix(suffix) {
-  const tones = [];
-  const omit = /* @__PURE__ */ new Set();
-  let hasSus2 = false;
-  let hasSus4 = false;
-  let i2 = 0;
-  while (i2 < suffix.length) {
-    const extMatch = suffix.slice(i2).match(/^([b#]?)(\d+)/);
-    if (extMatch) {
-      const acc = extMatch[1];
-      const num = parseInt(extMatch[2], 10);
-      i2 += extMatch[0].length;
-      let degree;
-      let adjust = 0;
-      if (num === 7) {
-        degree = 6;
-        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
-      } else if (num === 9) {
-        degree = 8;
-        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
-      } else if (num === 11) {
-        degree = 10;
-        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
-      } else if (num === 13) {
-        degree = 12;
-        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
-      } else if (num === 5) {
-        degree = 4;
-        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
-      } else {
-        continue;
-      }
-      tones.push({ degree, semitoneAdjust: adjust });
-      continue;
-    }
-    if (suffix.slice(i2).startsWith("sus4")) {
-      hasSus4 = true;
-      i2 += 4;
-      continue;
-    }
-    if (suffix.slice(i2).startsWith("sus2")) {
-      hasSus2 = true;
-      i2 += 4;
-      continue;
-    }
-    if (suffix.slice(i2).startsWith("sus")) {
-      hasSus4 = true;
-      i2 += 3;
-      continue;
-    }
-    const noMatch = suffix.slice(i2).match(/^no(\d+)/);
-    if (noMatch) {
-      const num = parseInt(noMatch[1], 10);
-      i2 += noMatch[0].length;
-      if (num === 3) omit.add(2);
-      else if (num === 5) omit.add(4);
-      continue;
-    }
-    const addMatch = suffix.slice(i2).match(/^add(\d+)/);
-    if (addMatch) {
-      const num = parseInt(addMatch[1], 10);
-      i2 += addMatch[0].length;
-      if (num === 2) tones.push({ degree: 1, semitoneAdjust: 0 });
-      else if (num === 4) tones.push({ degree: 3, semitoneAdjust: 0 });
-      else if (num === 6) tones.push({ degree: 5, semitoneAdjust: 0 });
-      continue;
-    }
-    if (suffix.slice(i2).startsWith("o7")) {
-      tones.push({ degree: 0, semitoneAdjust: 0 });
-      tones.push({ degree: 2, semitoneAdjust: -1 });
-      tones.push({ degree: 4, semitoneAdjust: -1 });
-      tones.push({ degree: 6, semitoneAdjust: -2 });
-      return tones;
-    }
-    i2++;
-  }
-  const result = [];
-  result.push({ degree: 0, semitoneAdjust: 0 });
-  if (hasSus2) {
-    result.push({ degree: 1, semitoneAdjust: 0 });
-  } else if (hasSus4) {
-    result.push({ degree: 3, semitoneAdjust: 0 });
-  } else if (!omit.has(2)) {
-    result.push({ degree: 2, semitoneAdjust: 0 });
-  }
-  if (!omit.has(4)) {
-    const alteredFifth = tones.find((t2) => t2.degree === 4);
-    if (alteredFifth) {
-      result.push(alteredFifth);
-    } else {
-      result.push({ degree: 4, semitoneAdjust: 0 });
-    }
-  }
-  for (const tone of tones) {
-    if (tone.degree >= 5 && !result.some((r2) => r2.degree === tone.degree)) {
-      result.push(tone);
-    }
-  }
-  for (const tone of tones) {
-    if (tone.degree < 5 && tone.degree !== 0 && tone.degree !== 2 && tone.degree !== 4) {
-      if (!result.some((r2) => r2.degree === tone.degree)) {
-        result.push(tone);
-      }
-    }
-  }
-  return result;
-}
-function romanToDegree(text) {
-  const t2 = text.toLowerCase();
-  if (t2 === "i") return 1;
-  if (t2 === "ii") return 2;
-  if (t2 === "iii") return 3;
-  if (t2 === "iv") return 4;
-  if (t2 === "v") return 5;
-  if (t2 === "vi") return 6;
-  if (t2 === "vii") return 7;
-  return null;
-}
+const DIODELADDER_Q_COMP = 2.5;
+const DIODELADDER_K_COMP = 1;
 const SCALE_INTERVALS = {
   major: [0, 2, 4, 5, 7, 9, 11],
   minor: [0, 2, 3, 5, 7, 8, 10],
@@ -13118,1162 +12988,6 @@ function findScaleIndex(scaleName) {
   }
   return void 0;
 }
-const NOTE_OFFSETS$1 = {
-  c: 0,
-  d: 2,
-  e: 4,
-  f: 5,
-  g: 7,
-  a: 9,
-  b: 11
-};
-function noteNameToMidi(noteName) {
-  const match = noteName.match(/^([a-gA-G])([#b]?)(-?\d+)$/);
-  if (!match) {
-    throw new Error(`Invalid note name: ${noteName}`);
-  }
-  const [, note, accidental, octave] = match;
-  let midi = NOTE_OFFSETS$1[note.toLowerCase()] + (parseInt(octave, 10) + 1) * 12;
-  if (accidental === "#") {
-    midi += 1;
-  } else if (accidental === "b") {
-    midi -= 1;
-  }
-  return midi;
-}
-function midiToFrequency(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-function frequencyToMidi(frequency) {
-  return Math.round(12 * Math.log2(frequency / 440) + 69);
-}
-function midiToNoteName(midi) {
-  if (!isFinite(midi) || isNaN(midi)) {
-    console.error("midiToNoteName called with invalid midi:", midi);
-    return "?";
-  }
-  const roundedMidi = Math.round(midi);
-  const note = (roundedMidi % 12 + 12) % 12;
-  const octave = Math.floor(roundedMidi / 12) - 1;
-  const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  if (note < 0 || note >= notes.length) {
-    console.error("Invalid note index:", note, "for midi:", midi);
-    return "?";
-  }
-  const result = `${notes[note]}${octave}`;
-  if (!result || result.includes("undefined")) {
-    console.error("Invalid result from midiToNoteName:", result, "midi:", midi, "note:", note, "octave:", octave);
-    return "?";
-  }
-  return result;
-}
-const DEFAULT_MODS = {
-  velocity: 1,
-  hold: 0,
-  replicate: 1,
-  elongate: 1,
-  density: 1,
-  offset: 0,
-  jitter: 0,
-  prob: 0,
-  glide: 0,
-  strum: 0
-};
-const MODIFIER_START = /* @__PURE__ */ new Set(["*", "!", "@", "/", "\\", ".", ";", "?", "+", "-", "$"]);
-const GROUP_OPEN = /* @__PURE__ */ new Set(["[", "<", "("]);
-function cloneMods(mods) {
-  return { ...mods };
-}
-function getDefaultMods() {
-  return cloneMods(DEFAULT_MODS);
-}
-function parseModifiers(text) {
-  const mods = getDefaultMods();
-  let i2 = 0;
-  while (i2 < text.length) {
-    const ch = text[i2];
-    const rest = text.slice(i2 + 1);
-    switch (ch) {
-      case "*": {
-        const m2 = rest.match(/^([\d.]+)/);
-        if (m2) {
-          mods.density = parseFloat(m2[1]) || 1;
-          i2 += m2[0].length + 1;
-        } else {
-          i2++;
-        }
-        break;
-      }
-      case "!": {
-        const m2 = rest.match(/^([\d.]+)/);
-        if (m2) {
-          mods.replicate = parseFloat(m2[1]) || 1;
-          i2 += m2[0].length + 1;
-        } else {
-          i2++;
-        }
-        break;
-      }
-      case "@": {
-        const m2 = rest.match(/^([\d.]+)/);
-        if (m2) {
-          mods.elongate = parseFloat(m2[1]) || 1;
-          i2 += m2[0].length + 1;
-        } else {
-          i2++;
-        }
-        break;
-      }
-      case "/": {
-        const m2 = rest.match(/^([\d.]+)/);
-        if (m2) {
-          mods.density = 1 / (parseFloat(m2[1]) || 1);
-          i2 += m2[0].length + 1;
-        } else {
-          i2++;
-        }
-        break;
-      }
-      case "\\": {
-        const m2 = rest.match(/^(-?[\d.]+)/);
-        if (m2 && m2[1]) {
-          mods.glide = parseFloat(m2[1]);
-          i2 += m2[0].length + 1;
-        } else {
-          mods.glide = 1;
-          i2++;
-        }
-        break;
-      }
-      case ".": {
-        const m2 = rest.match(/^([\d.]+)/);
-        if (m2) {
-          const raw = m2[1];
-          let factor = parseFloat(raw);
-          if (raw.indexOf(".") === -1) {
-            factor = parseFloat("0." + raw);
-          }
-          mods.velocity *= factor;
-          i2 += m2[0].length + 1;
-        } else {
-          i2++;
-        }
-        break;
-      }
-      case ";": {
-        const m2 = rest.match(/^([\d.]+)/);
-        if (m2) {
-          mods.hold = parseFloat(m2[1]);
-          i2 += m2[0].length + 1;
-        } else {
-          i2++;
-        }
-        break;
-      }
-      case "?": {
-        const m2 = rest.match(/^([\d.]+)/);
-        if (m2) {
-          mods.prob = parseFloat(m2[1]);
-          i2 += m2[0].length + 1;
-        } else {
-          mods.prob = 0.5;
-          i2++;
-        }
-        break;
-      }
-      case "+": {
-        if (rest.startsWith("?")) {
-          const m2 = rest.slice(1).match(/^([\d.]*)/);
-          const amt = m2 && m2[1] ? parseFloat(m2[1]) : 0.5;
-          mods.jitter = amt;
-          i2 += (m2?.[0]?.length ?? 0) + 2;
-        } else {
-          const m2 = rest.match(/^([\d.]+)/);
-          if (m2) {
-            mods.offset += parseFloat(m2[1]);
-            i2 += m2[0].length + 1;
-          } else {
-            i2++;
-          }
-        }
-        break;
-      }
-      case "-": {
-        const m2 = rest.match(/^([\d.]+)/);
-        if (m2) {
-          mods.offset -= parseFloat(m2[1]);
-          i2 += m2[0].length + 1;
-        } else {
-          i2++;
-        }
-        break;
-      }
-      case "$": {
-        let j2 = i2;
-        while (j2 < text.length && text[j2] === "$") j2++;
-        const dollarCount = j2 - i2;
-        const after = text.slice(j2);
-        const m2 = after.match(/^([\d.]+)/);
-        if (m2) {
-          const raw = parseFloat(m2[1]);
-          const amount = Math.min(Math.max(raw, 0), 0.999999);
-          const kind = dollarCount >= 4 ? 3 : dollarCount === 3 ? 2 : dollarCount === 2 ? 1 : 0;
-          mods.strum = kind + amount;
-          i2 = j2 + m2[0].length;
-        } else {
-          i2 = j2;
-        }
-        break;
-      }
-      default:
-        i2++;
-    }
-  }
-  return mods;
-}
-function tokenize(input) {
-  const tokens = [];
-  let i2 = 0;
-  while (i2 < input.length) {
-    if (/\s/.test(input[i2])) {
-      i2++;
-      continue;
-    }
-    const start = i2;
-    const ch = input[i2];
-    if (ch === ":") {
-      tokens.push({ text: ":", start, end: i2 + 1 });
-      i2++;
-      continue;
-    }
-    if (ch === "/" && input[i2 + 1] === "/") {
-      let j2 = i2 + 2;
-      while (j2 < input.length && input[j2] !== "\n" && input[j2] !== "\r") j2++;
-      tokens.push({ text: input.slice(start, j2), start, end: j2 });
-      i2 = j2;
-      continue;
-    }
-    if (GROUP_OPEN.has(ch)) {
-      const close = ch === "[" ? "]" : ch === "<" ? ">" : ")";
-      i2++;
-      let depth = 1;
-      while (i2 < input.length && depth > 0) {
-        if (input[i2] === ch) depth++;
-        else if (input[i2] === close) depth--;
-        i2++;
-      }
-      while (i2 < input.length) {
-        const c2 = input[i2];
-        if (c2 === ":" || /\s/.test(c2) || GROUP_OPEN.has(c2) || c2 === "]" || c2 === ">" || c2 === ")") break;
-        i2++;
-      }
-      tokens.push({ text: input.slice(start, i2), start, end: i2 });
-      continue;
-    }
-    i2++;
-    while (i2 < input.length) {
-      const c2 = input[i2];
-      if (c2 === ":" || /\s/.test(c2) || GROUP_OPEN.has(c2) || c2 === "]" || c2 === ">" || c2 === ")") break;
-      i2++;
-    }
-    tokens.push({ text: input.slice(start, i2), start, end: i2 });
-  }
-  const mergedTokens = [];
-  for (let ti = 0; ti < tokens.length; ti++) {
-    const t2 = tokens[ti];
-    const next = tokens[ti + 1];
-    if (next && t2.end === next.start && /^[A-Za-z]+$/.test(t2.text) && /^[0-9]+$/.test(next.text)) {
-      mergedTokens.push({ text: t2.text + next.text, start: t2.start, end: next.end });
-      ti++;
-    } else {
-      mergedTokens.push(t2);
-    }
-  }
-  return mergedTokens;
-}
-function splitValueAndModifiers(text) {
-  let i2 = 0;
-  while (i2 < text.length) {
-    const ch = text[i2];
-    if (MODIFIER_START.has(ch) && !(i2 === 0 && (ch === "-" || ch === "+") && /\d/.test(text[i2 + 1] ?? ""))) {
-      break;
-    }
-    i2++;
-  }
-  return { value: text.slice(0, i2), mods: text.slice(i2) };
-}
-function parseValues(valueText) {
-  const values = [];
-  let cursor = 0;
-  while (cursor < valueText.length) {
-    while (cursor < valueText.length && (valueText[cursor] === "," || /\s/.test(valueText[cursor]))) cursor++;
-    if (cursor >= valueText.length) break;
-    const rest = valueText.slice(cursor);
-    const noteMatch = rest.match(/^([a-gA-G][#b]?)(-?\d+)/);
-    if (noteMatch) {
-      const midi = noteNameToMidi(noteMatch[1] + noteMatch[2]);
-      values.push(midiToFrequency(midi));
-      cursor += noteMatch[0].length;
-      continue;
-    }
-    const numMatch = rest.match(/^-?[\d.]+/);
-    if (numMatch) {
-      values.push(parseFloat(numMatch[0]));
-      cursor += numMatch[0].length;
-      continue;
-    }
-    cursor++;
-  }
-  return values;
-}
-function isNoteNameText(text) {
-  return /^([a-gA-G][#b]?)(-?\d+)$/.test(text);
-}
-function makeSource(input, start, end) {
-  return { start, length: end - start, text: input.slice(start, end) };
-}
-function nodesSpan(nodes) {
-  const first = nodes[0];
-  const last = nodes.at(-1);
-  if (!first || !last) return null;
-  const start = first.source.start;
-  const end = last.source.start + last.source.length;
-  return { start, end };
-}
-function parseGroupedTokenText(raw, open) {
-  const close = open === "[" ? "]" : open === "<" ? ">" : ")";
-  const closingIndex = raw.lastIndexOf(close);
-  if (closingIndex === -1) {
-    const inner2 = raw.slice(1);
-    return { inner: inner2, modText: "" };
-  }
-  const inner = raw.slice(1, closingIndex);
-  const { mods: modText } = splitValueAndModifiers(raw.slice(closingIndex + 1));
-  return { inner, modText };
-}
-function parseDeltaToken(token) {
-  const raw = token?.text;
-  if (!raw) return 0;
-  const v2 = parseFloat(raw);
-  return Number.isFinite(v2) ? v2 : 0;
-}
-function parseEuclidToken(raw) {
-  if (!raw.startsWith("(")) return null;
-  if (!raw.endsWith(")")) return null;
-  const inner = raw.slice(1, -1).trim();
-  if (!/^\d+\s*,\s*\d+(?:\s*,\s*-?\d+)?$/.test(inner)) return null;
-  const parts = inner.split(",").map((s2) => parseInt(s2.trim(), 10));
-  const pulses = parts[0];
-  const steps = parts[1];
-  const offset = parts.length >= 3 ? parts[2] : 0;
-  if (!Number.isFinite(pulses) || !Number.isFinite(steps) || !Number.isFinite(offset)) return null;
-  return { pulses, steps, offset };
-}
-function cloneEventNode(node, nextSource, values) {
-  return {
-    type: "event",
-    angle: false,
-    parallel: false,
-    values,
-    children: [],
-    modifiers: cloneMods(node.modifiers),
-    source: nextSource
-  };
-}
-function parseOctaveDelta(tokens) {
-  return parseDeltaToken(tokens[1]);
-}
-function parseScaleDirective(tokens, startIndex) {
-  let i2 = startIndex;
-  let rootMidi = noteNameToMidi("c4");
-  let scaleIndex = SCALE_KEY_TO_INDEX.major ?? 0;
-  const t0 = tokens[i2]?.text?.toLowerCase();
-  if (t0 && isNoteNameText(t0)) {
-    rootMidi = noteNameToMidi(t0);
-    i2++;
-  }
-  const t1 = tokens[i2]?.text?.toLowerCase();
-  if (t1) {
-    if (/^[a-z][a-z0-9]*$/.test(t1)) {
-      let scaleName = t1;
-      const nextToken = tokens[i2 + 1];
-      if (/^[a-z]+$/.test(t1) && nextToken && /^[0-9]+$/.test(nextToken.text) && nextToken.start === tokens[i2].end) {
-        scaleName = t1 + nextToken.text;
-        i2++;
-      }
-      scaleIndex = findScaleIndex(scaleName) ?? scaleIndex;
-      i2++;
-    }
-  }
-  return { rootMidi, scaleIndex, nextIndex: i2 };
-}
-function tokensToNodesInternal(tokens, input) {
-  const nodes = [];
-  for (let ti = 0; ti < tokens.length; ti++) {
-    const token = tokens[ti];
-    const raw = token.text;
-    const first = raw[0];
-    if (raw.startsWith("//")) {
-      continue;
-    }
-    if (raw === ",") {
-      const left = nodes.slice();
-      const rightTokens = tokens.slice(ti + 1);
-      const right = rightTokens.length > 0 ? tokensToNodesInternal(rightTokens, input) : [];
-      if (left.length === 0 && right.length === 0) {
-        return [];
-      }
-      if (left.length === 0) {
-        return right;
-      }
-      if (right.length === 0) {
-        return left;
-      }
-      const leftGroup = {
-        type: "group",
-        angle: false,
-        parallel: false,
-        values: [],
-        children: left,
-        modifiers: getDefaultMods(),
-        source: makeSource(input, left[0].source.start, left.at(-1).source.start + left.at(-1).source.length)
-      };
-      const rightGroup = {
-        type: "group",
-        angle: false,
-        parallel: false,
-        values: [],
-        children: right,
-        modifiers: getDefaultMods(),
-        source: makeSource(input, right[0].source.start, right.at(-1).source.start + right.at(-1).source.length)
-      };
-      const endToken = rightTokens.at(-1) ?? token;
-      const parallelGroup = {
-        type: "group",
-        angle: false,
-        parallel: true,
-        values: [],
-        children: [leftGroup, rightGroup],
-        modifiers: getDefaultMods(),
-        source: makeSource(input, leftGroup.source.start, endToken.end)
-      };
-      return [parallelGroup];
-    }
-    if (raw === ".") {
-      const segments = [];
-      if (nodes.length > 0) segments.push(nodes.slice());
-      let segStart = ti + 1;
-      for (let j2 = ti + 1; j2 <= tokens.length; j2++) {
-        const isEnd = j2 === tokens.length;
-        const isDot = !isEnd && tokens[j2]?.text === ".";
-        if (!isEnd && !isDot) continue;
-        const partTokens = tokens.slice(segStart, j2);
-        const partNodes = partTokens.length > 0 ? tokensToNodesInternal(partTokens, input) : [];
-        if (partNodes.length > 0) segments.push(partNodes);
-        segStart = j2 + 1;
-      }
-      if (segments.length === 0) return [];
-      if (segments.length === 1) return segments[0];
-      const loop = segments.length;
-      const onChildren = [];
-      let groupStart = Infinity;
-      let groupEnd = -Infinity;
-      for (let si = 0; si < segments.length; si++) {
-        const children = segments[si];
-        const span = nodesSpan(children);
-        const start = span?.start ?? 0;
-        const end = span?.end ?? start;
-        groupStart = Math.min(groupStart, start);
-        groupEnd = Math.max(groupEnd, end);
-        onChildren.push({
-          type: "at",
-          angle: false,
-          parallel: false,
-          values: [si + 1, loop],
-          children,
-          modifiers: getDefaultMods(),
-          source: makeSource(input, start, end)
-        });
-      }
-      if (!Number.isFinite(groupStart) || !Number.isFinite(groupEnd) || groupStart > groupEnd) {
-        groupStart = 0;
-        groupEnd = 0;
-      }
-      const joined = {
-        type: "group",
-        angle: false,
-        parallel: false,
-        values: [],
-        children: onChildren,
-        modifiers: getDefaultMods(),
-        source: makeSource(input, groupStart, groupEnd)
-      };
-      return [joined];
-    }
-    if (first === "_") {
-      const last = nodes.at(-1);
-      if (last) last.modifiers.elongate += 1;
-      continue;
-    }
-    if (raw === "scale") {
-      const { rootMidi, scaleIndex, nextIndex } = parseScaleDirective(tokens, ti + 1);
-      const last = nextIndex > ti + 1 ? tokens[nextIndex - 1] : token;
-      nodes.push({
-        type: "scale",
-        angle: false,
-        parallel: false,
-        values: [rootMidi, scaleIndex],
-        children: [],
-        modifiers: getDefaultMods(),
-        source: makeSource(input, token.start, last?.end ?? token.end)
-      });
-      ti = nextIndex - 1;
-      continue;
-    }
-    if (raw === "at") {
-      const next = tokens[ti + 1];
-      const rawOn = next?.text ?? "";
-      let pos = 0;
-      let loop = 0;
-      const slash = rawOn.indexOf("/");
-      if (slash >= 0) {
-        const a2 = parseInt(rawOn.slice(0, slash), 10);
-        const b2 = parseInt(rawOn.slice(slash + 1), 10);
-        pos = Number.isFinite(a2) ? a2 : 0;
-        loop = Number.isFinite(b2) ? b2 : 0;
-      } else {
-        const a2 = parseInt(rawOn, 10);
-        pos = Number.isFinite(a2) ? a2 : 0;
-      }
-      const bodyStart = ti + 2;
-      let bodyEnd = tokens.length;
-      for (let j2 = bodyStart; j2 < tokens.length; j2++) {
-        if (tokens[j2]?.text === "at") {
-          bodyEnd = j2;
-          break;
-        }
-      }
-      const bodyTokens = tokens.slice(bodyStart, bodyEnd);
-      const children = tokensToNodesInternal(bodyTokens, input);
-      const last = tokens[bodyEnd - 1] ?? next ?? token;
-      nodes.push({
-        type: "at",
-        angle: false,
-        parallel: false,
-        values: [pos, loop],
-        children,
-        modifiers: getDefaultMods(),
-        source: makeSource(input, token.start, last?.end ?? token.end)
-      });
-      ti = bodyEnd - 1;
-      continue;
-    }
-    if (raw === "octave" || raw === "transpose") {
-      const next = tokens[ti + 1];
-      const delta = parseDeltaToken(next);
-      const end = next?.end ?? token.end;
-      nodes.push({
-        type: raw === "octave" ? "octave" : "transpose",
-        angle: false,
-        parallel: false,
-        values: [delta],
-        children: [],
-        modifiers: getDefaultMods(),
-        source: makeSource(input, token.start, end)
-      });
-      if (next) ti++;
-      continue;
-    }
-    if (raw === "swing") {
-      const next = tokens[ti + 1];
-      const amount = parseDeltaToken(next);
-      const end = next?.end ?? token.end;
-      nodes.push({
-        type: "swing",
-        angle: false,
-        parallel: false,
-        values: [amount],
-        children: [],
-        modifiers: getDefaultMods(),
-        source: makeSource(input, token.start, end)
-      });
-      if (next) ti++;
-      continue;
-    }
-    if (first === "[" || first === "<") {
-      const { inner, modText } = parseGroupedTokenText(raw, first);
-      const modifiers2 = parseModifiers(modText);
-      const innerTokens = tokenize(inner);
-      const adjustedInnerTokens = innerTokens.map((t2) => ({
-        ...t2,
-        start: t2.start + token.start + 1,
-        // +1 to account for opening bracket
-        end: t2.end + token.start + 1
-      }));
-      const children = tokensToNodesInternal(adjustedInnerTokens, input);
-      nodes.push({
-        type: "group",
-        angle: first === "<",
-        parallel: false,
-        values: [],
-        children,
-        modifiers: modifiers2,
-        source: makeSource(input, token.start, token.end)
-      });
-      continue;
-    }
-    if (first === "(") {
-      const euclid = parseEuclidToken(raw);
-      const last = nodes.at(-1);
-      if (euclid && last?.type === "event") {
-        const pulses = Math.floor(euclid.pulses);
-        const steps = Math.floor(euclid.steps);
-        const offset = Math.floor(euclid.offset);
-        const spanSource = makeSource(input, last.source.start, token.end);
-        nodes.pop();
-        const safeSteps = Number.isFinite(steps) && steps > 0 ? steps : 0;
-        for (let si = 0; si < safeSteps; si++) {
-          const on2 = euclidHit(pulses, steps, si, offset);
-          nodes.push(cloneEventNode(last, spanSource, on2 ? last.values.slice() : []));
-        }
-        continue;
-      }
-      const { inner, modText } = parseGroupedTokenText(raw, "(");
-      const innerTokens = tokenize(inner);
-      const adjustedInnerTokens = innerTokens.map((t2) => ({
-        ...t2,
-        start: t2.start + token.start + 1,
-        end: t2.end + token.start + 1
-      }));
-      const head = adjustedInnerTokens[0]?.text;
-      if (head === "scale") {
-        const { rootMidi, scaleIndex, nextIndex } = parseScaleDirective(adjustedInnerTokens, 1);
-        const items = adjustedInnerTokens.slice(nextIndex);
-        const scaleNode = {
-          type: "scale",
-          angle: false,
-          parallel: false,
-          values: [rootMidi, scaleIndex],
-          children: [],
-          modifiers: getDefaultMods(),
-          source: makeSource(input, token.start, token.end)
-        };
-        const restChildren = tokensToNodesInternal(items, input);
-        const children2 = [scaleNode, ...restChildren];
-        nodes.push({
-          type: "group",
-          angle: false,
-          parallel: false,
-          values: [],
-          children: children2,
-          modifiers: parseModifiers(modText),
-          source: makeSource(input, token.start, token.end)
-        });
-        continue;
-      }
-      if (head === "octave") {
-        nodes.push({
-          type: "octave",
-          angle: false,
-          parallel: false,
-          values: [parseOctaveDelta(adjustedInnerTokens)],
-          children: [],
-          modifiers: getDefaultMods(),
-          source: makeSource(input, token.start, token.end)
-        });
-        continue;
-      }
-      if (head === "transpose") {
-        nodes.push({
-          type: "transpose",
-          angle: false,
-          parallel: false,
-          values: [parseDeltaToken(adjustedInnerTokens[1])],
-          children: [],
-          modifiers: getDefaultMods(),
-          source: makeSource(input, token.start, token.end)
-        });
-        continue;
-      }
-      if (head === "swing") {
-        nodes.push({
-          type: "swing",
-          angle: false,
-          parallel: false,
-          values: [parseDeltaToken(adjustedInnerTokens[1])],
-          children: [],
-          modifiers: getDefaultMods(),
-          source: makeSource(input, token.start, token.end)
-        });
-        continue;
-      }
-      const modifiers2 = parseModifiers(modText);
-      const children = tokensToNodesInternal(adjustedInnerTokens, input);
-      nodes.push({
-        type: "group",
-        angle: false,
-        parallel: false,
-        values: [],
-        children,
-        modifiers: modifiers2,
-        source: makeSource(input, token.start, token.end)
-      });
-      continue;
-    }
-    const { value, mods } = splitValueAndModifiers(raw);
-    if (value === "~") {
-      const modifiers2 = parseModifiers(mods);
-      nodes.push({
-        type: "rest",
-        angle: false,
-        parallel: false,
-        values: [],
-        children: [],
-        modifiers: modifiers2,
-        source: makeSource(input, token.start, token.end)
-      });
-      continue;
-    }
-    let valueText = value;
-    if (!valueText && mods) {
-      valueText = "c4";
-    }
-    if (valueText?.toLowerCase() === "x") {
-      valueText = "c4";
-    }
-    const chordMatch = valueText.match(/^([ivxlcdm]+)(.*)$/i);
-    if (chordMatch) {
-      const roman = chordMatch[1];
-      const suffix = chordMatch[2] ?? "";
-      const base = romanToDegree(roman);
-      if (base !== null) {
-        const tones = parseChordSuffix(suffix);
-        const values2 = tones.map((tone) => {
-          const scaleDegree = base + tone.degree;
-          return -(scaleDegree + tone.semitoneAdjust / 100);
-        });
-        const modifiers2 = parseModifiers(mods);
-        nodes.push({
-          type: "event",
-          angle: false,
-          parallel: false,
-          values: values2,
-          children: [],
-          modifiers: modifiers2,
-          source: makeSource(input, token.start, token.end)
-        });
-        continue;
-      }
-    }
-    if (/^\d+(?:,\d+)*$/.test(valueText)) {
-      const parts = valueText.split(",").filter(Boolean);
-      const values2 = parts.map((p2) => -parseInt(p2, 10));
-      const modifiers2 = parseModifiers(mods);
-      nodes.push({
-        type: "event",
-        angle: false,
-        parallel: false,
-        values: values2,
-        children: [],
-        modifiers: modifiers2,
-        source: makeSource(input, token.start, token.end)
-      });
-      continue;
-    }
-    const values = parseValues(valueText);
-    const modifiers = parseModifiers(mods);
-    nodes.push({
-      type: "event",
-      angle: false,
-      parallel: false,
-      values,
-      children: [],
-      modifiers,
-      source: makeSource(input, token.start, token.end)
-    });
-  }
-  return nodes;
-}
-function tokensToNodes(tokens, input, options2 = {}) {
-  const nodes = tokensToNodesInternal(tokens, input);
-  const hasScaleNode = nodes.some((node) => node.type === "scale") || nodes.some((node) => node.type === "group" && node.children.some((child) => child.type === "scale"));
-  if (!hasScaleNode) {
-    const rootMidi = options2.defaultScale?.rootMidi ?? noteNameToMidi("c4");
-    const scaleIndex = options2.defaultScale?.scaleIndex ?? SCALE_KEY_TO_INDEX.major ?? 0;
-    const defaultScaleNode = {
-      type: "scale",
-      angle: false,
-      parallel: false,
-      values: [rootMidi, scaleIndex],
-      children: [],
-      modifiers: getDefaultMods(),
-      source: {
-        start: 0,
-        length: 0,
-        text: ""
-      }
-    };
-    nodes.unshift(defaultScaleNode);
-  }
-  return nodes;
-}
-function compileNode(node, bytecode, offset) {
-  if (node.type === "event") {
-    return writeEventOp(bytecode, offset, node.values, node.modifiers);
-  } else if (node.type === "group") {
-    const mode = node.parallel ? 2 : node.angle ? 1 : 0;
-    let currentOffset = writeGroupStartOp(bytecode, offset, node.children.length, mode, node.modifiers);
-    for (const child of node.children) {
-      currentOffset += compileNode(child, bytecode, offset + currentOffset);
-    }
-    currentOffset += writeGroupEndOp(bytecode, offset + currentOffset);
-    return currentOffset;
-  } else if (node.type === "rest") {
-    return writeEventOp(bytecode, offset, [], node.modifiers);
-  } else if (node.type === "octave") {
-    return writeOctaveOp(bytecode, offset, node.values[0] ?? 0);
-  } else if (node.type === "transpose") {
-    return writeTransposeOp(bytecode, offset, node.values[0] ?? 0);
-  } else if (node.type === "scale") {
-    return writeScaleOp(bytecode, offset, node.values[0] ?? 0, node.values[1] ?? 0);
-  } else if (node.type === "swing") {
-    return writeSwingOp(bytecode, offset, node.values[0] ?? 0);
-  } else if (node.type === "at") {
-    let currentOffset = writeCycleStartOp(
-      bytecode,
-      offset,
-      node.values[0] ?? 0,
-      node.values[1] ?? 0,
-      node.children.length
-    );
-    for (const child of node.children) {
-      currentOffset += compileNode(child, bytecode, offset + currentOffset);
-    }
-    currentOffset += writeCycleEndOp(bytecode, offset + currentOffset);
-    return currentOffset;
-  }
-  return 0;
-}
-const cacheByMiniNotation = /* @__PURE__ */ new Map();
-function compileMiniNotation(input, options2 = {}) {
-  const cacheKey = options2.defaultScale ? `${input}|scale:${options2.defaultScale.rootMidi ?? 60},${options2.defaultScale.scaleIndex ?? 0}` : input;
-  const cached = cacheByMiniNotation.get(cacheKey);
-  if (cached) return cached;
-  if (cacheByMiniNotation.size > 1e3) {
-    cacheByMiniNotation.clear();
-  }
-  const tokens = tokenize(input);
-  const nodes = tokensToNodes(tokens, input, { defaultScale: options2.defaultScale });
-  const root2 = {
-    type: "group",
-    values: [],
-    children: nodes,
-    modifiers: getDefaultMods(),
-    angle: false,
-    parallel: false,
-    source: {
-      length: input.length
-    }
-  };
-  const bytecode = allocateBytecode(1024);
-  let offset = compileNode(root2, bytecode, 0);
-  bytecode[0] = offset;
-  const usedSize = MINI_HEADER_SIZE + offset;
-  const trimmedBytecode = bytecode.slice(0, usedSize);
-  const sourceMap = [];
-  const result = { bytecode: trimmedBytecode, sourceMap, nodes };
-  cacheByMiniNotation.set(cacheKey, result);
-  return result;
-}
-const numRe = "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
-const pointTokenRe = new RegExp(`^(${numRe}),(${numRe})(?:([e])(${numRe})?)?$`);
-function tokenizeTimelineNotation(input) {
-  const tokens = [];
-  let index = 0;
-  let i2 = 0;
-  while (i2 < input.length) {
-    while (i2 < input.length && /\s/.test(input[i2])) i2++;
-    if (i2 >= input.length) break;
-    const start = i2;
-    while (i2 < input.length && !/\s/.test(input[i2])) i2++;
-    const end = i2;
-    tokens.push({ index, start, length: end - start, text: input.slice(start, end) });
-    index++;
-  }
-  return tokens;
-}
-function parseTimelineNotation(tokens) {
-  const points = [];
-  for (const t2 of tokens) {
-    const m2 = pointTokenRe.exec(t2.text);
-    if (!m2) continue;
-    const bar = Number(m2[1] ?? 0);
-    const value = Number(m2[2] ?? 0);
-    const curveKind = m2[3] ?? null;
-    const curveValue = Number(m2[4] ?? 0);
-    const exp = curveKind === "e" ? curveValue : null;
-    if (!Number.isFinite(bar) || !Number.isFinite(value)) continue;
-    points.push({
-      bar,
-      value,
-      exp,
-      tokenIndex: t2.index,
-      tokenStart: t2.start,
-      tokenLength: t2.length
-    });
-  }
-  return points;
-}
-function compilePoints(points) {
-  if (points.length === 0) {
-    return { segments: [], totalBars: 0, endValue: 0, endTokenIndex: -1, endTokenStart: -1, endTokenLength: -1 };
-  }
-  const pts = points.map((p2) => ({ ...p2, bar: p2.bar })).filter((p2) => p2.bar >= 0);
-  if (pts.length === 0) {
-    return { segments: [], totalBars: 0, endValue: 0, endTokenIndex: -1, endTokenStart: -1, endTokenLength: -1 };
-  }
-  const hasZeroPoint = pts.some((p2) => p2.bar === 0);
-  if (!hasZeroPoint) {
-    pts.unshift({
-      bar: 0,
-      value: 0,
-      exp: null,
-      tokenIndex: -1,
-      tokenStart: -1,
-      tokenLength: -1
-    });
-  }
-  const segments = [];
-  let i2 = 0;
-  let t2 = 0;
-  let v2 = pts[0].value;
-  let activeTokenIndex = pts[0].tokenIndex;
-  let activeTokenStart = pts[0].tokenStart;
-  let activeTokenLength = pts[0].tokenLength;
-  while (i2 < pts.length && pts[i2].bar === 0) {
-    v2 = pts[i2].value;
-    activeTokenIndex = pts[i2].tokenIndex;
-    activeTokenStart = pts[i2].tokenStart;
-    activeTokenLength = pts[i2].tokenLength;
-    i2++;
-  }
-  let endTokenIndex = activeTokenIndex;
-  let endTokenStart = activeTokenStart;
-  let endTokenLength = activeTokenLength;
-  for (; i2 < pts.length; i2++) {
-    const p2 = pts[i2];
-    const nextT = p2.bar;
-    const nextV = p2.value;
-    const dt = nextT - t2;
-    if (dt < 0) continue;
-    if (dt === 0) {
-      t2 = nextT;
-      v2 = nextV;
-      activeTokenIndex = p2.tokenIndex;
-      activeTokenStart = p2.tokenStart;
-      activeTokenLength = p2.tokenLength;
-      endTokenIndex = activeTokenIndex;
-      endTokenStart = activeTokenStart;
-      endTokenLength = activeTokenLength;
-      continue;
-    }
-    const exp = p2.exp ?? 1;
-    const kind = v2 === nextV ? TIMELINE_KIND_HOLD : TIMELINE_KIND_GLIDE;
-    segments.push({
-      kind,
-      durBars: dt,
-      startValue: v2,
-      endValue: nextV,
-      exp,
-      fromTokenIndex: activeTokenIndex,
-      fromTokenStart: activeTokenStart,
-      fromTokenLength: activeTokenLength,
-      toTokenIndex: p2.tokenIndex,
-      toTokenStart: p2.tokenStart,
-      toTokenLength: p2.tokenLength
-    });
-    t2 = nextT;
-    v2 = nextV;
-    activeTokenIndex = p2.tokenIndex;
-    activeTokenStart = p2.tokenStart;
-    activeTokenLength = p2.tokenLength;
-    endTokenIndex = activeTokenIndex;
-    endTokenStart = activeTokenStart;
-    endTokenLength = activeTokenLength;
-  }
-  let totalBars = t2;
-  if (totalBars <= 0) {
-    totalBars = 1;
-    segments.push({
-      kind: TIMELINE_KIND_HOLD,
-      durBars: 1,
-      startValue: v2,
-      endValue: v2,
-      exp: 1,
-      fromTokenIndex: activeTokenIndex,
-      fromTokenStart: activeTokenStart,
-      fromTokenLength: activeTokenLength,
-      toTokenIndex: activeTokenIndex,
-      toTokenStart: activeTokenStart,
-      toTokenLength: activeTokenLength
-    });
-  }
-  return { segments, totalBars, endValue: v2, endTokenIndex, endTokenStart, endTokenLength };
-}
-const cacheBySequence = /* @__PURE__ */ new Map();
-function compileTimelineNotation(input, initialBeatDiv = 4) {
-  const cached = cacheBySequence.get(input);
-  if (cached) return cached;
-  if (cacheBySequence.size > 1e3) {
-    cacheBySequence.clear();
-  }
-  const tokens = tokenizeTimelineNotation(input);
-  const noWrap = tokens.some((t2) => t2.text === "-");
-  const points = parseTimelineNotation(tokens);
-  const compiled = compilePoints(points);
-  const segments = compiled.segments;
-  let totalBars = compiled.totalBars;
-  if (noWrap && segments.length > 0) {
-    const last = segments[segments.length - 1];
-    const lastValue = last.kind === TIMELINE_KIND_GLIDE ? last.endValue : last.startValue;
-    if (lastValue !== compiled.endValue) {
-      segments.push({
-        kind: TIMELINE_KIND_HOLD,
-        durBars: 1,
-        startValue: compiled.endValue,
-        endValue: compiled.endValue,
-        exp: 1,
-        fromTokenIndex: compiled.endTokenIndex,
-        fromTokenStart: compiled.endTokenStart,
-        fromTokenLength: compiled.endTokenLength,
-        toTokenIndex: compiled.endTokenIndex,
-        toTokenStart: compiled.endTokenStart,
-        toTokenLength: compiled.endTokenLength
-      });
-    }
-  }
-  const beatsPerBar = initialBeatDiv > 0 ? initialBeatDiv : 4;
-  const segCount = segments.length;
-  const opLength = TIMELINE_HEADER_SIZE + segCount * TIMELINE_SEGMENT_SIZE;
-  const bytecode = new Float32Array(1 + opLength);
-  bytecode[0] = opLength;
-  bytecode[1] = TIMELINE_MAGIC;
-  bytecode[2] = segCount;
-  bytecode[3] = noWrap ? -totalBars : totalBars;
-  bytecode[4] = beatsPerBar;
-  let o2 = 1 + TIMELINE_HEADER_SIZE;
-  for (const s2 of segments) {
-    bytecode[o2++] = s2.kind;
-    bytecode[o2++] = s2.durBars;
-    bytecode[o2++] = s2.startValue;
-    bytecode[o2++] = s2.endValue;
-    bytecode[o2++] = s2.exp;
-  }
-  const segmentTokens = segments.map((s2) => ({
-    fromTokenIndex: s2.fromTokenIndex,
-    fromTokenStart: s2.fromTokenStart,
-    fromTokenLength: s2.fromTokenLength,
-    toTokenIndex: s2.toTokenIndex,
-    toTokenStart: s2.toTokenStart,
-    toTokenLength: s2.toTokenLength
-  }));
-  const result = { bytecode, tokens: segmentTokens, segments };
-  cacheBySequence.set(input, result);
-  return result;
-}
-const cacheByTramSequence = /* @__PURE__ */ new Map();
-function compileTramSequence(input) {
-  const cached = cacheByTramSequence.get(input);
-  if (cached) return cached;
-  if (cacheByTramSequence.size > 1e3) {
-    cacheByTramSequence.clear();
-  }
-  const beats = parseHierarchicalBeats(input);
-  const sequence = {
-    beats,
-    totalBeats: beats.length
-  };
-  cacheByTramSequence.set(input, sequence);
-  return sequence;
-}
-function parseHierarchicalBeats(input) {
-  const beats = [];
-  let i2 = 0;
-  while (i2 < input.length) {
-    if (input[i2] === "[") {
-      const bracketContent = parseBracketContent(input, i2);
-      const subdivisions = [];
-      for (let j2 = 0; j2 < bracketContent.content.length; j2++) {
-        const char = bracketContent.content[j2];
-        if (char === "x" || char === "X") {
-          subdivisions.push(true);
-        } else if (char === "-") {
-          subdivisions.push(false);
-        }
-      }
-      beats.push({ subdivisions });
-      i2 = bracketContent.endIndex;
-    } else if (!/\s/.test(input[i2])) {
-      const subdivisions = input[i2] === "x" || input[i2] === "X" ? [true] : [false];
-      beats.push({ subdivisions });
-      i2++;
-    } else {
-      i2++;
-    }
-  }
-  return beats;
-}
-function parseBracketContent(input, startIndex) {
-  let bracketCount = 1;
-  let j2 = startIndex + 1;
-  while (j2 < input.length && bracketCount > 0) {
-    if (input[j2] === "[") {
-      bracketCount++;
-    } else if (input[j2] === "]") {
-      bracketCount--;
-    }
-    j2++;
-  }
-  if (bracketCount > 0) {
-    throw new Error("Unmatched opening bracket in tram sequence");
-  }
-  const content = input.slice(startIndex + 1, j2 - 1).trim();
-  if (content.length === 0) {
-    throw new Error("Empty brackets in tram sequence");
-  }
-  return { content, endIndex: j2 };
-}
-function tramSequenceToBytecode(sequence) {
-  if (sequence.totalBeats === 0) {
-    return new Float32Array([0]);
-  }
-  let totalSize = 1;
-  for (const beat of sequence.beats) {
-    totalSize += 1;
-    totalSize += Math.ceil(beat.subdivisions.length / 32);
-  }
-  const bytecode = new Float32Array(totalSize);
-  let writeIndex = 0;
-  bytecode[writeIndex++] = sequence.totalBeats;
-  for (const beat of sequence.beats) {
-    const subdivCount = beat.subdivisions.length;
-    bytecode[writeIndex++] = subdivCount;
-    const packedLength = Math.ceil(subdivCount / 32);
-    for (let i2 = 0; i2 < packedLength; i2++) {
-      let packed = 0;
-      for (let bit = 0; bit < 32; bit++) {
-        const index = i2 * 32 + bit;
-        if (index < subdivCount && beat.subdivisions[index]) {
-          packed |= 1 << bit;
-        }
-      }
-      bytecode[writeIndex++] = packed;
-    }
-  }
-  return bytecode;
-}
-const DIODELADDER_Q_COMP = 2.5;
-const DIODELADDER_K_COMP = 1;
 const functionCategories = {
   array: "Array",
   sequencing: "Sequencing",
@@ -21524,6 +20238,124 @@ function checkUndefinedVariableErrors(src, program) {
   for (const stmt of program.body) visitStmt$1(ctx, stmt);
   return errors;
 }
+function parseChordSuffix(suffix) {
+  const tones = [];
+  const omit = /* @__PURE__ */ new Set();
+  let hasSus2 = false;
+  let hasSus4 = false;
+  let i2 = 0;
+  while (i2 < suffix.length) {
+    const extMatch = suffix.slice(i2).match(/^([b#]?)(\d+)/);
+    if (extMatch) {
+      const acc = extMatch[1];
+      const num = parseInt(extMatch[2], 10);
+      i2 += extMatch[0].length;
+      let degree;
+      let adjust = 0;
+      if (num === 7) {
+        degree = 6;
+        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
+      } else if (num === 9) {
+        degree = 8;
+        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
+      } else if (num === 11) {
+        degree = 10;
+        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
+      } else if (num === 13) {
+        degree = 12;
+        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
+      } else if (num === 5) {
+        degree = 4;
+        adjust = acc === "b" ? -1 : acc === "#" ? 1 : 0;
+      } else {
+        continue;
+      }
+      tones.push({ degree, semitoneAdjust: adjust });
+      continue;
+    }
+    if (suffix.slice(i2).startsWith("sus4")) {
+      hasSus4 = true;
+      i2 += 4;
+      continue;
+    }
+    if (suffix.slice(i2).startsWith("sus2")) {
+      hasSus2 = true;
+      i2 += 4;
+      continue;
+    }
+    if (suffix.slice(i2).startsWith("sus")) {
+      hasSus4 = true;
+      i2 += 3;
+      continue;
+    }
+    const noMatch = suffix.slice(i2).match(/^no(\d+)/);
+    if (noMatch) {
+      const num = parseInt(noMatch[1], 10);
+      i2 += noMatch[0].length;
+      if (num === 3) omit.add(2);
+      else if (num === 5) omit.add(4);
+      continue;
+    }
+    const addMatch = suffix.slice(i2).match(/^add(\d+)/);
+    if (addMatch) {
+      const num = parseInt(addMatch[1], 10);
+      i2 += addMatch[0].length;
+      if (num === 2) tones.push({ degree: 1, semitoneAdjust: 0 });
+      else if (num === 4) tones.push({ degree: 3, semitoneAdjust: 0 });
+      else if (num === 6) tones.push({ degree: 5, semitoneAdjust: 0 });
+      continue;
+    }
+    if (suffix.slice(i2).startsWith("o7")) {
+      tones.push({ degree: 0, semitoneAdjust: 0 });
+      tones.push({ degree: 2, semitoneAdjust: -1 });
+      tones.push({ degree: 4, semitoneAdjust: -1 });
+      tones.push({ degree: 6, semitoneAdjust: -2 });
+      return tones;
+    }
+    i2++;
+  }
+  const result = [];
+  result.push({ degree: 0, semitoneAdjust: 0 });
+  if (hasSus2) {
+    result.push({ degree: 1, semitoneAdjust: 0 });
+  } else if (hasSus4) {
+    result.push({ degree: 3, semitoneAdjust: 0 });
+  } else if (!omit.has(2)) {
+    result.push({ degree: 2, semitoneAdjust: 0 });
+  }
+  if (!omit.has(4)) {
+    const alteredFifth = tones.find((t2) => t2.degree === 4);
+    if (alteredFifth) {
+      result.push(alteredFifth);
+    } else {
+      result.push({ degree: 4, semitoneAdjust: 0 });
+    }
+  }
+  for (const tone of tones) {
+    if (tone.degree >= 5 && !result.some((r2) => r2.degree === tone.degree)) {
+      result.push(tone);
+    }
+  }
+  for (const tone of tones) {
+    if (tone.degree < 5 && tone.degree !== 0 && tone.degree !== 2 && tone.degree !== 4) {
+      if (!result.some((r2) => r2.degree === tone.degree)) {
+        result.push(tone);
+      }
+    }
+  }
+  return result;
+}
+function romanToDegree(text) {
+  const t2 = text.toLowerCase();
+  if (t2 === "i") return 1;
+  if (t2 === "ii") return 2;
+  if (t2 === "iii") return 3;
+  if (t2 === "iv") return 4;
+  if (t2 === "v") return 5;
+  if (t2 === "vi") return 6;
+  if (t2 === "vii") return 7;
+  return null;
+}
 function visitExpr(expr, visitors, ctx) {
   if (!expr) return;
   for (const visitor of visitors) {
@@ -23512,39 +22344,39 @@ bdsynth=(
   trig=tram('x-x-x-x-'),
 )->sine(base+punch*fm(trig),offset,trig)*amp(trig) |> slp($,base+cutoff*filter(trig),q) |> limiter($)
 
-bd=(
-  base=#1*o2,
-  punch=25000k,
-  offset=0.0006,
-  cutoff=5k,
-  q=.25,
-  amp=trig->ad(.0001,.5,40,trig),
-  fm=trig->ad(.00008,.013,900,trig),
-  filter=trig->ad(.000147,.25,50.000,trig),
-  trig=tram('x-x-x-x-'),
-)->{
-  kicksample=record(.3,()->{
-    bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig:1)
-  })
-  sampler(trig,sample:kicksample)
-}
+// bd=(
+//   base=#1*o2,
+//   punch=25000k,
+//   offset=0.0006,
+//   cutoff=5k,
+//   q=.25,
+//   amp=trig->ad(.0001,.5,40,trig),
+//   fm=trig->ad(.00008,.013,900,trig),
+//   filter=trig->ad(.000147,.25,50.000,trig),
+//   trig=tram('x-x-x-x-'),
+// )->{
+//   kicksample=record(.3,()->{
+//     bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig:1)
+//   })
+//   sampler(trig,sample:kicksample)
+// }
 
 hhsynth=(width=.4,trig)->{
   env=adsr(.06,.05 ,.950 ,.1 ,32,trig)
-  oversample(32,()->[205.3,369.6,304.4,522.7,800,540].map(x->pwm(x,width)).avg()*env
+  oversample(4,()->[205.3,369.6,304.4,522.7,800,540].map(x->pwm(x,width)).avg()*env
   |> bp($,8000,.85)|>bp($,10k,.85)|>hp($,11k,.85)) |> tanh($*6)
 }
 
-hh=(width=.4,seq=mini('[.15 .2 1 .2]*4'))->{
-  hhsample=record(.3,()->{
-    trig=step(1-inc(2.5),.5)
-    hhsynth(width,trig)
-  })
+// hh=(width=.4,seq=mini('[.15 .2 1 .2]*4'))->{
+//   hhsample=record(.3,()->{
+//     trig=step(1-inc(2.5),.5)
+//     hhsynth(width,trig)
+//   })
 
-  play(seq,(trig,v)->{
-    slicer(trig,sample:hhsample)*(v>.65?v:v*2)*(v>.65?ad(0.0001,.0173+.5*v,trig):ad(0.0001,.01+.15*v,4,trig))
-  })
-}
+//   play(seq,(trig,v)->{
+//     slicer(trig,sample:hhsample)*(v>.65?v:v*2)*(v>.65?ad(0.0001,.0173+.5*v,trig):ad(0.0001,.01+.15*v,4,trig))
+//   })
+// }
 
 snaresynth=(seed=7,base=#5*o2,trig=step(1-phasor(1),.9))->{
   amp=ad(.0001,1.7366,20,trig)
@@ -23559,10 +22391,40 @@ snaresynth=(seed=7,base=#5*o2,trig=step(1-phasor(1),.9))->{
   |> tube($,2,.01)*.3
 }
 
-sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
-  snaresample=record(1,()->snaresynth(seed,base))
-  sampler(snaresample,trig)
+// sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
+//   snaresample=record(1,()->snaresynth(seed,base))
+//   sampler(snaresample,trig)
+// }
+
+bd=(
+  base=#1*o2,
+  punch=25000k,
+  offset=0.0006,
+  cutoff=5k,
+  q=.25,
+  amp=trig->ad(.0001,.5,40,trig),
+  fm=trig->ad(.00008,.013,900,trig),
+  filter=trig->ad(.000147,.25,50.000,trig),
+  trig=tram('x-x-x-x-'),
+)->{
+  bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig)
 }
+
+ch=(width=.02,trig=tram('xxxx',1/4))->{
+  hhsynth(width,trig)*ad(0.0001,.5,3,trig)*.7
+}
+
+oh=(width=.4,trig=tram('-x',1/4))->{
+  hhsynth(width,trig)*ad(0.0001,.9,trig)
+}
+
+hh=()->ch()+oh()
+
+sd=(seed=7,base=#5*o2,seq=mini('[~ 1]*2;.2'))->{
+  play(seq,(trig)->snaresynth(seed,base,trig))
+}
+
+drums=()->bd()+hh()+sd()
 
 cowbell=(
   osc=hz->pwm(hz,.04),
@@ -23803,7 +22665,7 @@ const POSTLUDE = `
 post((sig)->dc(sig))
 post((sig)->mix(sig))
 `;
-const NOTE_OFFSETS = {
+const NOTE_OFFSETS$1 = {
   c: 0,
   d: 2,
   e: 4,
@@ -23819,7 +22681,7 @@ function noteIdentToMidi$1(name) {
   const note = m2[1].toLowerCase();
   const acc = m2[2] ?? "";
   const oct = parseInt(m2[3], 10);
-  const base = NOTE_OFFSETS[note];
+  const base = NOTE_OFFSETS$1[note];
   if (base === void 0 || !Number.isFinite(oct)) return null;
   let midi = base + (oct + 1) * 12;
   if (acc === "#") midi += 1;
@@ -25350,170 +24212,6 @@ function encodeLangToVmOps(src, target, prelude = PRELUDE, postlude = POSTLUDE) 
     return { errors: [mapError(encoderError(src, message))] };
   }
 }
-function Deferred() {
-  const _onwhen = () => {
-    deferred.hasSettled = true;
-    deferred.resolve = deferred.reject = noop;
-  };
-  const noop = () => {
-  };
-  let onwhen = _onwhen;
-  const deferred = {
-    hasSettled: false,
-    when: (fn2) => {
-      onwhen = () => {
-        _onwhen();
-        fn2();
-      };
-    }
-  };
-  deferred.promise = new Promise((resolve, reject) => {
-    deferred.resolve = (arg) => {
-      onwhen();
-      deferred.value = arg;
-      resolve(arg);
-    };
-    deferred.reject = (error) => {
-      onwhen();
-      deferred.error = error;
-      reject(error);
-    };
-  });
-  return deferred;
-}
-const Getter = (cb, target = {}) => new Proxy(target, { get: (_2, key) => cb(key) });
-const defaultTransferables = [
-  typeof OffscreenCanvas !== "undefined" ? OffscreenCanvas : void 0,
-  typeof MessagePort !== "undefined" ? MessagePort : void 0
-].filter(Boolean);
-const rpc = (port, api = {}, transferables = defaultTransferables) => {
-  const xfer = (args, transferables2) => args.reduce((p2, n2) => {
-    if (typeof n2 === "object") {
-      if (transferables2.some((ctor) => n2 instanceof ctor)) {
-        p2.push(n2);
-      } else
-        for (const key in n2) {
-          if (n2[key] && transferables2.some((ctor) => n2[key] instanceof ctor)) {
-            p2.push(n2[key]);
-          }
-        }
-    }
-    return p2;
-  }, []);
-  let callbackId = 0;
-  const calls = /* @__PURE__ */ new Map();
-  port.onmessage = async ({ data }) => {
-    const { cid } = data;
-    if (data.method) {
-      let result;
-      try {
-        if (!(data.method in api)) {
-          throw new TypeError(
-            `Method "${data.method}" does not exist in RPC API.`
-          );
-        }
-        if (typeof api[data.method] !== "function") {
-          throw new TypeError(
-            `Property "${data.method}" exists in RPC but is not type function, instead it is type: "${typeof api[data.method]}"`
-          );
-        }
-        result = await api[data.method](...data.args);
-        port.postMessage(
-          { cid, result },
-          xfer([result], transferables)
-        );
-      } catch (error) {
-        port.postMessage({ cid, error });
-      }
-    } else {
-      if (!calls.has(cid)) {
-        console.log(cid, calls.size, Object.keys(data.result));
-        throw new ReferenceError("Callback id not found: " + cid);
-      }
-      const { resolve, reject } = calls.get(cid);
-      calls.delete(data.cid);
-      if (data.error) reject(data.error);
-      else resolve(data.result);
-    }
-  };
-  const call = (method, ...args) => {
-    const cid = ++callbackId;
-    const deferred = Deferred();
-    calls.set(cid, deferred);
-    try {
-      port.postMessage(
-        { method, args, cid },
-        xfer(args, transferables)
-      );
-    } catch (error) {
-      console.error(`Rpc call failed: "${method}"`, args, error);
-    }
-    return deferred.promise;
-  };
-  const getter = Getter(
-    (key) => call.bind(null, key),
-    call
-  );
-  return getter;
-};
-class AnimationManager2 {
-  callbacks = /* @__PURE__ */ new Set();
-  animationId = null;
-  isRunning = false;
-  register(callback) {
-    this.callbacks.add(callback);
-  }
-  unregister(callback) {
-    this.callbacks.delete(callback);
-  }
-  start() {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    this.animate();
-  }
-  stop() {
-    this.isRunning = false;
-    if (this.animationId !== null) {
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
-    }
-  }
-  animate = () => {
-    if (!this.isRunning) return;
-    for (const callback of this.callbacks) {
-      callback();
-    }
-    this.animationId = requestAnimationFrame(this.animate);
-  };
-}
-const DEBUG = true;
-const TRIG_FADEOUT_SECONDS = 0.3;
-const PIANOROLL_KEY_WIDTH = 20;
-const PIANOROLL_BAR_COLOR_ODD = "rgba(255, 255, 255, 0.09)";
-const PIANOROLL_BAR_COLOR_EVEN = "rgba(255, 255, 255, 0.12)";
-const SCROLL_SMOOTHING = 0.17;
-const DEFAULT_SEQUENCES = ["c4 e4 [g4 a4]*2", "a3 c4 [d4 f4 a4]*2"];
-const DEFAULT_DSP_SOURCE = `
-sine(a4) |> out($)`;
-const KEYWORDS = [
-  "do",
-  "case",
-  "break",
-  "continue",
-  "else",
-  "for",
-  "of",
-  "if",
-  "return",
-  "switch",
-  "throw",
-  "try",
-  "while",
-  "null",
-  "true",
-  "false",
-  "undefined"
-];
 class StructLinearView {
   constructor(view, type, fieldOffset, length) {
     this.view = view;
@@ -25743,6 +24441,1895 @@ const ProgramStruct = Struct({
   trigHistory: "usize",
   envelopeHistory: "usize"
 });
+function toRing(buffer, chunkSize = 128) {
+  const length = buffer.length / chunkSize;
+  if ((length | 0) !== length) {
+    throw new Error('Ring "buffer" must be divisible exactly by the "chunkSize".');
+  }
+  return Object.assign(
+    Array.from({ length }, (_2, x2) => buffer.subarray(
+      x2 * chunkSize,
+      (x2 + 1) * chunkSize
+    )),
+    { buffer }
+  );
+}
+function buildSourceMapFromNodes(nodes, _bytecode, offset, map) {
+  let currentOffset = offset;
+  for (const node of nodes) {
+    if (node.type === "event") {
+      const opIndex = currentOffset;
+      map.set(opIndex, {
+        text: node.source.text,
+        start: node.source.start,
+        end: node.source.start + node.source.length
+      });
+      currentOffset += OP_EVENT_BASE_SIZE;
+    } else if (node.type === "rest") {
+      const opIndex = currentOffset;
+      map.set(opIndex, {
+        text: node.source.text,
+        start: node.source.start,
+        end: node.source.start + node.source.length
+      });
+      currentOffset += OP_EVENT_BASE_SIZE;
+    } else if (node.type === "octave") {
+      const opIndex = currentOffset;
+      map.set(opIndex, {
+        text: node.source.text,
+        start: node.source.start,
+        end: node.source.start + node.source.length
+      });
+      currentOffset += OP_OCTAVE_SIZE;
+    } else if (node.type === "transpose") {
+      const opIndex = currentOffset;
+      map.set(opIndex, {
+        text: node.source.text,
+        start: node.source.start,
+        end: node.source.start + node.source.length
+      });
+      currentOffset += OP_TRANSPOSE_SIZE;
+    } else if (node.type === "scale") {
+      const opIndex = currentOffset;
+      map.set(opIndex, {
+        text: node.source.text,
+        start: node.source.start,
+        end: node.source.start + node.source.length
+      });
+      currentOffset += OP_SCALE_SIZE;
+    } else if (node.type === "swing") {
+      const opIndex = currentOffset;
+      map.set(opIndex, {
+        text: node.source.text,
+        start: node.source.start,
+        end: node.source.start + node.source.length
+      });
+      currentOffset += OP_SWING_SIZE;
+    } else if (node.type === "group") {
+      currentOffset += OP_GROUP_START_SIZE;
+      currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map);
+      currentOffset += OP_GROUP_END_SIZE;
+    } else if (node.type === "at") {
+      currentOffset += OP_CYCLE_START_SIZE;
+      currentOffset = buildSourceMapFromNodes(node.children, _bytecode, currentOffset, map);
+      currentOffset += OP_CYCLE_END_SIZE;
+    }
+  }
+  return currentOffset;
+}
+const cacheByMiniSourceMap = /* @__PURE__ */ new Map();
+function buildMiniSourceMap(src, nodes, bytecode) {
+  const cached = cacheByMiniSourceMap.get(src);
+  if (cached) return cached;
+  if (cacheByMiniSourceMap.size > 1e3) {
+    cacheByMiniSourceMap.clear();
+  }
+  const map = /* @__PURE__ */ new Map();
+  buildSourceMapFromNodes(nodes, bytecode, OP_GROUP_START_SIZE, map);
+  const result = map;
+  cacheByMiniSourceMap.set(src, result);
+  return result;
+}
+function allocateBytecode(operationCount) {
+  const size = MINI_HEADER_SIZE + operationCount * Math.max(OP_EVENT_BASE_SIZE, OP_GROUP_START_SIZE, OP_SCALE_SIZE);
+  return new Float32Array(size);
+}
+function writeEventOp(buffer, offset, values, modifiers) {
+  const base = MINI_HEADER_SIZE + offset;
+  let pc = 0;
+  function emit(op) {
+    buffer[base + pc] = op;
+    pc++;
+  }
+  emit(OP_EVENT);
+  const valueCount = Math.min(values.length, MAX_EVENT_VALUES);
+  emit(valueCount);
+  emit(modifiers.velocity);
+  emit(modifiers.hold);
+  emit(modifiers.replicate);
+  emit(modifiers.elongate);
+  emit(modifiers.density);
+  emit(modifiers.offset);
+  emit(modifiers.jitter);
+  emit(modifiers.prob);
+  emit(modifiers.glide);
+  emit(modifiers.strum);
+  for (let i2 = 0; i2 < MAX_EVENT_VALUES; i2++) {
+    emit(values[i2] ?? 0);
+  }
+  return OP_EVENT_BASE_SIZE;
+}
+function writeGroupStartOp(buffer, offset, childCount, mode, modifiers) {
+  const base = MINI_HEADER_SIZE + offset;
+  let pc = 0;
+  function emit(op) {
+    buffer[base + pc] = op;
+    pc++;
+  }
+  emit(OP_GROUP_START);
+  emit(childCount);
+  emit(mode === 2 ? 2 : mode === 1 ? 1 : 0);
+  emit(modifiers.velocity);
+  emit(modifiers.hold);
+  emit(modifiers.replicate);
+  emit(modifiers.elongate);
+  emit(modifiers.density);
+  emit(modifiers.offset);
+  emit(modifiers.jitter);
+  emit(modifiers.prob);
+  emit(modifiers.glide);
+  emit(modifiers.strum);
+  return OP_GROUP_START_SIZE;
+}
+function writeGroupEndOp(buffer, offset) {
+  const base = MINI_HEADER_SIZE + offset;
+  buffer[base + 0] = OP_GROUP_END;
+  return OP_GROUP_END_SIZE;
+}
+function writeCycleStartOp(buffer, offset, pos, loop, childCount) {
+  const base = MINI_HEADER_SIZE + offset;
+  buffer[base + 0] = OP_CYCLE_START;
+  buffer[base + 1] = pos;
+  buffer[base + 2] = loop;
+  buffer[base + 3] = childCount;
+  return OP_CYCLE_START_SIZE;
+}
+function writeCycleEndOp(buffer, offset) {
+  const base = MINI_HEADER_SIZE + offset;
+  buffer[base + 0] = OP_CYCLE_END;
+  return OP_CYCLE_END_SIZE;
+}
+function writeOctaveOp(buffer, offset, delta) {
+  const base = MINI_HEADER_SIZE + offset;
+  buffer[base + 0] = OP_OCTAVE;
+  buffer[base + 1] = delta;
+  return OP_OCTAVE_SIZE;
+}
+function writeTransposeOp(buffer, offset, delta) {
+  const base = MINI_HEADER_SIZE + offset;
+  buffer[base + 0] = OP_TRANSPOSE;
+  buffer[base + 1] = delta;
+  return OP_TRANSPOSE_SIZE;
+}
+function writeScaleOp(buffer, offset, rootMidi, scaleIndex) {
+  const base = MINI_HEADER_SIZE + offset;
+  buffer[base + 0] = OP_SCALE;
+  buffer[base + 1] = rootMidi;
+  buffer[base + 2] = scaleIndex;
+  return OP_SCALE_SIZE;
+}
+function writeSwingOp(buffer, offset, amount) {
+  const base = MINI_HEADER_SIZE + offset;
+  buffer[base + 0] = OP_SWING;
+  buffer[base + 1] = amount;
+  return OP_SWING_SIZE;
+}
+function euclidHit(pulses, steps, step, offset = 0) {
+  if (steps <= 0) return false;
+  if (pulses <= 0) return false;
+  if (pulses >= steps) return true;
+  let s2 = step + offset;
+  s2 %= steps;
+  if (s2 < 0) s2 += steps;
+  const v2 = s2 * pulses % steps;
+  return v2 < pulses;
+}
+const NOTE_OFFSETS = {
+  c: 0,
+  d: 2,
+  e: 4,
+  f: 5,
+  g: 7,
+  a: 9,
+  b: 11
+};
+function noteNameToMidi(noteName) {
+  const match = noteName.match(/^([a-gA-G])([#b]?)(-?\d+)$/);
+  if (!match) {
+    throw new Error(`Invalid note name: ${noteName}`);
+  }
+  const [, note, accidental, octave] = match;
+  let midi = NOTE_OFFSETS[note.toLowerCase()] + (parseInt(octave, 10) + 1) * 12;
+  if (accidental === "#") {
+    midi += 1;
+  } else if (accidental === "b") {
+    midi -= 1;
+  }
+  return midi;
+}
+function midiToFrequency(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+function frequencyToMidi(frequency) {
+  return Math.round(12 * Math.log2(frequency / 440) + 69);
+}
+function midiToNoteName(midi) {
+  if (!isFinite(midi) || isNaN(midi)) {
+    console.error("midiToNoteName called with invalid midi:", midi);
+    return "?";
+  }
+  const roundedMidi = Math.round(midi);
+  const note = (roundedMidi % 12 + 12) % 12;
+  const octave = Math.floor(roundedMidi / 12) - 1;
+  const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  if (note < 0 || note >= notes.length) {
+    console.error("Invalid note index:", note, "for midi:", midi);
+    return "?";
+  }
+  const result = `${notes[note]}${octave}`;
+  if (!result || result.includes("undefined")) {
+    console.error("Invalid result from midiToNoteName:", result, "midi:", midi, "note:", note, "octave:", octave);
+    return "?";
+  }
+  return result;
+}
+const DEFAULT_MODS = {
+  velocity: 1,
+  hold: 0,
+  replicate: 1,
+  elongate: 1,
+  density: 1,
+  offset: 0,
+  jitter: 0,
+  prob: 0,
+  glide: 0,
+  strum: 0
+};
+const MODIFIER_START = /* @__PURE__ */ new Set(["*", "!", "@", "/", "\\", ".", ";", "?", "+", "-", "$"]);
+const GROUP_OPEN = /* @__PURE__ */ new Set(["[", "<", "("]);
+function cloneMods(mods) {
+  return { ...mods };
+}
+function getDefaultMods() {
+  return cloneMods(DEFAULT_MODS);
+}
+function parseModifiers(text) {
+  const mods = getDefaultMods();
+  let i2 = 0;
+  while (i2 < text.length) {
+    const ch = text[i2];
+    const rest = text.slice(i2 + 1);
+    switch (ch) {
+      case "*": {
+        const m2 = rest.match(/^([\d.]+)/);
+        if (m2) {
+          mods.density = parseFloat(m2[1]) || 1;
+          i2 += m2[0].length + 1;
+        } else {
+          i2++;
+        }
+        break;
+      }
+      case "!": {
+        const m2 = rest.match(/^([\d.]+)/);
+        if (m2) {
+          mods.replicate = parseFloat(m2[1]) || 1;
+          i2 += m2[0].length + 1;
+        } else {
+          i2++;
+        }
+        break;
+      }
+      case "@": {
+        const m2 = rest.match(/^([\d.]+)/);
+        if (m2) {
+          mods.elongate = parseFloat(m2[1]) || 1;
+          i2 += m2[0].length + 1;
+        } else {
+          i2++;
+        }
+        break;
+      }
+      case "/": {
+        const m2 = rest.match(/^([\d.]+)/);
+        if (m2) {
+          mods.density = 1 / (parseFloat(m2[1]) || 1);
+          i2 += m2[0].length + 1;
+        } else {
+          i2++;
+        }
+        break;
+      }
+      case "\\": {
+        const m2 = rest.match(/^(-?[\d.]+)/);
+        if (m2 && m2[1]) {
+          mods.glide = parseFloat(m2[1]);
+          i2 += m2[0].length + 1;
+        } else {
+          mods.glide = 1;
+          i2++;
+        }
+        break;
+      }
+      case ".": {
+        const m2 = rest.match(/^([\d.]+)/);
+        if (m2) {
+          const raw = m2[1];
+          let factor = parseFloat(raw);
+          if (raw.indexOf(".") === -1) {
+            factor = parseFloat("0." + raw);
+          }
+          mods.velocity *= factor;
+          i2 += m2[0].length + 1;
+        } else {
+          i2++;
+        }
+        break;
+      }
+      case ";": {
+        const m2 = rest.match(/^([\d.]+)/);
+        if (m2) {
+          mods.hold = parseFloat(m2[1]);
+          i2 += m2[0].length + 1;
+        } else {
+          i2++;
+        }
+        break;
+      }
+      case "?": {
+        const m2 = rest.match(/^([\d.]+)/);
+        if (m2) {
+          mods.prob = parseFloat(m2[1]);
+          i2 += m2[0].length + 1;
+        } else {
+          mods.prob = 0.5;
+          i2++;
+        }
+        break;
+      }
+      case "+": {
+        if (rest.startsWith("?")) {
+          const m2 = rest.slice(1).match(/^([\d.]*)/);
+          const amt = m2 && m2[1] ? parseFloat(m2[1]) : 0.5;
+          mods.jitter = amt;
+          i2 += (m2?.[0]?.length ?? 0) + 2;
+        } else {
+          const m2 = rest.match(/^([\d.]+)/);
+          if (m2) {
+            mods.offset += parseFloat(m2[1]);
+            i2 += m2[0].length + 1;
+          } else {
+            i2++;
+          }
+        }
+        break;
+      }
+      case "-": {
+        const m2 = rest.match(/^([\d.]+)/);
+        if (m2) {
+          mods.offset -= parseFloat(m2[1]);
+          i2 += m2[0].length + 1;
+        } else {
+          i2++;
+        }
+        break;
+      }
+      case "$": {
+        let j2 = i2;
+        while (j2 < text.length && text[j2] === "$") j2++;
+        const dollarCount = j2 - i2;
+        const after = text.slice(j2);
+        const m2 = after.match(/^([\d.]+)/);
+        if (m2) {
+          const raw = parseFloat(m2[1]);
+          const amount = Math.min(Math.max(raw, 0), 0.999999);
+          const kind = dollarCount >= 4 ? 3 : dollarCount === 3 ? 2 : dollarCount === 2 ? 1 : 0;
+          mods.strum = kind + amount;
+          i2 = j2 + m2[0].length;
+        } else {
+          i2 = j2;
+        }
+        break;
+      }
+      default:
+        i2++;
+    }
+  }
+  return mods;
+}
+function tokenize(input) {
+  const tokens = [];
+  let i2 = 0;
+  while (i2 < input.length) {
+    if (/\s/.test(input[i2])) {
+      i2++;
+      continue;
+    }
+    const start = i2;
+    const ch = input[i2];
+    if (ch === ":") {
+      tokens.push({ text: ":", start, end: i2 + 1 });
+      i2++;
+      continue;
+    }
+    if (ch === "/" && input[i2 + 1] === "/") {
+      let j2 = i2 + 2;
+      while (j2 < input.length && input[j2] !== "\n" && input[j2] !== "\r") j2++;
+      tokens.push({ text: input.slice(start, j2), start, end: j2 });
+      i2 = j2;
+      continue;
+    }
+    if (GROUP_OPEN.has(ch)) {
+      const close = ch === "[" ? "]" : ch === "<" ? ">" : ")";
+      i2++;
+      let depth = 1;
+      while (i2 < input.length && depth > 0) {
+        if (input[i2] === ch) depth++;
+        else if (input[i2] === close) depth--;
+        i2++;
+      }
+      while (i2 < input.length) {
+        const c2 = input[i2];
+        if (c2 === ":" || /\s/.test(c2) || GROUP_OPEN.has(c2) || c2 === "]" || c2 === ">" || c2 === ")") break;
+        i2++;
+      }
+      tokens.push({ text: input.slice(start, i2), start, end: i2 });
+      continue;
+    }
+    i2++;
+    while (i2 < input.length) {
+      const c2 = input[i2];
+      if (c2 === ":" || /\s/.test(c2) || GROUP_OPEN.has(c2) || c2 === "]" || c2 === ">" || c2 === ")") break;
+      i2++;
+    }
+    tokens.push({ text: input.slice(start, i2), start, end: i2 });
+  }
+  const mergedTokens = [];
+  for (let ti = 0; ti < tokens.length; ti++) {
+    const t2 = tokens[ti];
+    const next = tokens[ti + 1];
+    if (next && t2.end === next.start && /^[A-Za-z]+$/.test(t2.text) && /^[0-9]+$/.test(next.text)) {
+      mergedTokens.push({ text: t2.text + next.text, start: t2.start, end: next.end });
+      ti++;
+    } else {
+      mergedTokens.push(t2);
+    }
+  }
+  return mergedTokens;
+}
+function splitValueAndModifiers(text) {
+  let i2 = 0;
+  while (i2 < text.length) {
+    const ch = text[i2];
+    if (MODIFIER_START.has(ch) && !(i2 === 0 && (ch === "-" || ch === "+") && /\d/.test(text[i2 + 1] ?? ""))) {
+      break;
+    }
+    i2++;
+  }
+  return { value: text.slice(0, i2), mods: text.slice(i2) };
+}
+function parseValues(valueText) {
+  const values = [];
+  let cursor = 0;
+  while (cursor < valueText.length) {
+    while (cursor < valueText.length && (valueText[cursor] === "," || /\s/.test(valueText[cursor]))) cursor++;
+    if (cursor >= valueText.length) break;
+    const rest = valueText.slice(cursor);
+    const noteMatch = rest.match(/^([a-gA-G][#b]?)(-?\d+)/);
+    if (noteMatch) {
+      const midi = noteNameToMidi(noteMatch[1] + noteMatch[2]);
+      values.push(midiToFrequency(midi));
+      cursor += noteMatch[0].length;
+      continue;
+    }
+    const numMatch = rest.match(/^-?[\d.]+/);
+    if (numMatch) {
+      values.push(parseFloat(numMatch[0]));
+      cursor += numMatch[0].length;
+      continue;
+    }
+    cursor++;
+  }
+  return values;
+}
+function isNoteNameText(text) {
+  return /^([a-gA-G][#b]?)(-?\d+)$/.test(text);
+}
+function makeSource(input, start, end) {
+  return { start, length: end - start, text: input.slice(start, end) };
+}
+function nodesSpan(nodes) {
+  const first = nodes[0];
+  const last = nodes.at(-1);
+  if (!first || !last) return null;
+  const start = first.source.start;
+  const end = last.source.start + last.source.length;
+  return { start, end };
+}
+function parseGroupedTokenText(raw, open) {
+  const close = open === "[" ? "]" : open === "<" ? ">" : ")";
+  const closingIndex = raw.lastIndexOf(close);
+  if (closingIndex === -1) {
+    const inner2 = raw.slice(1);
+    return { inner: inner2, modText: "" };
+  }
+  const inner = raw.slice(1, closingIndex);
+  const { mods: modText } = splitValueAndModifiers(raw.slice(closingIndex + 1));
+  return { inner, modText };
+}
+function parseDeltaToken(token) {
+  const raw = token?.text;
+  if (!raw) return 0;
+  const v2 = parseFloat(raw);
+  return Number.isFinite(v2) ? v2 : 0;
+}
+function parseEuclidToken(raw) {
+  if (!raw.startsWith("(")) return null;
+  if (!raw.endsWith(")")) return null;
+  const inner = raw.slice(1, -1).trim();
+  if (!/^\d+\s*,\s*\d+(?:\s*,\s*-?\d+)?$/.test(inner)) return null;
+  const parts = inner.split(",").map((s2) => parseInt(s2.trim(), 10));
+  const pulses = parts[0];
+  const steps = parts[1];
+  const offset = parts.length >= 3 ? parts[2] : 0;
+  if (!Number.isFinite(pulses) || !Number.isFinite(steps) || !Number.isFinite(offset)) return null;
+  return { pulses, steps, offset };
+}
+function cloneEventNode(node, nextSource, values) {
+  return {
+    type: "event",
+    angle: false,
+    parallel: false,
+    values,
+    children: [],
+    modifiers: cloneMods(node.modifiers),
+    source: nextSource
+  };
+}
+function parseOctaveDelta(tokens) {
+  return parseDeltaToken(tokens[1]);
+}
+function parseScaleDirective(tokens, startIndex) {
+  let i2 = startIndex;
+  let rootMidi = noteNameToMidi("c4");
+  let scaleIndex = SCALE_KEY_TO_INDEX.major ?? 0;
+  const t0 = tokens[i2]?.text?.toLowerCase();
+  if (t0 && isNoteNameText(t0)) {
+    rootMidi = noteNameToMidi(t0);
+    i2++;
+  }
+  const t1 = tokens[i2]?.text?.toLowerCase();
+  if (t1) {
+    if (/^[a-z][a-z0-9]*$/.test(t1)) {
+      let scaleName = t1;
+      const nextToken = tokens[i2 + 1];
+      if (/^[a-z]+$/.test(t1) && nextToken && /^[0-9]+$/.test(nextToken.text) && nextToken.start === tokens[i2].end) {
+        scaleName = t1 + nextToken.text;
+        i2++;
+      }
+      scaleIndex = findScaleIndex(scaleName) ?? scaleIndex;
+      i2++;
+    }
+  }
+  return { rootMidi, scaleIndex, nextIndex: i2 };
+}
+function tokensToNodesInternal(tokens, input) {
+  const nodes = [];
+  for (let ti = 0; ti < tokens.length; ti++) {
+    const token = tokens[ti];
+    const raw = token.text;
+    const first = raw[0];
+    if (raw.startsWith("//")) {
+      continue;
+    }
+    if (raw === ",") {
+      const left = nodes.slice();
+      const rightTokens = tokens.slice(ti + 1);
+      const right = rightTokens.length > 0 ? tokensToNodesInternal(rightTokens, input) : [];
+      if (left.length === 0 && right.length === 0) {
+        return [];
+      }
+      if (left.length === 0) {
+        return right;
+      }
+      if (right.length === 0) {
+        return left;
+      }
+      const leftGroup = {
+        type: "group",
+        angle: false,
+        parallel: false,
+        values: [],
+        children: left,
+        modifiers: getDefaultMods(),
+        source: makeSource(input, left[0].source.start, left.at(-1).source.start + left.at(-1).source.length)
+      };
+      const rightGroup = {
+        type: "group",
+        angle: false,
+        parallel: false,
+        values: [],
+        children: right,
+        modifiers: getDefaultMods(),
+        source: makeSource(input, right[0].source.start, right.at(-1).source.start + right.at(-1).source.length)
+      };
+      const endToken = rightTokens.at(-1) ?? token;
+      const parallelGroup = {
+        type: "group",
+        angle: false,
+        parallel: true,
+        values: [],
+        children: [leftGroup, rightGroup],
+        modifiers: getDefaultMods(),
+        source: makeSource(input, leftGroup.source.start, endToken.end)
+      };
+      return [parallelGroup];
+    }
+    if (raw === ".") {
+      const segments = [];
+      if (nodes.length > 0) segments.push(nodes.slice());
+      let segStart = ti + 1;
+      for (let j2 = ti + 1; j2 <= tokens.length; j2++) {
+        const isEnd = j2 === tokens.length;
+        const isDot = !isEnd && tokens[j2]?.text === ".";
+        if (!isEnd && !isDot) continue;
+        const partTokens = tokens.slice(segStart, j2);
+        const partNodes = partTokens.length > 0 ? tokensToNodesInternal(partTokens, input) : [];
+        if (partNodes.length > 0) segments.push(partNodes);
+        segStart = j2 + 1;
+      }
+      if (segments.length === 0) return [];
+      if (segments.length === 1) return segments[0];
+      const loop = segments.length;
+      const onChildren = [];
+      let groupStart = Infinity;
+      let groupEnd = -Infinity;
+      for (let si = 0; si < segments.length; si++) {
+        const children = segments[si];
+        const span = nodesSpan(children);
+        const start = span?.start ?? 0;
+        const end = span?.end ?? start;
+        groupStart = Math.min(groupStart, start);
+        groupEnd = Math.max(groupEnd, end);
+        onChildren.push({
+          type: "at",
+          angle: false,
+          parallel: false,
+          values: [si + 1, loop],
+          children,
+          modifiers: getDefaultMods(),
+          source: makeSource(input, start, end)
+        });
+      }
+      if (!Number.isFinite(groupStart) || !Number.isFinite(groupEnd) || groupStart > groupEnd) {
+        groupStart = 0;
+        groupEnd = 0;
+      }
+      const joined = {
+        type: "group",
+        angle: false,
+        parallel: false,
+        values: [],
+        children: onChildren,
+        modifiers: getDefaultMods(),
+        source: makeSource(input, groupStart, groupEnd)
+      };
+      return [joined];
+    }
+    if (first === "_") {
+      const last = nodes.at(-1);
+      if (last) last.modifiers.elongate += 1;
+      continue;
+    }
+    if (raw === "scale") {
+      const { rootMidi, scaleIndex, nextIndex } = parseScaleDirective(tokens, ti + 1);
+      const last = nextIndex > ti + 1 ? tokens[nextIndex - 1] : token;
+      nodes.push({
+        type: "scale",
+        angle: false,
+        parallel: false,
+        values: [rootMidi, scaleIndex],
+        children: [],
+        modifiers: getDefaultMods(),
+        source: makeSource(input, token.start, last?.end ?? token.end)
+      });
+      ti = nextIndex - 1;
+      continue;
+    }
+    if (raw === "at") {
+      const next = tokens[ti + 1];
+      const rawOn = next?.text ?? "";
+      let pos = 0;
+      let loop = 0;
+      const slash = rawOn.indexOf("/");
+      if (slash >= 0) {
+        const a2 = parseInt(rawOn.slice(0, slash), 10);
+        const b2 = parseInt(rawOn.slice(slash + 1), 10);
+        pos = Number.isFinite(a2) ? a2 : 0;
+        loop = Number.isFinite(b2) ? b2 : 0;
+      } else {
+        const a2 = parseInt(rawOn, 10);
+        pos = Number.isFinite(a2) ? a2 : 0;
+      }
+      const bodyStart = ti + 2;
+      let bodyEnd = tokens.length;
+      for (let j2 = bodyStart; j2 < tokens.length; j2++) {
+        if (tokens[j2]?.text === "at") {
+          bodyEnd = j2;
+          break;
+        }
+      }
+      const bodyTokens = tokens.slice(bodyStart, bodyEnd);
+      const children = tokensToNodesInternal(bodyTokens, input);
+      const last = tokens[bodyEnd - 1] ?? next ?? token;
+      nodes.push({
+        type: "at",
+        angle: false,
+        parallel: false,
+        values: [pos, loop],
+        children,
+        modifiers: getDefaultMods(),
+        source: makeSource(input, token.start, last?.end ?? token.end)
+      });
+      ti = bodyEnd - 1;
+      continue;
+    }
+    if (raw === "octave" || raw === "transpose") {
+      const next = tokens[ti + 1];
+      const delta = parseDeltaToken(next);
+      const end = next?.end ?? token.end;
+      nodes.push({
+        type: raw === "octave" ? "octave" : "transpose",
+        angle: false,
+        parallel: false,
+        values: [delta],
+        children: [],
+        modifiers: getDefaultMods(),
+        source: makeSource(input, token.start, end)
+      });
+      if (next) ti++;
+      continue;
+    }
+    if (raw === "swing") {
+      const next = tokens[ti + 1];
+      const amount = parseDeltaToken(next);
+      const end = next?.end ?? token.end;
+      nodes.push({
+        type: "swing",
+        angle: false,
+        parallel: false,
+        values: [amount],
+        children: [],
+        modifiers: getDefaultMods(),
+        source: makeSource(input, token.start, end)
+      });
+      if (next) ti++;
+      continue;
+    }
+    if (first === "[" || first === "<") {
+      const { inner, modText } = parseGroupedTokenText(raw, first);
+      const modifiers2 = parseModifiers(modText);
+      const innerTokens = tokenize(inner);
+      const adjustedInnerTokens = innerTokens.map((t2) => ({
+        ...t2,
+        start: t2.start + token.start + 1,
+        // +1 to account for opening bracket
+        end: t2.end + token.start + 1
+      }));
+      const children = tokensToNodesInternal(adjustedInnerTokens, input);
+      nodes.push({
+        type: "group",
+        angle: first === "<",
+        parallel: false,
+        values: [],
+        children,
+        modifiers: modifiers2,
+        source: makeSource(input, token.start, token.end)
+      });
+      continue;
+    }
+    if (first === "(") {
+      const euclid = parseEuclidToken(raw);
+      const last = nodes.at(-1);
+      if (euclid && last?.type === "event") {
+        const pulses = Math.floor(euclid.pulses);
+        const steps = Math.floor(euclid.steps);
+        const offset = Math.floor(euclid.offset);
+        const spanSource = makeSource(input, last.source.start, token.end);
+        nodes.pop();
+        const safeSteps = Number.isFinite(steps) && steps > 0 ? steps : 0;
+        for (let si = 0; si < safeSteps; si++) {
+          const on2 = euclidHit(pulses, steps, si, offset);
+          nodes.push(cloneEventNode(last, spanSource, on2 ? last.values.slice() : []));
+        }
+        continue;
+      }
+      const { inner, modText } = parseGroupedTokenText(raw, "(");
+      const innerTokens = tokenize(inner);
+      const adjustedInnerTokens = innerTokens.map((t2) => ({
+        ...t2,
+        start: t2.start + token.start + 1,
+        end: t2.end + token.start + 1
+      }));
+      const head = adjustedInnerTokens[0]?.text;
+      if (head === "scale") {
+        const { rootMidi, scaleIndex, nextIndex } = parseScaleDirective(adjustedInnerTokens, 1);
+        const items = adjustedInnerTokens.slice(nextIndex);
+        const scaleNode = {
+          type: "scale",
+          angle: false,
+          parallel: false,
+          values: [rootMidi, scaleIndex],
+          children: [],
+          modifiers: getDefaultMods(),
+          source: makeSource(input, token.start, token.end)
+        };
+        const restChildren = tokensToNodesInternal(items, input);
+        const children2 = [scaleNode, ...restChildren];
+        nodes.push({
+          type: "group",
+          angle: false,
+          parallel: false,
+          values: [],
+          children: children2,
+          modifiers: parseModifiers(modText),
+          source: makeSource(input, token.start, token.end)
+        });
+        continue;
+      }
+      if (head === "octave") {
+        nodes.push({
+          type: "octave",
+          angle: false,
+          parallel: false,
+          values: [parseOctaveDelta(adjustedInnerTokens)],
+          children: [],
+          modifiers: getDefaultMods(),
+          source: makeSource(input, token.start, token.end)
+        });
+        continue;
+      }
+      if (head === "transpose") {
+        nodes.push({
+          type: "transpose",
+          angle: false,
+          parallel: false,
+          values: [parseDeltaToken(adjustedInnerTokens[1])],
+          children: [],
+          modifiers: getDefaultMods(),
+          source: makeSource(input, token.start, token.end)
+        });
+        continue;
+      }
+      if (head === "swing") {
+        nodes.push({
+          type: "swing",
+          angle: false,
+          parallel: false,
+          values: [parseDeltaToken(adjustedInnerTokens[1])],
+          children: [],
+          modifiers: getDefaultMods(),
+          source: makeSource(input, token.start, token.end)
+        });
+        continue;
+      }
+      const modifiers2 = parseModifiers(modText);
+      const children = tokensToNodesInternal(adjustedInnerTokens, input);
+      nodes.push({
+        type: "group",
+        angle: false,
+        parallel: false,
+        values: [],
+        children,
+        modifiers: modifiers2,
+        source: makeSource(input, token.start, token.end)
+      });
+      continue;
+    }
+    const { value, mods } = splitValueAndModifiers(raw);
+    if (value === "~") {
+      const modifiers2 = parseModifiers(mods);
+      nodes.push({
+        type: "rest",
+        angle: false,
+        parallel: false,
+        values: [],
+        children: [],
+        modifiers: modifiers2,
+        source: makeSource(input, token.start, token.end)
+      });
+      continue;
+    }
+    let valueText = value;
+    if (!valueText && mods) {
+      valueText = "c4";
+    }
+    if (valueText?.toLowerCase() === "x") {
+      valueText = "c4";
+    }
+    const chordMatch = valueText.match(/^([ivxlcdm]+)(.*)$/i);
+    if (chordMatch) {
+      const roman = chordMatch[1];
+      const suffix = chordMatch[2] ?? "";
+      const base = romanToDegree(roman);
+      if (base !== null) {
+        const tones = parseChordSuffix(suffix);
+        const values2 = tones.map((tone) => {
+          const scaleDegree = base + tone.degree;
+          return -(scaleDegree + tone.semitoneAdjust / 100);
+        });
+        const modifiers2 = parseModifiers(mods);
+        nodes.push({
+          type: "event",
+          angle: false,
+          parallel: false,
+          values: values2,
+          children: [],
+          modifiers: modifiers2,
+          source: makeSource(input, token.start, token.end)
+        });
+        continue;
+      }
+    }
+    if (/^\d+(?:,\d+)*$/.test(valueText)) {
+      const parts = valueText.split(",").filter(Boolean);
+      const values2 = parts.map((p2) => -parseInt(p2, 10));
+      const modifiers2 = parseModifiers(mods);
+      nodes.push({
+        type: "event",
+        angle: false,
+        parallel: false,
+        values: values2,
+        children: [],
+        modifiers: modifiers2,
+        source: makeSource(input, token.start, token.end)
+      });
+      continue;
+    }
+    const values = parseValues(valueText);
+    const modifiers = parseModifiers(mods);
+    nodes.push({
+      type: "event",
+      angle: false,
+      parallel: false,
+      values,
+      children: [],
+      modifiers,
+      source: makeSource(input, token.start, token.end)
+    });
+  }
+  return nodes;
+}
+function tokensToNodes(tokens, input, options2 = {}) {
+  const nodes = tokensToNodesInternal(tokens, input);
+  const hasScaleNode = nodes.some((node) => node.type === "scale") || nodes.some((node) => node.type === "group" && node.children.some((child) => child.type === "scale"));
+  if (!hasScaleNode) {
+    const rootMidi = options2.defaultScale?.rootMidi ?? noteNameToMidi("c4");
+    const scaleIndex = options2.defaultScale?.scaleIndex ?? SCALE_KEY_TO_INDEX.major ?? 0;
+    const defaultScaleNode = {
+      type: "scale",
+      angle: false,
+      parallel: false,
+      values: [rootMidi, scaleIndex],
+      children: [],
+      modifiers: getDefaultMods(),
+      source: {
+        start: 0,
+        length: 0,
+        text: ""
+      }
+    };
+    nodes.unshift(defaultScaleNode);
+  }
+  return nodes;
+}
+function compileNode(node, bytecode, offset) {
+  if (node.type === "event") {
+    return writeEventOp(bytecode, offset, node.values, node.modifiers);
+  } else if (node.type === "group") {
+    const mode = node.parallel ? 2 : node.angle ? 1 : 0;
+    let currentOffset = writeGroupStartOp(bytecode, offset, node.children.length, mode, node.modifiers);
+    for (const child of node.children) {
+      currentOffset += compileNode(child, bytecode, offset + currentOffset);
+    }
+    currentOffset += writeGroupEndOp(bytecode, offset + currentOffset);
+    return currentOffset;
+  } else if (node.type === "rest") {
+    return writeEventOp(bytecode, offset, [], node.modifiers);
+  } else if (node.type === "octave") {
+    return writeOctaveOp(bytecode, offset, node.values[0] ?? 0);
+  } else if (node.type === "transpose") {
+    return writeTransposeOp(bytecode, offset, node.values[0] ?? 0);
+  } else if (node.type === "scale") {
+    return writeScaleOp(bytecode, offset, node.values[0] ?? 0, node.values[1] ?? 0);
+  } else if (node.type === "swing") {
+    return writeSwingOp(bytecode, offset, node.values[0] ?? 0);
+  } else if (node.type === "at") {
+    let currentOffset = writeCycleStartOp(
+      bytecode,
+      offset,
+      node.values[0] ?? 0,
+      node.values[1] ?? 0,
+      node.children.length
+    );
+    for (const child of node.children) {
+      currentOffset += compileNode(child, bytecode, offset + currentOffset);
+    }
+    currentOffset += writeCycleEndOp(bytecode, offset + currentOffset);
+    return currentOffset;
+  }
+  return 0;
+}
+const cacheByMiniNotation = /* @__PURE__ */ new Map();
+function compileMiniNotation(input, options2 = {}) {
+  const cacheKey = options2.defaultScale ? `${input}|scale:${options2.defaultScale.rootMidi ?? 60},${options2.defaultScale.scaleIndex ?? 0}` : input;
+  const cached = cacheByMiniNotation.get(cacheKey);
+  if (cached) return cached;
+  if (cacheByMiniNotation.size > 1e3) {
+    cacheByMiniNotation.clear();
+  }
+  const tokens = tokenize(input);
+  const nodes = tokensToNodes(tokens, input, { defaultScale: options2.defaultScale });
+  const root2 = {
+    type: "group",
+    values: [],
+    children: nodes,
+    modifiers: getDefaultMods(),
+    angle: false,
+    parallel: false,
+    source: {
+      length: input.length
+    }
+  };
+  const bytecode = allocateBytecode(1024);
+  let offset = compileNode(root2, bytecode, 0);
+  bytecode[0] = offset;
+  const usedSize = MINI_HEADER_SIZE + offset;
+  const trimmedBytecode = bytecode.slice(0, usedSize);
+  const sourceMap = [];
+  const result = { bytecode: trimmedBytecode, sourceMap, nodes };
+  cacheByMiniNotation.set(cacheKey, result);
+  return result;
+}
+const numRe = "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
+const pointTokenRe = new RegExp(`^(${numRe}),(${numRe})(?:([e])(${numRe})?)?$`);
+function tokenizeTimelineNotation(input) {
+  const tokens = [];
+  let index = 0;
+  let i2 = 0;
+  while (i2 < input.length) {
+    while (i2 < input.length && /\s/.test(input[i2])) i2++;
+    if (i2 >= input.length) break;
+    const start = i2;
+    while (i2 < input.length && !/\s/.test(input[i2])) i2++;
+    const end = i2;
+    tokens.push({ index, start, length: end - start, text: input.slice(start, end) });
+    index++;
+  }
+  return tokens;
+}
+function parseTimelineNotation(tokens) {
+  const points = [];
+  for (const t2 of tokens) {
+    const m2 = pointTokenRe.exec(t2.text);
+    if (!m2) continue;
+    const bar = Number(m2[1] ?? 0);
+    const value = Number(m2[2] ?? 0);
+    const curveKind = m2[3] ?? null;
+    const curveValue = Number(m2[4] ?? 0);
+    const exp = curveKind === "e" ? curveValue : null;
+    if (!Number.isFinite(bar) || !Number.isFinite(value)) continue;
+    points.push({
+      bar,
+      value,
+      exp,
+      tokenIndex: t2.index,
+      tokenStart: t2.start,
+      tokenLength: t2.length
+    });
+  }
+  return points;
+}
+function compilePoints(points) {
+  if (points.length === 0) {
+    return { segments: [], totalBars: 0, endValue: 0, endTokenIndex: -1, endTokenStart: -1, endTokenLength: -1 };
+  }
+  const pts = points.map((p2) => ({ ...p2, bar: p2.bar })).filter((p2) => p2.bar >= 0);
+  if (pts.length === 0) {
+    return { segments: [], totalBars: 0, endValue: 0, endTokenIndex: -1, endTokenStart: -1, endTokenLength: -1 };
+  }
+  const hasZeroPoint = pts.some((p2) => p2.bar === 0);
+  if (!hasZeroPoint) {
+    pts.unshift({
+      bar: 0,
+      value: 0,
+      exp: null,
+      tokenIndex: -1,
+      tokenStart: -1,
+      tokenLength: -1
+    });
+  }
+  const segments = [];
+  let i2 = 0;
+  let t2 = 0;
+  let v2 = pts[0].value;
+  let activeTokenIndex = pts[0].tokenIndex;
+  let activeTokenStart = pts[0].tokenStart;
+  let activeTokenLength = pts[0].tokenLength;
+  while (i2 < pts.length && pts[i2].bar === 0) {
+    v2 = pts[i2].value;
+    activeTokenIndex = pts[i2].tokenIndex;
+    activeTokenStart = pts[i2].tokenStart;
+    activeTokenLength = pts[i2].tokenLength;
+    i2++;
+  }
+  let endTokenIndex = activeTokenIndex;
+  let endTokenStart = activeTokenStart;
+  let endTokenLength = activeTokenLength;
+  for (; i2 < pts.length; i2++) {
+    const p2 = pts[i2];
+    const nextT = p2.bar;
+    const nextV = p2.value;
+    const dt = nextT - t2;
+    if (dt < 0) continue;
+    if (dt === 0) {
+      t2 = nextT;
+      v2 = nextV;
+      activeTokenIndex = p2.tokenIndex;
+      activeTokenStart = p2.tokenStart;
+      activeTokenLength = p2.tokenLength;
+      endTokenIndex = activeTokenIndex;
+      endTokenStart = activeTokenStart;
+      endTokenLength = activeTokenLength;
+      continue;
+    }
+    const exp = p2.exp ?? 1;
+    const kind = v2 === nextV ? TIMELINE_KIND_HOLD : TIMELINE_KIND_GLIDE;
+    segments.push({
+      kind,
+      durBars: dt,
+      startValue: v2,
+      endValue: nextV,
+      exp,
+      fromTokenIndex: activeTokenIndex,
+      fromTokenStart: activeTokenStart,
+      fromTokenLength: activeTokenLength,
+      toTokenIndex: p2.tokenIndex,
+      toTokenStart: p2.tokenStart,
+      toTokenLength: p2.tokenLength
+    });
+    t2 = nextT;
+    v2 = nextV;
+    activeTokenIndex = p2.tokenIndex;
+    activeTokenStart = p2.tokenStart;
+    activeTokenLength = p2.tokenLength;
+    endTokenIndex = activeTokenIndex;
+    endTokenStart = activeTokenStart;
+    endTokenLength = activeTokenLength;
+  }
+  let totalBars = t2;
+  if (totalBars <= 0) {
+    totalBars = 1;
+    segments.push({
+      kind: TIMELINE_KIND_HOLD,
+      durBars: 1,
+      startValue: v2,
+      endValue: v2,
+      exp: 1,
+      fromTokenIndex: activeTokenIndex,
+      fromTokenStart: activeTokenStart,
+      fromTokenLength: activeTokenLength,
+      toTokenIndex: activeTokenIndex,
+      toTokenStart: activeTokenStart,
+      toTokenLength: activeTokenLength
+    });
+  }
+  return { segments, totalBars, endValue: v2, endTokenIndex, endTokenStart, endTokenLength };
+}
+const cacheBySequence = /* @__PURE__ */ new Map();
+function compileTimelineNotation(input, initialBeatDiv = 4) {
+  const cached = cacheBySequence.get(input);
+  if (cached) return cached;
+  if (cacheBySequence.size > 1e3) {
+    cacheBySequence.clear();
+  }
+  const tokens = tokenizeTimelineNotation(input);
+  const noWrap = tokens.some((t2) => t2.text === "-");
+  const points = parseTimelineNotation(tokens);
+  const compiled = compilePoints(points);
+  const segments = compiled.segments;
+  let totalBars = compiled.totalBars;
+  if (noWrap && segments.length > 0) {
+    const last = segments[segments.length - 1];
+    const lastValue = last.kind === TIMELINE_KIND_GLIDE ? last.endValue : last.startValue;
+    if (lastValue !== compiled.endValue) {
+      segments.push({
+        kind: TIMELINE_KIND_HOLD,
+        durBars: 1,
+        startValue: compiled.endValue,
+        endValue: compiled.endValue,
+        exp: 1,
+        fromTokenIndex: compiled.endTokenIndex,
+        fromTokenStart: compiled.endTokenStart,
+        fromTokenLength: compiled.endTokenLength,
+        toTokenIndex: compiled.endTokenIndex,
+        toTokenStart: compiled.endTokenStart,
+        toTokenLength: compiled.endTokenLength
+      });
+    }
+  }
+  const beatsPerBar = initialBeatDiv > 0 ? initialBeatDiv : 4;
+  const segCount = segments.length;
+  const opLength = TIMELINE_HEADER_SIZE + segCount * TIMELINE_SEGMENT_SIZE;
+  const bytecode = new Float32Array(1 + opLength);
+  bytecode[0] = opLength;
+  bytecode[1] = TIMELINE_MAGIC;
+  bytecode[2] = segCount;
+  bytecode[3] = noWrap ? -totalBars : totalBars;
+  bytecode[4] = beatsPerBar;
+  let o2 = 1 + TIMELINE_HEADER_SIZE;
+  for (const s2 of segments) {
+    bytecode[o2++] = s2.kind;
+    bytecode[o2++] = s2.durBars;
+    bytecode[o2++] = s2.startValue;
+    bytecode[o2++] = s2.endValue;
+    bytecode[o2++] = s2.exp;
+  }
+  const segmentTokens = segments.map((s2) => ({
+    fromTokenIndex: s2.fromTokenIndex,
+    fromTokenStart: s2.fromTokenStart,
+    fromTokenLength: s2.fromTokenLength,
+    toTokenIndex: s2.toTokenIndex,
+    toTokenStart: s2.toTokenStart,
+    toTokenLength: s2.toTokenLength
+  }));
+  const result = { bytecode, tokens: segmentTokens, segments };
+  cacheBySequence.set(input, result);
+  return result;
+}
+const cacheByTramSequence = /* @__PURE__ */ new Map();
+function compileTramSequence(input) {
+  const cached = cacheByTramSequence.get(input);
+  if (cached) return cached;
+  if (cacheByTramSequence.size > 1e3) {
+    cacheByTramSequence.clear();
+  }
+  const beats = parseHierarchicalBeats(input);
+  const sequence = {
+    beats,
+    totalBeats: beats.length
+  };
+  cacheByTramSequence.set(input, sequence);
+  return sequence;
+}
+function parseHierarchicalBeats(input) {
+  const beats = [];
+  let i2 = 0;
+  while (i2 < input.length) {
+    if (input[i2] === "[") {
+      const bracketContent = parseBracketContent(input, i2);
+      const subdivisions = [];
+      for (let j2 = 0; j2 < bracketContent.content.length; j2++) {
+        const char = bracketContent.content[j2];
+        if (char === "x" || char === "X") {
+          subdivisions.push(true);
+        } else if (char === "-") {
+          subdivisions.push(false);
+        }
+      }
+      beats.push({ subdivisions });
+      i2 = bracketContent.endIndex;
+    } else if (!/\s/.test(input[i2])) {
+      const subdivisions = input[i2] === "x" || input[i2] === "X" ? [true] : [false];
+      beats.push({ subdivisions });
+      i2++;
+    } else {
+      i2++;
+    }
+  }
+  return beats;
+}
+function parseBracketContent(input, startIndex) {
+  let bracketCount = 1;
+  let j2 = startIndex + 1;
+  while (j2 < input.length && bracketCount > 0) {
+    if (input[j2] === "[") {
+      bracketCount++;
+    } else if (input[j2] === "]") {
+      bracketCount--;
+    }
+    j2++;
+  }
+  if (bracketCount > 0) {
+    throw new Error("Unmatched opening bracket in tram sequence");
+  }
+  const content = input.slice(startIndex + 1, j2 - 1).trim();
+  if (content.length === 0) {
+    throw new Error("Empty brackets in tram sequence");
+  }
+  return { content, endIndex: j2 };
+}
+function tramSequenceToBytecode(sequence) {
+  if (sequence.totalBeats === 0) {
+    return new Float32Array([0]);
+  }
+  let totalSize = 1;
+  for (const beat of sequence.beats) {
+    totalSize += 1;
+    totalSize += Math.ceil(beat.subdivisions.length / 32);
+  }
+  const bytecode = new Float32Array(totalSize);
+  let writeIndex = 0;
+  bytecode[writeIndex++] = sequence.totalBeats;
+  for (const beat of sequence.beats) {
+    const subdivCount = beat.subdivisions.length;
+    bytecode[writeIndex++] = subdivCount;
+    const packedLength = Math.ceil(subdivCount / 32);
+    for (let i2 = 0; i2 < packedLength; i2++) {
+      let packed = 0;
+      for (let bit = 0; bit < 32; bit++) {
+        const index = i2 * 32 + bit;
+        if (index < subdivCount && beat.subdivisions[index]) {
+          packed |= 1 << bit;
+        }
+      }
+      bytecode[writeIndex++] = packed;
+    }
+  }
+  return bytecode;
+}
+function updateSequence(sequence, arrayIndex, data, scaleIndex) {
+  const compiled = compileMiniNotation(sequence, scaleIndex === void 0 ? {} : { defaultScale: { scaleIndex } });
+  const target = data.arrays[arrayIndex];
+  const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE);
+  target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE);
+  target.length = maxSize;
+  const currentVersion = target.raw[3] || 0;
+  target.raw[3] = currentVersion + 1;
+  return buildMiniSourceMap(sequence, compiled.nodes, compiled.bytecode);
+}
+function updateTramSequence(sequence, arrayIndex, data) {
+  const parsed = compileTramSequence(sequence);
+  const bytecode = tramSequenceToBytecode(parsed);
+  const target = data.arrays[arrayIndex];
+  const maxSize = Math.min(bytecode.length, ARRAY_SIZE);
+  target.raw.set(bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE);
+  target.length = maxSize;
+  const currentVersion = target.raw[3] || 0;
+  target.raw[3] = currentVersion + 1;
+  return void 0;
+}
+function updateTimelineSequence(sequence, arrayIndex, data) {
+  const compiled = compileTimelineNotation(sequence);
+  const target = data.arrays[arrayIndex];
+  const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE);
+  target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE);
+  target.length = maxSize;
+  const currentVersion = target.raw[3] || 0;
+  target.raw[3] = currentVersion + 1;
+}
+function buildProgram(data, dspSource, vm) {
+  const compiled = vm && vm.source === dspSource ? (data.ops.set(vm.ops), data.literals.set(vm.literals), vm.result) : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals });
+  const {
+    errors,
+    miniSequences,
+    tramSequences,
+    timelineSequences,
+    miniRefs,
+    miniPlayBars,
+    tramRefs,
+    timelineRefs,
+    timelineLabels,
+    adRefs,
+    adsrRefs,
+    envfollowRefs,
+    slewRefs,
+    analyserRefs,
+    compressorRefs,
+    expanderRefs,
+    gateRefs,
+    limiterRefs,
+    filterRefs,
+    reverbRefs,
+    lfoRefs,
+    slicerRefs,
+    everyRefs,
+    atRefs,
+    euclidRefs,
+    arrayLiterals,
+    branchMarks,
+    numberParams,
+    numberLiterals,
+    bpm,
+    bars,
+    scale,
+    sampleDefs
+  } = compiled;
+  if (errors.length) {
+    console.error("VM compile errors:", errors);
+    throw new Error(`VM compile errors: ${errors.map((e2) => e2.message).join(", ")}`);
+  }
+  return {
+    sequences: miniSequences ?? [],
+    tramSequences: tramSequences ?? [],
+    timelineSequences: timelineSequences ?? [],
+    miniRefs: miniRefs ?? [],
+    miniPlayBars: miniPlayBars ?? [],
+    tramRefs: tramRefs ?? [],
+    timelineRefs: timelineRefs ?? [],
+    timelineLabels: timelineLabels ?? [],
+    adRefs: adRefs ?? [],
+    adsrRefs: adsrRefs ?? [],
+    envfollowRefs: envfollowRefs ?? [],
+    slewRefs: slewRefs ?? [],
+    analyserRefs: analyserRefs ?? [],
+    compressorRefs: compressorRefs ?? [],
+    expanderRefs: expanderRefs ?? [],
+    gateRefs: gateRefs ?? [],
+    limiterRefs: limiterRefs ?? [],
+    filterRefs: filterRefs ?? [],
+    reverbRefs: reverbRefs ?? [],
+    slicerRefs: slicerRefs ?? [],
+    lfoRefs: lfoRefs ?? [],
+    everyRefs: everyRefs ?? [],
+    atRefs: atRefs ?? [],
+    euclidRefs: euclidRefs ?? [],
+    arrayLiterals: arrayLiterals ?? [],
+    branchMarks: branchMarks ?? [],
+    numberParams: numberParams ?? [],
+    numberLiterals: numberLiterals ?? [],
+    sampleDefs: sampleDefs ?? [],
+    bpm,
+    bars,
+    scale
+  };
+}
+function captureOpsSnapshot(data) {
+  if (!data) return void 0;
+  const opsCopy = new Int32Array(data.ops);
+  let length = opsCopy.length;
+  while (length > 0 && opsCopy[length - 1] === 0) {
+    length--;
+  }
+  return { ops: opsCopy, length };
+}
+function detectOpsChange(oldSnapshot, newSnapshot) {
+  if (!oldSnapshot) return false;
+  const maxLength = Math.max(oldSnapshot.length, newSnapshot.length);
+  for (let i2 = 0; i2 < maxLength; i2++) {
+    const oldOp = i2 < oldSnapshot.length ? oldSnapshot.ops[i2] : 0;
+    const newOp = i2 < newSnapshot.length ? newSnapshot.ops[i2] : 0;
+    if (oldOp !== newOp) {
+      return true;
+    }
+  }
+  return false;
+}
+function computeProgramDiff(reference, target) {
+  const oldSnapshot = captureOpsSnapshot(reference);
+  const newSnapshot = captureOpsSnapshot(target);
+  const opsChanged = detectOpsChange(oldSnapshot, newSnapshot);
+  const significantChange = !!(reference && opsChanged);
+  return {
+    significantChange,
+    opsChanged,
+    oldOpCount: oldSnapshot?.length ?? 0,
+    newOpCount: newSnapshot.length
+  };
+}
+function createProgramDataView(data$, arrays$, wasmMemory) {
+  const programData = ProgramDataStruct(wasmMemory.buffer, data$);
+  const ops$ = programData.ops;
+  const ops = new Int32Array(wasmMemory.buffer, ops$, OPS_COUNT);
+  const arrayBuffers = new Uint32Array(wasmMemory.buffer, programData.arrays, ARRAYS_COUNT);
+  const arrays = new Array(ARRAYS_COUNT);
+  for (let i2 = 0; i2 < ARRAYS_COUNT; i2++) {
+    const byteOffset = arrayBuffers[i2] = arrays$[i2];
+    const length = new Float32Array(wasmMemory.buffer, byteOffset, 1);
+    arrays[i2] = {
+      get length() {
+        return length[0];
+      },
+      set length(value) {
+        length[0] = value;
+      },
+      raw: new Float32Array(wasmMemory.buffer, byteOffset, ARRAY_SIZE + ARRAY_HEADER_SIZE),
+      data: new Float32Array(
+        wasmMemory.buffer,
+        byteOffset + ARRAY_HEADER_SIZE * Float32Array.BYTES_PER_ELEMENT,
+        ARRAY_SIZE
+      )
+    };
+  }
+  const literals = new Float32Array(wasmMemory.buffer, programData.literals, LITERALS_COUNT);
+  return {
+    ptr$: data$,
+    ops,
+    arrays,
+    literals
+  };
+}
+async function createProgramData(worklet, wasmMemory) {
+  const data$ = await worklet.createProgramData();
+  const arrays$ = await worklet.createArrays();
+  const data = createProgramDataView(data$, arrays$, wasmMemory);
+  return data;
+}
+async function createProgram$1(worklet, wasmMemory, control) {
+  const program$ = await worklet.createProgram();
+  const program = ProgramStruct(wasmMemory.buffer, program$);
+  const lock = new Int32Array(wasmMemory.buffer, program.ptr, 1);
+  let programDataPoolIndex = 0;
+  const programDataPool = [
+    await createProgramData(worklet, wasmMemory),
+    await createProgramData(worklet, wasmMemory)
+  ];
+  const histories$ = await worklet.createHistories();
+  const historyBuffers = new Uint32Array(wasmMemory.buffer, program.histories, HISTORIES_COUNT);
+  const histories = new Array(HISTORIES_COUNT);
+  for (let i2 = 0; i2 < HISTORIES_COUNT; i2++) {
+    const byteOffset = historyBuffers[i2] = histories$[i2];
+    const writePos = new Float32Array(
+      wasmMemory.buffer,
+      byteOffset + HISTORY_WRITE_POS_OFFSET * Float32Array.BYTES_PER_ELEMENT,
+      1
+    );
+    histories[i2] = {
+      get writePos() {
+        return writePos[0] || 0;
+      },
+      raw: new Float32Array(wasmMemory.buffer, byteOffset, HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE)
+    };
+  }
+  const arrayAccessHistory$ = program.arrayAccessHistory;
+  const arrayAccessWritePos = new Float32Array(wasmMemory.buffer, arrayAccessHistory$, 1);
+  const arrayAccessHistory = {
+    get writePos() {
+      return arrayAccessWritePos[0] || 0;
+    },
+    raw: new Float32Array(wasmMemory.buffer, arrayAccessHistory$, 1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE)
+  };
+  const branchHistory$ = program.branchHistory;
+  const branchWritePos = new Float32Array(wasmMemory.buffer, branchHistory$, 1);
+  const branchHistory = {
+    get writePos() {
+      return branchWritePos[0] || 0;
+    },
+    raw: new Float32Array(wasmMemory.buffer, branchHistory$, 1 + BRANCH_HISTORY_SIZE * BRANCH_HISTORY_ENTRY_SIZE)
+  };
+  const sampleNeedleHistory$ = program.sampleNeedleHistory;
+  const sampleNeedleWritePos = new Float32Array(
+    wasmMemory.buffer,
+    sampleNeedleHistory$,
+    SAMPLE_NEEDLE_DATA_OFFSET
+  );
+  const sampleNeedleHistory = {
+    get writePos() {
+      return sampleNeedleWritePos[0] || 0;
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      sampleNeedleHistory$,
+      SAMPLE_NEEDLE_DATA_OFFSET + SAMPLE_NEEDLE_HISTORY_SIZE * SAMPLE_NEEDLE_ENTRY_SIZE
+    )
+  };
+  const filterHistory$ = program.filterHistory;
+  const filterWritePos = new Float32Array(wasmMemory.buffer, filterHistory$, FILTER_DATA_OFFSET);
+  const filterHistory = {
+    get writePos() {
+      return filterWritePos[0] || 0;
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      filterHistory$,
+      FILTER_DATA_OFFSET + FILTER_HISTORY_SIZE * FILTER_ENTRY_SIZE
+    )
+  };
+  const lfoHistory$ = program.lfoHistory;
+  const lfoWritePos = new Float32Array(wasmMemory.buffer, lfoHistory$, LFO_DATA_OFFSET);
+  const lfoHistory = {
+    get writePos() {
+      return lfoWritePos[0] || 0;
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      lfoHistory$,
+      LFO_DATA_OFFSET + LFO_HISTORY_SIZE * LFO_ENTRY_SIZE
+    )
+  };
+  const reverbHistory$ = program.reverbHistory;
+  const reverbWritePos = new Float32Array(wasmMemory.buffer, reverbHistory$, REVERB_DATA_OFFSET);
+  const reverbHistory = {
+    get writePos() {
+      return reverbWritePos[0] || 0;
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      reverbHistory$,
+      REVERB_DATA_OFFSET + REVERB_HISTORY_SIZE * REVERB_ENTRY_SIZE
+    )
+  };
+  const trigHistory$ = program.trigHistory;
+  const trigWritePos = new Float32Array(wasmMemory.buffer, trigHistory$, TRIG_DATA_OFFSET);
+  const trigHistory = {
+    get writePos() {
+      return trigWritePos[0] || 0;
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      trigHistory$,
+      TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE
+    )
+  };
+  const envelopeHistory$ = program.envelopeHistory;
+  const envelopeWritePos = new Float32Array(wasmMemory.buffer, envelopeHistory$, ENVELOPE_DATA_OFFSET);
+  const envelopeHistory = {
+    get writePos() {
+      return envelopeWritePos[0] || 0;
+    },
+    raw: new Float32Array(
+      wasmMemory.buffer,
+      envelopeHistory$,
+      ENVELOPE_DATA_OFFSET + ENVELOPE_HISTORY_SIZE * ENVELOPE_ENTRY_SIZE
+    )
+  };
+  function nextProgramData() {
+    const data = programDataPool[programDataPoolIndex];
+    programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length;
+    return data;
+  }
+  const analyserOutsPool = AnalyserOutsPoolStruct(wasmMemory.buffer, program.analyserOutsPool);
+  const analyserOuts$ = new Uint32Array(wasmMemory.buffer, analyserOutsPool.outs, ANALYSER_OUTS_COUNT);
+  const analyserOuts = [...analyserOuts$].map(
+    (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+  );
+  const compressorOutsPool = CompressorOutsPoolStruct(wasmMemory.buffer, program.compressorOutsPool);
+  const levelDbOuts$ = new Uint32Array(wasmMemory.buffer, compressorOutsPool.levelDbOuts, 64);
+  const grDbOuts$ = new Uint32Array(wasmMemory.buffer, compressorOutsPool.grDbOuts, 64);
+  const compressorOuts = {
+    levelDb: [...levelDbOuts$].map(
+      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+    grDb: [...grDbOuts$].map((out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE))
+  };
+  const expanderOutsPool = ExpanderOutsPoolStruct(wasmMemory.buffer, program.expanderOutsPool);
+  const expanderLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, expanderOutsPool.levelDbOuts, 64);
+  const expanderGrDbOuts$ = new Uint32Array(wasmMemory.buffer, expanderOutsPool.grDbOuts, 64);
+  const expanderOuts = {
+    levelDb: [...expanderLevelDbOuts$].map(
+      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+    grDb: [...expanderGrDbOuts$].map(
+      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    )
+  };
+  const gateOutsPool = GateOutsPoolStruct(wasmMemory.buffer, program.gateOutsPool);
+  const gateLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, gateOutsPool.levelDbOuts, 64);
+  const gateGrDbOuts$ = new Uint32Array(wasmMemory.buffer, gateOutsPool.grDbOuts, 64);
+  const gateOuts = {
+    levelDb: [...gateLevelDbOuts$].map(
+      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+    grDb: [...gateGrDbOuts$].map(
+      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    )
+  };
+  const limiterOutsPool = LimiterOutsPoolStruct(wasmMemory.buffer, program.limiterOutsPool);
+  const limiterLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, limiterOutsPool.levelDbOuts, 64);
+  const limiterGrDbOuts$ = new Uint32Array(wasmMemory.buffer, limiterOutsPool.grDbOuts, 64);
+  const limiterOuts = {
+    levelDb: [...limiterLevelDbOuts$].map(
+      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    ),
+    grDb: [...limiterGrDbOuts$].map(
+      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
+    )
+  };
+  let programData;
+  const out = {
+    ptr$: program$,
+    lock,
+    analyserOuts,
+    compressorOuts,
+    expanderOuts,
+    gateOuts,
+    limiterOuts,
+    histories,
+    arrayAccessHistory,
+    branchHistory,
+    sampleNeedleHistory,
+    filterHistory,
+    lfoHistory,
+    reverbHistory,
+    trigHistory,
+    envelopeHistory,
+    get data() {
+      return programData;
+    },
+    async compileSource(source, options2 = {}) {
+      const { apply = true, setData = apply, compareAgainst, copyVersionFrom } = options2;
+      const referenceData = compareAgainst ?? programData;
+      const versionSource = copyVersionFrom ?? referenceData;
+      const previousProgramDataIndex = programDataPoolIndex;
+      const newData = nextProgramData();
+      try {
+        const {
+          sequences,
+          tramSequences,
+          timelineSequences,
+          miniRefs,
+          miniPlayBars,
+          tramRefs,
+          timelineRefs,
+          timelineLabels,
+          adRefs,
+          adsrRefs,
+          envfollowRefs,
+          slewRefs,
+          analyserRefs,
+          compressorRefs,
+          expanderRefs,
+          gateRefs,
+          limiterRefs,
+          filterRefs,
+          reverbRefs,
+          slicerRefs,
+          lfoRefs,
+          everyRefs,
+          atRefs,
+          euclidRefs,
+          arrayLiterals,
+          branchMarks,
+          numberParams,
+          numberLiterals,
+          sampleDefs,
+          bpm,
+          bars,
+          scale
+        } = buildProgram(
+          newData,
+          source,
+          options2.vm
+        );
+        const miniSourceMaps = new Array(sequences.length);
+        const tramSourceMaps = new Array(tramSequences.length);
+        const totalSeqCount = sequences.length + tramSequences.length + timelineSequences.length;
+        if (totalSeqCount > HISTORIES_COUNT) {
+          throw new Error(`Too many sequences for history pool: ${totalSeqCount} > ${HISTORIES_COUNT}`);
+        }
+        try {
+          for (let arrayIndex = 0; arrayIndex < sequences.length; arrayIndex++) {
+            const sequence = sequences[arrayIndex];
+            if (!sequence) continue;
+            const oldArray = versionSource?.arrays[arrayIndex];
+            if (oldArray) {
+              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3];
+            }
+            miniSourceMaps[arrayIndex] = updateSequence(sequence, arrayIndex, newData, scale);
+          }
+          for (let i2 = 0; i2 < tramSequences.length; i2++) {
+            const sequence = tramSequences[i2];
+            if (!sequence) continue;
+            const arrayIndex = sequences.length + i2;
+            const oldArray = versionSource?.arrays[arrayIndex];
+            if (oldArray) {
+              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3];
+            }
+            tramSourceMaps[i2] = updateTramSequence(sequence, arrayIndex, newData);
+          }
+          for (let i2 = 0; i2 < timelineSequences.length; i2++) {
+            const s2 = timelineSequences[i2];
+            if (!s2) continue;
+            const arrayIndex = sequences.length + tramSequences.length + i2;
+            const oldArray = versionSource?.arrays[arrayIndex];
+            if (oldArray) {
+              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3];
+            }
+            updateTimelineSequence(s2.sequence, arrayIndex, newData);
+          }
+          if (setData) {
+            this._setData(newData);
+          }
+        } finally {
+        }
+        const diff = computeProgramDiff(referenceData, newData);
+        return {
+          sequences,
+          tramSequences,
+          miniRefs,
+          miniPlayBars,
+          tramRefs,
+          timelineRefs,
+          timelineLabels,
+          adRefs,
+          adsrRefs,
+          envfollowRefs,
+          slewRefs,
+          analyserRefs,
+          compressorRefs,
+          expanderRefs,
+          gateRefs,
+          limiterRefs,
+          filterRefs,
+          reverbRefs,
+          slicerRefs,
+          lfoRefs,
+          everyRefs,
+          atRefs,
+          euclidRefs,
+          miniSourceMaps,
+          timelineSequences,
+          arrayLiterals,
+          branchMarks,
+          numberParams,
+          numberLiterals,
+          sampleDefs,
+          bpm,
+          bars,
+          data: newData,
+          diff,
+          previousData: referenceData
+        };
+      } catch (error) {
+        programDataPoolIndex = previousProgramDataIndex;
+        throw error;
+      }
+    },
+    async buildFromSource(source) {
+      const result = await this.compileSource(source);
+      return result.sequences;
+    },
+    async applyPreparedData(value) {
+      await this.withLock(() => {
+        this._setData(value);
+      });
+    },
+    async acquireLock() {
+      const ok = await acquireSpinLock(this.lock, 2e3);
+      if (!ok) {
+        throw new Error("Timed out acquiring program lock");
+      }
+    },
+    releaseLock() {
+      Atomics.store(this.lock, 0, 0);
+      Atomics.notify(this.lock, 0);
+    },
+    async withLock(fn2) {
+      fn2();
+    },
+    _setData(value) {
+      programData = value;
+      program.data = programData.ptr$;
+    },
+    async setData(value) {
+      await this.withLock(() => {
+        this._setData(value);
+      });
+    },
+    async writeLiteral(index, value) {
+      await this.withLock(() => {
+        if (programData) programData.literals[index] = value;
+      });
+    }
+  };
+  return out;
+}
+async function createProgramInstance(worklet, wasmMemory, control) {
+  const program = await createProgram$1(worklet, wasmMemory);
+  function cleanup() {
+  }
+  return { program, cleanup };
+}
 class SampleLoader {
   constructor(audioContext) {
     this.audioContext = audioContext;
@@ -27178,6 +27765,7 @@ const useEngineDspStore = create((set, get) => {
     wasmDsp.program = program1.program.ptr$;
     useEngineRuntimeStore.setState({
       wasmMemory,
+      wasmBinary: visualBinary,
       wasmDsp,
       wasmDspPtr,
       visualWasm,
@@ -27724,563 +28312,6 @@ const useFontStore = create()(persist(
     name: "lm2-font-store"
   }
 ));
-function updateSequence(sequence, arrayIndex, data, scaleIndex) {
-  const compiled = compileMiniNotation(sequence, scaleIndex === void 0 ? {} : { defaultScale: { scaleIndex } });
-  const target = data.arrays[arrayIndex];
-  const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE);
-  target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE);
-  target.length = maxSize;
-  const currentVersion = target.raw[3] || 0;
-  target.raw[3] = currentVersion + 1;
-  return buildMiniSourceMap(sequence, compiled.nodes, compiled.bytecode);
-}
-function updateTramSequence(sequence, arrayIndex, data) {
-  const parsed = compileTramSequence(sequence);
-  const bytecode = tramSequenceToBytecode(parsed);
-  const target = data.arrays[arrayIndex];
-  const maxSize = Math.min(bytecode.length, ARRAY_SIZE);
-  target.raw.set(bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE);
-  target.length = maxSize;
-  const currentVersion = target.raw[3] || 0;
-  target.raw[3] = currentVersion + 1;
-  return void 0;
-}
-function updateTimelineSequence(sequence, arrayIndex, data) {
-  const compiled = compileTimelineNotation(sequence);
-  const target = data.arrays[arrayIndex];
-  const maxSize = Math.min(compiled.bytecode.length, ARRAY_SIZE);
-  target.raw.set(compiled.bytecode.subarray(0, maxSize), ARRAY_HEADER_SIZE);
-  target.length = maxSize;
-  const currentVersion = target.raw[3] || 0;
-  target.raw[3] = currentVersion + 1;
-}
-function buildProgram(data, dspSource, vm) {
-  const compiled = vm && vm.source === dspSource ? (data.ops.set(vm.ops), data.literals.set(vm.literals), vm.result) : encodeLangToVmOps(dspSource, { ops: data.ops, literals: data.literals });
-  const {
-    errors,
-    miniSequences,
-    tramSequences,
-    timelineSequences,
-    miniRefs,
-    miniPlayBars,
-    tramRefs,
-    timelineRefs,
-    timelineLabels,
-    adRefs,
-    adsrRefs,
-    envfollowRefs,
-    slewRefs,
-    analyserRefs,
-    compressorRefs,
-    expanderRefs,
-    gateRefs,
-    limiterRefs,
-    filterRefs,
-    reverbRefs,
-    lfoRefs,
-    slicerRefs,
-    everyRefs,
-    atRefs,
-    euclidRefs,
-    arrayLiterals,
-    branchMarks,
-    numberParams,
-    numberLiterals,
-    bpm,
-    bars,
-    scale,
-    sampleDefs
-  } = compiled;
-  if (errors.length) {
-    console.error("VM compile errors:", errors);
-    throw new Error(`VM compile errors: ${errors.map((e2) => e2.message).join(", ")}`);
-  }
-  return {
-    sequences: miniSequences ?? [],
-    tramSequences: tramSequences ?? [],
-    timelineSequences: timelineSequences ?? [],
-    miniRefs: miniRefs ?? [],
-    miniPlayBars: miniPlayBars ?? [],
-    tramRefs: tramRefs ?? [],
-    timelineRefs: timelineRefs ?? [],
-    timelineLabels: timelineLabels ?? [],
-    adRefs: adRefs ?? [],
-    adsrRefs: adsrRefs ?? [],
-    envfollowRefs: envfollowRefs ?? [],
-    slewRefs: slewRefs ?? [],
-    analyserRefs: analyserRefs ?? [],
-    compressorRefs: compressorRefs ?? [],
-    expanderRefs: expanderRefs ?? [],
-    gateRefs: gateRefs ?? [],
-    limiterRefs: limiterRefs ?? [],
-    filterRefs: filterRefs ?? [],
-    reverbRefs: reverbRefs ?? [],
-    slicerRefs: slicerRefs ?? [],
-    lfoRefs: lfoRefs ?? [],
-    everyRefs: everyRefs ?? [],
-    atRefs: atRefs ?? [],
-    euclidRefs: euclidRefs ?? [],
-    arrayLiterals: arrayLiterals ?? [],
-    branchMarks: branchMarks ?? [],
-    numberParams: numberParams ?? [],
-    numberLiterals: numberLiterals ?? [],
-    sampleDefs: sampleDefs ?? [],
-    bpm,
-    bars,
-    scale
-  };
-}
-function captureOpsSnapshot(data) {
-  if (!data) return void 0;
-  const opsCopy = new Int32Array(data.ops);
-  let length = opsCopy.length;
-  while (length > 0 && opsCopy[length - 1] === 0) {
-    length--;
-  }
-  return { ops: opsCopy, length };
-}
-function detectOpsChange(oldSnapshot, newSnapshot) {
-  if (!oldSnapshot) return false;
-  const maxLength = Math.max(oldSnapshot.length, newSnapshot.length);
-  for (let i2 = 0; i2 < maxLength; i2++) {
-    const oldOp = i2 < oldSnapshot.length ? oldSnapshot.ops[i2] : 0;
-    const newOp = i2 < newSnapshot.length ? newSnapshot.ops[i2] : 0;
-    if (oldOp !== newOp) {
-      return true;
-    }
-  }
-  return false;
-}
-function computeProgramDiff(reference, target) {
-  const oldSnapshot = captureOpsSnapshot(reference);
-  const newSnapshot = captureOpsSnapshot(target);
-  const opsChanged = detectOpsChange(oldSnapshot, newSnapshot);
-  const significantChange = !!(reference && opsChanged);
-  return {
-    significantChange,
-    opsChanged,
-    oldOpCount: oldSnapshot?.length ?? 0,
-    newOpCount: newSnapshot.length
-  };
-}
-function createProgramDataView(data$, arrays$, wasmMemory) {
-  const programData = ProgramDataStruct(wasmMemory.buffer, data$);
-  const ops$ = programData.ops;
-  const ops = new Int32Array(wasmMemory.buffer, ops$, OPS_COUNT);
-  const arrayBuffers = new Uint32Array(wasmMemory.buffer, programData.arrays, ARRAYS_COUNT);
-  const arrays = new Array(ARRAYS_COUNT);
-  for (let i2 = 0; i2 < ARRAYS_COUNT; i2++) {
-    const byteOffset = arrayBuffers[i2] = arrays$[i2];
-    const length = new Float32Array(wasmMemory.buffer, byteOffset, 1);
-    arrays[i2] = {
-      get length() {
-        return length[0];
-      },
-      set length(value) {
-        length[0] = value;
-      },
-      raw: new Float32Array(wasmMemory.buffer, byteOffset, ARRAY_SIZE + ARRAY_HEADER_SIZE),
-      data: new Float32Array(
-        wasmMemory.buffer,
-        byteOffset + ARRAY_HEADER_SIZE * Float32Array.BYTES_PER_ELEMENT,
-        ARRAY_SIZE
-      )
-    };
-  }
-  const literals = new Float32Array(wasmMemory.buffer, programData.literals, LITERALS_COUNT);
-  return {
-    ptr$: data$,
-    ops,
-    arrays,
-    literals
-  };
-}
-async function createProgramData(worklet, wasmMemory) {
-  const data$ = await worklet.createProgramData();
-  const arrays$ = await worklet.createArrays();
-  const data = createProgramDataView(data$, arrays$, wasmMemory);
-  return data;
-}
-async function createProgram$1(worklet, wasmMemory, control) {
-  const program$ = await worklet.createProgram();
-  const program = ProgramStruct(wasmMemory.buffer, program$);
-  const lock = new Int32Array(wasmMemory.buffer, program.ptr, 1);
-  let programDataPoolIndex = 0;
-  const programDataPool = [
-    await createProgramData(worklet, wasmMemory),
-    await createProgramData(worklet, wasmMemory)
-  ];
-  const histories$ = await worklet.createHistories();
-  const historyBuffers = new Uint32Array(wasmMemory.buffer, program.histories, HISTORIES_COUNT);
-  const histories = new Array(HISTORIES_COUNT);
-  for (let i2 = 0; i2 < HISTORIES_COUNT; i2++) {
-    const byteOffset = historyBuffers[i2] = histories$[i2];
-    const writePos = new Float32Array(
-      wasmMemory.buffer,
-      byteOffset + HISTORY_WRITE_POS_OFFSET * Float32Array.BYTES_PER_ELEMENT,
-      1
-    );
-    histories[i2] = {
-      get writePos() {
-        return writePos[0] || 0;
-      },
-      raw: new Float32Array(wasmMemory.buffer, byteOffset, HISTORY_HEADER_SIZE + HISTORY_SIZE * HISTORY_ENTRY_SIZE)
-    };
-  }
-  const arrayAccessHistory$ = program.arrayAccessHistory;
-  const arrayAccessWritePos = new Float32Array(wasmMemory.buffer, arrayAccessHistory$, 1);
-  const arrayAccessHistory = {
-    get writePos() {
-      return arrayAccessWritePos[0] || 0;
-    },
-    raw: new Float32Array(wasmMemory.buffer, arrayAccessHistory$, 1 + ARRAY_HISTORY_SIZE * ARRAY_HISTORY_ENTRY_SIZE)
-  };
-  const branchHistory$ = program.branchHistory;
-  const branchWritePos = new Float32Array(wasmMemory.buffer, branchHistory$, 1);
-  const branchHistory = {
-    get writePos() {
-      return branchWritePos[0] || 0;
-    },
-    raw: new Float32Array(wasmMemory.buffer, branchHistory$, 1 + BRANCH_HISTORY_SIZE * BRANCH_HISTORY_ENTRY_SIZE)
-  };
-  const sampleNeedleHistory$ = program.sampleNeedleHistory;
-  const sampleNeedleWritePos = new Float32Array(
-    wasmMemory.buffer,
-    sampleNeedleHistory$,
-    SAMPLE_NEEDLE_DATA_OFFSET
-  );
-  const sampleNeedleHistory = {
-    get writePos() {
-      return sampleNeedleWritePos[0] || 0;
-    },
-    raw: new Float32Array(
-      wasmMemory.buffer,
-      sampleNeedleHistory$,
-      SAMPLE_NEEDLE_DATA_OFFSET + SAMPLE_NEEDLE_HISTORY_SIZE * SAMPLE_NEEDLE_ENTRY_SIZE
-    )
-  };
-  const filterHistory$ = program.filterHistory;
-  const filterWritePos = new Float32Array(wasmMemory.buffer, filterHistory$, FILTER_DATA_OFFSET);
-  const filterHistory = {
-    get writePos() {
-      return filterWritePos[0] || 0;
-    },
-    raw: new Float32Array(
-      wasmMemory.buffer,
-      filterHistory$,
-      FILTER_DATA_OFFSET + FILTER_HISTORY_SIZE * FILTER_ENTRY_SIZE
-    )
-  };
-  const lfoHistory$ = program.lfoHistory;
-  const lfoWritePos = new Float32Array(wasmMemory.buffer, lfoHistory$, LFO_DATA_OFFSET);
-  const lfoHistory = {
-    get writePos() {
-      return lfoWritePos[0] || 0;
-    },
-    raw: new Float32Array(
-      wasmMemory.buffer,
-      lfoHistory$,
-      LFO_DATA_OFFSET + LFO_HISTORY_SIZE * LFO_ENTRY_SIZE
-    )
-  };
-  const reverbHistory$ = program.reverbHistory;
-  const reverbWritePos = new Float32Array(wasmMemory.buffer, reverbHistory$, REVERB_DATA_OFFSET);
-  const reverbHistory = {
-    get writePos() {
-      return reverbWritePos[0] || 0;
-    },
-    raw: new Float32Array(
-      wasmMemory.buffer,
-      reverbHistory$,
-      REVERB_DATA_OFFSET + REVERB_HISTORY_SIZE * REVERB_ENTRY_SIZE
-    )
-  };
-  const trigHistory$ = program.trigHistory;
-  const trigWritePos = new Float32Array(wasmMemory.buffer, trigHistory$, TRIG_DATA_OFFSET);
-  const trigHistory = {
-    get writePos() {
-      return trigWritePos[0] || 0;
-    },
-    raw: new Float32Array(
-      wasmMemory.buffer,
-      trigHistory$,
-      TRIG_DATA_OFFSET + TRIG_HISTORY_SIZE * TRIG_ENTRY_SIZE
-    )
-  };
-  const envelopeHistory$ = program.envelopeHistory;
-  const envelopeWritePos = new Float32Array(wasmMemory.buffer, envelopeHistory$, ENVELOPE_DATA_OFFSET);
-  const envelopeHistory = {
-    get writePos() {
-      return envelopeWritePos[0] || 0;
-    },
-    raw: new Float32Array(
-      wasmMemory.buffer,
-      envelopeHistory$,
-      ENVELOPE_DATA_OFFSET + ENVELOPE_HISTORY_SIZE * ENVELOPE_ENTRY_SIZE
-    )
-  };
-  function nextProgramData() {
-    const data = programDataPool[programDataPoolIndex];
-    programDataPoolIndex = (programDataPoolIndex + 1) % programDataPool.length;
-    return data;
-  }
-  const analyserOutsPool = AnalyserOutsPoolStruct(wasmMemory.buffer, program.analyserOutsPool);
-  const analyserOuts$ = new Uint32Array(wasmMemory.buffer, analyserOutsPool.outs, ANALYSER_OUTS_COUNT);
-  const analyserOuts = [...analyserOuts$].map(
-    (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
-  );
-  const compressorOutsPool = CompressorOutsPoolStruct(wasmMemory.buffer, program.compressorOutsPool);
-  const levelDbOuts$ = new Uint32Array(wasmMemory.buffer, compressorOutsPool.levelDbOuts, 64);
-  const grDbOuts$ = new Uint32Array(wasmMemory.buffer, compressorOutsPool.grDbOuts, 64);
-  const compressorOuts = {
-    levelDb: [...levelDbOuts$].map(
-      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
-    ),
-    grDb: [...grDbOuts$].map((out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE))
-  };
-  const expanderOutsPool = ExpanderOutsPoolStruct(wasmMemory.buffer, program.expanderOutsPool);
-  const expanderLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, expanderOutsPool.levelDbOuts, 64);
-  const expanderGrDbOuts$ = new Uint32Array(wasmMemory.buffer, expanderOutsPool.grDbOuts, 64);
-  const expanderOuts = {
-    levelDb: [...expanderLevelDbOuts$].map(
-      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
-    ),
-    grDb: [...expanderGrDbOuts$].map(
-      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
-    )
-  };
-  const gateOutsPool = GateOutsPoolStruct(wasmMemory.buffer, program.gateOutsPool);
-  const gateLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, gateOutsPool.levelDbOuts, 64);
-  const gateGrDbOuts$ = new Uint32Array(wasmMemory.buffer, gateOutsPool.grDbOuts, 64);
-  const gateOuts = {
-    levelDb: [...gateLevelDbOuts$].map(
-      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
-    ),
-    grDb: [...gateGrDbOuts$].map(
-      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
-    )
-  };
-  const limiterOutsPool = LimiterOutsPoolStruct(wasmMemory.buffer, program.limiterOutsPool);
-  const limiterLevelDbOuts$ = new Uint32Array(wasmMemory.buffer, limiterOutsPool.levelDbOuts, 64);
-  const limiterGrDbOuts$ = new Uint32Array(wasmMemory.buffer, limiterOutsPool.grDbOuts, 64);
-  const limiterOuts = {
-    levelDb: [...limiterLevelDbOuts$].map(
-      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
-    ),
-    grDb: [...limiterGrDbOuts$].map(
-      (out$) => toRing(new Float32Array(wasmMemory.buffer, out$, RING_BUFFER_SIZE), CHUNK_SIZE)
-    )
-  };
-  let programData;
-  const out = {
-    ptr$: program$,
-    lock,
-    analyserOuts,
-    compressorOuts,
-    expanderOuts,
-    gateOuts,
-    limiterOuts,
-    histories,
-    arrayAccessHistory,
-    branchHistory,
-    sampleNeedleHistory,
-    filterHistory,
-    lfoHistory,
-    reverbHistory,
-    trigHistory,
-    envelopeHistory,
-    get data() {
-      return programData;
-    },
-    async compileSource(source, options2 = {}) {
-      const { apply = true, setData = apply, compareAgainst, copyVersionFrom } = options2;
-      const referenceData = compareAgainst ?? programData;
-      const versionSource = copyVersionFrom ?? referenceData;
-      const previousProgramDataIndex = programDataPoolIndex;
-      const newData = nextProgramData();
-      try {
-        const {
-          sequences,
-          tramSequences,
-          timelineSequences,
-          miniRefs,
-          miniPlayBars,
-          tramRefs,
-          timelineRefs,
-          timelineLabels,
-          adRefs,
-          adsrRefs,
-          envfollowRefs,
-          slewRefs,
-          analyserRefs,
-          compressorRefs,
-          expanderRefs,
-          gateRefs,
-          limiterRefs,
-          filterRefs,
-          reverbRefs,
-          slicerRefs,
-          lfoRefs,
-          everyRefs,
-          atRefs,
-          euclidRefs,
-          arrayLiterals,
-          branchMarks,
-          numberParams,
-          numberLiterals,
-          sampleDefs,
-          bpm,
-          bars,
-          scale
-        } = buildProgram(
-          newData,
-          source,
-          options2.vm
-        );
-        const miniSourceMaps = new Array(sequences.length);
-        const tramSourceMaps = new Array(tramSequences.length);
-        const totalSeqCount = sequences.length + tramSequences.length + timelineSequences.length;
-        if (totalSeqCount > HISTORIES_COUNT) {
-          throw new Error(`Too many sequences for history pool: ${totalSeqCount} > ${HISTORIES_COUNT}`);
-        }
-        try {
-          for (let arrayIndex = 0; arrayIndex < sequences.length; arrayIndex++) {
-            const sequence = sequences[arrayIndex];
-            if (!sequence) continue;
-            const oldArray = versionSource?.arrays[arrayIndex];
-            if (oldArray) {
-              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3];
-            }
-            miniSourceMaps[arrayIndex] = updateSequence(sequence, arrayIndex, newData, scale);
-          }
-          for (let i2 = 0; i2 < tramSequences.length; i2++) {
-            const sequence = tramSequences[i2];
-            if (!sequence) continue;
-            const arrayIndex = sequences.length + i2;
-            const oldArray = versionSource?.arrays[arrayIndex];
-            if (oldArray) {
-              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3];
-            }
-            tramSourceMaps[i2] = updateTramSequence(sequence, arrayIndex, newData);
-          }
-          for (let i2 = 0; i2 < timelineSequences.length; i2++) {
-            const s2 = timelineSequences[i2];
-            if (!s2) continue;
-            const arrayIndex = sequences.length + tramSequences.length + i2;
-            const oldArray = versionSource?.arrays[arrayIndex];
-            if (oldArray) {
-              newData.arrays[arrayIndex].raw[3] = oldArray.raw[3];
-            }
-            updateTimelineSequence(s2.sequence, arrayIndex, newData);
-          }
-          if (setData) {
-            this._setData(newData);
-          }
-        } finally {
-        }
-        const diff = computeProgramDiff(referenceData, newData);
-        return {
-          sequences,
-          tramSequences,
-          miniRefs,
-          miniPlayBars,
-          tramRefs,
-          timelineRefs,
-          timelineLabels,
-          adRefs,
-          adsrRefs,
-          envfollowRefs,
-          slewRefs,
-          analyserRefs,
-          compressorRefs,
-          expanderRefs,
-          gateRefs,
-          limiterRefs,
-          filterRefs,
-          reverbRefs,
-          slicerRefs,
-          lfoRefs,
-          everyRefs,
-          atRefs,
-          euclidRefs,
-          miniSourceMaps,
-          timelineSequences,
-          arrayLiterals,
-          branchMarks,
-          numberParams,
-          numberLiterals,
-          sampleDefs,
-          bpm,
-          bars,
-          data: newData,
-          diff,
-          previousData: referenceData
-        };
-      } catch (error) {
-        programDataPoolIndex = previousProgramDataIndex;
-        throw error;
-      }
-    },
-    async buildFromSource(source) {
-      const result = await this.compileSource(source);
-      return result.sequences;
-    },
-    async applyPreparedData(value) {
-      await this.withLock(() => {
-        this._setData(value);
-      });
-    },
-    async acquireLock() {
-      const ok = await acquireSpinLock(this.lock, 2e3);
-      if (!ok) {
-        throw new Error("Timed out acquiring program lock");
-      }
-    },
-    releaseLock() {
-      Atomics.store(this.lock, 0, 0);
-      Atomics.notify(this.lock, 0);
-    },
-    async withLock(fn2) {
-      fn2();
-    },
-    _setData(value) {
-      programData = value;
-      program.data = programData.ptr$;
-    },
-    async setData(value) {
-      await this.withLock(() => {
-        this._setData(value);
-      });
-    },
-    async writeLiteral(index, value) {
-      await this.withLock(() => {
-        if (programData) programData.literals[index] = value;
-      });
-    }
-  };
-  return out;
-}
-async function createProgramInstance(worklet, wasmMemory, control) {
-  const program = await createProgram$1(worklet, wasmMemory);
-  function cleanup() {
-  }
-  return { program, cleanup };
-}
-function useEngine() {
-  const isInitialized = useEngineRuntimeStore((state2) => state2.isInitialized);
-  const initialize = useEngineDspStore((state2) => state2.initialize);
-  const dispose = useEngineDspStore((state2) => state2.dispose);
-  y(() => {
-    void initialize();
-    return () => dispose();
-  }, []);
-  return { isInitialized };
-}
-const INTRO_PROGRAM = `
-trig=at(1)
-sine(hz-hz+35631 (0 100k)*sine(4554 (0 10k),trig) *ad(.0001,10.0000,10,trig),trig)*ad(.0004,.1,trig)|>lp($,69.71  +200000*ad(.001,.0711,10,trig)) |> limiter($)*.5 |> out($)
-bd()+hh()+sd()
-`;
 const a$k = /* @__PURE__ */ new Map([
   [
     "bold",
@@ -35645,120 +35676,7 @@ function useReverbWidget({
   return { widgets, onBeforeDraw };
 }
 function syncRecordSamplesForWidgets(args) {
-  if (!args.showWidgets) return;
-  const { worklet, visualWasm, bpmValue } = useEngineRuntimeStore.getState();
-  const recordDefs = args.sampleDefs.filter((d2) => d2.provider === "record");
-  if (recordDefs.length === 0) return;
-  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-  if (args.playbackState !== "running" && visualWasm && !args.offline.pending && now >= args.offline.nextAt) {
-    const loaded = useEngineDspStore.getState().loadedSamples;
-    const needs = recordDefs.some((def) => loaded[def.sampleIndex]?.url !== def.url);
-    if (needs) {
-      args.offline.pending = true;
-      args.offline.nextAt = now + 250;
-      const sr = args.audioContext?.sampleRate ?? 48e3;
-      const bpm = bpmValue?.[0] ?? 60;
-      void visualWasm.prepareRecordSamples({
-        source: args.dspSource,
-        sampleRate: sr,
-        bpm,
-        sampleDefs: recordDefs,
-        loadedSamples: loaded
-      }).then((prepared) => {
-        args.offline.pending = false;
-        args.offline.nextAt = (typeof performance !== "undefined" ? performance.now() : Date.now()) + 250;
-        if (!prepared.size) return;
-        const defByIndex = /* @__PURE__ */ new Map();
-        for (const d2 of recordDefs) defByIndex.set(d2.sampleIndex, d2);
-        useEngineDspStore.setState((prev) => {
-          const next = prev.loadedSamples.slice();
-          for (const [idx, s2] of prepared.entries()) {
-            const def = defByIndex.get(idx);
-            if (!def) continue;
-            next[idx] = {
-              url: def.url,
-              sampleRate: s2.sampleRate,
-              length: s2.length,
-              ch0: new Float32Array(s2.ch0Buffer),
-              ch0Buffer: s2.ch0Buffer
-            };
-          }
-          return { loadedSamples: next };
-        });
-      }).catch(() => {
-        args.offline.pending = false;
-        args.offline.nextAt = (typeof performance !== "undefined" ? performance.now() : Date.now()) + 250;
-      });
-    }
-  }
-  if (!worklet) return;
-  for (const def of recordDefs) {
-    const idx = def.sampleIndex;
-    const st = args.recordFetch.get(idx);
-    if (!st) {
-      args.recordFetch.set(idx, {
-        targetUrl: def.url,
-        pending: false,
-        nextAt: 0,
-        lastAppliedVer: 0,
-        waitForVer: null
-      });
-    }
-    const cur = args.recordFetch.get(idx);
-    if (cur.targetUrl !== def.url) {
-      cur.targetUrl = def.url;
-      cur.waitForVer = cur.lastAppliedVer;
-    }
-    if (cur.pending) continue;
-    if (now < cur.nextAt) continue;
-    cur.pending = true;
-    cur.nextAt = now + 250;
-    void worklet.getSampleVersion(idx).then((ver) => {
-      const t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
-      cur.pending = false;
-      cur.nextAt = t2 + 250;
-      const v2 = (ver ?? 0) | 0;
-      if (v2 <= 0) return;
-      if (cur.lastAppliedVer === 0) {
-        cur.waitForVer = null;
-      } else if (cur.waitForVer !== null) {
-        if (v2 === cur.waitForVer) return;
-        cur.waitForVer = null;
-      } else if (v2 === cur.lastAppliedVer) {
-        return;
-      }
-      cur.pending = true;
-      void worklet.getSample(idx).then((s2) => {
-        const tt = typeof performance !== "undefined" ? performance.now() : Date.now();
-        cur.pending = false;
-        cur.nextAt = tt + 250;
-        if (!s2 || s2.length <= 0) return;
-        if ((s2.ver | 0) <= 0) return;
-        cur.lastAppliedVer = s2.ver | 0;
-        const ch0Buffer = s2.ch0Buffer;
-        const ch0 = new Float32Array(ch0Buffer);
-        useEngineDspStore.setState((prev) => {
-          const next = prev.loadedSamples.slice();
-          next[idx] = {
-            url: cur.targetUrl,
-            sampleRate: s2.sampleRate,
-            length: s2.length,
-            ch0,
-            ch0Buffer
-          };
-          return { loadedSamples: next };
-        });
-      }).catch(() => {
-        const tt = typeof performance !== "undefined" ? performance.now() : Date.now();
-        cur.pending = false;
-        cur.nextAt = tt + 250;
-      });
-    }).catch(() => {
-      const t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
-      cur.pending = false;
-      cur.nextAt = t2 + 250;
-    });
-  }
+  return;
 }
 function createWidgetCanvas(pxW, pxH) {
   if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(pxW, pxH);
@@ -35896,11 +35814,6 @@ function useSampleWidget({
   const onBeforeDraw = q$1(() => {
     if (!showWidgets) return;
     syncRecordSamplesForWidgets({
-      showWidgets,
-      playbackState,
-      dspSource,
-      audioContext,
-      sampleDefs,
       recordFetch: recordFetchRef.current,
       offline: recordOfflineRef.current
     });
@@ -36520,11 +36433,6 @@ function useSlicerWidget({
   }, [showWidgets, refs, draw2]);
   const onBeforeDraw = q$1(() => {
     syncRecordSamplesForWidgets({
-      showWidgets,
-      playbackState,
-      dspSource,
-      audioContext,
-      sampleDefs,
       recordFetch: recordFetchRef.current,
       offline: recordOfflineRef.current
     });
@@ -42155,17 +42063,7 @@ function DspSourceEditorReady({
     (isBootingCode || isPreloadingSamples || isAwaitingSamples || !showEditor) && !hasCompileErrors && !dspError && /* @__PURE__ */ u$1("div", { className: "absolute inset-0 z-40 pointer-events-none", children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(SpinnerLarge, {}) }) })
   ] });
 }
-const exampleCode = `tb303=(hz,cutoff,q,k,sat,trig)->
-
-  diodeladder(ramp(hz),cutoff,q,k,sat) |> tanh($*6)*.5 |> dc($)
-
-trig=every(1/16) tb303([#1*o2,#1*o2,#7*o2,#5*o3].glide(1/8,10),
-
-cutoff:100+(300 (0 5k) +2k*fractal(6)**3)*ad(.01,3,30,trig),
-
-q:.91,k:.002,sat:1.15,trig)*.4+bd()+hh()+sd()
-
-|> limiter($) |> out($)`;
+const exampleCode = LANDING_PAGE_SOURCE;
 const features = [
   {
     title: "Live Coding",
@@ -44358,9 +44256,6 @@ function useSessionData() {
   }, [api, hasHydrated, sessionFetchState, setSessionData, setSessionFetchState]);
   return { isLoading, sessionData };
 }
-const DEFAULT_LOOP_CODE = `
-sine(a4) |> out($)
-`;
 class Loop {
   constructor(data, codeFile) {
     this.data = data;
@@ -44898,7 +44793,7 @@ function SidebarLoops({
       title: newLoopTitle,
       artist: userName,
       artistId: userId,
-      code: DEFAULT_LOOP_CODE,
+      code: DEFAULT_DSP_SOURCE,
       likesCount: 0,
       commentsCount: 0,
       remixesCount: 0,
@@ -45918,7 +45813,7 @@ function useCurrentLoop() {
       title,
       artist: userName,
       artistId: userId,
-      code: DEFAULT_LOOP_CODE,
+      code: DEFAULT_DSP_SOURCE,
       likesCount: 0,
       commentsCount: 0,
       remixesCount: 0,
@@ -46086,7 +45981,6 @@ function useLoopView(loopId) {
 }
 const Intro = D(({ isFadingOut = false, isFadingIn = true, audioContextState, onResumeClick }, ref) => {
   const needsUserInteraction = audioContextState && audioContextState !== "running";
-  console.log({ isFadingOut, isFadingIn, audioContextState, needsUserInteraction });
   return $(
     /* @__PURE__ */ u$1(
       "div",
@@ -46287,7 +46181,7 @@ function RouterContent({
   ] });
 }
 function EngineUI() {
-  const { isInitialized } = useEngine();
+  const isInitialized = useEngineRuntimeStore((state2) => state2.isInitialized);
   const hasHydrated = useAppStore((state2) => state2.hasHydrated);
   const isLoopLoading = useAppStore((state2) => state2.isLoopLoading);
   const isProgramReady = useEngineRuntimeStore((state2) => state2.isProgramReady);
@@ -46297,6 +46191,12 @@ function EngineUI() {
   const isEditorBusy = useIsEditorBusy();
   const fontsLoaded = useFontsLoaded();
   useSeekToSampleImmediate();
+  const initialize = useEngineDspStore((state2) => state2.initialize);
+  const dispose = useEngineDspStore((state2) => state2.dispose);
+  y(() => {
+    void initialize();
+    return () => dispose();
+  }, []);
   const [pathname, setPathname] = d(() => window.location.pathname || "/");
   y(() => {
     const updatePathname = () => setPathname(window.location.pathname || "/");
@@ -46343,7 +46243,7 @@ function EngineUI() {
         await new Promise((resolve) => setTimeout(resolve, 100));
         continue;
       }
-      await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_PROGRAM);
+      await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_SOURCE);
       break;
     }
   };
@@ -46436,4 +46336,4 @@ const root = createRoot(document.getElementById("root"));
 root.render(
   /* @__PURE__ */ u$1(App, {})
 );
-//# sourceMappingURL=index-KfmPup7G.js.map
+//# sourceMappingURL=index-D0rVMLOu.js.map
