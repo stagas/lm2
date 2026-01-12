@@ -5,6 +5,7 @@ export type UserKv = {
   passwordHash: string
   loops: LoopSummaryKv[]
   likes: string[]
+  welcomeEmailSent?: boolean
 }
 
 export type LoopSummaryKv = {
@@ -21,6 +22,7 @@ export type SessionKv = {
   email: string
   loops: LoopSummaryKv[]
   likes: string[]
+  isAdmin?: boolean
 }
 
 export type LoopKv = {

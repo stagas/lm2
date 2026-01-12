@@ -1,8 +1,7 @@
 import type { CodeFile, EditorWidget, Theme } from 'mini-code'
-import type React from 'preact/hooks'
 import { useMemo, useRef } from 'preact/hooks'
-import { getCurrentNumberAt, getEditableNumberToken } from './code-number-read.ts'
 import { updateValueWithSpacing } from './code-number-edit.ts'
+import { getCurrentNumberAt, getEditableNumberToken } from './code-number-read.ts'
 
 export type KnobInfo = {
   line: number
@@ -133,9 +132,10 @@ export class KnobWidget {
         const stepPerPx = this.info.stepPerPx ?? ((max - min) / 200)
 
         const prev = this.dragStateRef.current
-        const baseValue = (prev?.key === this.knobKey && prev.line === this.info.line && prev.column === this.info.column)
-          ? prev.value
-          : (getCurrentNumberAt(this.codeFile, this.info) ?? this.info.value)
+        const baseValue =
+          (prev?.key === this.knobKey && prev.line === this.info.line && prev.column === this.info.column)
+            ? prev.value
+            : (getCurrentNumberAt(this.codeFile, this.info) ?? this.info.value)
 
         this.dragStateRef.current = {
           key: this.knobKey,

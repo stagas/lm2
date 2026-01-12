@@ -6,12 +6,19 @@ import { assemblyScript } from 'vite-plugin-assemblyscript'
 import { coopCoep } from 'vite-plugin-coop-coep'
 import { openInEditor } from 'vite-plugin-open-in-editor'
 
-function copyWasmSourcemap(): Plugin {
+function copyWasm(): Plugin {
   return {
-    name: 'copy-wasm-sourcemap',
+    name: 'copy-wasm',
     writeBundle() {
+      const wasmSource = path.resolve('as/build/index.wasm')
+      const wasmDest = path.resolve('dist/as/build/index.wasm')
       const mapSource = path.resolve('as/build/index.wasm.map')
       const mapDest = path.resolve('dist/as/build/index.wasm.map')
+
+      if (fs.existsSync(wasmSource)) {
+        fs.mkdirSync(path.dirname(wasmDest), { recursive: true })
+        fs.copyFileSync(wasmSource, wasmDest)
+      }
 
       if (fs.existsSync(mapSource)) {
         fs.mkdirSync(path.dirname(mapDest), { recursive: true })
@@ -63,7 +70,7 @@ export default ({ mode }: ConfigEnv): UserConfig => {
       },
       ...(mode === 'production'
         ? [
-          copyWasmSourcemap(),
+          copyWasm(),
         ]
         : []),
     ],
@@ -73,6 +80,7 @@ export default ({ mode }: ConfigEnv): UserConfig => {
         'react-dom': 'preact/compat',
         'react/jsx-runtime': 'preact/jsx-runtime',
       },
+      dedupe: ['preact', 'preact/hooks', 'preact/jsx-runtime'],
     },
     root: '.',
     clearScreen: false,
@@ -93,6 +101,12 @@ export default ({ mode }: ConfigEnv): UserConfig => {
           changeOrigin: true,
         },
       },
+    },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+      minify: false,
+      sourcemap: true,
     },
   })
 }

@@ -1,4 +1,7 @@
 import type {
+  AdminImportV1Response,
+  AdminLoop,
+  AdminUser,
   CommentData,
   LoopData,
   LoopUpsertRequest,
@@ -185,6 +188,59 @@ export class API {
   async deleteLoop(id: string, epoch: string): Promise<SessionEpochResponse> {
     return await this.requestJson<SessionEpochResponse>(`/api/loop/${encodeURIComponent(id)}?epoch=${encodeURIComponent(epoch)}`, {
       method: 'DELETE',
+    })
+  }
+
+  async fetchAdminUsers(): Promise<AdminUser[]> {
+    return await this.requestJson<AdminUser[]>('/api/admin/users')
+  }
+
+  async fetchAdminLoops(): Promise<AdminLoop[]> {
+    return await this.requestJson<AdminLoop[]>('/api/admin/loops')
+  }
+
+  async adminLoginAs(userId: string): Promise<SessionData> {
+    return await this.requestJson<SessionData>('/api/admin/login-as', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    })
+  }
+
+  async adminSendWelcomeEmail(userId: string): Promise<{ ok: true; message: string }> {
+    return await this.requestJson<{ ok: true; message: string }>('/api/admin/send-welcome-email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    })
+  }
+
+  async adminDeleteUser(userId: string): Promise<{ ok: true }> {
+    return await this.requestJson<{ ok: true }>(`/api/admin/user/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async adminDeleteLoop(loopId: string): Promise<{ ok: true }> {
+    return await this.requestJson<{ ok: true }>(`/api/admin/loop/${encodeURIComponent(loopId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async adminToggleLoopVisibility(loopId: string): Promise<{ ok: true; isPublic: boolean }> {
+    return await this.requestJson<{ ok: true; isPublic: boolean }>(
+      `/api/admin/loop/${encodeURIComponent(loopId)}/toggle-visibility`,
+      {
+        method: 'PUT',
+      },
+    )
+  }
+
+  async adminImportV1(data: unknown[]): Promise<AdminImportV1Response> {
+    return await this.requestJson<AdminImportV1Response>('/api/admin/import-v1', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ data }),
     })
   }
 }

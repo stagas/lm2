@@ -35,15 +35,15 @@ function clamp01(n: number): number {
 
 function readTrigHistory(
   history: VmTrigHistory,
-  lastWritePosRef: React.MutableRefObject<number>,
-  stRef: React.MutableRefObject<Array<St | undefined>>,
+  lastWritePosRef: preact.RefObject<number>,
+  stRef: preact.RefObject<Array<St | undefined>>,
   dataOffset: number,
   entrySize: number,
   historySize: number,
 ): void {
   const MOD = 1 << 20
   const writePos = Math.floor(history.writePos) >>> 0
-  const prevWritePos = lastWritePosRef.current >>> 0
+  const prevWritePos = lastWritePosRef.current ?? 0 >>> 0
   lastWritePosRef.current = writePos
   if (writePos === prevWritePos) return
 
@@ -60,10 +60,10 @@ function readTrigHistory(
     const tsMod = (Math.floor(raw[base + 2] ?? 0) >>> 0) & (MOD - 1)
     if (idx < 0 || idx > 255) continue
 
-    let st = stRef.current[idx]
+    let st = stRef.current?.[idx]
     if (!st) {
       st = { pts: [], a: 0 }
-      stRef.current[idx] = st
+      stRef.current![idx] = st
     }
     st.pts.push({ tsMod, value })
     const keep = 128
@@ -72,7 +72,7 @@ function readTrigHistory(
 }
 
 function updateTrigStates(
-  stRef: React.MutableRefObject<Array<St | undefined>>,
+  stRef: preact.RefObject<Array<St | undefined>>,
   nowMod: number,
   sampleRate: number,
   fadeSeconds: number,
@@ -80,9 +80,9 @@ function updateTrigStates(
   const MOD = 1 << 20
   const fadeSamples = Math.max(1, Math.floor(sampleRate * fadeSeconds))
 
-  const stArr = stRef.current
+  const stArr = stRef.current ?? []
   for (let idx = 0; idx < stArr.length; idx++) {
-    const st = stArr[idx]
+    const st = stArr?.[idx]
     if (!st) continue
     const pts = st.pts
     if (!pts.length) {

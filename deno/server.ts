@@ -1,8 +1,9 @@
 import { compare, hash } from 'bcrypt'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
+import { serveStatic } from 'hono/deno'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import type { ZodError, ZodIssue } from 'zod'
+import { z, type ZodError, type ZodIssue } from 'zod'
 import { clearSessionCookie, getSessionKvByToken, getSessionToken, setSessionCookie } from './auth.ts'
 import { newId } from './id.ts'
 import { getKv, k, type LoopKv, type LoopSummaryKv, type PublicLoopKv, type SessionKv, type UserKv } from './kv.ts'
@@ -20,11 +21,30 @@ import {
   LoopUpsertRequestSchema,
   OkEpochResponseSchema,
   type PublicLoopListEntry,
-  SessionEpochResponseSchema,
   type SessionData,
   SessionDataSchema,
+  SessionEpochResponseSchema,
   UpdateArtistNameRequestSchema,
 } from './types.ts'
+
+const ADMIN_EMAILS = [
+  'gstagas@gmail.com',
+] as const
+
+async function hashPasswordSha256(password: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function validatePassword(password: string, passwordHash: string): Promise<boolean> {
+  const bcryptOk = await compare(password, passwordHash).catch(() => false)
+  if (bcryptOk) return true
+  const sha256Hash = await hashPasswordSha256(password)
+  return sha256Hash === passwordHash
+}
 
 function jsonError(message: string, status: ContentfulStatusCode = 400) {
   return { body: ErrorResponseSchema.parse({ message }), status }
@@ -123,8 +143,9 @@ function sessionToApi(session: SessionKv): SessionData {
     timestamp: loop.timestamp,
   }))
 
+  const isAdmin = (session as SessionKv & { isAdmin?: boolean }).isAdmin ?? false
   return SessionDataSchema.parse({
-    user: { id: session.userId, name: session.name, email: session.email },
+    user: { id: session.userId, name: session.name, email: session.email, isAdmin },
     loops,
     likedLoopIds,
   })
@@ -173,7 +194,37 @@ async function requireSession(c: Context): Promise<{ token: string | null; sessi
   return { token, session: { ...session, likes } }
 }
 
+async function requireAdmin(
+  c: Context,
+): Promise<{ token: string | null; session: SessionKv | null; response?: Response }> {
+  const { token, session } = await requireSession(c)
+  if (!token || !session) {
+    const err = jsonError('Not authenticated', 401)
+    return { token: null, session: null, response: c.json(err.body, err.status) }
+  }
+  const isAdmin = (session as SessionKv & { isAdmin?: boolean }).isAdmin ?? false
+  if (!isAdmin) {
+    const err = jsonError('Admin access required', 403)
+    return { token: null, session: null, response: c.json(err.body, err.status) }
+  }
+  return { token, session }
+}
+
 const app = new Hono()
+
+app.use('*', async (c, next) => {
+  c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+  c.res.headers.set('Cross-Origin-Embedder-Policy', 'require-corp')
+  await next()
+})
+
+app.use('/*', async (c, next) => {
+  if (c.req.path.startsWith('/api/')) {
+    await next()
+    return
+  }
+  return serveStatic({ root: './dist' })(c, next)
+})
 
 app.get('/api/health', c => c.json({ ok: true }))
 
@@ -659,7 +710,8 @@ app.post('/api/auth/register', async c => {
     const userId = newId(6)
     const token = newId(6)
     const user: UserKv = { id: userId, name, email, passwordHash: pw, loops: [], likes: [] }
-    const session: SessionKv = { userId, name, email, loops: user.loops, likes: user.likes }
+    const isAdmin = ADMIN_EMAILS.includes(email.toLowerCase() as typeof ADMIN_EMAILS[number])
+    const session: SessionKv = { userId, name, email, loops: user.loops, likes: user.likes, isAdmin } as SessionKv
 
     const commit = await kv.atomic()
       .check({ key: k.userByEmail(email), versionstamp: null })
@@ -718,10 +770,16 @@ app.post('/api/auth/login', async c => {
     return c.json(err.body, err.status)
   }
 
-  const ok = await compare(password, user.passwordHash)
+  const ok = await validatePassword(password, user.passwordHash)
   if (!ok) {
     const err = jsonError('Invalid email or password', 401)
     return c.json(err.body, err.status)
+  }
+
+  const needsBcryptUpgrade = !user.passwordHash.startsWith('$2')
+  if (needsBcryptUpgrade) {
+    const newHash = await hash(password)
+    await kv.set(k.user(userId), { ...user, passwordHash: newHash })
   }
 
   const prevTokenEntry = await kv.get<string>(k.sessionByUserId(userId))
@@ -730,7 +788,9 @@ app.post('/api/auth/login', async c => {
   const likes = Array.isArray((user as unknown as { likes?: unknown }).likes)
     ? (user as unknown as { likes: string[] }).likes
     : []
-  const session: SessionKv = { userId: user.id, name: user.name, email: user.email, loops: user.loops, likes }
+  const isAdmin = ADMIN_EMAILS.includes(user.email.toLowerCase() as typeof ADMIN_EMAILS[number])
+  const session: SessionKv = { userId: user.id, name: user.name, email: user.email, loops: user.loops, likes,
+    isAdmin } as SessionKv
 
   for (let i = 0; i < 5; i++) {
     const token = newId(6)
@@ -987,6 +1047,374 @@ app.delete('/api/loop/:id', async c => {
 
   return c.json(SessionEpochResponseSchema.parse({ epoch, sessionData: sessionToApi(nextSession) }))
 })
+
+app.get('/api/admin/users', async c => {
+  const { session, response } = await requireAdmin(c)
+  if (response) return response
+  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+
+  const kv = await getKv()
+  const users: Array<
+    { id: string; name: string; email: string; loopsCount: number; likesCount: number; welcomeEmailSent: boolean }
+  > = []
+  for await (const entry of kv.list<unknown>({ prefix: ['u'] })) {
+    const user = entry.value as UserKv | null
+    if (!user || typeof user !== 'object') continue
+    const welcomeEmailSent = (user as UserKv & { welcomeEmailSent?: boolean }).welcomeEmailSent ?? false
+    users.push({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      loopsCount: user.loops.length,
+      likesCount: user.likes.length,
+      welcomeEmailSent,
+    })
+  }
+  return c.json(users)
+})
+
+app.get('/api/admin/loops', async c => {
+  const { session, response } = await requireAdmin(c)
+  if (response) return response
+  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+
+  const kv = await getKv()
+  const loops: Array<{
+    id: string
+    userId: string
+    title: string
+    isPublic: boolean
+    timestamp: number
+    remixOfId?: string
+  }> = []
+  for await (const entry of kv.list<unknown>({ prefix: k.loops() })) {
+    const loop = entry.value as LoopKv | null
+    if (!loop || typeof loop !== 'object') continue
+    loops.push({
+      id: loop.id,
+      userId: loop.userId,
+      title: loop.title,
+      isPublic: loop.isPublic,
+      timestamp: loop.timestamp,
+      remixOfId: loop.remixOfId,
+    })
+  }
+  loops.sort((a, b) => b.timestamp - a.timestamp)
+  return c.json(loops)
+})
+
+app.post('/api/admin/login-as', async c => {
+  const { session: adminSession, response } = await requireAdmin(c)
+  if (response) return response
+  if (!adminSession) return c.json(jsonError('Not authenticated', 401).body, 401)
+
+  const raw = await c.req.json().catch(() => null)
+  if (raw === null) {
+    const err = jsonError('Invalid JSON', 400)
+    return c.json(err.body, err.status)
+  }
+  const parsed = z.object({ userId: z.string().min(1) }).safeParse(raw)
+  if (!parsed.success) {
+    const err = jsonError('User ID is required', 400)
+    return c.json(err.body, err.status)
+  }
+
+  const kv = await getKv()
+  const userEntry = await kv.get<UserKv>(k.user(parsed.data.userId))
+  const user = userEntry.value ?? null
+  if (!user) {
+    const err = jsonError('User not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  const prevTokenEntry = await kv.get<string>(k.sessionByUserId(user.id))
+  const prevToken = prevTokenEntry.value ?? null
+
+  const likes = Array.isArray((user as unknown as { likes?: unknown }).likes)
+    ? (user as unknown as { likes: string[] }).likes
+    : []
+  const isAdmin = ADMIN_EMAILS.includes(user.email.toLowerCase() as typeof ADMIN_EMAILS[number])
+  const session: SessionKv = { userId: user.id, name: user.name, email: user.email, loops: user.loops, likes,
+    isAdmin } as SessionKv
+
+  for (let i = 0; i < 5; i++) {
+    const token = newId(6)
+    const a = kv.atomic()
+      .check({ key: k.session(token), versionstamp: null })
+    if (prevToken) a.delete(k.session(prevToken))
+    a.set(k.session(token), session)
+    a.set(k.sessionByUserId(user.id), token)
+    const commit = await a.commit()
+    if (!commit.ok) continue
+
+    setSessionCookie(c, token)
+    return c.json(sessionToApi(session))
+  }
+
+  const err = jsonError('Failed to login as user', 500)
+  return c.json(err.body, err.status)
+})
+
+app.post('/api/admin/send-welcome-email', async c => {
+  const { session, response } = await requireAdmin(c)
+  if (response) return response
+  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+
+  const raw = await c.req.json().catch(() => null)
+  if (raw === null) {
+    const err = jsonError('Invalid JSON', 400)
+    return c.json(err.body, err.status)
+  }
+  const parsed = z.object({ userId: z.string().min(1) }).safeParse(raw)
+  if (!parsed.success) {
+    const err = jsonError('User ID is required', 400)
+    return c.json(err.body, err.status)
+  }
+
+  const kv = await getKv()
+  const userEntry = await kv.get<UserKv>(k.user(parsed.data.userId))
+  const user = userEntry.value ?? null
+  if (!user) {
+    const err = jsonError('User not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  // TODO: Implement actual email sending
+  const nextUser: UserKv = { ...user, welcomeEmailSent: true } as UserKv
+  await kv.set(k.user(parsed.data.userId), nextUser)
+
+  return c.json({ ok: true, message: 'Welcome email sent (not implemented)' })
+})
+
+app.delete('/api/admin/user/:id', async c => {
+  const { session, response } = await requireAdmin(c)
+  if (response) return response
+  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+
+  const id = c.req.param('id')
+  const kv = await getKv()
+
+  const userEntry = await kv.get<UserKv>(k.user(id))
+  const user = userEntry.value ?? null
+  if (!user) {
+    const err = jsonError('User not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  const sessionByUserIdEntry = await kv.get<string>(k.sessionByUserId(id))
+
+  const a = kv.atomic()
+    .delete(k.user(id))
+    .delete(k.userByEmail(user.email))
+  if (sessionByUserIdEntry.value) {
+    const token = sessionByUserIdEntry.value
+    a.delete(k.session(token))
+    a.delete(k.sessionByUserId(id))
+  }
+
+  for (const loop of user.loops) {
+    a.delete(k.loop(loop.id))
+    a.delete(k.publicLoop(loop.id))
+  }
+
+  await a.commit()
+  return c.json({ ok: true })
+})
+
+app.delete('/api/admin/loop/:id', async c => {
+  const { session, response } = await requireAdmin(c)
+  if (response) return response
+  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+
+  const id = c.req.param('id')
+  const kv = await getKv()
+
+  const loopEntry = await kv.get<LoopKv>(k.loop(id))
+  const loop = loopEntry.value ?? null
+  if (!loop) {
+    const err = jsonError('Loop not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  const userEntry = await kv.get<UserKv>(k.user(loop.userId))
+  const user = userEntry.value ?? null
+  if (user) {
+    const nextUser: UserKv = { ...user, loops: user.loops.filter(l => l.id !== id) }
+    await kv.set(k.user(loop.userId), nextUser)
+  }
+
+  const parentId = loop.isPublic === true && loop.remixOfId ? loop.remixOfId : null
+  const [parentRemixEntry, parentPubEntry] = parentId
+    ? await kv.getMany([k.loopRemixCount(parentId), k.publicLoop(parentId)] as const)
+    : ([null, null] as const)
+
+  const a = kv.atomic()
+    .delete(k.loop(id))
+    .delete(k.publicLoop(id))
+  if (parentId) {
+    const curr = (parentRemixEntry?.value as number | null) ?? 0
+    const next = Math.max(0, curr - 1)
+    a.set(k.loopRemixCount(parentId), next)
+    const pub = parsePublicLoopKv(parentPubEntry?.value ?? null)
+    if (pub) {
+      const nextPub: PublicLoopKv = [pub[0], pub[1], pub[2], pub[3], pub[4], next, pub[6], pub[7], pub[8]]
+      a.set(k.publicLoop(parentId), nextPub)
+    }
+  }
+  await a.commit()
+
+  return c.json({ ok: true })
+})
+
+app.put('/api/admin/loop/:id/toggle-visibility', async c => {
+  const { session, response } = await requireAdmin(c)
+  if (response) return response
+  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+
+  const id = c.req.param('id')
+  const kv = await getKv()
+
+  const [loopEntry, likeCountEntry, commentCountEntry, remixCountEntry] = await kv.getMany([
+    k.loop(id),
+    k.loopLikeCount(id),
+    k.loopCommentCount(id),
+    k.loopRemixCount(id),
+  ] as const)
+
+  const loop = loopEntry.value as LoopKv | null
+  if (!loop) {
+    const err = jsonError('Loop not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  const user = await kv.get<UserKv>(k.user(loop.userId))
+  const userValue = user.value ?? null
+  if (!userValue) {
+    const err = jsonError('User not found', 404)
+    return c.json(err.body, err.status)
+  }
+
+  const likesCount = (likeCountEntry?.value as number | null) ?? 0
+  const commentsCount = (commentCountEntry?.value as number | null) ?? 0
+  const ownRemixesCount = (remixCountEntry?.value as number | null) ?? 0
+
+  const nextIsPublic = !loop.isPublic
+  const nextLoop: LoopKv = { ...loop, isPublic: nextIsPublic }
+
+  const summary: LoopSummaryKv = {
+    id,
+    title: nextLoop.title,
+    timestamp: nextLoop.timestamp,
+    isPublic: nextIsPublic,
+    remixOfId: nextLoop.remixOfId,
+  }
+
+  const upsertSummary = (list: LoopSummaryKv[]) => {
+    const idx = list.findIndex(x => x.id === id)
+    if (idx === -1) return [summary, ...list]
+    const next = list.slice()
+    next[idx] = summary
+    return next
+  }
+
+  const nextUser: UserKv = { ...userValue, loops: upsertSummary(userValue.loops) }
+
+  const a = kv.atomic()
+    .set(k.loop(id), nextLoop)
+    .set(k.user(loop.userId), nextUser)
+
+  if (nextIsPublic) {
+    const pub: PublicLoopKv = [id, userValue.name, loop.userId, likesCount, commentsCount, ownRemixesCount,
+      nextLoop.title, nextLoop.timestamp, nextLoop.remixOfId ?? '']
+    a.set(k.publicLoop(id), pub)
+  }
+  else {
+    a.delete(k.publicLoop(id))
+  }
+  await a.commit()
+
+  return c.json({ ok: true, isPublic: nextIsPublic })
+})
+
+app.post('/api/admin/import-v1', async c => {
+  const { session, response } = await requireAdmin(c)
+  if (response) return response
+  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+
+  const raw = await c.req.json().catch(() => null)
+  if (raw === null) {
+    const err = jsonError('Invalid JSON', 400)
+    return c.json(err.body, err.status)
+  }
+  const parsed = z.object({ data: z.array(z.any()) }).safeParse(raw)
+  if (!parsed.success) {
+    const err = jsonError('Invalid data format', 400)
+    return c.json(err.body, err.status)
+  }
+
+  const kv = await getKv()
+  let imported = 0
+  let skipped = 0
+  const errors: string[] = []
+
+  for (const item of parsed.data.data) {
+    if (!item || typeof item !== 'object') {
+      skipped++
+      continue
+    }
+    const key = item.key
+    const value = item.value
+    if (!Array.isArray(key) || key[0] !== 'users' || !value || typeof value !== 'object') {
+      skipped++
+      continue
+    }
+
+    const userId = value.id
+    const email = value.email?.trim().toLowerCase()
+    const passwordHash = value.passwordHash
+    const name = value.name?.trim()
+
+    if (!userId || !email || !passwordHash || !name) {
+      errors.push(`Invalid user data: ${userId || 'missing id'}`)
+      skipped++
+      continue
+    }
+
+    const existingUserEntry = await kv.get<UserKv>(k.user(userId))
+    const existingEmailEntry = await kv.get<string>(k.userByEmail(email))
+    if (existingUserEntry.value || existingEmailEntry.value) {
+      skipped++
+      continue
+    }
+
+    const user: UserKv = {
+      id: userId,
+      name,
+      email,
+      passwordHash,
+      loops: [],
+      likes: [],
+    }
+
+    try {
+      await kv.atomic()
+        .check({ key: k.user(userId), versionstamp: null })
+        .check({ key: k.userByEmail(email), versionstamp: null })
+        .set(k.user(userId), user)
+        .set(k.userByEmail(email), userId)
+        .commit()
+      imported++
+    }
+    catch (e) {
+      errors.push(`Failed to import user ${userId}: ${e instanceof Error ? e.message : String(e)}`)
+      skipped++
+    }
+  }
+
+  return c.json({ ok: true, imported, skipped, errors })
+})
+
+app.get('*', serveStatic({ path: './dist/index.html' }))
 
 const port = Number.parseInt(Deno.env.get('PORT') ?? '8787', 10) || 8787
 await runMigrations(await getKv())

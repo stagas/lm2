@@ -4,6 +4,7 @@ export const UserDataSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
+  isAdmin: z.boolean().optional(),
 }).strict()
 export type UserData = z.infer<typeof UserDataSchema>
 
@@ -117,3 +118,44 @@ export const SessionEpochResponseSchema = z.object({
   sessionData: SessionDataSchema,
 }).strict()
 export type SessionEpochResponse = z.infer<typeof SessionEpochResponseSchema>
+
+export type AdminUser = {
+  id: string
+  name: string
+  email: string
+  loopsCount: number
+  likesCount: number
+  welcomeEmailSent: boolean
+}
+
+export type AdminLoop = {
+  id: string
+  userId: string
+  title: string
+  isPublic: boolean
+  timestamp: number
+  remixOfId?: string
+}
+
+export const AdminLoginAsRequestSchema = z.object({
+  userId: z.string().min(1),
+}).strict()
+export type AdminLoginAsRequest = z.infer<typeof AdminLoginAsRequestSchema>
+
+export const AdminSendWelcomeEmailRequestSchema = z.object({
+  userId: z.string().min(1),
+}).strict()
+export type AdminSendWelcomeEmailRequest = z.infer<typeof AdminSendWelcomeEmailRequestSchema>
+
+export const AdminImportV1RequestSchema = z.object({
+  data: z.array(z.any()),
+}).strict()
+export type AdminImportV1Request = z.infer<typeof AdminImportV1RequestSchema>
+
+export const AdminImportV1ResponseSchema = z.object({
+  ok: z.literal(true),
+  imported: z.number(),
+  skipped: z.number(),
+  errors: z.array(z.string()),
+}).strict()
+export type AdminImportV1Response = z.infer<typeof AdminImportV1ResponseSchema>

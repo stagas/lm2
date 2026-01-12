@@ -9,6 +9,7 @@ import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { Docs } from './docs/Docs.tsx'
 import { DspSourceEditor } from './DspSourceEditor.tsx'
 import { functionDefinitions } from './function-definitions.ts'
+import { Admin } from './Admin.tsx'
 import { Browse } from './Browse.tsx'
 import { BrowseArtist } from './BrowseArtist.tsx'
 import { BrowseLoop } from './BrowseLoop.tsx'
@@ -283,6 +284,9 @@ function RouterContent({
   // Show landing page when at root path
   const showLanding = pathname === '/'
 
+  // Check for admin route
+  const isAdminRoute = pathname === '/admin'
+
   // Check for browse routes
   const isBrowseRoute = pathname.startsWith('/browse')
   const isBrowseLoopRoute = pathname.match(/^\/browse\/loop\/([^/]+)$/)
@@ -302,6 +306,10 @@ function RouterContent({
         <Landing />
       </>
     )
+  }
+
+  if (isAdminRoute) {
+    return <Admin />
   }
 
   if (isBrowseLoopRoute) {

@@ -1,9 +1,8 @@
 import type { CodeFile, EditorWidget, Theme } from 'mini-code'
-import type React from 'preact/hooks'
 import { useMemo, useRef } from 'preact/hooks'
 import type { NumberWithParamsInfo } from '../bytecode/bytecode.ts'
-import { getCurrentNumberAt, getEditableNumberToken } from './code-number-read.ts'
 import { updateValueWithSpacing } from './code-number-edit.ts'
+import { getCurrentNumberAt, getEditableNumberToken } from './code-number-read.ts'
 
 type DragState = {
   key: string
@@ -81,10 +80,12 @@ export class SliderWidget {
           if (this.info.exp && this.info.exp !== 1) {
             // Apply exponential scaling for display
             normalized = Math.pow(linearNormalized, 1 / this.info.exp)
-          } else {
+          }
+          else {
             normalized = linearNormalized
           }
-        } else {
+        }
+        else {
           normalized = 0
         }
 
@@ -117,7 +118,8 @@ export class SliderWidget {
           // Apply exponential scaling for interaction
           const expNormalized = Math.pow(normalized, this.info.exp)
           value = clamp(min + expNormalized * range, min, max)
-        } else {
+        }
+        else {
           value = clamp(min + normalized * range, min, max)
         }
 
@@ -169,7 +171,8 @@ export class SliderWidget {
           // Apply exponential scaling for interaction
           const expNormalized = Math.pow(normalized, this.info.exp)
           drag.value = clamp(drag.min + expNormalized * (drag.max - drag.min), drag.min, drag.max)
-        } else {
+        }
+        else {
           drag.value = clamp(drag.min + normalized * (drag.max - drag.min), drag.min, drag.max)
         }
 
