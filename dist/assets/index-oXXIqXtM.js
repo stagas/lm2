@@ -25798,7 +25798,7 @@ function buildTimelineLabels(labels, bars) {
     }
   ];
 }
-const targets = { "debug": { "outFile": "as/build/index.wasm", "textFile": "as/build/index.wat", "optimizeLevel": 0, "converge": false, "sourceMap": true, "debug": true, "noAssert": true }, "release": { "outFile": "as/build/index.wasm", "textFile": "as/build/index.wat", "optimizeLevel": 3, "shrinkLevel": 2, "converge": true, "sourceMap": true, "debug": true, "noAssert": true } };
+const targets = { "debug": { "outFile": "as/build/index.wasm", "textFile": "as/build/index.wat", "optimizeLevel": 0, "converge": false, "sourceMap": true, "debug": true, "noAssert": true, "uncheckedBehavior": "always" }, "release": { "outFile": "as/build/index.wasm", "textFile": "as/build/index.wat", "optimizeLevel": 3, "shrinkLevel": 2, "converge": true, "sourceMap": true, "debug": true, "noAssert": true, "uncheckedBehavior": "always" } };
 const options = { "enable": ["simd", "relaxed-simd", "threads"], "importMemory": true, "initialMemory": 8192, "maximumMemory": 8192, "sharedMemory": true, "bindings": "esm", "runtime": "stub", "exportRuntime": true };
 const config = {
   targets,
@@ -46480,4 +46480,4 @@ const root = createRoot(document.getElementById("root"));
 root.render(
   /* @__PURE__ */ u$1(App, {})
 );
-//# sourceMappingURL=index-BSJWcF2y.js.map
+//# sourceMappingURL=index-oXXIqXtM.js.map

@@ -7,7 +7,8 @@
       "converge": false,
       "sourceMap": true,
       "debug": true,
-      "noAssert": true
+      "noAssert": true,
+      "uncheckedBehavior": "always"
     },
     "release": {
       "outFile": "as/build/index.wasm",
@@ -17,7 +18,8 @@
       "converge": true,
       "sourceMap": true,
       "debug": true,
-      "noAssert": true
+      "noAssert": true,
+      "uncheckedBehavior": "always"
     }
   },
   "options": {
