@@ -231,15 +231,26 @@ async function requireAdmin(
 const app = new Hono()
 
 app.onError((err, c) => {
-  logError(err.message || 'Internal server error', 500, { path: c.req.path, method: c.req.method })
+  const message = err.message || 'Internal server error'
+  logError(message, 500, { path: c.req.path, method: c.req.method })
+  if (err.stack) console.error(err.stack)
   const error = jsonError('Internal server error', 500)
   return c.json(error.body, error.status)
 })
 
 app.use('*', async (c, next) => {
-  c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
-  c.res.headers.set('Cross-Origin-Embedder-Policy', 'require-corp')
-  await next()
+  try {
+    c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+    c.res.headers.set('Cross-Origin-Embedder-Policy', 'require-corp')
+    await next()
+  }
+  catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    const stack = e instanceof Error ? e.stack : undefined
+    logError(`Middleware error: ${message}`, 500, { path: c.req.path, method: c.req.method })
+    if (stack) console.error(stack)
+    throw e
+  }
 })
 
 app.use('/*', async (c, next) => {
@@ -736,67 +747,76 @@ app.post('/api/auth/register', async c => {
 })
 
 app.post('/api/auth/login', async c => {
-  const kv = await getKv()
-  const raw = await c.req.json().catch(() => null)
-  if (raw === null) {
-    return errorResponse(c, 'Invalid JSON', 400)
+  try {
+    const kv = await getKv()
+    const raw = await c.req.json().catch(() => null)
+    if (raw === null) {
+      return errorResponse(c, 'Invalid JSON', 400)
+    }
+    const parsed = AuthLoginRequestSchema.safeParse(raw)
+    if (!parsed.success) {
+      return errorResponse(c, zodErrorMessage(parsed.error), 400)
+    }
+
+    const email = parsed.data.email.trim().toLowerCase()
+    const password = parsed.data.password
+
+    const userIdEntry = await kv.get<string>(k.userByEmail(email))
+    const userId = userIdEntry.value ?? null
+    if (!userId) {
+      return errorResponse(c, 'Invalid email or password', 401)
+    }
+
+    const userEntry = await kv.get<UserKv>(k.user(userId))
+    const user = userEntry.value ?? null
+    if (!user) {
+      return errorResponse(c, 'Invalid email or password', 401)
+    }
+
+    const ok = await validatePassword(password, user.passwordHash)
+    if (!ok) {
+      return errorResponse(c, 'Invalid email or password', 401)
+    }
+
+    const needsBcryptUpgrade = !user.passwordHash.startsWith('$2')
+    if (needsBcryptUpgrade) {
+      const newHash = await hash(password)
+      await kv.set(k.user(userId), { ...user, passwordHash: newHash })
+    }
+
+    const prevTokenEntry = await kv.get<string>(k.sessionByUserId(userId))
+    const prevToken = prevTokenEntry.value ?? null
+
+    const likes = Array.isArray((user as unknown as { likes?: unknown }).likes)
+      ? (user as unknown as { likes: string[] }).likes
+      : []
+    const isAdmin = ADMIN_EMAILS.includes(user.email.toLowerCase() as typeof ADMIN_EMAILS[number])
+    const session: SessionKv = { userId: user.id, name: user.name, email: user.email, loops: user.loops, likes,
+      isAdmin } as SessionKv
+
+    for (let i = 0; i < 5; i++) {
+      const token = newId(6)
+      const a = kv.atomic()
+        .check({ key: k.session(token), versionstamp: null })
+      if (prevToken) a.delete(k.session(prevToken))
+      a.set(k.session(token), session)
+      a.set(k.sessionByUserId(userId), token)
+      const commit = await a.commit()
+      if (!commit.ok) continue
+
+      setSessionCookie(c, token)
+      return c.json(sessionToApi(session))
+    }
+
+    return errorResponse(c, 'Failed to login', 500)
   }
-  const parsed = AuthLoginRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return errorResponse(c, zodErrorMessage(parsed.error), 400)
+  catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    const stack = e instanceof Error ? e.stack : undefined
+    logError(`Login error: ${message}`, 500, { path: c.req.path, method: c.req.method })
+    if (stack) console.error(stack)
+    return errorResponse(c, 'Internal server error', 500)
   }
-
-  const email = parsed.data.email.trim().toLowerCase()
-  const password = parsed.data.password
-
-  const userIdEntry = await kv.get<string>(k.userByEmail(email))
-  const userId = userIdEntry.value ?? null
-  if (!userId) {
-    return errorResponse(c, 'Invalid email or password', 401)
-  }
-
-  const userEntry = await kv.get<UserKv>(k.user(userId))
-  const user = userEntry.value ?? null
-  if (!user) {
-    return errorResponse(c, 'Invalid email or password', 401)
-  }
-
-  const ok = await validatePassword(password, user.passwordHash)
-  if (!ok) {
-    return errorResponse(c, 'Invalid email or password', 401)
-  }
-
-  const needsBcryptUpgrade = !user.passwordHash.startsWith('$2')
-  if (needsBcryptUpgrade) {
-    const newHash = await hash(password)
-    await kv.set(k.user(userId), { ...user, passwordHash: newHash })
-  }
-
-  const prevTokenEntry = await kv.get<string>(k.sessionByUserId(userId))
-  const prevToken = prevTokenEntry.value ?? null
-
-  const likes = Array.isArray((user as unknown as { likes?: unknown }).likes)
-    ? (user as unknown as { likes: string[] }).likes
-    : []
-  const isAdmin = ADMIN_EMAILS.includes(user.email.toLowerCase() as typeof ADMIN_EMAILS[number])
-  const session: SessionKv = { userId: user.id, name: user.name, email: user.email, loops: user.loops, likes,
-    isAdmin } as SessionKv
-
-  for (let i = 0; i < 5; i++) {
-    const token = newId(6)
-    const a = kv.atomic()
-      .check({ key: k.session(token), versionstamp: null })
-    if (prevToken) a.delete(k.session(prevToken))
-    a.set(k.session(token), session)
-    a.set(k.sessionByUserId(userId), token)
-    const commit = await a.commit()
-    if (!commit.ok) continue
-
-    setSessionCookie(c, token)
-    return c.json(sessionToApi(session))
-  }
-
-  return errorResponse(c, 'Failed to login', 500)
 })
 
 app.post('/api/auth/logout', async c => {
@@ -1443,10 +1463,26 @@ function formatApacheLog(req: Request, res: Response, connInfo?: Deno.ServeHandl
 }
 
 async function handler(req: Request, connInfo: Deno.ServeHandlerInfo): Promise<Response> {
-  const res = await app.fetch(req)
-  const logLine = formatApacheLog(req, res, connInfo)
-  console.log(logLine)
-  return res
+  try {
+    const res = await app.fetch(req)
+    const logLine = formatApacheLog(req, res, connInfo)
+    console.log(logLine)
+    if (res.status >= 500) {
+      logError(`HTTP ${res.status}`, res.status as ContentfulStatusCode, { path: new URL(req.url).pathname,
+        method: req.method })
+    }
+    return res
+  }
+  catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    const stack = e instanceof Error ? e.stack : undefined
+    const path = new URL(req.url).pathname
+    logError(`Handler error: ${message}`, 500, { path, method: req.method })
+    if (stack) console.error(stack)
+    const error = jsonError('Internal server error', 500)
+    return new Response(JSON.stringify(error.body), { status: error.status,
+      headers: { 'Content-Type': 'application/json' } })
+  }
 }
 
 Deno.serve({ port }, handler)
