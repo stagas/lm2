@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '@zod/zod'
 
 export const UserDataSchema = z.object({
   id: z.string(),

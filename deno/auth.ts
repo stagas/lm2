@@ -1,5 +1,5 @@
-import type { Context } from 'hono'
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
+import type { Context } from '@hono/hono'
+import { deleteCookie, getCookie, setCookie } from '@hono/hono/cookie'
 import { getKv, k, type SessionKv } from './kv.ts'
 
 const cookieName = 'sid'
