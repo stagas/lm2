@@ -3,6 +3,7 @@
     "@bronti/bcrypt": "jsr:@bronti/bcrypt@^1.0.3",
     "@hono/hono": "jsr:@hono/hono@^4.11.1",
     "@hono/hono/cookie": "jsr:@hono/hono@^4.11.1/cookie",
-    "@zod/zod": "jsr:@zod/zod@^4.3.5"
+    "@zod/zod": "jsr:@zod/zod@^4.3.5",
+    "zod": "jsr:@zod/zod@^4.3.5"
   }
 }

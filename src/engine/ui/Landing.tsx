@@ -11,19 +11,11 @@ import {
 } from '@phosphor-icons/react'
 import { Logo } from '../../components/Logo.tsx'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
+import { LANDING_PAGE_SOURCE } from '../constants.ts'
 import { InlineEditor } from './docs/InlineEditor.tsx'
 import { Link } from './router.tsx'
-const exampleCode = `tb303=(hz,cutoff,q,k,sat,trig)->
 
-  diodeladder(ramp(hz),cutoff,q,k,sat) |> tanh($*6)*.5 |> dc($)
-
-trig=every(1/16) tb303([#1*o2,#1*o2,#7*o2,#5*o3].glide(1/8,10),
-
-cutoff:100+(300 (0 5k) +2k*fractal(6)**3)*ad(.01,3,30,trig),
-
-q:.91,k:.002,sat:1.15,trig)*.4+bd()+hh()+sd()
-
-|> limiter($) |> out($)`
+const exampleCode = LANDING_PAGE_SOURCE
 
 const features = [
   {

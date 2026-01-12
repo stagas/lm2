@@ -4,8 +4,8 @@ import { useAppStore } from '../../app/store.ts'
 import { Logo } from '../../components/Logo.tsx'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
 import { SpinnerLarge } from '../../components/Spinner.tsx'
+import { INTRO_SOURCE } from '../constants.ts'
 import { useEngine } from '../dsp/program.ts'
-import { INTRO_PROGRAM } from '../intro-program.ts'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
 import { Admin } from './Admin.tsx'
 import { Browse } from './Browse.tsx'
@@ -386,7 +386,7 @@ export function EngineUI() {
         await new Promise<void>(resolve => setTimeout(resolve, 100))
         continue
       }
-      await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_PROGRAM)
+      await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_SOURCE)
       break
     }
   }

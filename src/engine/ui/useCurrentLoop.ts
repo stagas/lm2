@@ -4,8 +4,9 @@ import { useLoopData } from '../../app/hooks/useLoopData.ts'
 import { useSessionData } from '../../app/hooks/useSessionData.ts'
 import { useAppStore } from '../../app/store.ts'
 import { isLocalId, makeLocalId } from '../../utils/id.ts'
+import { DEFAULT_DSP_SOURCE } from '../constants.ts'
 import { useEngineRuntimeStore } from '../store.ts'
-import { DEFAULT_LOOP_CODE, Loop } from './loop.ts'
+import { Loop } from './loop.ts'
 
 export function useCurrentLoop(): Loop | null {
   const { isLoading: isSessionLoading, sessionData } = useSessionData()
@@ -117,7 +118,7 @@ export function useCurrentLoop(): Loop | null {
       title,
       artist: userName,
       artistId: userId,
-      code: DEFAULT_LOOP_CODE,
+      code: DEFAULT_DSP_SOURCE,
       likesCount: 0,
       commentsCount: 0,
       remixesCount: 0,
@@ -164,7 +165,8 @@ export function useCurrentLoop(): Loop | null {
         const code = await getPublicLoopCode(selectedLoopId)
         // If we get code, it means the loop exists and was fetched
         // The getPublicLoopCode function should populate the cache
-      } catch (error) {
+      }
+      catch (error) {
         console.warn(`Failed to fetch loop ${selectedLoopId}:`, error)
         // If the loop doesn't exist, create a placeholder local loop
         // so the user can still work with it

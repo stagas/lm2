@@ -426,6 +426,8 @@ sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
   sampler(snaresample,trig)
 }
 
+drums=()->bd()+hh()+sd()
+
 cowbell=(
   osc=hz->pwm(hz,.04),
   tone=#2*o5*1.002,

@@ -5,9 +5,10 @@ import { useSessionData } from '../../app/hooks/useSessionData.ts'
 import { useAppStore } from '../../app/store.ts'
 import { SpinnerSmall } from '../../components/Spinner.tsx'
 import { isLocalId, makeLocalId, newId } from '../../utils/id.ts'
+import { DEFAULT_DSP_SOURCE } from '../constants.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../store.ts'
 import { AuthForm } from './AuthForm.tsx'
-import { DEFAULT_LOOP_CODE, Loop } from './loop.ts'
+import { Loop } from './loop.ts'
 import { LoopItem } from './LoopItem.tsx'
 import { useRouter } from './router.tsx'
 
@@ -239,7 +240,7 @@ export function SidebarLoops(
       title: newLoopTitle,
       artist: userName,
       artistId: userId,
-      code: DEFAULT_LOOP_CODE,
+      code: DEFAULT_DSP_SOURCE,
       likesCount: 0,
       commentsCount: 0,
       remixesCount: 0,
