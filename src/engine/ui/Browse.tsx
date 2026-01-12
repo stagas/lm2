@@ -60,6 +60,8 @@ export function Browse() {
   const refreshPublicLoops = useAppStore(state => state.refreshPublicLoops)
   const refreshHotLoops = useAppStore(state => state.refreshHotLoops)
   const refreshBestLoops = useAppStore(state => state.refreshBestLoops)
+  const prefetchPublicLoopCodes = useAppStore(state => state.prefetchPublicLoopCodes)
+  const publicLoopCodeCache = useAppStore(state => state.publicLoopCodeCache)
 
   type BrowseTab = 'new' | 'hot' | 'best'
   const [browsePathname, setBrowsePathname] = useState(() => (isBrowsePathname(pathname) ? pathname : '/browse'))
@@ -106,6 +108,15 @@ export function Browse() {
   }, [hasFetchedPublicLoops, isPublicLoopsCacheStale, refreshPublicLoops, tab])
 
   useEffect(() => {
+    if (tab !== 'new') return
+    if (isNewLoading || publicLoops.length === 0) return
+    const firstBatch = publicLoops.slice(0, 5)
+    const toPrefetch = firstBatch.filter(l => !publicLoopCodeCache[l.id])
+    if (toPrefetch.length === 0) return
+    void prefetchPublicLoopCodes(toPrefetch.map(l => l.id))
+  }, [tab, isNewLoading, publicLoops, publicLoopCodeCache, prefetchPublicLoopCodes])
+
+  useEffect(() => {
     if (tab !== 'hot') return
     if (hotLoops.length > 0 && !isHotLoopsCacheStale) return
     setIsHotLoading(true)
@@ -113,11 +124,29 @@ export function Browse() {
   }, [hotLoops.length, isHotLoopsCacheStale, refreshHotLoops, tab])
 
   useEffect(() => {
+    if (tab !== 'hot') return
+    if (isHotLoading || hotLoops.length === 0) return
+    const firstBatch = hotLoops.slice(0, 5)
+    const toPrefetch = firstBatch.filter(l => !publicLoopCodeCache[l.id])
+    if (toPrefetch.length === 0) return
+    void prefetchPublicLoopCodes(toPrefetch.map(l => l.id))
+  }, [tab, isHotLoading, hotLoops, publicLoopCodeCache, prefetchPublicLoopCodes])
+
+  useEffect(() => {
     if (tab !== 'best') return
     if (bestLoops.length > 0 && !isBestLoopsCacheStale) return
     setIsBestLoading(true)
     void refreshBestLoops().finally(() => setIsBestLoading(false))
   }, [bestLoops.length, isBestLoopsCacheStale, refreshBestLoops, tab])
+
+  useEffect(() => {
+    if (tab !== 'best') return
+    if (isBestLoading || bestLoops.length === 0) return
+    const firstBatch = bestLoops.slice(0, 5)
+    const toPrefetch = firstBatch.filter(l => !publicLoopCodeCache[l.id])
+    if (toPrefetch.length === 0) return
+    void prefetchPublicLoopCodes(toPrefetch.map(l => l.id))
+  }, [tab, isBestLoading, bestLoops, publicLoopCodeCache, prefetchPublicLoopCodes])
 
   const content = useMemo(() => {
     switch (tab) {

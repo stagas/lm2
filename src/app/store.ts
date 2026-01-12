@@ -172,7 +172,9 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       api: new API(async (input, init) => {
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        if (import.meta.env.DEV) {
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        }
         const res = await fetch(input, { ...init, credentials: 'include' })
         if (res.status === 401) {
           queueMicrotask(() => get().setSessionData(null))
@@ -264,7 +266,7 @@ export const useAppStore = create<AppState>()(
           prevUserId === userId ? prevCache.map(l => [l.id, l]) : [],
         )
 
-        const merged = nextSessionData.loops.map(loop => {
+        const merged = nextSessionData.loops.map((loop: LoopData) => {
           const prev = prevById.get(loop.id)
           if (!prev) return loop
           if (loop.code != null) return loop
@@ -329,9 +331,9 @@ export const useAppStore = create<AppState>()(
 
           const { code: _, ...sessionLoop } = nextLoop
           const nextSessionLoops = (() => {
-            const sidx = sessionData.loops.findIndex(l => l.id === loop.id)
+            const sidx = sessionData.loops.findIndex((l: LoopData) => l.id === loop.id)
             if (sidx === -1) return ownId ? [sessionLoop, ...sessionData.loops] : sessionData.loops
-            return sessionData.loops.map(l => l.id === loop.id ? sessionLoop : l)
+            return sessionData.loops.map((l: LoopData) => l.id === loop.id ? sessionLoop : l)
           })()
 
           return {
@@ -509,7 +511,7 @@ export const useAppStore = create<AppState>()(
           ...prevSession,
           likedLoopIds: optimisticLiked
             ? [...prevSession.likedLoopIds, loopId]
-            : prevSession.likedLoopIds.filter(id => id !== loopId),
+            : prevSession.likedLoopIds.filter((id: string) => id !== loopId),
         }
 
         get().setSessionData(optimisticSession)
@@ -552,7 +554,7 @@ export const useAppStore = create<AppState>()(
             ? (currSession.likedLoopIds.includes(loopId)
               ? currSession.likedLoopIds
               : [...currSession.likedLoopIds, loopId])
-            : currSession.likedLoopIds.filter(id => id !== loopId)
+            : currSession.likedLoopIds.filter((id: string) => id !== loopId)
 
           get().setSessionData({ ...serverSession, likedLoopIds: nextLikedLoopIds })
           const correctionDelta = (actualLiked ? 1 : 0) - (optimisticLiked ? 1 : 0)
@@ -590,7 +592,7 @@ export const useAppStore = create<AppState>()(
               ? (currSession.likedLoopIds.includes(loopId)
                 ? currSession.likedLoopIds
                 : [...currSession.likedLoopIds, loopId])
-              : currSession.likedLoopIds.filter(id => id !== loopId)
+              : currSession.likedLoopIds.filter((id: string) => id !== loopId)
             get().setSessionData({ ...currSession, likedLoopIds: nextLikedLoopIds })
           }
           const revertDelta = wasLiked ? 1 : -1

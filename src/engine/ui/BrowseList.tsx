@@ -28,17 +28,16 @@ export function BrowseList(
 ) {
   const sessionData = useAppStore(state => state.sessionData)
   const toggleLike = useAppStore(state => state.toggleLike)
-  const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
+  const prefetchPublicLoopCodes = useAppStore(state => state.prefetchPublicLoopCodes)
+  const publicLoopCodeCache = useAppStore(state => state.publicLoopCodeCache)
   const playLoop = useEngineDspStore(state => state.playLoop)
   const pause = useEngineRuntimeStore(state => state.pause)
   const playbackState = useEngineRuntimeStore(state => state.playbackState)
   const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
-  const [loopCodes, setLoopCodes] = useState<Record<string, string>>({})
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE)
   const [loadingCodes, setLoadingCodes] = useState<Set<string>>(new Set())
   const observerRef = useRef<IntersectionObserver | null>(null)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
-  const loopCodesRef = useRef<Record<string, string>>({})
   const loadingCodesRef = useRef<Set<string>>(new Set())
 
   const userId = sessionData?.user.id ?? null
@@ -53,47 +52,40 @@ export function BrowseList(
   }, [loops.length])
 
   useEffect(() => {
-    loopCodesRef.current = loopCodes
-  }, [loopCodes])
-
-  useEffect(() => {
     loadingCodesRef.current = loadingCodes
   }, [loadingCodes])
 
   useEffect(() => {
     const loadCodes = async () => {
-      const currentCodes = loopCodesRef.current
+      const currentCache = publicLoopCodeCache
       const currentLoading = loadingCodesRef.current
-      const toLoad = visibleLoops.filter(l => !currentCodes[l.id] && !currentLoading.has(l.id))
+      const toLoad = visibleLoops.filter(l => !currentCache[l.id] && !currentLoading.has(l.id))
       if (toLoad.length === 0) return
 
+      const ids = toLoad.map(l => l.id)
       setLoadingCodes(prev => {
         const next = new Set(prev)
-        toLoad.forEach(l => next.add(l.id))
+        ids.forEach(id => next.add(id))
         return next
       })
 
-      const codes: Record<string, string> = {}
-      for (const loop of toLoad) {
-        try {
-          const code = await getPublicLoopCode(loop.id)
-          codes[loop.id] = code
-        }
-        catch (err) {
-          console.error(`Failed to load code for loop ${loop.id}:`, err)
-        }
+      try {
+        await prefetchPublicLoopCodes(ids)
       }
-
-      setLoopCodes(prev => ({ ...prev, ...codes }))
-      setLoadingCodes(prev => {
-        const next = new Set(prev)
-        toLoad.forEach(l => next.delete(l.id))
-        return next
-      })
+      catch (err) {
+        console.error('Failed to prefetch loop codes:', err)
+      }
+      finally {
+        setLoadingCodes(prev => {
+          const next = new Set(prev)
+          ids.forEach(id => next.delete(id))
+          return next
+        })
+      }
     }
 
     void loadCodes()
-  }, [visibleLoops, getPublicLoopCode])
+  }, [visibleLoops, publicLoopCodeCache, prefetchPublicLoopCodes])
 
   useEffect(() => {
     if (!hasMore) return
@@ -140,7 +132,7 @@ export function BrowseList(
       {visibleLoops.map((loop, idx) => {
         const isLiked = likedIds.has(loop.id)
         const canLike = userId != null && loop.artistId !== userId
-        const code = loopCodes[loop.id] ?? ''
+        const code = publicLoopCodeCache[loop.id] ?? ''
         const isLoadingCode = loadingCodes.has(loop.id)
 
         const editorId = `browse-loop-${loop.id}`

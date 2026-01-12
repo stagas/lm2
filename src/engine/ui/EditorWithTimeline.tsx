@@ -11,12 +11,12 @@ import { useTimelineHeader } from './useTimelineHeader.ts'
 type EditorWithTimelineProps = {
   loopId: string
   code: string
-  editorHeight?: string
+  autoHeight?: boolean
   minimapHeight?: string
 }
 
 export function EditorWithTimeline(
-  { loopId, code, minimapHeight = '40px' }: EditorWithTimelineProps,
+  { loopId, code, autoHeight = false, minimapHeight = '40px' }: EditorWithTimelineProps,
 ) {
   const { timelineHeader, timelineWindowRef } = useTimelineHeader(loopId)
   const audioContext = useEngineRuntimeStore(state => state.audioContext)
@@ -61,8 +61,14 @@ export function EditorWithTimeline(
         />
       </div>
       <div className={`w-full h-[calc(100%-${minimapHeight})]`}>
-        <InlineEditor id={loopId} initialCode={code} autoHeight={false} hidePlayButton={true} header={timelineHeader}
-          noMargin={true} />
+        <InlineEditor
+          id={loopId}
+          initialCode={code}
+          autoHeight={autoHeight}
+          hidePlayButton={true}
+          header={timelineHeader}
+          noMargin={true}
+        />
       </div>
     </div>
   )

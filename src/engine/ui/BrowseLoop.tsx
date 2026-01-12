@@ -280,7 +280,7 @@ export function BrowseLoop() {
                 )
                 : code
                 ? (
-                  <div className="mb-8 w-full">
+                  <div className="mb-8 w-full h-[70dvh]">
                     <EditorWithTimeline loopId={editorLoopId!} code={code} />
                   </div>
                 )

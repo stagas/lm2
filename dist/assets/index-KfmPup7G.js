@@ -11680,7 +11680,6 @@ const useAppStore = create()(
   persist(
     (set, get) => ({
       api: new API(async (input, init) => {
-        await new Promise((resolve) => setTimeout(resolve, 2e3));
         const res = await fetch(input, { ...init, credentials: "include" });
         if (res.status === 401) {
           queueMicrotask(() => get().setSessionData(null));
@@ -25494,7 +25493,8 @@ const PIANOROLL_BAR_COLOR_ODD = "rgba(255, 255, 255, 0.09)";
 const PIANOROLL_BAR_COLOR_EVEN = "rgba(255, 255, 255, 0.12)";
 const SCROLL_SMOOTHING = 0.17;
 const DEFAULT_SEQUENCES = ["c4 e4 [g4 a4]*2", "a3 c4 [d4 f4 a4]*2"];
-const DEFAULT_DSP_SOURCE = `sine(a4) |> out($)`;
+const DEFAULT_DSP_SOURCE = `
+sine(a4) |> out($)`;
 const KEYWORDS = [
   "do",
   "case",
@@ -39351,7 +39351,7 @@ function useTimelineHeader(currentLoopId) {
   }
   return { timelineHeader: timelineHeaderRef.current, timelineWindowRef };
 }
-function EditorWithTimeline({ loopId, code, minimapHeight = "40px" }) {
+function EditorWithTimeline({ loopId, code, autoHeight = false, minimapHeight = "40px" }) {
   const { timelineHeader, timelineWindowRef } = useTimelineHeader(loopId);
   const audioContext = useEngineRuntimeStore((state2) => state2.audioContext);
   const bpmValue = useEngineRuntimeStore((state2) => state2.bpmValue);
@@ -39396,7 +39396,7 @@ function EditorWithTimeline({ loopId, code, minimapHeight = "40px" }) {
       {
         id: loopId,
         initialCode: code,
-        autoHeight: false,
+        autoHeight,
         hidePlayButton: true,
         header: timelineHeader,
         noMargin: true
@@ -39423,17 +39423,16 @@ function formatAge$2(timestamp) {
 function BrowseList({ loops, emptyLabel, isLoading }) {
   const sessionData = useAppStore((state2) => state2.sessionData);
   const toggleLike = useAppStore((state2) => state2.toggleLike);
-  const getPublicLoopCode = useAppStore((state2) => state2.getPublicLoopCode);
+  const prefetchPublicLoopCodes = useAppStore((state2) => state2.prefetchPublicLoopCodes);
+  const publicLoopCodeCache = useAppStore((state2) => state2.publicLoopCodeCache);
   const playLoop = useEngineDspStore((state2) => state2.playLoop);
   const pause = useEngineRuntimeStore((state2) => state2.pause);
   const playbackState = useEngineRuntimeStore((state2) => state2.playbackState);
   const playingLoopId = useEngineRuntimeStore((state2) => state2.playingLoopId);
-  const [loopCodes, setLoopCodes] = d({});
   const [visibleCount, setVisibleCount] = d(ITEMS_PER_PAGE);
   const [loadingCodes, setLoadingCodes] = d(/* @__PURE__ */ new Set());
   const observerRef = A$1(null);
   const loadMoreRef = A$1(null);
-  const loopCodesRef = A$1({});
   const loadingCodesRef = A$1(/* @__PURE__ */ new Set());
   const userId = sessionData?.user.id ?? null;
   const likedLoopIds = T$1(() => sessionData?.likedLoopIds ?? [], [sessionData]);
@@ -39444,40 +39443,34 @@ function BrowseList({ loops, emptyLabel, isLoading }) {
     setVisibleCount(ITEMS_PER_PAGE);
   }, [loops.length]);
   y(() => {
-    loopCodesRef.current = loopCodes;
-  }, [loopCodes]);
-  y(() => {
     loadingCodesRef.current = loadingCodes;
   }, [loadingCodes]);
   y(() => {
     const loadCodes = async () => {
-      const currentCodes = loopCodesRef.current;
+      const currentCache = publicLoopCodeCache;
       const currentLoading = loadingCodesRef.current;
-      const toLoad = visibleLoops.filter((l2) => !currentCodes[l2.id] && !currentLoading.has(l2.id));
+      const toLoad = visibleLoops.filter((l2) => !currentCache[l2.id] && !currentLoading.has(l2.id));
       if (toLoad.length === 0) return;
+      const ids = toLoad.map((l2) => l2.id);
       setLoadingCodes((prev) => {
         const next = new Set(prev);
-        toLoad.forEach((l2) => next.add(l2.id));
+        ids.forEach((id) => next.add(id));
         return next;
       });
-      const codes = {};
-      for (const loop of toLoad) {
-        try {
-          const code = await getPublicLoopCode(loop.id);
-          codes[loop.id] = code;
-        } catch (err) {
-          console.error(`Failed to load code for loop ${loop.id}:`, err);
-        }
+      try {
+        await prefetchPublicLoopCodes(ids);
+      } catch (err) {
+        console.error("Failed to prefetch loop codes:", err);
+      } finally {
+        setLoadingCodes((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
       }
-      setLoopCodes((prev) => ({ ...prev, ...codes }));
-      setLoadingCodes((prev) => {
-        const next = new Set(prev);
-        toLoad.forEach((l2) => next.delete(l2.id));
-        return next;
-      });
     };
     void loadCodes();
-  }, [visibleLoops, getPublicLoopCode]);
+  }, [visibleLoops, publicLoopCodeCache, prefetchPublicLoopCodes]);
   y(() => {
     if (!hasMore) return;
     if (!loadMoreRef.current) return;
@@ -39508,7 +39501,7 @@ function BrowseList({ loops, emptyLabel, isLoading }) {
     visibleLoops.map((loop, idx) => {
       const isLiked = likedIds.has(loop.id);
       const canLike = userId != null && loop.artistId !== userId;
-      const code = loopCodes[loop.id] ?? "";
+      const code = publicLoopCodeCache[loop.id] ?? "";
       const isLoadingCode = loadingCodes.has(loop.id);
       const editorId = `browse-loop-${loop.id}`;
       const loopId = `docs:${editorId}`;
@@ -39651,6 +39644,8 @@ function Browse() {
   const refreshPublicLoops = useAppStore((state2) => state2.refreshPublicLoops);
   const refreshHotLoops = useAppStore((state2) => state2.refreshHotLoops);
   const refreshBestLoops = useAppStore((state2) => state2.refreshBestLoops);
+  const prefetchPublicLoopCodes = useAppStore((state2) => state2.prefetchPublicLoopCodes);
+  const publicLoopCodeCache = useAppStore((state2) => state2.publicLoopCodeCache);
   const [browsePathname, setBrowsePathname] = d(() => isBrowsePathname$1(pathname) ? pathname : "/browse");
   y(() => {
     if (!isBrowsePathname$1(pathname)) return;
@@ -39687,17 +39682,41 @@ function Browse() {
     void refreshPublicLoops().finally(() => setIsNewLoading(false));
   }, [hasFetchedPublicLoops, isPublicLoopsCacheStale, refreshPublicLoops, tab]);
   y(() => {
+    if (tab !== "new") return;
+    if (isNewLoading || publicLoops.length === 0) return;
+    const firstBatch = publicLoops.slice(0, 5);
+    const toPrefetch = firstBatch.filter((l2) => !publicLoopCodeCache[l2.id]);
+    if (toPrefetch.length === 0) return;
+    void prefetchPublicLoopCodes(toPrefetch.map((l2) => l2.id));
+  }, [tab, isNewLoading, publicLoops, publicLoopCodeCache, prefetchPublicLoopCodes]);
+  y(() => {
     if (tab !== "hot") return;
     if (hotLoops.length > 0 && !isHotLoopsCacheStale) return;
     setIsHotLoading(true);
     void refreshHotLoops().finally(() => setIsHotLoading(false));
   }, [hotLoops.length, isHotLoopsCacheStale, refreshHotLoops, tab]);
   y(() => {
+    if (tab !== "hot") return;
+    if (isHotLoading || hotLoops.length === 0) return;
+    const firstBatch = hotLoops.slice(0, 5);
+    const toPrefetch = firstBatch.filter((l2) => !publicLoopCodeCache[l2.id]);
+    if (toPrefetch.length === 0) return;
+    void prefetchPublicLoopCodes(toPrefetch.map((l2) => l2.id));
+  }, [tab, isHotLoading, hotLoops, publicLoopCodeCache, prefetchPublicLoopCodes]);
+  y(() => {
     if (tab !== "best") return;
     if (bestLoops.length > 0 && !isBestLoopsCacheStale) return;
     setIsBestLoading(true);
     void refreshBestLoops().finally(() => setIsBestLoading(false));
   }, [bestLoops.length, isBestLoopsCacheStale, refreshBestLoops, tab]);
+  y(() => {
+    if (tab !== "best") return;
+    if (isBestLoading || bestLoops.length === 0) return;
+    const firstBatch = bestLoops.slice(0, 5);
+    const toPrefetch = firstBatch.filter((l2) => !publicLoopCodeCache[l2.id]);
+    if (toPrefetch.length === 0) return;
+    void prefetchPublicLoopCodes(toPrefetch.map((l2) => l2.id));
+  }, [tab, isBestLoading, bestLoops, publicLoopCodeCache, prefetchPublicLoopCodes]);
   const content = T$1(() => {
     switch (tab) {
       case "new":
@@ -40089,7 +40108,7 @@ function BrowseLoop() {
         ] })
       ] }) })
     ] }),
-    isLoadingCode ? /* @__PURE__ */ u$1("div", { className: "flex items-center justify-center py-20", children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(SpinnerSmall, {}) }) }) : code ? /* @__PURE__ */ u$1("div", { className: "mb-8 w-full", children: /* @__PURE__ */ u$1(EditorWithTimeline, { loopId: editorLoopId, code }) }) : null,
+    isLoadingCode ? /* @__PURE__ */ u$1("div", { className: "flex items-center justify-center py-20", children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(SpinnerSmall, {}) }) }) : code ? /* @__PURE__ */ u$1("div", { className: "mb-8 w-full h-[70dvh]", children: /* @__PURE__ */ u$1(EditorWithTimeline, { loopId: editorLoopId, code }) }) : null,
     /* @__PURE__ */ u$1("div", { id: "comments", className: "bg-black rounded-lg p-6 mb-8", children: [
       /* @__PURE__ */ u$1("h3", { className: "text-xl font-semibold mb-4 text-white", children: "Comments" }),
       isCommentsLoading && cachedComments == null ? /* @__PURE__ */ u$1("div", { className: "flex items-center justify-center py-8", children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(SpinnerSmall, {}) }) }) : /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-4", children: [
@@ -46417,4 +46436,4 @@ const root = createRoot(document.getElementById("root"));
 root.render(
   /* @__PURE__ */ u$1(App, {})
 );
-//# sourceMappingURL=index-B2hzUBkY.js.map
+//# sourceMappingURL=index-KfmPup7G.js.map

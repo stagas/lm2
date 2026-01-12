@@ -1418,4 +1418,70 @@ app.get('*', serveStatic({ path: './dist/index.html' }))
 
 const port = Number.parseInt(Deno.env.get('PORT') ?? '8787', 10) || 8787
 await runMigrations(await getKv())
-Deno.serve({ port }, app.fetch)
+
+function getClientIp(req: Request, connInfo?: Deno.ServeHandlerInfo): string {
+  const forwardedFor = req.headers.get('X-Forwarded-For')
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim()
+  }
+  const realIp = req.headers.get('X-Real-IP')
+  if (realIp) {
+    return realIp.trim()
+  }
+  if (connInfo?.remoteAddr) {
+    const addr = connInfo.remoteAddr
+    if (addr.transport === 'tcp') {
+      return addr.hostname
+    }
+  }
+  return 'unknown'
+}
+
+function formatApacheLog(req: Request, res: Response, connInfo?: Deno.ServeHandlerInfo): string {
+  const ip = getClientIp(req, connInfo)
+  const url = new URL(req.url)
+  const now = new Date()
+  const day = String(now.getDate()).padStart(2, '0')
+  const monthNames = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ]
+  const month = monthNames[now.getMonth()]
+  const year = now.getFullYear()
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  const seconds = String(now.getSeconds()).padStart(2, '0')
+  const timezoneOffset = -now.getTimezoneOffset()
+  const tzHours = String(Math.floor(Math.abs(timezoneOffset) / 60)).padStart(2, '0')
+  const tzMinutes = String(Math.abs(timezoneOffset) % 60).padStart(2, '0')
+  const tzSign = timezoneOffset >= 0 ? '+' : '-'
+  const timestamp = `${day}/${month}/${year}:${hours}:${minutes}:${seconds} ${tzSign}${tzHours}${tzMinutes}`
+  const method = req.method
+  const path = url.pathname + url.search
+  const httpVersion = 'HTTP/1.1'
+  const status = res.status
+  const size = res.headers.get('Content-Length') || '-'
+  const referer = req.headers.get('Referer') || '-'
+  const userAgent = req.headers.get('User-Agent') || '-'
+
+  return `${ip} - - [${timestamp}] "${method} ${path} ${httpVersion}" ${status} ${size} "${referer}" "${userAgent}"`
+}
+
+async function handler(req: Request, connInfo: Deno.ServeHandlerInfo): Promise<Response> {
+  const res = await app.fetch(req)
+  const logLine = formatApacheLog(req, res, connInfo)
+  console.log(logLine)
+  return res
+}
+
+Deno.serve({ port }, handler)
