@@ -46,8 +46,24 @@ async function validatePassword(password: string, passwordHash: string): Promise
   return sha256Hash === passwordHash
 }
 
+function logError(message: string, status: ContentfulStatusCode,
+  context?: { path?: string; method?: string; userId?: string })
+{
+  const parts = [`[ERROR] ${status} ${message}`]
+  if (context?.path) parts.push(`path: ${context.path}`)
+  if (context?.method) parts.push(`method: ${context.method}`)
+  if (context?.userId) parts.push(`userId: ${context.userId}`)
+  console.error(parts.join(' | '))
+}
+
 function jsonError(message: string, status: ContentfulStatusCode = 400) {
   return { body: ErrorResponseSchema.parse({ message }), status }
+}
+
+function errorResponse(c: Context, message: string, status: ContentfulStatusCode = 400) {
+  const err = jsonError(message, status)
+  logError(message, status, { path: c.req.path, method: c.req.method })
+  return c.json(err.body, err.status)
 }
 
 const fieldLabel: Record<string, string> = {
@@ -199,11 +215,13 @@ async function requireAdmin(
 ): Promise<{ token: string | null; session: SessionKv | null; response?: Response }> {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
+    logError('Not authenticated', 401, { path: c.req.path, method: c.req.method })
     const err = jsonError('Not authenticated', 401)
     return { token: null, session: null, response: c.json(err.body, err.status) }
   }
   const isAdmin = (session as SessionKv & { isAdmin?: boolean }).isAdmin ?? false
   if (!isAdmin) {
+    logError('Admin access required', 403, { path: c.req.path, method: c.req.method, userId: session.userId })
     const err = jsonError('Admin access required', 403)
     return { token: null, session: null, response: c.json(err.body, err.status) }
   }
@@ -211,6 +229,12 @@ async function requireAdmin(
 }
 
 const app = new Hono()
+
+app.onError((err, c) => {
+  logError(err.message || 'Internal server error', 500, { path: c.req.path, method: c.req.method })
+  const error = jsonError('Internal server error', 500)
+  return c.json(error.body, error.status)
+})
 
 app.use('*', async (c, next) => {
   c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
@@ -231,8 +255,7 @@ app.get('/api/health', c => c.json({ ok: true }))
 app.get('/api/session', async c => {
   const { session } = await requireSession(c)
   if (!session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
   return c.json(sessionToApi(session))
 })
@@ -240,19 +263,16 @@ app.get('/api/session', async c => {
 app.put('/api/user', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const raw = await c.req.json().catch(() => null)
   if (raw === null) {
-    const err = jsonError('Invalid JSON', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid JSON', 400)
   }
   const parsed = UpdateArtistNameRequestSchema.safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError(zodErrorMessage(parsed.error), 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, zodErrorMessage(parsed.error), 400)
   }
 
   const kv = await getKv()
@@ -264,8 +284,7 @@ app.put('/api/user', async c => {
   const currentSession = sessionEntry.value as SessionKv | null
   const user = userEntry.value as UserKv | null
   if (!currentSession || !user) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const name = parsed.data.artistName
@@ -376,8 +395,7 @@ app.get('/api/public-loop/:id', async c => {
   const loop = loopEntry.value as LoopKv | null
   const pub = parsePublicLoopKv(publicEntry.value)
   if (!loop || !pub || loop.isPublic !== true) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
   return c.json(LoopDataSchema.parse({ ...publicLoopToApi(pub), code: loop.code }))
 })
@@ -393,8 +411,7 @@ app.get('/api/public-loop/:id/remixes', async c => {
   const loop = loopEntry.value as LoopKv | null
   const pub = parsePublicLoopKv(publicEntry.value)
   if (!loop || !pub || loop.isPublic !== true) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   const remixes: PublicLoopListEntry[] = []
@@ -443,8 +460,7 @@ app.get('/api/prefetch', async c => {
 app.get('/api/liked-loops', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const ids = session.likes
@@ -467,14 +483,12 @@ app.get('/api/liked-loops', async c => {
 app.post('/api/loop/:id/like', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const epoch = c.req.query('epoch')?.trim() ?? ''
   if (epoch.length === 0) {
-    const err = jsonError('Epoch is required', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Epoch is required', 400)
   }
 
   const id = c.req.param('id')
@@ -497,21 +511,18 @@ app.post('/api/loop/:id/like', async c => {
   const likeCount = (likeCountEntry.value as number | null) ?? pub?.[3] ?? 0
 
   if (!currentSession || !user) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
   const currentLikes = Array.isArray((currentSession as unknown as { likes?: unknown }).likes)
     ? (currentSession as unknown as { likes: string[] }).likes
     : []
 
   if (!loop || !pub || loop.isPublic !== true) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   if (loop.userId === session.userId) {
-    const err = jsonError('You can\'t like your own loop', 403)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'You can\'t like your own loop', 403)
   }
 
   const nextLiked = !hasLike
@@ -545,8 +556,7 @@ app.get('/api/loop/:id/comments', async c => {
   const loopEntry = await kv.get<LoopKv>(k.loop(id))
   const loop = loopEntry.value ?? null
   if (!loop || loop.isPublic !== true) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   const comments: CommentData[] = []
@@ -560,19 +570,16 @@ app.get('/api/loop/:id/comments', async c => {
 app.post('/api/loop/:id/comments', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const raw = await c.req.json().catch(() => null)
   if (raw === null) {
-    const err = jsonError('Invalid JSON', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid JSON', 400)
   }
   const parsed = CreateCommentRequestSchema.safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError(zodErrorMessage(parsed.error), 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, zodErrorMessage(parsed.error), 400)
   }
 
   const kv = await getKv()
@@ -593,12 +600,10 @@ app.post('/api/loop/:id/comments', async c => {
   const commentsCount = (commentCountEntry.value as number | null) ?? 0
 
   if (!currentSession || !user) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
   if (!loop || !pub || loop.isPublic !== true) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   const timestamp = Date.now()
@@ -627,8 +632,7 @@ app.post('/api/loop/:id/comments', async c => {
 app.delete('/api/loop/:id/comments/:commentId', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const id = c.req.param('id')
@@ -636,8 +640,7 @@ app.delete('/api/loop/:id/comments/:commentId', async c => {
   const tsParam = c.req.query('ts')
   const timestamp = tsParam ? Number(tsParam) : NaN
   if (!Number.isFinite(timestamp)) {
-    const err = jsonError('Timestamp is required', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Timestamp is required', 400)
   }
 
   const kv = await getKv()
@@ -658,23 +661,19 @@ app.delete('/api/loop/:id/comments/:commentId', async c => {
   const comment = commentEntry.value as CommentData | null
 
   if (!currentSession || !user) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
   if (!loop || !pub || loop.isPublic !== true) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
   if (!comment) {
-    const err = jsonError('Comment not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Comment not found', 404)
   }
 
   const isOwner = loop.userId === session.userId
   const isAuthor = comment.author.id === session.userId
   if (!isOwner && !isAuthor) {
-    const err = jsonError('Not allowed', 403)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not allowed', 403)
   }
 
   const nextCount = Math.max(0, commentsCount - 1)
@@ -693,13 +692,11 @@ app.post('/api/auth/register', async c => {
   const kv = await getKv()
   const raw = await c.req.json().catch(() => null)
   if (raw === null) {
-    const err = jsonError('Invalid JSON', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid JSON', 400)
   }
   const parsed = AuthRegisterRequestSchema.safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError(zodErrorMessage(parsed.error), 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, zodErrorMessage(parsed.error), 400)
   }
 
   const name = parsed.data.artistName.trim()
@@ -726,8 +723,7 @@ app.post('/api/auth/register', async c => {
     if (!commit.ok) {
       const existing = (await kv.get<string>(k.userByEmail(email))).value ?? null
       if (existing) {
-        const err = jsonError('Email is already registered', 409)
-        return c.json(err.body, err.status)
+        return errorResponse(c, 'Email is already registered', 409)
       }
       continue
     }
@@ -736,21 +732,18 @@ app.post('/api/auth/register', async c => {
     return c.json(sessionToApi(session))
   }
 
-  const err = jsonError('Failed to register', 500)
-  return c.json(err.body, err.status)
+  return errorResponse(c, 'Failed to register', 500)
 })
 
 app.post('/api/auth/login', async c => {
   const kv = await getKv()
   const raw = await c.req.json().catch(() => null)
   if (raw === null) {
-    const err = jsonError('Invalid JSON', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid JSON', 400)
   }
   const parsed = AuthLoginRequestSchema.safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError(zodErrorMessage(parsed.error), 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, zodErrorMessage(parsed.error), 400)
   }
 
   const email = parsed.data.email.trim().toLowerCase()
@@ -759,21 +752,18 @@ app.post('/api/auth/login', async c => {
   const userIdEntry = await kv.get<string>(k.userByEmail(email))
   const userId = userIdEntry.value ?? null
   if (!userId) {
-    const err = jsonError('Invalid email or password', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid email or password', 401)
   }
 
   const userEntry = await kv.get<UserKv>(k.user(userId))
   const user = userEntry.value ?? null
   if (!user) {
-    const err = jsonError('Invalid email or password', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid email or password', 401)
   }
 
   const ok = await validatePassword(password, user.passwordHash)
   if (!ok) {
-    const err = jsonError('Invalid email or password', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid email or password', 401)
   }
 
   const needsBcryptUpgrade = !user.passwordHash.startsWith('$2')
@@ -806,8 +796,7 @@ app.post('/api/auth/login', async c => {
     return c.json(sessionToApi(session))
   }
 
-  const err = jsonError('Failed to login', 500)
-  return c.json(err.body, err.status)
+  return errorResponse(c, 'Failed to login', 500)
 })
 
 app.post('/api/auth/logout', async c => {
@@ -826,8 +815,7 @@ app.post('/api/auth/logout', async c => {
 app.get('/api/loop/:id', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const kv = await getKv()
@@ -839,8 +827,7 @@ app.get('/api/loop/:id', async c => {
   const loop = loopEntry.value as LoopKv | null
   const remixesCount = (remixCountEntry.value as number | null) ?? 0
   if (!loop || loop.userId !== session.userId) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   return c.json(loopToApi(loop, { id: session.userId, name: session.name }, remixesCount))
@@ -849,19 +836,16 @@ app.get('/api/loop/:id', async c => {
 app.put('/api/loop/:id', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const raw = await c.req.json().catch(() => null)
   if (raw === null) {
-    const err = jsonError('Invalid JSON', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid JSON', 400)
   }
   const parsed = LoopUpsertRequestSchema.safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError(zodErrorMessage(parsed.error), 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, zodErrorMessage(parsed.error), 400)
   }
 
   const id = c.req.param('id')
@@ -884,13 +868,11 @@ app.put('/api/loop/:id', async c => {
   const ownRemixesCount = (remixCountEntry.value as number | null) ?? 0
 
   if (!currentSession || !user) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   if (prevLoop && prevLoop.userId !== session.userId) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   const data = parsed.data
@@ -986,14 +968,12 @@ app.put('/api/loop/:id', async c => {
 app.delete('/api/loop/:id', async c => {
   const { token, session } = await requireSession(c)
   if (!token || !session) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   const epoch = c.req.query('epoch')?.trim() ?? ''
   if (epoch.length === 0) {
-    const err = jsonError('Epoch is required', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Epoch is required', 400)
   }
 
   const id = c.req.param('id')
@@ -1010,13 +990,11 @@ app.delete('/api/loop/:id', async c => {
   const loop = loopEntry.value as LoopKv | null
 
   if (!currentSession || !user) {
-    const err = jsonError('Not authenticated', 401)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Not authenticated', 401)
   }
 
   if (!loop || loop.userId !== session.userId) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   const parentId = loop.isPublic === true && loop.remixOfId ? loop.remixOfId : null
@@ -1051,7 +1029,7 @@ app.delete('/api/loop/:id', async c => {
 app.get('/api/admin/users', async c => {
   const { session, response } = await requireAdmin(c)
   if (response) return response
-  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+  if (!session) return errorResponse(c, 'Not authenticated', 401)
 
   const kv = await getKv()
   const users: Array<
@@ -1076,7 +1054,7 @@ app.get('/api/admin/users', async c => {
 app.get('/api/admin/loops', async c => {
   const { session, response } = await requireAdmin(c)
   if (response) return response
-  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+  if (!session) return errorResponse(c, 'Not authenticated', 401)
 
   const kv = await getKv()
   const loops: Array<{
@@ -1106,25 +1084,22 @@ app.get('/api/admin/loops', async c => {
 app.post('/api/admin/login-as', async c => {
   const { session: adminSession, response } = await requireAdmin(c)
   if (response) return response
-  if (!adminSession) return c.json(jsonError('Not authenticated', 401).body, 401)
+  if (!adminSession) return errorResponse(c, 'Not authenticated', 401)
 
   const raw = await c.req.json().catch(() => null)
   if (raw === null) {
-    const err = jsonError('Invalid JSON', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid JSON', 400)
   }
   const parsed = z.object({ userId: z.string().min(1) }).safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError('User ID is required', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'User ID is required', 400)
   }
 
   const kv = await getKv()
   const userEntry = await kv.get<UserKv>(k.user(parsed.data.userId))
   const user = userEntry.value ?? null
   if (!user) {
-    const err = jsonError('User not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'User not found', 404)
   }
 
   const prevTokenEntry = await kv.get<string>(k.sessionByUserId(user.id))
@@ -1151,32 +1126,28 @@ app.post('/api/admin/login-as', async c => {
     return c.json(sessionToApi(session))
   }
 
-  const err = jsonError('Failed to login as user', 500)
-  return c.json(err.body, err.status)
+  return errorResponse(c, 'Failed to login as user', 500)
 })
 
 app.post('/api/admin/send-welcome-email', async c => {
   const { session, response } = await requireAdmin(c)
   if (response) return response
-  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+  if (!session) return errorResponse(c, 'Not authenticated', 401)
 
   const raw = await c.req.json().catch(() => null)
   if (raw === null) {
-    const err = jsonError('Invalid JSON', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid JSON', 400)
   }
   const parsed = z.object({ userId: z.string().min(1) }).safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError('User ID is required', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'User ID is required', 400)
   }
 
   const kv = await getKv()
   const userEntry = await kv.get<UserKv>(k.user(parsed.data.userId))
   const user = userEntry.value ?? null
   if (!user) {
-    const err = jsonError('User not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'User not found', 404)
   }
 
   // TODO: Implement actual email sending
@@ -1189,7 +1160,7 @@ app.post('/api/admin/send-welcome-email', async c => {
 app.delete('/api/admin/user/:id', async c => {
   const { session, response } = await requireAdmin(c)
   if (response) return response
-  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+  if (!session) return errorResponse(c, 'Not authenticated', 401)
 
   const id = c.req.param('id')
   const kv = await getKv()
@@ -1197,8 +1168,7 @@ app.delete('/api/admin/user/:id', async c => {
   const userEntry = await kv.get<UserKv>(k.user(id))
   const user = userEntry.value ?? null
   if (!user) {
-    const err = jsonError('User not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'User not found', 404)
   }
 
   const sessionByUserIdEntry = await kv.get<string>(k.sessionByUserId(id))
@@ -1224,7 +1194,7 @@ app.delete('/api/admin/user/:id', async c => {
 app.delete('/api/admin/loop/:id', async c => {
   const { session, response } = await requireAdmin(c)
   if (response) return response
-  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+  if (!session) return errorResponse(c, 'Not authenticated', 401)
 
   const id = c.req.param('id')
   const kv = await getKv()
@@ -1232,8 +1202,7 @@ app.delete('/api/admin/loop/:id', async c => {
   const loopEntry = await kv.get<LoopKv>(k.loop(id))
   const loop = loopEntry.value ?? null
   if (!loop) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   const userEntry = await kv.get<UserKv>(k.user(loop.userId))
@@ -1269,7 +1238,7 @@ app.delete('/api/admin/loop/:id', async c => {
 app.put('/api/admin/loop/:id/toggle-visibility', async c => {
   const { session, response } = await requireAdmin(c)
   if (response) return response
-  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+  if (!session) return errorResponse(c, 'Not authenticated', 401)
 
   const id = c.req.param('id')
   const kv = await getKv()
@@ -1283,15 +1252,13 @@ app.put('/api/admin/loop/:id/toggle-visibility', async c => {
 
   const loop = loopEntry.value as LoopKv | null
   if (!loop) {
-    const err = jsonError('Loop not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Loop not found', 404)
   }
 
   const user = await kv.get<UserKv>(k.user(loop.userId))
   const userValue = user.value ?? null
   if (!userValue) {
-    const err = jsonError('User not found', 404)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'User not found', 404)
   }
 
   const likesCount = (likeCountEntry?.value as number | null) ?? 0
@@ -1339,17 +1306,15 @@ app.put('/api/admin/loop/:id/toggle-visibility', async c => {
 app.post('/api/admin/import-v1', async c => {
   const { session, response } = await requireAdmin(c)
   if (response) return response
-  if (!session) return c.json(jsonError('Not authenticated', 401).body, 401)
+  if (!session) return errorResponse(c, 'Not authenticated', 401)
 
   const raw = await c.req.json().catch(() => null)
   if (raw === null) {
-    const err = jsonError('Invalid JSON', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid JSON', 400)
   }
   const parsed = z.object({ data: z.array(z.any()) }).safeParse(raw)
   if (!parsed.success) {
-    const err = jsonError('Invalid data format', 400)
-    return c.json(err.body, err.status)
+    return errorResponse(c, 'Invalid data format', 400)
   }
 
   const kv = await getKv()
