@@ -1,4 +1,4 @@
-import { compare, hash } from '@da/bcrypt'
+import { hash, verify } from '@felix/bcrypt'
 import { Hono } from '@hono/hono'
 import type { Context } from '@hono/hono'
 import { serveStatic } from '@hono/hono/deno'
@@ -40,7 +40,7 @@ async function hashPasswordSha256(password: string): Promise<string> {
 }
 
 async function validatePassword(password: string, passwordHash: string): Promise<boolean> {
-  const bcryptOk = await compare(password, passwordHash).catch(() => false)
+  const bcryptOk = await verify(password, passwordHash).catch(() => false)
   if (bcryptOk) return true
   const sha256Hash = await hashPasswordSha256(password)
   return sha256Hash === passwordHash
