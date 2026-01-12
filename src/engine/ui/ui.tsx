@@ -325,16 +325,32 @@ export function EngineUI() {
   const fontsLoaded = useFontsLoaded()
   const seekToSampleImmediate = useSeekToSampleImmediate()
 
+  const [pathname, setPathname] = useState(() => window.location.pathname || '/')
+
+  useEffect(() => {
+    const updatePathname = () => setPathname(window.location.pathname || '/')
+    window.addEventListener('popstate', updatePathname)
+    // Poll for pathname changes (router uses pushState/replaceState which don't fire events)
+    const interval = setInterval(updatePathname, 50)
+    return () => {
+      window.removeEventListener('popstate', updatePathname)
+      clearInterval(interval)
+    }
+  }, [])
+
   const routeLoopId = useMemo(() => {
-    const pathname = window.location.pathname || '/'
     const match = pathname.match(/^\/app\/browse\/loop\/([^/]+)$/)
     return match ? match[1] : null
-  }, [])
+  }, [pathname])
 
   const isRouteLoopReady = routeLoopId == null ? true : currentLoop?.data.id === routeLoopId
 
-  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext || !currentLoop
-    || !isRouteLoopReady
+  // Routes that don't need currentLoop: /, /admin, /browse, /browse/loop/<id>, /browse/artist/..., /docs
+  const needsCurrentLoop =
+    !(pathname === '/' || pathname === '/admin' || pathname.startsWith('/browse') || pathname.startsWith('/docs'))
+
+  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext
+    || (needsCurrentLoop && (!currentLoop || !isRouteLoopReady))
     || isLoopLoading || isEditorBusy
 
   const [showIntro, setShowIntro] = useState(true)

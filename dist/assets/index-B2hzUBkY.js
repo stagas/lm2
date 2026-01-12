@@ -29661,69 +29661,6 @@ const e$1 = D((r2, a2) => /* @__PURE__ */ _$1(p, { ref: a2, ...r2, weights: e$8 
 e$1.displayName = "WaveformIcon";
 const e = D((r2, t2) => /* @__PURE__ */ _$1(p, { ref: t2, ...r2, weights: a$3 }));
 e.displayName = "XIcon";
-function Modal({
-  isOpen,
-  onClose,
-  title,
-  width = "w-full",
-  maxWidth = "max-w-lg",
-  className = "",
-  contentClassName = "",
-  children
-}) {
-  y(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
-  const handleBackdropClick = (e2) => {
-    if (e2.target === e2.currentTarget) {
-      onClose();
-    }
-  };
-  const handleKeyDown = (e2) => {
-    if (e2.key === "Escape") {
-      onClose();
-    }
-  };
-  y(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen]);
-  if (!isOpen) return null;
-  return $(
-    /* @__PURE__ */ u$1("div", { className: "fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm", children: /* @__PURE__ */ u$1(
-      "div",
-      {
-        className: `bg-neutral-900 border border-[#333] shadow-xl ${width} ${maxWidth} ${className}`,
-        onClick: handleBackdropClick,
-        children: [
-          title && /* @__PURE__ */ u$1("div", { className: "flex items-center justify-between p-6 border-b border-[#333]", children: [
-            /* @__PURE__ */ u$1("h2", { className: "text-xl font-semibold text-white", children: title }),
-            /* @__PURE__ */ u$1(
-              "button",
-              {
-                onClick: onClose,
-                className: "text-[#888] hover:text-white text-2xl leading-none",
-                "aria-label": "Close modal",
-                children: /* @__PURE__ */ u$1(e, { weight: "light", size: 24 })
-              }
-            )
-          ] }),
-          /* @__PURE__ */ u$1("div", { className: `text-white ${contentClassName}`, children })
-        ]
-      }
-    ) }),
-    document.body
-  );
-}
 const RouterContext = Q$1(null);
 const normalizeToPathname = (to) => {
   if (typeof window === "undefined") return to.startsWith("/") ? to : `/${to}`;
@@ -29778,6 +29715,637 @@ function Link({
   };
   return /* @__PURE__ */ u$1("a", { href: to, className, onClick: handleClick, ...props, children });
 }
+function Admin() {
+  const { navigate } = useRouter();
+  const sessionData = useAppStore((state2) => state2.sessionData);
+  const api = useAppStore((state2) => state2.api);
+  const setSessionData = useAppStore((state2) => state2.setSessionData);
+  const [activeTab, setActiveTab] = d("users");
+  const [users, setUsers] = d([]);
+  const [loops, setLoops] = d([]);
+  const [isLoadingUsers, setIsLoadingUsers] = d(false);
+  const [isLoadingLoops, setIsLoadingLoops] = d(false);
+  const [isImporting, setIsImporting] = d(false);
+  const [importError, setImportError] = d(null);
+  const [importResult, setImportResult] = d(null);
+  const fileInputRef = A$1(null);
+  y(() => {
+    if (!sessionData?.user.isAdmin) {
+      navigate("/");
+      return;
+    }
+  }, [sessionData, navigate]);
+  y(() => {
+    if (activeTab === "users" && users.length === 0 && !isLoadingUsers) {
+      setIsLoadingUsers(true);
+      void api.fetchAdminUsers().then(setUsers).catch((e2) => console.error("Failed to fetch users:", e2)).finally(() => setIsLoadingUsers(false));
+    }
+  }, [activeTab, users.length, isLoadingUsers, api]);
+  y(() => {
+    if (activeTab === "loops" && loops.length === 0 && !isLoadingLoops) {
+      setIsLoadingLoops(true);
+      void api.fetchAdminLoops().then(setLoops).catch((e2) => console.error("Failed to fetch loops:", e2)).finally(() => setIsLoadingLoops(false));
+    }
+  }, [activeTab, loops.length, isLoadingLoops, api]);
+  const handleLoginAs = async (userId) => {
+    try {
+      const session = await api.adminLoginAs(userId);
+      setSessionData(session);
+      navigate("/app");
+    } catch (e2) {
+      alert(e2 instanceof Error ? e2.message : "Failed to login as user");
+    }
+  };
+  const handleSendWelcomeEmail = async (userId) => {
+    try {
+      const res = await api.adminSendWelcomeEmail(userId);
+      setUsers(users.map((u2) => u2.id === userId ? { ...u2, welcomeEmailSent: true } : u2));
+      alert(res.message);
+    } catch (e2) {
+      alert(e2 instanceof Error ? e2.message : "Failed to send welcome email");
+    }
+  };
+  const handleDeleteUser = async (userId) => {
+    if (!confirm("Are you sure you want to delete this user?")) return;
+    try {
+      await api.adminDeleteUser(userId);
+      setUsers(users.filter((u2) => u2.id !== userId));
+    } catch (e2) {
+      alert(e2 instanceof Error ? e2.message : "Failed to delete user");
+    }
+  };
+  const handleDeleteLoop = async (loopId) => {
+    if (!confirm("Are you sure you want to delete this loop?")) return;
+    try {
+      await api.adminDeleteLoop(loopId);
+      setLoops(loops.filter((l2) => l2.id !== loopId));
+    } catch (e2) {
+      alert(e2 instanceof Error ? e2.message : "Failed to delete loop");
+    }
+  };
+  const handleToggleVisibility = async (loopId) => {
+    try {
+      const res = await api.adminToggleLoopVisibility(loopId);
+      setLoops(loops.map((l2) => l2.id === loopId ? { ...l2, isPublic: res.isPublic } : l2));
+    } catch (e2) {
+      alert(e2 instanceof Error ? e2.message : "Failed to toggle visibility");
+    }
+  };
+  const handleFileSelect = async (e2) => {
+    const target = e2.target;
+    const file = target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
+    setImportError(null);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid file format: expected an array");
+      }
+      const result = await api.adminImportV1(data);
+      setImportResult(result);
+      if (result.errors.length > 0) {
+        console.error("Import errors:", result.errors);
+      }
+    } catch (e22) {
+      setImportError(e22 instanceof Error ? e22.message : "Failed to import data");
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+  if (!sessionData?.user.isAdmin) {
+    return null;
+  }
+  return /* @__PURE__ */ u$1("div", { className: "min-h-screen text-white relative", children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1("div", { className: "relative min-h-screen", children: /* @__PURE__ */ u$1("div", { className: "mx-auto px-6 py-12 min-h-screen flex flex-col", children: [
+    /* @__PURE__ */ u$1("div", { className: "text-center mb-12", children: [
+      /* @__PURE__ */ u$1(Link, { to: "/", children: /* @__PURE__ */ u$1(Logo, { text: "loopmaster", size: "4em" }) }),
+      /* @__PURE__ */ u$1("h1", { className: "text-3xl font-bold text-white mt-6 mb-2", children: "Admin Panel" }),
+      /* @__PURE__ */ u$1("p", { className: "text-neutral-400", children: "Manage users, loops, and import data" })
+    ] }),
+    /* @__PURE__ */ u$1("div", { className: "flex flex-row items-center justify-center gap-2 mb-8", children: [
+      /* @__PURE__ */ u$1(
+        "button",
+        {
+          onClick: () => setActiveTab("users"),
+          className: `px-6 py-3 font-semibold text-sm flex items-center justify-center gap-2 rounded-lg ${activeTab === "users" ? "bg-gradient-to-br from-orange-400 to-red-600 text-white" : "bg-neutral-900 text-neutral-400 hover:text-white border-2 border-neutral-800 hover:border-orange-600"}`,
+          children: [
+            /* @__PURE__ */ u$1(o, { weight: "regular", size: 18 }),
+            /* @__PURE__ */ u$1("span", { children: "Users" })
+          ]
+        }
+      ),
+      /* @__PURE__ */ u$1(
+        "button",
+        {
+          onClick: () => setActiveTab("loops"),
+          className: `px-6 py-3 font-semibold text-sm flex items-center justify-center gap-2 rounded-lg ${activeTab === "loops" ? "bg-gradient-to-br from-orange-400 to-red-600 text-white" : "bg-neutral-900 text-neutral-400 hover:text-white border-2 border-neutral-800 hover:border-orange-600"}`,
+          children: [
+            /* @__PURE__ */ u$1(t$1, { weight: "regular", size: 18 }),
+            /* @__PURE__ */ u$1("span", { children: "Loops" })
+          ]
+        }
+      ),
+      /* @__PURE__ */ u$1(
+        "button",
+        {
+          onClick: () => setActiveTab("import"),
+          className: `px-6 py-3 font-semibold text-sm flex items-center justify-center gap-2 rounded-lg ${activeTab === "import" ? "bg-gradient-to-br from-orange-400 to-red-600 text-white" : "bg-neutral-900 text-neutral-400 hover:text-white border-2 border-neutral-800 hover:border-orange-600"}`,
+          children: [
+            /* @__PURE__ */ u$1(a$2, { weight: "regular", size: 18 }),
+            /* @__PURE__ */ u$1("span", { children: "Import V1" })
+          ]
+        }
+      ),
+      /* @__PURE__ */ u$1("span", { className: "text-neutral-500 mx-2", children: "or" }),
+      /* @__PURE__ */ u$1(
+        Link,
+        {
+          to: "/app",
+          className: "px-6 py-3 font-semibold text-sm flex items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-orange-400 to-red-600 text-white",
+          children: [
+            /* @__PURE__ */ u$1(e$7, { weight: "regular", size: 18 }),
+            /* @__PURE__ */ u$1("span", { children: "Enter App" })
+          ]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ u$1("div", { className: "flex-1", children: [
+      activeTab === "users" && /* @__PURE__ */ u$1("div", { className: "bg-black border-2 border-orange-600 rounded-lg p-6", children: [
+        /* @__PURE__ */ u$1("h2", { className: "text-2xl font-semibold text-white mb-4 flex items-center gap-2", children: [
+          /* @__PURE__ */ u$1(o, { weight: "regular", size: 24 }),
+          "Users"
+        ] }),
+        isLoadingUsers ? /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-8", children: "Loading users..." }) : users.length === 0 ? /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-8", children: "No users found." }) : /* @__PURE__ */ u$1("div", { className: "overflow-x-auto", children: /* @__PURE__ */ u$1("table", { className: "w-full text-left", children: [
+          /* @__PURE__ */ u$1("thead", { children: /* @__PURE__ */ u$1("tr", { className: "border-b-2 border-neutral-800", children: [
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Name" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Email" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Loops" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Likes" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Welcome Email" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Actions" })
+          ] }) }),
+          /* @__PURE__ */ u$1("tbody", { children: users.map((user) => /* @__PURE__ */ u$1("tr", { className: "border-b border-neutral-900", children: [
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-white", children: user.name }),
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-300", children: user.email }),
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400", children: user.loopsCount }),
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400", children: user.likesCount }),
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400", children: user.welcomeEmailSent ? /* @__PURE__ */ u$1("span", { className: "text-green-400", children: "✓ Sent" }) : /* @__PURE__ */ u$1("span", { className: "text-yellow-400", children: "Not sent" }) }),
+            /* @__PURE__ */ u$1("td", { className: "py-3", children: /* @__PURE__ */ u$1("div", { className: "flex gap-2", children: [
+              /* @__PURE__ */ u$1(
+                "button",
+                {
+                  onClick: () => handleLoginAs(user.id),
+                  className: "px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-sm flex items-center gap-1",
+                  title: "Login as user",
+                  children: /* @__PURE__ */ u$1(n, { weight: "regular", size: 14 })
+                }
+              ),
+              /* @__PURE__ */ u$1(
+                "button",
+                {
+                  onClick: () => handleSendWelcomeEmail(user.id),
+                  className: "px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm",
+                  title: "Send welcome email",
+                  children: "Email"
+                }
+              ),
+              /* @__PURE__ */ u$1(
+                "button",
+                {
+                  onClick: () => handleDeleteUser(user.id),
+                  className: "px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm flex items-center gap-1",
+                  title: "Delete user",
+                  children: /* @__PURE__ */ u$1(r$1, { weight: "regular", size: 14 })
+                }
+              )
+            ] }) })
+          ] }, user.id)) })
+        ] }) })
+      ] }),
+      activeTab === "loops" && /* @__PURE__ */ u$1("div", { className: "bg-black border-2 border-orange-600 rounded-lg p-6", children: [
+        /* @__PURE__ */ u$1("h2", { className: "text-2xl font-semibold text-white mb-4 flex items-center gap-2", children: [
+          /* @__PURE__ */ u$1(t$1, { weight: "regular", size: 24 }),
+          "Loops"
+        ] }),
+        isLoadingLoops ? /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-8", children: "Loading loops..." }) : loops.length === 0 ? /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-8", children: "No loops found." }) : /* @__PURE__ */ u$1("div", { className: "overflow-x-auto", children: /* @__PURE__ */ u$1("table", { className: "w-full text-left", children: [
+          /* @__PURE__ */ u$1("thead", { children: /* @__PURE__ */ u$1("tr", { className: "border-b-2 border-neutral-800", children: [
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Title" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "User ID" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Public" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Date" }),
+            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Actions" })
+          ] }) }),
+          /* @__PURE__ */ u$1("tbody", { children: loops.map((loop) => /* @__PURE__ */ u$1("tr", { className: "border-b border-neutral-900", children: [
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-white", children: loop.title }),
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-300 font-mono text-sm", children: loop.userId }),
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400", children: loop.isPublic ? "Yes" : "No" }),
+            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400 text-sm", children: new Date(loop.timestamp).toLocaleDateString() }),
+            /* @__PURE__ */ u$1("td", { className: "py-3", children: /* @__PURE__ */ u$1("div", { className: "flex gap-2", children: [
+              /* @__PURE__ */ u$1(
+                "button",
+                {
+                  onClick: () => handleToggleVisibility(loop.id),
+                  className: "px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm flex items-center gap-1",
+                  title: loop.isPublic ? "Make private" : "Make public",
+                  children: loop.isPublic ? /* @__PURE__ */ u$1(o$d, { weight: "regular", size: 14 }) : /* @__PURE__ */ u$1(o$e, { weight: "regular", size: 14 })
+                }
+              ),
+              /* @__PURE__ */ u$1(
+                "button",
+                {
+                  onClick: () => handleDeleteLoop(loop.id),
+                  className: "px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm flex items-center gap-1",
+                  title: "Delete loop",
+                  children: /* @__PURE__ */ u$1(r$1, { weight: "regular", size: 14 })
+                }
+              )
+            ] }) })
+          ] }, loop.id)) })
+        ] }) })
+      ] }),
+      activeTab === "import" && /* @__PURE__ */ u$1("div", { className: "bg-black border-2 border-orange-600 rounded-lg p-6", children: [
+        /* @__PURE__ */ u$1("h2", { className: "text-2xl font-semibold text-white mb-4 flex items-center gap-2", children: [
+          /* @__PURE__ */ u$1(a$2, { weight: "regular", size: 24 }),
+          "Import User Data from V1"
+        ] }),
+        /* @__PURE__ */ u$1("p", { className: "text-neutral-400 mb-6", children: "Upload a JSON file exported from V1 to migrate user data to the current backend." }),
+        /* @__PURE__ */ u$1("div", { className: "mb-6", children: [
+          /* @__PURE__ */ u$1(
+            "input",
+            {
+              ref: fileInputRef,
+              type: "file",
+              accept: ".json",
+              onChange: handleFileSelect,
+              className: "hidden",
+              id: "import-file"
+            }
+          ),
+          /* @__PURE__ */ u$1(
+            "label",
+            {
+              htmlFor: "import-file",
+              className: "inline-block px-6 py-3 bg-gradient-to-br from-orange-400 to-red-600 text-white font-semibold rounded-lg cursor-pointer hover:opacity-90",
+              children: "Select JSON File"
+            }
+          )
+        ] }),
+        isImporting && /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-4", children: "Importing data..." }),
+        importError && /* @__PURE__ */ u$1("div", { className: "bg-red-900/50 border-2 border-red-600 rounded-lg p-4 mb-4", children: [
+          /* @__PURE__ */ u$1("div", { className: "flex items-center gap-2 mb-2", children: [
+            /* @__PURE__ */ u$1(e, { weight: "regular", size: 20, className: "text-red-400" }),
+            /* @__PURE__ */ u$1("span", { className: "text-red-400 font-semibold", children: "Import Error" })
+          ] }),
+          /* @__PURE__ */ u$1("p", { className: "text-red-300", children: importError })
+        ] }),
+        importResult && /* @__PURE__ */ u$1("div", { className: "bg-green-900/50 border-2 border-green-600 rounded-lg p-4", children: [
+          /* @__PURE__ */ u$1("div", { className: "flex items-center gap-2 mb-2", children: /* @__PURE__ */ u$1("span", { className: "text-green-400 font-semibold", children: "Import Complete" }) }),
+          /* @__PURE__ */ u$1("div", { className: "text-green-300 space-y-1", children: [
+            /* @__PURE__ */ u$1("p", { children: [
+              "Imported: ",
+              importResult.imported,
+              " users"
+            ] }),
+            /* @__PURE__ */ u$1("p", { children: [
+              "Skipped: ",
+              importResult.skipped,
+              " users"
+            ] }),
+            importResult.errors.length > 0 && /* @__PURE__ */ u$1("div", { className: "mt-3", children: [
+              /* @__PURE__ */ u$1("p", { className: "text-yellow-400 font-semibold mb-1", children: [
+                "Errors (",
+                importResult.errors.length,
+                "):"
+              ] }),
+              /* @__PURE__ */ u$1("ul", { className: "list-disc list-inside text-sm space-y-1", children: [
+                importResult.errors.slice(0, 10).map((error, i2) => /* @__PURE__ */ u$1("li", { className: "text-yellow-300", children: error }, i2)),
+                importResult.errors.length > 10 && /* @__PURE__ */ u$1("li", { className: "text-yellow-300", children: [
+                  "... and ",
+                  importResult.errors.length - 10,
+                  " more"
+                ] })
+              ] })
+            ] })
+          ] })
+        ] })
+      ] })
+    ] })
+  ] }) }) }) });
+}
+const getFontString = (fontName) => {
+  return `11.5pt "${fontName}", monospace`;
+};
+const createBaseTheme = (colors, rainbowColors, errorColor, background, gutterBackground, gutterBorder, gutterText, selection, caret, braceMatch, scrollbarThumb, scrollbarThumbHover, errorPopup, functionSignaturePopup, autocompletePopup) => ({
+  colors,
+  rainbowColors,
+  errorColor,
+  errorGutterColor: errorColor,
+  errorSquigglyColor: errorColor,
+  background,
+  gutterBackground,
+  gutterBorder,
+  gutterText,
+  selection,
+  caret,
+  braceMatch,
+  scrollbarTrack: "transparent",
+  scrollbarThumb,
+  scrollbarThumbHover,
+  errorPopup,
+  functionSignaturePopup,
+  autocompletePopup
+});
+const themes = {
+  monokai: createBaseTheme(
+    {
+      keyword: "#e06c31",
+      string: "#dcb77e",
+      number: "#ffbb00",
+      function: "#55ddff",
+      parameter: "#c39076",
+      argument: "#ff6622",
+      comment: "#a98054",
+      operator: "#dbb049",
+      punctuation: "#a88",
+      default: "#f6e7d6"
+    },
+    ["#88ff88", "#faf", "#4af"],
+    "#ff5555",
+    "#222",
+    "#222",
+    "#3e3d32",
+    "#75715e",
+    "#49483e",
+    "#f8f8f0",
+    "#f8f8f0",
+    "#4b5563",
+    "#6b7280",
+    {
+      background: "#3a1f1f",
+      border: "#ff5555",
+      text: "#f6e7d6"
+    },
+    {
+      background: "#2a2a2a",
+      border: "#4a4a40",
+      text: "#f6e7d6",
+      activeParameterBackground: "#49483e",
+      activeParameterText: "#f6e7d6",
+      functionName: "#55ddff",
+      returnType: "#55ddff",
+      parameterName: "#c39076",
+      parameterType: "#ffbb00",
+      description: "#a98054",
+      separator: "#8f8"
+    },
+    {
+      background: "#2a2a2a",
+      border: "#4a4a40",
+      text: "#f6e7d6",
+      selectedBackground: "#49483e",
+      selectedText: "#f6e7d6",
+      hoverBackground: "#2a2a2a"
+    }
+  ),
+  dracula: createBaseTheme(
+    {
+      keyword: "#ff79c6",
+      string: "#f1fa8c",
+      number: "#bd93f9",
+      function: "#50fa7b",
+      parameter: "#8be9fd",
+      argument: "#ffb86c",
+      comment: "#6272a4",
+      operator: "#ff79c6",
+      punctuation: "#f8f8f2",
+      default: "#f8f8f2"
+    },
+    ["#ff79c6", "#bd93f9", "#50fa7b"],
+    "#ff5555",
+    "#282a36",
+    "#282a36",
+    "#44475a",
+    "#6272a4",
+    "#44475a",
+    "#f8f8f0",
+    "#f8f8f0",
+    "#44475a",
+    "#6272a4",
+    {
+      background: "#3a1f1f",
+      border: "#ff5555",
+      text: "#f8f8f2"
+    },
+    {
+      background: "#323544",
+      border: "#505266",
+      text: "#f8f8f2",
+      activeParameterBackground: "#44475a",
+      activeParameterText: "#f8f8f2",
+      functionName: "#50fa7b",
+      returnType: "#50fa7b",
+      parameterName: "#8be9fd",
+      parameterType: "#bd93f9",
+      description: "#6272a4",
+      separator: "#6272a4"
+    },
+    {
+      background: "#323544",
+      border: "#505266",
+      text: "#f8f8f2",
+      selectedBackground: "#44475a",
+      selectedText: "#f8f8f2",
+      hoverBackground: "#21222c"
+    }
+  ),
+  nord: createBaseTheme(
+    {
+      keyword: "#81a1c1",
+      string: "#a3be8c",
+      number: "#b48ead",
+      function: "#88c0d0",
+      parameter: "#8fbcbb",
+      argument: "#ebcb8b",
+      comment: "#616e88",
+      operator: "#81a1c1",
+      punctuation: "#d8dee9",
+      default: "#d8dee9"
+    },
+    ["#a3be8c", "#b48ead", "#88c0d0"],
+    "#bf616a",
+    "#2e3440",
+    "#2e3440",
+    "#3b4252",
+    "#616e88",
+    "#3b4252",
+    "#d8dee9",
+    "#d8dee9",
+    "#3b4252",
+    "#434c5e",
+    {
+      background: "#3b1f1f",
+      border: "#bf616a",
+      text: "#d8dee9"
+    },
+    {
+      background: "#3a4250",
+      border: "#47505e",
+      text: "#d8dee9",
+      activeParameterBackground: "#3b4252",
+      activeParameterText: "#d8dee9",
+      functionName: "#88c0d0",
+      returnType: "#88c0d0",
+      parameterName: "#8fbcbb",
+      parameterType: "#b48ead",
+      description: "#616e88",
+      separator: "#616e88"
+    },
+    {
+      background: "#3a4250",
+      border: "#47505e",
+      text: "#d8dee9",
+      selectedBackground: "#3b4252",
+      selectedText: "#d8dee9",
+      hoverBackground: "#252933"
+    }
+  ),
+  monochrome: createBaseTheme(
+    {
+      keyword: "#ffffff",
+      string: "#cccccc",
+      number: "#aaaaaa",
+      function: "#ffffff",
+      parameter: "#dddddd",
+      argument: "#eeeeee",
+      comment: "#666666",
+      operator: "#ffffff",
+      punctuation: "#bbbbbb",
+      default: "#ffffff"
+    },
+    ["#ffffff", "#cccccc", "#888888"],
+    "#ff0000",
+    "#000000",
+    "#000000",
+    "#333333",
+    "#666666",
+    "#333333",
+    "#ffffff",
+    "#ffffff",
+    "#333333",
+    "#444444",
+    {
+      background: "#1a0000",
+      border: "#ff0000",
+      text: "#ffffff"
+    },
+    {
+      background: "#0a0a0a",
+      border: "#404040",
+      text: "#ffffff",
+      activeParameterBackground: "#333333",
+      activeParameterText: "#ffffff",
+      functionName: "#ffffff",
+      returnType: "#ffffff",
+      parameterName: "#dddddd",
+      parameterType: "#aaaaaa",
+      description: "#666666",
+      separator: "#666666"
+    },
+    {
+      background: "#0a0a0a",
+      border: "#404040",
+      text: "#ffffff",
+      selectedBackground: "#333333",
+      selectedText: "#ffffff",
+      hoverBackground: "#0a0a0a"
+    }
+  ),
+  duochrome: createBaseTheme(
+    {
+      keyword: "#ffffff",
+      string: "#cccccc",
+      number: "#ffff00",
+      function: "#ea580c",
+      // '#55ddff', //
+      parameter: "#aaa",
+      argument: "#ea580c",
+      // orange-600
+      comment: "#666666",
+      operator: "#bbb",
+      punctuation: "#bbbbbb",
+      default: "#ffffff"
+    },
+    ["#777", "#aaa", "#fff"],
+    "#ff0000",
+    "transparent",
+    "#000c",
+    "#333333",
+    "#666666",
+    "#333333",
+    "#ffffff",
+    "#ffffff",
+    "#333333",
+    "#444444",
+    {
+      background: "#1a0000",
+      border: "#ff0000",
+      text: "#ffffff"
+    },
+    {
+      background: "#0a0a0a",
+      border: "#404040",
+      text: "#ffffff",
+      activeParameterBackground: "#333333",
+      activeParameterText: "#ffffff",
+      functionName: "#f97316",
+      returnType: "#f97316",
+      parameterName: "#dddddd",
+      parameterType: "#aaaaaa",
+      description: "#666666",
+      separator: "#666666"
+    },
+    {
+      background: "#0a0a0a",
+      border: "#404040",
+      text: "#ffffff",
+      selectedBackground: "#333333",
+      selectedText: "#ffffff",
+      hoverBackground: "#0a0a0a"
+    }
+  )
+};
+const useThemeStore = create()(
+  // persist(
+  (set) => ({
+    currentTheme: "duochrome",
+    previewTheme: null,
+    setTheme: (theme) => set({ currentTheme: theme }),
+    setPreviewTheme: (previewTheme) => set({ previewTheme })
+  })
+  //   {
+  //     name: 'theme-storage',
+  //   },
+  // ),
+);
+function useTheme() {
+  const currentTheme = useThemeStore((state2) => state2.currentTheme);
+  const previewTheme = useThemeStore((state2) => state2.previewTheme);
+  const currentFont = useFontStore((state2) => state2.currentFont);
+  const previewFont = useFontStore((state2) => state2.previewFont);
+  const themeName = previewTheme ?? currentTheme;
+  const fontName = previewFont ?? currentFont;
+  const baseTheme = themes[themeName] ?? themes.monokai;
+  return {
+    ...baseTheme,
+    font: getFontString(fontName)
+  };
+}
+const getCurrentTheme = () => {
+  return themes[useThemeStore.getState().currentTheme];
+};
 let inMultilineString = null;
 let inMiniString = null;
 let inMiniCall = -1;
@@ -30335,349 +30903,6 @@ const tokenizer = (line, isBeginOfCode) => {
   }
   persistedParenDepth = parenDepth;
   return tokens;
-};
-function normalize(s2) {
-  return s2.toLowerCase().replace(/\s+/g, " ").trim();
-}
-function scoreSubsequence(q2, t2) {
-  if (!q2) return 0;
-  let qi = 0;
-  let last = -2;
-  let score = 0;
-  for (let ti = 0; ti < t2.length && qi < q2.length; ti++) {
-    if (t2[ti] !== q2[qi]) continue;
-    const consecutive = last === ti - 1;
-    score += consecutive ? 8 : 3;
-    score += Math.max(0, 10 - ti * 0.05);
-    last = ti;
-    qi++;
-  }
-  return qi === q2.length ? score : 0;
-}
-function fuzzyScore(query, text) {
-  const q2 = normalize(query);
-  const t2 = normalize(text);
-  if (!q2) return 0;
-  const parts = q2.split(" ").filter(Boolean);
-  if (parts.length === 0) return 0;
-  let total = 0;
-  for (const p2 of parts) {
-    const s2 = scoreSubsequence(p2, t2);
-    if (s2 <= 0) return 0;
-    total += s2;
-  }
-  return total;
-}
-const getFontString = (fontName) => {
-  return `11.5pt "${fontName}", monospace`;
-};
-const createBaseTheme = (colors, rainbowColors, errorColor, background, gutterBackground, gutterBorder, gutterText, selection, caret, braceMatch, scrollbarThumb, scrollbarThumbHover, errorPopup, functionSignaturePopup, autocompletePopup) => ({
-  colors,
-  rainbowColors,
-  errorColor,
-  errorGutterColor: errorColor,
-  errorSquigglyColor: errorColor,
-  background,
-  gutterBackground,
-  gutterBorder,
-  gutterText,
-  selection,
-  caret,
-  braceMatch,
-  scrollbarTrack: "transparent",
-  scrollbarThumb,
-  scrollbarThumbHover,
-  errorPopup,
-  functionSignaturePopup,
-  autocompletePopup
-});
-const themes = {
-  monokai: createBaseTheme(
-    {
-      keyword: "#e06c31",
-      string: "#dcb77e",
-      number: "#ffbb00",
-      function: "#55ddff",
-      parameter: "#c39076",
-      argument: "#ff6622",
-      comment: "#a98054",
-      operator: "#dbb049",
-      punctuation: "#a88",
-      default: "#f6e7d6"
-    },
-    ["#88ff88", "#faf", "#4af"],
-    "#ff5555",
-    "#222",
-    "#222",
-    "#3e3d32",
-    "#75715e",
-    "#49483e",
-    "#f8f8f0",
-    "#f8f8f0",
-    "#4b5563",
-    "#6b7280",
-    {
-      background: "#3a1f1f",
-      border: "#ff5555",
-      text: "#f6e7d6"
-    },
-    {
-      background: "#2a2a2a",
-      border: "#4a4a40",
-      text: "#f6e7d6",
-      activeParameterBackground: "#49483e",
-      activeParameterText: "#f6e7d6",
-      functionName: "#55ddff",
-      returnType: "#55ddff",
-      parameterName: "#c39076",
-      parameterType: "#ffbb00",
-      description: "#a98054",
-      separator: "#8f8"
-    },
-    {
-      background: "#2a2a2a",
-      border: "#4a4a40",
-      text: "#f6e7d6",
-      selectedBackground: "#49483e",
-      selectedText: "#f6e7d6",
-      hoverBackground: "#2a2a2a"
-    }
-  ),
-  dracula: createBaseTheme(
-    {
-      keyword: "#ff79c6",
-      string: "#f1fa8c",
-      number: "#bd93f9",
-      function: "#50fa7b",
-      parameter: "#8be9fd",
-      argument: "#ffb86c",
-      comment: "#6272a4",
-      operator: "#ff79c6",
-      punctuation: "#f8f8f2",
-      default: "#f8f8f2"
-    },
-    ["#ff79c6", "#bd93f9", "#50fa7b"],
-    "#ff5555",
-    "#282a36",
-    "#282a36",
-    "#44475a",
-    "#6272a4",
-    "#44475a",
-    "#f8f8f0",
-    "#f8f8f0",
-    "#44475a",
-    "#6272a4",
-    {
-      background: "#3a1f1f",
-      border: "#ff5555",
-      text: "#f8f8f2"
-    },
-    {
-      background: "#323544",
-      border: "#505266",
-      text: "#f8f8f2",
-      activeParameterBackground: "#44475a",
-      activeParameterText: "#f8f8f2",
-      functionName: "#50fa7b",
-      returnType: "#50fa7b",
-      parameterName: "#8be9fd",
-      parameterType: "#bd93f9",
-      description: "#6272a4",
-      separator: "#6272a4"
-    },
-    {
-      background: "#323544",
-      border: "#505266",
-      text: "#f8f8f2",
-      selectedBackground: "#44475a",
-      selectedText: "#f8f8f2",
-      hoverBackground: "#21222c"
-    }
-  ),
-  nord: createBaseTheme(
-    {
-      keyword: "#81a1c1",
-      string: "#a3be8c",
-      number: "#b48ead",
-      function: "#88c0d0",
-      parameter: "#8fbcbb",
-      argument: "#ebcb8b",
-      comment: "#616e88",
-      operator: "#81a1c1",
-      punctuation: "#d8dee9",
-      default: "#d8dee9"
-    },
-    ["#a3be8c", "#b48ead", "#88c0d0"],
-    "#bf616a",
-    "#2e3440",
-    "#2e3440",
-    "#3b4252",
-    "#616e88",
-    "#3b4252",
-    "#d8dee9",
-    "#d8dee9",
-    "#3b4252",
-    "#434c5e",
-    {
-      background: "#3b1f1f",
-      border: "#bf616a",
-      text: "#d8dee9"
-    },
-    {
-      background: "#3a4250",
-      border: "#47505e",
-      text: "#d8dee9",
-      activeParameterBackground: "#3b4252",
-      activeParameterText: "#d8dee9",
-      functionName: "#88c0d0",
-      returnType: "#88c0d0",
-      parameterName: "#8fbcbb",
-      parameterType: "#b48ead",
-      description: "#616e88",
-      separator: "#616e88"
-    },
-    {
-      background: "#3a4250",
-      border: "#47505e",
-      text: "#d8dee9",
-      selectedBackground: "#3b4252",
-      selectedText: "#d8dee9",
-      hoverBackground: "#252933"
-    }
-  ),
-  monochrome: createBaseTheme(
-    {
-      keyword: "#ffffff",
-      string: "#cccccc",
-      number: "#aaaaaa",
-      function: "#ffffff",
-      parameter: "#dddddd",
-      argument: "#eeeeee",
-      comment: "#666666",
-      operator: "#ffffff",
-      punctuation: "#bbbbbb",
-      default: "#ffffff"
-    },
-    ["#ffffff", "#cccccc", "#888888"],
-    "#ff0000",
-    "#000000",
-    "#000000",
-    "#333333",
-    "#666666",
-    "#333333",
-    "#ffffff",
-    "#ffffff",
-    "#333333",
-    "#444444",
-    {
-      background: "#1a0000",
-      border: "#ff0000",
-      text: "#ffffff"
-    },
-    {
-      background: "#0a0a0a",
-      border: "#404040",
-      text: "#ffffff",
-      activeParameterBackground: "#333333",
-      activeParameterText: "#ffffff",
-      functionName: "#ffffff",
-      returnType: "#ffffff",
-      parameterName: "#dddddd",
-      parameterType: "#aaaaaa",
-      description: "#666666",
-      separator: "#666666"
-    },
-    {
-      background: "#0a0a0a",
-      border: "#404040",
-      text: "#ffffff",
-      selectedBackground: "#333333",
-      selectedText: "#ffffff",
-      hoverBackground: "#0a0a0a"
-    }
-  ),
-  duochrome: createBaseTheme(
-    {
-      keyword: "#ffffff",
-      string: "#cccccc",
-      number: "#ffff00",
-      function: "#ea580c",
-      // '#55ddff', //
-      parameter: "#aaa",
-      argument: "#ea580c",
-      // orange-600
-      comment: "#666666",
-      operator: "#bbb",
-      punctuation: "#bbbbbb",
-      default: "#ffffff"
-    },
-    ["#777", "#aaa", "#fff"],
-    "#ff0000",
-    "transparent",
-    "#000c",
-    "#333333",
-    "#666666",
-    "#333333",
-    "#ffffff",
-    "#ffffff",
-    "#333333",
-    "#444444",
-    {
-      background: "#1a0000",
-      border: "#ff0000",
-      text: "#ffffff"
-    },
-    {
-      background: "#0a0a0a",
-      border: "#404040",
-      text: "#ffffff",
-      activeParameterBackground: "#333333",
-      activeParameterText: "#ffffff",
-      functionName: "#f97316",
-      returnType: "#f97316",
-      parameterName: "#dddddd",
-      parameterType: "#aaaaaa",
-      description: "#666666",
-      separator: "#666666"
-    },
-    {
-      background: "#0a0a0a",
-      border: "#404040",
-      text: "#ffffff",
-      selectedBackground: "#333333",
-      selectedText: "#ffffff",
-      hoverBackground: "#0a0a0a"
-    }
-  )
-};
-const useThemeStore = create()(
-  // persist(
-  (set) => ({
-    currentTheme: "duochrome",
-    previewTheme: null,
-    setTheme: (theme) => set({ currentTheme: theme }),
-    setPreviewTheme: (previewTheme) => set({ previewTheme })
-  })
-  //   {
-  //     name: 'theme-storage',
-  //   },
-  // ),
-);
-function useTheme() {
-  const currentTheme = useThemeStore((state2) => state2.currentTheme);
-  const previewTheme = useThemeStore((state2) => state2.previewTheme);
-  const currentFont = useFontStore((state2) => state2.currentFont);
-  const previewFont = useFontStore((state2) => state2.previewFont);
-  const themeName = previewTheme ?? currentTheme;
-  const fontName = previewFont ?? currentFont;
-  const baseTheme = themes[themeName] ?? themes.monokai;
-  return {
-    ...baseTheme,
-    font: getFontString(fontName)
-  };
-}
-const getCurrentTheme = () => {
-  return themes[useThemeStore.getState().currentTheme];
 };
 function updatePredictedSampleCount(audioContext, globalSampleCount, state2, opts) {
   if (!audioContext || !globalSampleCount) return null;
@@ -38303,2204 +38528,6 @@ function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButton = fal
     }
   );
 }
-function parseMarkdown(src, idPrefix) {
-  const out = [];
-  let pos = 0;
-  let codeIndex = 0;
-  while (pos < src.length) {
-    const fenceStart = src.indexOf("```", pos);
-    if (fenceStart === -1) {
-      pushText(src.slice(pos));
-      break;
-    }
-    pushText(src.slice(pos, fenceStart));
-    const fenceEnd = src.indexOf("```", fenceStart + 3);
-    if (fenceEnd === -1) {
-      pushText(src.slice(fenceStart));
-      break;
-    }
-    const raw = src.slice(fenceStart + 3, fenceEnd);
-    const code = raw.replace(/^\w+\n/, "");
-    out.push({ type: "code", code, id: `${idPrefix}:code:${codeIndex++}` });
-    pos = fenceEnd + 3;
-  }
-  return out;
-  function pushText(text) {
-    const lines = text.replace(/\r\n/g, "\n").split("\n");
-    let i2 = 0;
-    while (i2 < lines.length) {
-      while (i2 < lines.length && !lines[i2].trim()) i2++;
-      if (i2 >= lines.length) break;
-      const line = lines[i2];
-      const h2 = line.match(/^(#{1,3})\s+(.*)$/);
-      if (h2) {
-        const level = h2[1].length;
-        out.push({ type: "heading", level, text: h2[2].trim() });
-        i2++;
-        continue;
-      }
-      if (line.trim().startsWith("- ")) {
-        const items = [];
-        while (i2 < lines.length && lines[i2].trim().startsWith("- ")) {
-          items.push(lines[i2].trim().slice(2).trim());
-          i2++;
-        }
-        out.push({ type: "list", items });
-        continue;
-      }
-      const parts = [];
-      while (i2 < lines.length && lines[i2].trim() && !lines[i2].trim().startsWith("- ")) {
-        parts.push(lines[i2].trim());
-        i2++;
-      }
-      out.push({ type: "paragraph", text: parts.join(" ") });
-    }
-  }
-}
-function MarkdownDoc({ idPrefix, markdown }) {
-  const nodes = parseMarkdown(markdown, idPrefix);
-  return /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-3", children: nodes.map((n2, i2) => {
-    if (n2.type === "code") {
-      return /* @__PURE__ */ u$1(InlineEditor, { id: `docs:${n2.id}`, initialCode: n2.code }, `${n2.id}:${i2}`);
-    }
-    if (n2.type === "heading") {
-      const Tag = n2.level === 1 ? "h2" : n2.level === 2 ? "h3" : "h4";
-      const cls = n2.level === 1 ? "text-2xl font-semibold" : n2.level === 2 ? "text-xl font-semibold" : "text-lg font-semibold";
-      return /* @__PURE__ */ u$1(Tag, { className: `${cls} text-white`, children: n2.text }, i2);
-    }
-    if (n2.type === "list") {
-      return /* @__PURE__ */ u$1("ul", { className: "list-disc pl-6 text-neutral-200", children: n2.items.map((it, j2) => /* @__PURE__ */ u$1("li", { children: it }, j2)) }, i2);
-    }
-    return /* @__PURE__ */ u$1("p", { className: "text-neutral-200 leading-relaxed", children: n2.text }, i2);
-  }) });
-}
-function slug(s2) {
-  return s2.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-}
-function hashId(s2) {
-  let h2 = 5381;
-  for (let i2 = 0; i2 < s2.length; i2++) h2 = (h2 << 5) + h2 ^ s2.charCodeAt(i2);
-  return (h2 >>> 0).toString(36);
-}
-function apiId(name) {
-  return `api-${slug(name)}-${hashId(name)}`;
-}
-function functionNameToUrlSlug(name) {
-  return name.replace(/^\[\]\./, "array.").replace(/^#/, "hash-");
-}
-async function fetchJson(path) {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error(`Failed to fetch ${path}`);
-  return await res.json();
-}
-async function fetchText(path) {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error(`Failed to fetch ${path}`);
-  return await res.text();
-}
-function titleFromMarkdown(file, md) {
-  const m2 = md.match(/^#\s+(.+)\s*$/m);
-  return m2?.[1]?.trim() || file.replace(/\.md$/i, "");
-}
-function getTokenClass(type) {
-  switch (type) {
-    case "function":
-      return "text-[#ea580c]";
-    // orange-600 from duochrome theme
-    case "parameter":
-      return "text-[#dddddd]";
-    // light gray for parameter names
-    case "argument":
-      return "text-[#dddddd]";
-    // light gray for parameter names in complex signatures
-    case "identifier":
-      return "text-[#aaaaaa]";
-    // darker gray for types
-    case "number":
-      return "text-[#ffff00]";
-    // yellow from duochrome theme
-    case "string":
-      return "text-[#cccccc]";
-    // light gray from duochrome theme
-    case "keyword":
-      return "text-white";
-    case "operator":
-      return "text-[#bbb]";
-    // light gray from duochrome theme
-    case "punctuation":
-      return "text-[#bbbbbb]";
-    // light gray from duochrome theme
-    case "comment":
-      return "text-[#666666]";
-    // dark gray from duochrome theme
-    default:
-      return "text-white";
-  }
-}
-function SignatureHighlight({ signature }) {
-  const tokens = tokenizer(signature, true);
-  return /* @__PURE__ */ u$1("span", { className: "text-sm font-[Space_Mono]", children: tokens.map((token, i2) => /* @__PURE__ */ u$1("span", { className: getTokenClass(token.type), children: token.content }, i2)) });
-}
-function Docs({
-  externalIsOpen = false,
-  externalSelectedId = null,
-  onClose = () => {
-  }
-} = {}) {
-  const [isOpen, setIsOpen] = d(false);
-  const [tutorials, setTutorials] = d([]);
-  const [tutorialError, setTutorialError] = d(null);
-  const [query, setQuery] = d("");
-  const [selectedId, setSelectedId] = d(null);
-  const inputRef = A$1(null);
-  const lastPlayedExampleRef = A$1(null);
-  const effectiveIsOpen = externalIsOpen !== void 0 ? externalIsOpen : isOpen;
-  const effectiveSelectedId = externalSelectedId !== null ? externalSelectedId : selectedId;
-  y(() => {
-    let isCancelled = false;
-    (async () => {
-      try {
-        const files = await fetchJson("/docs/tutorials/index.json");
-        const next = [];
-        for (const file of files) {
-          const markdown = await fetchText(`/docs/tutorials/${file}`);
-          next.push({ file, markdown, title: titleFromMarkdown(file, markdown) });
-        }
-        if (!isCancelled) {
-          setTutorials(next);
-          setTutorialError(null);
-        }
-      } catch (err) {
-        if (!isCancelled) setTutorialError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
-  y(() => {
-    if (!effectiveIsOpen) return;
-    const t2 = window.setTimeout(() => inputRef.current?.focus(), 0);
-    return () => window.clearTimeout(t2);
-  }, [effectiveIsOpen]);
-  const handleDocsKeyDown = q$1((e2) => {
-    if (!effectiveIsOpen) return;
-    const metaKey = e2.ctrlKey || e2.metaKey;
-    if (e2.key === " " && metaKey) {
-      e2.preventDefault();
-      e2.stopPropagation();
-      const editors = Array.from(inlineEditorRegistry.entries());
-      if (editors.length === 0) return;
-      let targetEditor;
-      if (lastPlayedExampleRef.current) {
-        targetEditor = editors.find(([id]) => id === lastPlayedExampleRef.current);
-      }
-      if (!targetEditor) {
-        targetEditor = editors[0];
-      }
-      if (targetEditor) {
-        const [editorId, { play }] = targetEditor;
-        play();
-        lastPlayedExampleRef.current = editorId;
-      }
-    }
-  }, [effectiveIsOpen]);
-  y(() => {
-    if (effectiveIsOpen) {
-      window.addEventListener("keydown", handleDocsKeyDown);
-      return () => window.removeEventListener("keydown", handleDocsKeyDown);
-    }
-  }, [effectiveIsOpen, handleDocsKeyDown]);
-  const items = T$1(() => {
-    const out = [];
-    for (const t2 of tutorials) {
-      const fileSlug = t2.file.replace(/\.md$/i, "");
-      const id = `tutorial-${slug(fileSlug)}`;
-      out.push({
-        id,
-        title: t2.title,
-        group: "tutorial",
-        searchText: `${t2.title}
-${t2.markdown}`,
-        fileSlug,
-        render: () => /* @__PURE__ */ u$1(k$2, { children: /* @__PURE__ */ u$1("div", { className: "mt-4", children: /* @__PURE__ */ u$1(MarkdownDoc, { idPrefix: id, markdown: t2.markdown }) }) })
-      });
-    }
-    const names = Object.keys(functionDefinitions).sort((a2, b2) => a2.localeCompare(b2));
-    for (const name of names) {
-      const def = functionDefinitions[name];
-      const id = apiId(name);
-      const params = (def.parameters ?? []).map(
-        (p2) => `${p2.name}:${p2.type}${p2.optional ? "?" : ""}${p2.defaultValue !== void 0 ? `=${p2.defaultValue}` : ""}`
-      ).join(", ");
-      const sig = `${def.name}${def.type === "variable" ? "" : `(${params})`}${def.returnType ? `: ${def.returnType}` : ""}`;
-      (def.examples ?? []).join("\n\n");
-      const searchText = `${def.name}
-${sig}
-${def.description ?? ""}`;
-      out.push({
-        id,
-        title: def.name,
-        group: "api",
-        searchText,
-        functionName: def.name,
-        category: def.category ? functionCategories[def.category] : void 0,
-        render: () => /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-5", children: [
-          /* @__PURE__ */ u$1("h3", { className: "text-2xl font-semibold text-white -mt-4", children: def.name }),
-          /* @__PURE__ */ u$1(SignatureHighlight, { signature: sig }),
-          def.description && /* @__PURE__ */ u$1("p", { className: "text-neutral-200 leading-relaxed whitespace-pre-line", children: def.description }),
-          params.length > 0 && /* @__PURE__ */ u$1("div", { className: "text-sm text-neutral-200", children: /* @__PURE__ */ u$1("table", { className: "w-full border-collapse", children: [
-            /* @__PURE__ */ u$1("thead", { children: /* @__PURE__ */ u$1("tr", { className: "border-b border-neutral-600", children: [
-              /* @__PURE__ */ u$1("th", { className: "text-left py-2 px-2 font-semibold text-white", children: "Parameter" }),
-              /* @__PURE__ */ u$1("th", { className: "text-left py-2 px-2 font-semibold text-white", children: "Type" }),
-              /* @__PURE__ */ u$1("th", { className: "text-left py-2 px-2 font-semibold text-white", children: "Description" })
-            ] }) }),
-            /* @__PURE__ */ u$1("tbody", { children: def.parameters.map((p2, i2) => /* @__PURE__ */ u$1("tr", { className: "border-b border-neutral-700", children: [
-              /* @__PURE__ */ u$1("td", { className: "py-2 px-2", children: [
-                /* @__PURE__ */ u$1("span", { className: "font-[Space_Mono] text-white", children: p2.name }),
-                p2.optional && /* @__PURE__ */ u$1("span", { className: "text-neutral-400 ml-1", children: "(optional)" })
-              ] }),
-              /* @__PURE__ */ u$1("td", { className: "py-2 px-2", children: [
-                /* @__PURE__ */ u$1("span", { className: "font-[Space_Mono] text-neutral-300", children: p2.type }),
-                p2.defaultValue !== void 0 && /* @__PURE__ */ u$1("span", { className: "text-neutral-400 ml-2", children: [
-                  "= ",
-                  String(p2.defaultValue)
-                ] })
-              ] }),
-              /* @__PURE__ */ u$1("td", { className: "py-2 px-2 text-neutral-300", children: p2.description })
-            ] }, i2)) })
-          ] }) }),
-          (def.examples?.length ?? 0) > 0 && /* @__PURE__ */ u$1("div", { className: "mt-1", children: [
-            /* @__PURE__ */ u$1("div", { className: "font-semibold text-white", children: "Examples" }),
-            /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-3", children: def.examples?.map((ex, i2) => {
-              const editorId = `${id}:ex:${i2}`;
-              return /* @__PURE__ */ u$1(InlineEditor, { id: `docs:${editorId}`, initialCode: `
-${ex.split("\n").join("\n\n")}` }, editorId);
-            }) })
-          ] })
-        ] })
-      });
-    }
-    const about = [
-      {
-        id: "about-contact",
-        title: "Contact",
-        text: [
-          "Email: support@loopmaster.app",
-          "Discord: discord.gg/loopmaster",
-          "If you found a bug or have a feature request, include your browser version and a short repro."
-        ].join("\n")
-      },
-      {
-        id: "about-terms",
-        title: "Terms of Service",
-        text: [
-          "By using loopmaster, you agree to these Terms.",
-          "",
-          "You are responsible for any content you create, upload, share, or publish. Do not upload content that infringes copyrights, violates laws, or harms others.",
-          "",
-          "The service is provided “as is” without warranties. We may modify, suspend, or discontinue parts of the service at any time.",
-          "",
-          "To the extent permitted by law, loopmaster is not liable for indirect, incidental, or consequential damages, or loss of data, revenue, or profits.",
-          "",
-          "You may not abuse the service (e.g. attempting to overload systems, bypass access controls, or reverse engineer protected components).",
-          "",
-          "We may terminate or restrict access if we reasonably believe these Terms are violated."
-        ].join("\n")
-      },
-      {
-        id: "about-privacy",
-        title: "Privacy Statement",
-        text: [
-          "loopmaster is built to be privacy-conscious.",
-          "",
-          "We may process basic technical data required to operate the service (e.g. device/browser info, request logs, crash diagnostics).",
-          "",
-          "If you create an account and publish loops, your public profile and published content are visible to others.",
-          "",
-          "We do not sell your personal information. We may share limited data with service providers strictly to operate the app (hosting, analytics, storage).",
-          "",
-          "You can request deletion of your account and associated personal data by contacting support."
-        ].join("\n")
-      }
-    ];
-    for (const a2 of about) {
-      out.push({
-        id: a2.id,
-        title: a2.title,
-        group: "about",
-        searchText: `${a2.title}
-${a2.text}`,
-        render: () => /* @__PURE__ */ u$1(k$2, { children: [
-          /* @__PURE__ */ u$1("h2", { className: "text-2xl font-semibold text-white", children: a2.title }),
-          /* @__PURE__ */ u$1("div", { className: "mt-3 whitespace-pre-wrap text-neutral-200 leading-relaxed", children: a2.text })
-        ] })
-      });
-    }
-    return out;
-  }, [tutorials]);
-  y(() => {
-    const currentSelected = items.find((i2) => i2.id === effectiveSelectedId);
-    if (currentSelected?.group === "tutorial") return;
-    if (externalSelectedId !== null) return;
-    setSelectedId(items[0]?.id ?? null);
-  }, [items, effectiveSelectedId, externalSelectedId]);
-  const filtered = T$1(() => {
-    const q2 = query.trim();
-    if (!q2) {
-      return {
-        list: items,
-        byId: new Map(items.map((it) => [it.id, it]))
-      };
-    }
-    const scored = items.map((it) => ({ it, score: fuzzyScore(q2, it.searchText) })).filter((x2) => x2.score > 0).sort((a2, b2) => b2.score - a2.score).map((x2) => x2.it);
-    return { list: scored, byId: new Map(scored.map((it) => [it.id, it])) };
-  }, [items, query]);
-  const sidebarGroups = T$1(() => {
-    const list = filtered.list;
-    const tutorials2 = list.filter((i2) => i2.group === "tutorial");
-    const api = list.filter((i2) => i2.group === "api");
-    const about = list.filter((i2) => i2.group === "about");
-    const hasQuery = query.trim().length > 0;
-    const apiByCategory = /* @__PURE__ */ new Map();
-    const categoryOrder = [];
-    if (!hasQuery) {
-      for (const item of api) {
-        const category = item.category || "Other";
-        if (!apiByCategory.has(category)) {
-          apiByCategory.set(category, []);
-          categoryOrder.push(category);
-        }
-        apiByCategory.get(category).push(item);
-      }
-      for (const [category, items2] of apiByCategory.entries()) {
-        items2.sort((a2, b2) => a2.title.localeCompare(b2.title));
-      }
-      const predefinedOrder = Object.values(functionCategories);
-      categoryOrder.sort((a2, b2) => {
-        const aIndex = predefinedOrder.indexOf(a2);
-        const bIndex = predefinedOrder.indexOf(b2);
-        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-        if (aIndex !== -1) return -1;
-        if (bIndex !== -1) return 1;
-        return a2.localeCompare(b2);
-      });
-    }
-    return { tutorials: tutorials2, api, apiByCategory, categoryOrder, about, hasQuery };
-  }, [filtered.list, query]);
-  const selected = T$1(() => {
-    if (!effectiveSelectedId) return null;
-    return items.find((i2) => i2.id === effectiveSelectedId) ?? null;
-  }, [items, effectiveSelectedId]);
-  return /* @__PURE__ */ u$1(k$2, { children: [
-    !effectiveIsOpen && externalIsOpen === void 0 && /* @__PURE__ */ u$1(
-      "button",
-      {
-        className: "fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full bg-neutral-900 border border-[#333] flex items-center justify-center text-white",
-        onClick: () => setIsOpen(true),
-        "aria-label": "Open documentation",
-        title: "Help & Documentation",
-        children: /* @__PURE__ */ u$1(e$2, { weight: "regular", size: 22 })
-      }
-    ),
-    !effectiveIsOpen && externalIsOpen !== void 0 && /* @__PURE__ */ u$1(
-      Link,
-      {
-        to: "/docs",
-        className: "fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full bg-neutral-900 border border-[#333] flex items-center justify-center text-white",
-        "aria-label": "Open documentation",
-        title: "Help & Documentation",
-        children: /* @__PURE__ */ u$1(e$2, { weight: "regular", size: 22 })
-      }
-    ),
-    /* @__PURE__ */ u$1(
-      Modal,
-      {
-        isOpen: effectiveIsOpen,
-        onClose: () => {
-          if (externalIsOpen !== void 0) {
-            onClose();
-          } else {
-            setIsOpen(false);
-          }
-        },
-        width: "w-[96dvw]",
-        maxWidth: "max-w-none",
-        className: "h-[96dvh] rounded-lg overflow-hidden relative",
-        contentClassName: "h-full",
-        children: /* @__PURE__ */ u$1("div", { className: "h-full w-full flex", onKeyDown: (e2) => e2.stopPropagation(), "data-docs-container": true, children: [
-          /* @__PURE__ */ u$1("main", { className: "flex-1 min-h-0 flex flex-col bg-black", children: [
-            /* @__PURE__ */ u$1("div", { className: "sticky top-0 z-10 px-6 py-2 bg-black border-b border-[#333]", children: /* @__PURE__ */ u$1("div", { className: "flex items-center justify-between gap-4", children: [
-              /* @__PURE__ */ u$1("div", { className: "flex items-center gap-4", children: [
-                /* @__PURE__ */ u$1(Logo, { size: "3em", text: "loopmaster" }),
-                /* @__PURE__ */ u$1("div", { className: "text-neutral-300", children: "Audio programming — docs, tutorials, and playable examples." })
-              ] }),
-              /* @__PURE__ */ u$1(
-                "button",
-                {
-                  className: "w-9 h-9 flex items-center justify-center text-neutral-300 hover:text-white bg-neutral-900 border border-[#333] rounded-full",
-                  onClick: () => {
-                    if (externalIsOpen !== void 0) {
-                      onClose();
-                    } else {
-                      setIsOpen(false);
-                    }
-                  },
-                  "aria-label": "Close documentation",
-                  title: "Close",
-                  children: /* @__PURE__ */ u$1(e, { weight: "light", size: 20 })
-                }
-              )
-            ] }) }),
-            /* @__PURE__ */ u$1("div", { className: "flex-1 min-h-0 overflow-auto", children: /* @__PURE__ */ u$1("div", { className: "max-w-[68rem] mx-auto px-6 py-8 flex flex-col gap-8", children: [
-              filtered.list.length === 0 && query.trim() && /* @__PURE__ */ u$1("div", { className: "text-neutral-300", children: [
-                "No matches for ",
-                /* @__PURE__ */ u$1("span", { className: "text-white font-mono", children: query.trim() }),
-                "."
-              ] }),
-              selected && /* @__PURE__ */ u$1("div", { className: "border border-[#222] bg-neutral-950 rounded-lg p-5", children: /* @__PURE__ */ u$1("div", { className: "mt-3", children: selected.render() }) })
-            ] }) })
-          ] }),
-          /* @__PURE__ */ u$1("aside", { className: "w-auto border-r border-[#333] bg-neutral-950 overflow-auto", children: /* @__PURE__ */ u$1("div", { className: "p-4", children: [
-            /* @__PURE__ */ u$1("div", { className: "flex items-center gap-3 mb-4", children: [
-              /* @__PURE__ */ u$1(o$8, { size: 18, className: "text-neutral-400 shrink-0" }),
-              /* @__PURE__ */ u$1(
-                "input",
-                {
-                  ref: inputRef,
-                  value: query,
-                  onInput: (e2) => setQuery(e2.currentTarget.value),
-                  onKeyDown: (e2) => e2.stopPropagation(),
-                  placeholder: "Search docs…",
-                  className: "flex-1 bg-transparent outline-none text-white placeholder:text-neutral-500"
-                }
-              )
-            ] }),
-            /* @__PURE__ */ u$1("div", { className: "text-xs uppercase tracking-wide text-neutral-500", children: "Navigation" }),
-            tutorialError && /* @__PURE__ */ u$1("div", { className: "mt-2 text-xs text-red-300", children: [
-              "Tutorials failed to load: ",
-              tutorialError
-            ] }),
-            sidebarGroups.tutorials.length > 0 && /* @__PURE__ */ u$1("div", { className: "mt-4", children: [
-              /* @__PURE__ */ u$1("div", { className: "text-sm font-semibold text-white", children: "Tutorials" }),
-              /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-1", children: sidebarGroups.tutorials.map((it) => externalIsOpen !== void 0 && it.fileSlug ? /* @__PURE__ */ u$1(
-                Link,
-                {
-                  to: `/docs/tutorials/${it.fileSlug}`,
-                  className: `block text-left text-sm hover:text-white whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
-                  children: it.title
-                },
-                it.id
-              ) : /* @__PURE__ */ u$1(
-                "button",
-                {
-                  className: `text-left text-sm hover:text-white whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
-                  onClick: () => setSelectedId(it.id),
-                  children: it.title
-                },
-                it.id
-              )) })
-            ] }),
-            sidebarGroups.about.length > 0 && /* @__PURE__ */ u$1("div", { className: "mt-5", children: [
-              /* @__PURE__ */ u$1("div", { className: "text-sm font-semibold text-white", children: "About" }),
-              /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-1", children: sidebarGroups.about.map((it) => {
-                const aboutSlug = it.id.replace("about-", "");
-                return externalIsOpen !== void 0 ? /* @__PURE__ */ u$1(
-                  Link,
-                  {
-                    to: `/docs/about/${aboutSlug}`,
-                    className: `block text-left text-sm hover:text-white whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
-                    children: it.title
-                  },
-                  it.id
-                ) : /* @__PURE__ */ u$1(
-                  "button",
-                  {
-                    className: `text-left text-sm hover:text-white whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
-                    onClick: () => setSelectedId(it.id),
-                    children: it.title
-                  },
-                  it.id
-                );
-              }) })
-            ] }),
-            sidebarGroups.api.length > 0 && /* @__PURE__ */ u$1("div", { className: "mt-5", children: [
-              /* @__PURE__ */ u$1("div", { className: "text-sm font-semibold text-white", children: "API" }),
-              /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-3", children: sidebarGroups.hasQuery ? (
-                // Flat list when searching (results already sorted by relevance)
-                /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-1", children: sidebarGroups.api.map((it) => {
-                  const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : "";
-                  return externalIsOpen !== void 0 && it.functionName ? /* @__PURE__ */ u$1(
-                    Link,
-                    {
-                      to: `/docs/api/${urlSlug}`,
-                      className: `block text-left text-sm hover:text-white font-mono whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
-                      children: it.title
-                    },
-                    it.id
-                  ) : /* @__PURE__ */ u$1(
-                    "button",
-                    {
-                      className: `text-left text-sm hover:text-white font-mono whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
-                      onClick: () => setSelectedId(it.id),
-                      children: it.title
-                    },
-                    it.id
-                  );
-                }) })
-              ) : (
-                // Grouped by category when not searching
-                sidebarGroups.categoryOrder.map((category) => {
-                  const items2 = sidebarGroups.apiByCategory.get(category) || [];
-                  if (items2.length === 0) return null;
-                  return /* @__PURE__ */ u$1("div", { children: [
-                    /* @__PURE__ */ u$1("div", { className: "text-xs uppercase tracking-wide text-neutral-500 mb-1", children: category }),
-                    /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-1", children: items2.map((it) => {
-                      const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : "";
-                      return externalIsOpen !== void 0 && it.functionName ? /* @__PURE__ */ u$1(
-                        Link,
-                        {
-                          to: `/docs/api/${urlSlug}`,
-                          className: `block text-left text-sm hover:text-white font-mono whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
-                          children: it.title
-                        },
-                        it.id
-                      ) : /* @__PURE__ */ u$1(
-                        "button",
-                        {
-                          className: `text-left text-sm hover:text-white font-mono whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
-                          onClick: () => setSelectedId(it.id),
-                          children: it.title
-                        },
-                        it.id
-                      );
-                    }) })
-                  ] }, category);
-                })
-              ) })
-            ] })
-          ] }) })
-        ] })
-      }
-    )
-  ] });
-}
-function useIsEditorBusy() {
-  const hasHydrated = useAppStore((state2) => state2.hasHydrated);
-  const isProgramReady = useEngineRuntimeStore((state2) => state2.isProgramReady);
-  const audioContext = useEngineRuntimeStore((state2) => state2.audioContext);
-  return !hasHydrated || !isProgramReady || !audioContext;
-}
-function useRestartLoop() {
-  const loop = useEngineRuntimeStore((state2) => state2.loop);
-  const seekToSampleImmediate = useSeekToSampleImmediate();
-  const restartLoop = q$1(async () => {
-    const isLooping = loop ? Atomics.load(loop, 0) === 1 : false;
-    if (isLooping && loop) await seekToSampleImmediate(Atomics.load(loop, 1));
-    else await seekToSampleImmediate(0);
-    const runtime = useEngineRuntimeStore.getState();
-    if (runtime.playbackState !== "running") await runtime.start();
-  }, [seekToSampleImmediate]);
-  return restartLoop;
-}
-function clamp11(v2) {
-  return v2 < -1 ? -1 : v2 > 1 ? 1 : v2;
-}
-function compileShader(gl, type, source) {
-  const sh = gl.createShader(type);
-  if (!sh) throw new Error("Failed to create shader");
-  gl.shaderSource(sh, source);
-  gl.compileShader(sh);
-  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-    const info = gl.getShaderInfoLog(sh) ?? "Unknown shader error";
-    gl.deleteShader(sh);
-    throw new Error(info);
-  }
-  return sh;
-}
-function mainSource(src, fallback) {
-  const s2 = src?.trim();
-  return s2 ? s2 : fallback;
-}
-const DEFAULT_VERTEX_MAIN = `
-gl_Position = vec4(v_pos * 0.9 * u_scale, 0.0, 1.0);
-`.trim();
-const DEFAULT_FRAGMENT_MAIN = `
-gl_FragColor = u_color;
-`.trim();
-function shaderKey(params) {
-  const vertexMain = mainSource(params.vertexMain, DEFAULT_VERTEX_MAIN);
-  const fragmentMain = mainSource(params.fragmentMain, DEFAULT_FRAGMENT_MAIN);
-  return `${vertexMain}
---
-${fragmentMain}`;
-}
-function createProgram(gl, params) {
-  const vertexMain = mainSource(params.vertexMain, DEFAULT_VERTEX_MAIN);
-  const fragmentMain = mainSource(params.fragmentMain, DEFAULT_FRAGMENT_MAIN);
-  const vsSource = `
-#version 300 es
-precision highp float;
-layout(location = 0) in vec2 a_audio;
-layout(location = 1) in float a_t;
-uniform vec4 u_color;
-uniform vec2 u_scale;
-uniform vec2 u_res;
-uniform float u_time;
-out vec2 v_audio;
-out vec2 v_pos;
-out float v_t;
-void main() {
-  v_audio = a_audio;
-  v_t = a_t;
-  v_pos = vec2(a_audio.y, a_audio.x);
-${vertexMain}
-}
-`.trim();
-  const fsSource = `
-#version 300 es
-precision mediump float;
-uniform vec4 u_color;
-uniform vec2 u_res;
-uniform float u_time;
-in vec2 v_audio;
-in vec2 v_pos;
-in float v_t;
-out vec4 outColor;
-#define gl_FragColor outColor
-void main() {
-  outColor = vec4(0.0);
-${fragmentMain}
-}
-`.trim();
-  const vs = compileShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSource);
-  const prog = gl.createProgram();
-  if (!prog) throw new Error("Failed to create program");
-  gl.attachShader(prog, vs);
-  gl.attachShader(prog, fs);
-  gl.linkProgram(prog);
-  gl.deleteShader(vs);
-  gl.deleteShader(fs);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    const info = gl.getProgramInfoLog(prog) ?? "Unknown program link error";
-    gl.deleteProgram(prog);
-    throw new Error(info);
-  }
-  return {
-    program: prog,
-    uColor: gl.getUniformLocation(prog, "u_color"),
-    uScale: gl.getUniformLocation(prog, "u_scale"),
-    uRes: gl.getUniformLocation(prog, "u_res"),
-    uTime: gl.getUniformLocation(prog, "u_time"),
-    key: shaderKey({ vertexMain, fragmentMain })
-  };
-}
-function ensureProgram(glState, params) {
-  const desiredKey = shaderKey(params);
-  if (glState.programState.key === desiredKey) return true;
-  try {
-    const next = createProgram(glState.gl, params);
-    glState.gl.deleteProgram(glState.programState.program);
-    glState.programState = next;
-    return true;
-  } catch (err) {
-    console.warn("Visualizer shader compile failed:", err);
-    return false;
-  }
-}
-function useVisualizerBackground({
-  program1,
-  ringPos,
-  isLive,
-  sampleRate,
-  pointStride = 8,
-  vertex,
-  fragment
-}) {
-  const canvasRef = A$1(null);
-  const glRef = A$1(null);
-  const vertsRef = A$1(new Float32Array(2048 * 3));
-  const waveRef = A$1(null);
-  if (!waveRef.current) {
-    waveRef.current = {
-      left: { waveform: new WaveformBuffer(), floats: null },
-      right: { waveform: new WaveformBuffer(), floats: null }
-    };
-  }
-  const t0Ref = A$1(performance.now());
-  const onBeforeDraw = q$1(() => {
-    if (!isLive) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const analyserOuts = program1?.program?.analyserOuts;
-    if (!analyserOuts || !ringPos) return;
-    const ringL = analyserOuts[FINAL_OUT_ANALYSER_L_INDEX];
-    const ringR = analyserOuts[FINAL_OUT_ANALYSER_R_INDEX];
-    if (!ringL || !ringR) return;
-    const currentChunkPos = Atomics.load(ringPos, 0);
-    const st = waveRef.current;
-    if (!st) return;
-    const lFloats = st.left.waveform.update(ringL, currentChunkPos);
-    const rFloats = st.right.waveform.update(ringR, currentChunkPos);
-    if (lFloats) st.left.floats = lFloats;
-    if (rFloats) st.right.floats = rFloats;
-    const floatsL = st.left.floats;
-    const floatsR = st.right.floats;
-    if (!floatsL || !floatsR) return;
-    const samplesWanted = 2048;
-    const sr = sampleRate ?? 48e3;
-    const maxDelay = Math.max(0, Math.min(floatsL.length - samplesWanted, floatsR.length - samplesWanted));
-    const delaySamples = Math.max(0, Math.min(maxDelay, Math.floor(sr * 0.1)));
-    const needed = delaySamples + samplesWanted;
-    if (needed <= 0 || floatsL.length < needed || floatsR.length < needed) return;
-    const start = Math.max(0, floatsL.length - needed);
-    const dpr = window.devicePixelRatio || 1;
-    const w2 = canvas.clientWidth | 0;
-    const h2 = canvas.clientHeight | 0;
-    if (w2 <= 1 || h2 <= 1) return;
-    const pxW = Math.max(1, Math.floor(w2 * dpr));
-    const pxH = Math.max(1, Math.floor(h2 * dpr));
-    if (canvas.width !== pxW || canvas.height !== pxH) {
-      canvas.width = pxW;
-      canvas.height = pxH;
-    }
-    const stride = Math.max(1, pointStride | 0);
-    const len = samplesWanted;
-    const pointCount = Math.max(0, Math.floor((len - 1) / stride) + 1);
-    if (pointCount <= 1) return;
-    const floatsNeeded = pointCount * 3;
-    if (vertsRef.current.length < floatsNeeded) {
-      vertsRef.current = new Float32Array(floatsNeeded);
-    }
-    const verts = vertsRef.current;
-    let o2 = 0;
-    const denom = Math.max(1, pointCount - 1);
-    for (let i2 = 0; i2 < pointCount; i2++) {
-      const idx = start + i2 * stride;
-      const l2 = clamp11(floatsL[idx]);
-      const r2 = clamp11(floatsR[idx]);
-      verts[o2++] = l2;
-      verts[o2++] = r2;
-      verts[o2++] = i2 / denom;
-    }
-    let glState = glRef.current;
-    if (!glState || glState.canvas !== canvas) {
-      const gl2 = canvas.getContext("webgl2", {
-        alpha: true,
-        antialias: false,
-        depth: false,
-        stencil: false,
-        premultipliedAlpha: true,
-        preserveDrawingBuffer: false
-      });
-      if (!gl2) return;
-      let programState;
-      try {
-        programState = createProgram(gl2, { vertexMain: vertex, fragmentMain: fragment });
-      } catch (err) {
-        console.warn("Visualizer shader compile failed:", err);
-        return;
-      }
-      const vao = gl2.createVertexArray();
-      const vbo = gl2.createBuffer();
-      if (!vao || !vbo) return;
-      gl2.bindVertexArray(vao);
-      gl2.bindBuffer(gl2.ARRAY_BUFFER, vbo);
-      gl2.bufferData(gl2.ARRAY_BUFFER, verts.byteLength, gl2.DYNAMIC_DRAW);
-      gl2.enableVertexAttribArray(0);
-      gl2.vertexAttribPointer(0, 2, gl2.FLOAT, false, 12, 0);
-      gl2.enableVertexAttribArray(1);
-      gl2.vertexAttribPointer(1, 1, gl2.FLOAT, false, 12, 8);
-      gl2.bindVertexArray(null);
-      glState = { canvas, gl: gl2, programState, vao, vbo, capVerts: pointCount };
-      glRef.current = glState;
-    } else {
-      if (!ensureProgram(glState, { vertexMain: vertex, fragmentMain: fragment })) return;
-      if (glState.capVerts < pointCount) {
-        glState.capVerts = pointCount;
-        glState.gl.bindBuffer(glState.gl.ARRAY_BUFFER, glState.vbo);
-        glState.gl.bufferData(glState.gl.ARRAY_BUFFER, verts.byteLength, glState.gl.DYNAMIC_DRAW);
-      }
-    }
-    const gl = glState.gl;
-    const ps = glState.programState;
-    gl.viewport(0, 0, pxW, pxH);
-    gl.disable(gl.DEPTH_TEST);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(ps.program);
-    const sx = pxW > pxH ? pxH / pxW : 1;
-    const sy = pxH > pxW ? pxW / pxH : 1;
-    if (ps.uRes) gl.uniform2f(ps.uRes, pxW, pxH);
-    if (ps.uTime) gl.uniform1f(ps.uTime, (performance.now() - t0Ref.current) * 1e-3);
-    if (ps.uScale) gl.uniform2f(ps.uScale, sx, sy);
-    if (ps.uColor) gl.uniform4f(ps.uColor, 238 / 255, 238 / 255, 238 / 255, 170 / 255);
-    gl.bindVertexArray(glState.vao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, glState.vbo);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, verts.subarray(0, floatsNeeded));
-    gl.drawArrays(gl.LINE_STRIP, 0, pointCount);
-    gl.bindVertexArray(null);
-  }, [isLive, program1, ringPos, sampleRate, pointStride, vertex, fragment]);
-  return { canvasRef, onBeforeDraw };
-}
-function DspSourceEditor({
-  timelineHeader,
-  currentLoop,
-  dspError,
-  onDspError,
-  docsIsOpen
-}) {
-  const isEditorBusy = useIsEditorBusy();
-  if (!currentLoop || isEditorBusy) {
-    return /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(SpinnerLarge, {}) });
-  }
-  return /* @__PURE__ */ u$1(
-    DspSourceEditorReady,
-    {
-      timelineHeader,
-      currentLoop,
-      dspError,
-      onDspError,
-      docsIsOpen
-    }
-  );
-}
-function DspSourceEditorReady({
-  timelineHeader,
-  currentLoop,
-  dspError,
-  onDspError,
-  docsIsOpen
-}) {
-  const { navigate } = useRouter();
-  const codeFileKeyByFileRef = A$1(/* @__PURE__ */ new WeakMap());
-  const nextCodeFileKeyRef = A$1(0);
-  const previewTargetRef = A$1(null);
-  const predictedSampleCountResultRef = A$1(null);
-  const predictedSampleCountRef = A$1(null);
-  const lastWallTimeRef = A$1(null);
-  const isFirstFrameRef = A$1(true);
-  if (!previewTargetRef.current) {
-    previewTargetRef.current = {
-      ops: new Int32Array(OPS_COUNT),
-      literals: new Float32Array(LITERALS_COUNT)
-    };
-  }
-  const dspSource = useEngineDspStore((state2) => state2.dspSource);
-  const preloadSamples = useEngineDspStore((state2) => state2.preloadSamples);
-  const updateDspSource = useEngineDspStore((state2) => state2.updateDspSource);
-  const sequences = useEngineDspStore((state2) => state2.sequences);
-  const miniRefs = useEngineDspStore((state2) => state2.miniRefs);
-  const miniPlayBars = useEngineDspStore((state2) => state2.miniPlayBars);
-  const timelineRefs = useEngineDspStore((state2) => state2.timelineRefs);
-  const timelineLabels = useEngineDspStore((state2) => state2.timelineLabels);
-  const bars = useEngineDspStore((state2) => state2.bars);
-  const miniSourceMaps = useEngineDspStore((state2) => state2.miniSourceMaps);
-  const adRefs = useEngineDspStore((state2) => state2.uiAdRefs);
-  const adsrRefs = useEngineDspStore((state2) => state2.uiAdsrRefs);
-  const envfollowRefs = useEngineDspStore((state2) => state2.uiEnvfollowRefs);
-  const slewRefs = useEngineDspStore((state2) => state2.uiSlewRefs);
-  const analyserRefs = useEngineDspStore((state2) => state2.analyserRefs);
-  const compressorRefs = useEngineDspStore((state2) => state2.compressorRefs);
-  const expanderRefs = useEngineDspStore((state2) => state2.expanderRefs);
-  const gateRefs = useEngineDspStore((state2) => state2.gateRefs);
-  const limiterRefs = useEngineDspStore((state2) => state2.limiterRefs);
-  const filterRefs = useEngineDspStore((state2) => state2.filterRefs);
-  const reverbRefs = useEngineDspStore((state2) => state2.reverbRefs);
-  const slicerRefs = useEngineDspStore((state2) => state2.slicerRefs);
-  const lfoRefs = useEngineDspStore((state2) => state2.lfoRefs);
-  const everyRefs = useEngineDspStore((state2) => state2.everyRefs);
-  const atRefs = useEngineDspStore((state2) => state2.atRefs);
-  const euclidRefs = useEngineDspStore((state2) => state2.euclidRefs);
-  const arrayLiterals = useEngineDspStore((state2) => state2.arrayLiterals);
-  const branchMarks = useEngineDspStore((state2) => state2.branchMarks);
-  const numberParams = useEngineDspStore((state2) => state2.numberParams);
-  const sampleDefs = useEngineDspStore((state2) => state2.sampleDefs);
-  const loadedSamples = useEngineDspStore((state2) => state2.loadedSamples);
-  const isPreloadingSamples = useEngineDspStore((state2) => state2.isPreloadingSamples);
-  const isProgramSwapPending = useEngineDspStore((state2) => state2.isProgramSwapPending);
-  const isUpdatingDsp = useEngineDspStore((state2) => state2.isUpdatingDsp);
-  const setUiCompilePreview = useEngineDspStore((state2) => state2.setUiCompilePreview);
-  const restartLoop = useRestartLoop();
-  const isProgramReady = useEngineRuntimeStore((state2) => state2.isProgramReady);
-  const program1 = useEngineRuntimeStore((state2) => state2.program1);
-  const program2 = useEngineRuntimeStore((state2) => state2.program2);
-  const audioContext = useEngineRuntimeStore((state2) => state2.audioContext);
-  const bpmValue = useEngineRuntimeStore((state2) => state2.bpmValue);
-  const ringPos = useEngineRuntimeStore((state2) => state2.ringPos);
-  const playbackState = useEngineRuntimeStore((state2) => state2.playbackState);
-  const setPredictedSampleCountResult = useEngineRuntimeStore((state2) => state2.setPredictedSampleCountResult);
-  const showFunctionDefinitions = useEngineUiStore((state2) => state2.showFunctionDefinitions);
-  const showFunctionDefinitionsHover = useEngineUiStore((state2) => state2.showFunctionDefinitionsHover);
-  const uiShowWidgets = useEngineUiStore((state2) => state2.showWidgets);
-  const showVisualizer = useEngineUiStore((state2) => state2.showVisualizer);
-  const wordWrap = useEngineUiStore((state2) => state2.wordWrap);
-  const theme = useTheme();
-  const themeForEditor = T$1(() => {
-    const withAlpha = (c2, a2) => {
-      if (!c2.startsWith("#")) return c2;
-      const h2 = c2.slice(1);
-      const toByte = (x2) => parseInt(x2, 16);
-      let r2 = 0;
-      let g2 = 0;
-      let b2 = 0;
-      if (h2.length === 3) {
-        r2 = toByte(h2[0] + h2[0]);
-        g2 = toByte(h2[1] + h2[1]);
-        b2 = toByte(h2[2] + h2[2]);
-      } else if (h2.length === 6) {
-        r2 = toByte(h2.slice(0, 2));
-        g2 = toByte(h2.slice(2, 4));
-        b2 = toByte(h2.slice(4, 6));
-      } else {
-        return c2;
-      }
-      return `rgba(${r2}, ${g2}, ${b2}, ${a2})`;
-    };
-    return {
-      ...theme,
-      background: withAlpha(theme.background, 0.55),
-      gutterBackground: withAlpha(theme.gutterBackground, 0.35)
-    };
-  }, [theme]);
-  useCodeFileValue(currentLoop?.codeFile);
-  const code = currentLoop?.codeFile.value ?? "";
-  const isAwaitingCode = currentLoop.data.code == null && code.length === 0;
-  const loopId = currentLoop?.data.id ?? null;
-  const loopBase = useAppStore((state2) => loopId ? state2.bases[loopId]?.code : void 0);
-  const sessionData = useAppStore((state2) => state2.sessionData);
-  const serverLoopsUserId = useAppStore((state2) => state2.serverLoopsUserId);
-  const serverLoopsCache = useAppStore((state2) => state2.serverLoopsCache);
-  const localLoops = useAppStore((state2) => state2.localLoops);
-  const addLocalLoop = useAppStore((state2) => state2.addLocalLoop);
-  const moveBuffer = useAppStore((state2) => state2.moveBuffer);
-  const setSelectedLoopId = useAppStore((state2) => state2.setSelectedLoopId);
-  const { globalSampleCount, isPlayingLoop, isPlaybackRunningForView } = usePlayingState(loopId);
-  const predictedResetRef = A$1({ key: "" });
-  const predictedResetKey = `${loopId ?? ""}:${isPlaybackRunningForView ? "live" : "view"}`;
-  if (predictedResetRef.current.key !== predictedResetKey) {
-    predictedResetRef.current.key = predictedResetKey;
-    predictedSampleCountResultRef.current = null;
-    predictedSampleCountRef.current = null;
-    lastWallTimeRef.current = null;
-    isFirstFrameRef.current = true;
-  }
-  _(() => {
-    predictedSampleCountResultRef.current = null;
-    predictedSampleCountRef.current = null;
-    lastWallTimeRef.current = null;
-    isFirstFrameRef.current = true;
-    if (!audioContext || !globalSampleCount) {
-      setPredictedSampleCountResult(null);
-      return;
-    }
-    const sampleRate = audioContext.sampleRate;
-    const sampleCount = Atomics.load(globalSampleCount, 0) >>> 0;
-    setPredictedSampleCountResult({
-      latencySamples: 0,
-      latencySeconds: 0,
-      deltaTime: 0,
-      sampleRate,
-      sampleCount,
-      timeSeconds: sampleRate > 0 ? sampleCount / sampleRate : 0
-    });
-  }, [audioContext, globalSampleCount, loopId, setPredictedSampleCountResult]);
-  const remixBaselineRef = A$1(null);
-  const remixPrevCodeRef = A$1(null);
-  y(() => {
-    if (!loopId) return;
-    remixBaselineRef.current = null;
-    remixPrevCodeRef.current = null;
-  }, [loopId]);
-  y(() => {
-    if (!loopId) return;
-    if (remixBaselineRef.current?.loopId === loopId) return;
-    if (loopBase == null) return;
-    remixBaselineRef.current = { loopId, base: loopBase };
-    remixPrevCodeRef.current = { loopId, code };
-  }, [code, loopBase, loopId]);
-  y(() => {
-    if (!loopId) return;
-    if (isLocalId(loopId)) return;
-    const baseline = remixBaselineRef.current;
-    if (!baseline || baseline.loopId !== loopId) {
-      remixPrevCodeRef.current = { loopId, code };
-      return;
-    }
-    const prev = remixPrevCodeRef.current;
-    remixPrevCodeRef.current = { loopId, code };
-    if (!prev || prev.loopId !== loopId) return;
-    if (prev.code === code) return;
-    if (code === baseline.base) return;
-    if (serverLoopsCache.some((l2) => l2.id === loopId)) return;
-    if (sessionData?.loops.some((l2) => l2.id === loopId)) return;
-    const ownId = sessionData?.user.id ?? serverLoopsUserId;
-    if (ownId && currentLoop?.data.artistId === ownId) return;
-    const existing = localLoops.find((l2) => l2.remixOfId === loopId || l2.remixOf?.id === loopId);
-    const localId = existing?.id ?? makeLocalId();
-    if (!existing) {
-      addLocalLoop({
-        id: localId,
-        title: currentLoop?.data.title ?? "Untitled",
-        artist: sessionData?.user.name ?? "local",
-        artistId: ownId ?? "local",
-        code: "",
-        likesCount: 0,
-        commentsCount: 0,
-        remixesCount: 0,
-        remixOfId: loopId,
-        remixOf: currentLoop?.data,
-        isPublic: false,
-        timestamp: 0
-      });
-    }
-    moveBuffer(loopId, localId);
-    const runtime = useEngineRuntimeStore.getState();
-    if (runtime.playingLoopId === loopId) {
-      useEngineUiStore.getState().renameLoopId(loopId, localId);
-      runtime.setPlayingLoopId(localId);
-    }
-    setSelectedLoopId(localId);
-    navigate("/app");
-  }, [
-    addLocalLoop,
-    code,
-    currentLoop?.data,
-    localLoops,
-    loopId,
-    moveBuffer,
-    serverLoopsCache,
-    serverLoopsUserId,
-    sessionData?.loops,
-    sessionData?.user.id,
-    sessionData?.user.name,
-    navigate,
-    setSelectedLoopId
-  ]);
-  const previewCompile = T$1(() => {
-    const target = previewTargetRef.current;
-    if (!target) return { errors: [] };
-    target.ops.fill(0);
-    target.literals.fill(0);
-    return encodeLangToVmOps(code, target);
-  }, [code]);
-  const compileErrors = previewCompile.errors ?? [];
-  const hasCompileErrors = compileErrors.length > 0;
-  const lastGoodPreviewRef = A$1(null);
-  y(() => {
-    if (!loopId) return;
-    lastGoodPreviewRef.current = null;
-  }, [loopId]);
-  const showWidgets = uiShowWidgets && (currentLoop != null && (code.length > 0 || dspSource.length > 0) || isUpdatingDsp || hasCompileErrors);
-  const headerErrorText = T$1(() => {
-    const parts = [];
-    if (dspError) parts.push(`runtime: ${dspError}`);
-    for (const err of compileErrors) {
-      const loc = err.line > 0 || err.column > 0 ? ` (${err.line}:${err.column})` : "";
-      parts.push(`${err.message}${loc}`);
-    }
-    return parts.join("  •  ");
-  }, [compileErrors, dspError]);
-  const editorErrors = T$1(() => {
-    const errors = [];
-    if (dspError) {
-      errors.push({
-        line: 0,
-        startColumn: 0,
-        endColumn: 1,
-        message: dspError
-      });
-    }
-    for (const err of compileErrors) {
-      const line = Math.max(0, err.line - 1);
-      const startColumn = Math.max(0, err.column - 1);
-      const endColumn = startColumn + Math.max(1, err.length);
-      errors.push({
-        line,
-        startColumn,
-        endColumn,
-        message: err.message
-      });
-    }
-    return errors;
-  }, [compileErrors, dspError]);
-  const widgetCompileState = T$1(() => {
-    if (code === dspSource) {
-      return {
-        dspSource,
-        sequences,
-        miniRefs,
-        miniPlayBars,
-        tramRefs: previewCompile.tramRefs ?? [],
-        timelineRefs,
-        miniSourceMaps,
-        adRefs,
-        adsrRefs,
-        envfollowRefs,
-        slewRefs,
-        analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
-        compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
-        expanderRefs: previewCompile.expanderRefs ?? expanderRefs,
-        gateRefs: previewCompile.gateRefs ?? gateRefs,
-        limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
-        filterRefs: previewCompile.filterRefs ?? filterRefs,
-        reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
-        slicerRefs: previewCompile.slicerRefs ?? slicerRefs,
-        lfoRefs: previewCompile.lfoRefs ?? lfoRefs,
-        everyRefs: previewCompile.everyRefs ?? everyRefs,
-        euclidRefs: previewCompile.euclidRefs ?? euclidRefs,
-        atRefs: previewCompile.atRefs ?? atRefs,
-        arrayLiterals: previewCompile.arrayLiterals ?? arrayLiterals,
-        branchMarks: previewCompile.branchMarks ?? branchMarks,
-        numberParams: previewCompile.numberParams ?? numberParams,
-        sampleDefs: previewCompile.sampleDefs ?? sampleDefs,
-        errors: []
-      };
-    }
-    if (previewCompile.errors.length) {
-      const prev = lastGoodPreviewRef.current?.widgetCompileState;
-      if (prev) return { ...prev, errors: previewCompile.errors };
-      return {
-        dspSource,
-        sequences,
-        miniRefs,
-        miniPlayBars,
-        tramRefs: previewCompile.tramRefs ?? [],
-        timelineRefs,
-        miniSourceMaps,
-        adRefs,
-        adsrRefs,
-        envfollowRefs,
-        slewRefs,
-        analyserRefs,
-        compressorRefs,
-        expanderRefs,
-        gateRefs,
-        limiterRefs,
-        filterRefs,
-        reverbRefs,
-        slicerRefs,
-        lfoRefs,
-        everyRefs,
-        atRefs,
-        euclidRefs,
-        arrayLiterals,
-        branchMarks,
-        numberParams,
-        sampleDefs,
-        errors: previewCompile.errors
-      };
-    }
-    const previewSequences = previewCompile.miniSequences ?? [];
-    const previewMiniSourceMaps = previewSequences.map((s2) => {
-      const scaleIndex = previewCompile.scale;
-      const compiled = compileMiniNotation(s2, scaleIndex === void 0 ? {} : { defaultScale: { scaleIndex } });
-      return buildMiniSourceMap(s2, compiled.nodes, compiled.bytecode);
-    });
-    return {
-      dspSource: code,
-      sequences: previewSequences,
-      miniRefs: previewCompile.miniRefs ?? [],
-      miniPlayBars: previewCompile.miniPlayBars ?? [],
-      tramRefs: previewCompile.tramRefs ?? [],
-      timelineRefs: previewCompile.timelineRefs ?? [],
-      miniSourceMaps: previewMiniSourceMaps,
-      adRefs: previewCompile.adRefs ?? adRefs,
-      adsrRefs: previewCompile.adsrRefs ?? adsrRefs,
-      envfollowRefs: previewCompile.envfollowRefs ?? envfollowRefs,
-      slewRefs: previewCompile.slewRefs ?? slewRefs,
-      analyserRefs: previewCompile.analyserRefs ?? [],
-      compressorRefs: previewCompile.compressorRefs ?? [],
-      expanderRefs: previewCompile.expanderRefs ?? [],
-      gateRefs: previewCompile.gateRefs ?? [],
-      limiterRefs: previewCompile.limiterRefs ?? [],
-      filterRefs: previewCompile.filterRefs ?? [],
-      reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
-      slicerRefs: previewCompile.slicerRefs ?? [],
-      lfoRefs: previewCompile.lfoRefs ?? [],
-      everyRefs: previewCompile.everyRefs ?? [],
-      atRefs: previewCompile.atRefs ?? [],
-      euclidRefs: previewCompile.euclidRefs ?? [],
-      arrayLiterals: previewCompile.arrayLiterals ?? [],
-      branchMarks: previewCompile.branchMarks ?? [],
-      numberParams: previewCompile.numberParams ?? [],
-      sampleDefs: previewCompile.sampleDefs ?? [],
-      errors: []
-    };
-  }, [
-    code,
-    dspSource,
-    sequences,
-    miniRefs,
-    timelineRefs,
-    miniSourceMaps,
-    analyserRefs,
-    compressorRefs,
-    expanderRefs,
-    gateRefs,
-    filterRefs,
-    slicerRefs,
-    lfoRefs,
-    everyRefs,
-    atRefs,
-    euclidRefs,
-    arrayLiterals,
-    branchMarks,
-    numberParams,
-    sampleDefs,
-    previewCompile
-  ]);
-  const earlyDataForView = T$1(() => {
-    if (code === dspSource || hasCompileErrors) return { timelineLabels, bars };
-    const previewBars = previewCompile.bars;
-    const previewLabels = previewCompile.timelineLabels ?? [];
-    return {
-      timelineLabels: buildTimelineLabels(previewLabels, previewBars),
-      bars: previewBars
-    };
-  }, [
-    bars,
-    code,
-    dspSource,
-    hasCompileErrors,
-    previewCompile.bars,
-    previewCompile.timelineLabels,
-    timelineLabels
-  ]);
-  const timelineLabelsForView = T$1(() => {
-    if (code === dspSource) return timelineLabels;
-    if (hasCompileErrors) return lastGoodPreviewRef.current?.timelineLabelsForView ?? timelineLabels;
-    return earlyDataForView.timelineLabels;
-  }, [code, dspSource, earlyDataForView.timelineLabels, hasCompileErrors, timelineLabels]);
-  const barsForView = T$1(() => {
-    if (code === dspSource) return bars;
-    if (hasCompileErrors) return lastGoodPreviewRef.current?.barsForView ?? bars;
-    return earlyDataForView.bars;
-  }, [bars, code, dspSource, earlyDataForView.bars, hasCompileErrors]);
-  y(() => {
-    if (code === dspSource) return;
-    if (hasCompileErrors) return;
-    lastGoodPreviewRef.current = {
-      widgetCompileState,
-      timelineLabelsForView,
-      barsForView
-    };
-  }, [barsForView, code, dspSource, hasCompileErrors, timelineLabelsForView, widgetCompileState]);
-  y(() => {
-    if (isUpdatingDsp || isProgramSwapPending) return;
-    setUiCompilePreview({
-      source: widgetCompileState.dspSource,
-      sequences: widgetCompileState.sequences,
-      miniRefs: widgetCompileState.miniRefs,
-      miniPlayBars: widgetCompileState.miniPlayBars,
-      timelineRefs: widgetCompileState.timelineRefs,
-      timelineLabels: timelineLabelsForView,
-      bars: barsForView,
-      miniSourceMaps: widgetCompileState.miniSourceMaps,
-      analyserRefs: widgetCompileState.analyserRefs ?? [],
-      compressorRefs: widgetCompileState.compressorRefs ?? [],
-      expanderRefs: widgetCompileState.expanderRefs ?? [],
-      gateRefs: widgetCompileState.gateRefs ?? [],
-      filterRefs: widgetCompileState.filterRefs ?? [],
-      reverbRefs: widgetCompileState.reverbRefs ?? [],
-      slicerRefs: widgetCompileState.slicerRefs ?? [],
-      lfoRefs: widgetCompileState.lfoRefs ?? [],
-      everyRefs: widgetCompileState.everyRefs ?? [],
-      atRefs: widgetCompileState.atRefs ?? [],
-      euclidRefs: widgetCompileState.euclidRefs ?? [],
-      arrayLiterals: widgetCompileState.arrayLiterals ?? [],
-      branchMarks: widgetCompileState.branchMarks ?? [],
-      numberParams: widgetCompileState.numberParams ?? [],
-      sampleDefs: widgetCompileState.sampleDefs ?? []
-    });
-  }, [
-    barsForView,
-    isProgramSwapPending,
-    isUpdatingDsp,
-    setUiCompilePreview,
-    timelineLabelsForView,
-    widgetCompileState
-  ]);
-  const isAwaitingSamples = T$1(() => {
-    if (hasCompileErrors) return false;
-    const defs = widgetCompileState.sampleDefs ?? [];
-    if (defs.length === 0) return false;
-    for (const d2 of defs) {
-      if (d2.provider !== "freesound") continue;
-      if (loadedSamples[d2.sampleIndex]?.url !== d2.url) return true;
-    }
-    return false;
-  }, [hasCompileErrors, loadedSamples, widgetCompileState.sampleDefs]);
-  const didRequestPreviewSamplesRef = A$1(null);
-  _(() => {
-    if (!audioContext) return;
-    if (!isAwaitingSamples) return;
-    if (!code) return;
-    const loopId2 = currentLoop.data.id;
-    const prev = didRequestPreviewSamplesRef.current;
-    if (prev?.loopId === loopId2 && prev.source === code) return;
-    didRequestPreviewSamplesRef.current = { loopId: loopId2, source: code };
-    void preloadSamples(code);
-  }, [audioContext, code, currentLoop.data.id, isAwaitingSamples, preloadSamples]);
-  const runtimeProgram = isProgramSwapPending ? program2 : program1;
-  const handleApply = async () => {
-    if (!isProgramReady) return;
-    if (hasCompileErrors) return;
-    const requested = code;
-    try {
-      onDspError(void 0);
-      const target = previewTargetRef.current;
-      const vm = target && previewCompile.errors.length === 0 ? {
-        source: requested,
-        ops: new Int32Array(target.ops),
-        literals: new Float32Array(target.literals),
-        result: previewCompile
-      } : void 0;
-      await updateDspSource(requested, vm);
-    } catch (err) {
-      onDspError(err instanceof Error ? err.message : String(err));
-    }
-  };
-  const isLive = isPlayingLoop && playbackState === "running";
-  _(() => {
-    if (currentLoop && currentLoop.data.code == null && code.length === 0) return;
-    if (!isLive) return;
-    void handleApply();
-  }, [currentLoop, isProgramReady, isLive]);
-  y(() => {
-    if (!isProgramReady) return;
-    if (!currentLoop) return;
-    if (!isLive) return;
-    if (hasCompileErrors) return;
-    if (code === dspSource) return;
-    void handleApply();
-  }, [code, currentLoop?.data.id, dspSource, hasCompileErrors, isProgramReady, isLive]);
-  const frameRef = A$1([]);
-  const controlStateRef = A$1(/* @__PURE__ */ new Map());
-  const playingLoopId = useEngineRuntimeStore((state2) => state2.playingLoopId);
-  const lastPlayingLoopIdRef = A$1(null);
-  y(() => {
-    if (playingLoopId != null) lastPlayingLoopIdRef.current = playingLoopId;
-  }, [playingLoopId]);
-  const isLiveView = loopId != null && loopId === (playingLoopId ?? lastPlayingLoopIdRef.current);
-  const resetKey = `${currentLoop?.data.id ?? ""}:${playingLoopId ?? ""}`;
-  const gridOwnerByLine = T$1(() => {
-    const byLine = /* @__PURE__ */ new Map();
-    const consider = (owner) => {
-      const existing = byLine.get(owner.line);
-      if (!existing || owner.column < existing.column) byLine.set(owner.line, owner);
-    };
-    for (const ref of widgetCompileState.timelineRefs ?? []) {
-      consider({
-        kind: "timeline",
-        seqIndex: ref.seqIndex,
-        line: ref.loc.line,
-        column: ref.loc.column,
-        length: ref.loc.length
-      });
-    }
-    for (const ref of widgetCompileState.miniRefs ?? []) {
-      consider({
-        kind: "pianoroll",
-        seqIndex: ref.seqIndex,
-        line: ref.loc.line,
-        column: ref.loc.column,
-        length: ref.loc.length
-      });
-    }
-    return byLine;
-  }, [widgetCompileState.miniRefs, widgetCompileState.timelineRefs]);
-  const { widgets: sequenceWidgets, onBeforeDraw } = useSequenceWidget({
-    program1: runtimeProgram,
-    audioContext,
-    globalSampleCount,
-    sequences: widgetCompileState.sequences,
-    miniSourceMaps: widgetCompileState.miniSourceMaps,
-    miniRefs: widgetCompileState.miniRefs,
-    miniPlayBars: widgetCompileState.miniPlayBars,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isPlaying: isPlaybackRunningForView,
-    resetKey,
-    frameRef,
-    controlStateRef,
-    bpmValue
-  });
-  const { widgets: pianorollWidgets, onBeforeDraw: onBeforeDrawPianoroll } = usePianorollWidget({
-    program1: runtimeProgram,
-    audioContext,
-    bpmValue,
-    globalSampleCount,
-    sequences: widgetCompileState.sequences,
-    miniSourceMaps: widgetCompileState.miniSourceMaps,
-    miniRefs: widgetCompileState.miniRefs,
-    miniPlayBars: widgetCompileState.miniPlayBars,
-    timelineLabels: timelineLabelsForView,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isPlaying: isPlaybackRunningForView,
-    resetKey,
-    gridOwnerByLine
-  });
-  const { widgets: timelineWidgets, onBeforeDraw: onBeforeDrawTimeline } = useTimelineWidget({
-    program1: runtimeProgram,
-    audioContext,
-    bpmValue,
-    globalSampleCount,
-    timelineRefs: widgetCompileState.timelineRefs,
-    timelineLabels: timelineLabelsForView,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isPlaying: isPlaybackRunningForView,
-    isLive,
-    resetKey,
-    gridOwnerByLine
-  });
-  const { widgets: timelineSequenceWidgets, onBeforeDraw: onBeforeDrawTimelineSequence } = useTimelineSequenceWidget({
-    program1: runtimeProgram,
-    audioContext,
-    bpmValue,
-    globalSampleCount,
-    timelineRefs: widgetCompileState.timelineRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isPlaying: isPlaybackRunningForView,
-    isLive,
-    resetKey
-  });
-  const { widgets: tramWidgets, onBeforeDraw: onBeforeDrawTram } = useTramWidget({
-    audioContext,
-    bpmValue,
-    globalSampleCount,
-    tramRefs: widgetCompileState.tramRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isPlaying: isPlaybackRunningForView,
-    resetKey
-  });
-  const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
-    program1: runtimeProgram,
-    ringPos,
-    analyserRefs: widgetCompileState.analyserRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isLive: isLiveView,
-    playbackState,
-    sampleRate: audioContext?.sampleRate
-  });
-  const { widgets: compressorWidgets, onBeforeDraw: onBeforeDrawCompressor } = useCompressorWidget({
-    program1: runtimeProgram,
-    ringPos,
-    compressorRefs: widgetCompileState.compressorRefs,
-    expanderRefs: widgetCompileState.expanderRefs,
-    gateRefs: widgetCompileState.gateRefs,
-    limiterRefs: widgetCompileState.limiterRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isLive: isLiveView,
-    playbackState,
-    sampleRate: audioContext?.sampleRate
-  });
-  const { widgets: filterWidgets, onBeforeDraw: onBeforeDrawFilter } = useFilterWidget({
-    program1: runtimeProgram,
-    audioContext,
-    globalSampleCount,
-    filterRefs: widgetCompileState.filterRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isLive,
-    playbackState
-  });
-  const { widgets: reverbWidgets, onBeforeDraw: onBeforeDrawReverb } = useReverbWidget({
-    program1: runtimeProgram,
-    reverbRefs: widgetCompileState.reverbRefs,
-    showWidgets,
-    isLive,
-    playbackState
-  });
-  const { widgets: slicerWidgets, onBeforeDraw: onBeforeDrawSlicer } = useSlicerWidget({
-    slicerRefs: widgetCompileState.slicerRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    program1: runtimeProgram,
-    audioContext,
-    globalSampleCount,
-    sampleDefs: widgetCompileState.sampleDefs,
-    playbackState
-  });
-  const { widgets: lfoWidgets, onBeforeDraw: onBeforeDrawLfo } = useLfoWidget({
-    program1: runtimeProgram,
-    audioContext,
-    bpmValue,
-    globalSampleCount,
-    lfoRefs: widgetCompileState.lfoRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isLive,
-    playbackState
-  });
-  const { widgets: trigWidgets, onBeforeDraw: onBeforeDrawTrig } = useTrigWidget({
-    program1: runtimeProgram,
-    audioContext,
-    globalSampleCount,
-    everyRefs: widgetCompileState.everyRefs,
-    atRefs: widgetCompileState.atRefs,
-    euclidRefs: widgetCompileState.euclidRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isLive,
-    playbackState
-  });
-  const { widgets: arrayAccessWidgets, onBeforeDraw: onBeforeDrawArrayAccess } = useArrayAccessWidget({
-    program1: runtimeProgram,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets: showWidgets && isPlayingLoop,
-    arrayLiterals: widgetCompileState.arrayLiterals
-  });
-  const { widgets: branchWidgets, onBeforeDraw: onBeforeDrawBranch } = useBranchWidget({
-    program1: runtimeProgram,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets: showWidgets && isPlayingLoop,
-    branchMarks: widgetCompileState.branchMarks
-  });
-  const { widgets: sampleWidgets, onBeforeDraw: onBeforeDrawSample } = useSampleWidget({
-    program1: runtimeProgram,
-    audioContext,
-    globalSampleCount,
-    sampleDefs: widgetCompileState.sampleDefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    playbackState,
-    isLive
-  });
-  const { widgets: envelopeWidgets, onBeforeDraw: onBeforeDrawEnvelope } = useEnvelopeWidget({
-    program1: runtimeProgram,
-    adRefs: widgetCompileState.adRefs,
-    adsrRefs: widgetCompileState.adsrRefs,
-    envfollowRefs: widgetCompileState.envfollowRefs,
-    slewRefs: widgetCompileState.slewRefs,
-    dspSource: widgetCompileState.dspSource,
-    showWidgets,
-    isLive,
-    playbackState
-  });
-  const { knobs, knobLocKeys } = T$1(() => {
-    const out = [];
-    const knobLocKeys2 = /* @__PURE__ */ new Set();
-    const addKnobsFromRef = (ref) => {
-      const functionName = String(ref?.functionName ?? "");
-      if (!functionName) return;
-      const config2 = getKnobConfig(functionName);
-      if (!config2) return;
-      for (const p2 of ref?.knobParams ?? []) {
-        const param = getKnobParamConfig(config2, String(p2?.name ?? ""));
-        if (!param) continue;
-        const loc = p2?.valueLoc;
-        if (!loc) continue;
-        knobLocKeys2.add(`${loc.line}:${loc.column}`);
-        out.push({
-          line: loc.line,
-          column: loc.column,
-          length: loc.length,
-          value: Number(p2?.value ?? 0),
-          min: param.min,
-          max: param.max,
-          precision: param.precision,
-          mode: param.mode,
-          stepPerPx: param.stepPerPx
-        });
-      }
-    };
-    const refs = [
-      ...widgetCompileState.compressorRefs ?? [],
-      ...widgetCompileState.expanderRefs ?? [],
-      ...widgetCompileState.gateRefs ?? [],
-      ...widgetCompileState.limiterRefs ?? [],
-      ...widgetCompileState.filterRefs ?? [],
-      ...widgetCompileState.reverbRefs ?? [],
-      ...widgetCompileState.lfoRefs ?? [],
-      ...widgetCompileState.adRefs ?? [],
-      ...widgetCompileState.adsrRefs ?? [],
-      ...widgetCompileState.envfollowRefs ?? [],
-      ...widgetCompileState.slewRefs ?? []
-    ];
-    for (const ref of refs) addKnobsFromRef(ref);
-    return { knobs: out, knobLocKeys: knobLocKeys2 };
-  }, [
-    widgetCompileState.compressorRefs,
-    widgetCompileState.expanderRefs,
-    widgetCompileState.gateRefs,
-    widgetCompileState.limiterRefs,
-    widgetCompileState.filterRefs,
-    widgetCompileState.reverbRefs,
-    widgetCompileState.lfoRefs,
-    widgetCompileState.adRefs,
-    widgetCompileState.adsrRefs,
-    widgetCompileState.envfollowRefs,
-    widgetCompileState.slewRefs
-  ]);
-  const { widgets: knobWidgets } = useKnobWidget({
-    showWidgets,
-    knobs,
-    theme,
-    codeFile: currentLoop?.codeFile
-  });
-  const sliderNumberParams = T$1(() => {
-    const params = widgetCompileState.numberParams ?? [];
-    if (params.length === 0) return params;
-    if (knobLocKeys.size === 0) return params;
-    return params.filter((p2) => !knobLocKeys.has(`${p2.line}:${p2.column}`));
-  }, [knobLocKeys, widgetCompileState.numberParams]);
-  const { widgets: sliderWidgets } = useSliderWidget({
-    showWidgets,
-    numberParams: sliderNumberParams,
-    theme,
-    codeFile: currentLoop?.codeFile
-  });
-  const { canvasRef: lissajousCanvasRef, onBeforeDraw: onBeforeDrawLissajous } = useVisualizerBackground({
-    program1: runtimeProgram,
-    ringPos,
-    isLive: isLiveView && playbackState === "running" && showVisualizer,
-    sampleRate: audioContext?.sampleRate,
-    pointStride: 1,
-    vertex: previewCompile.visualizerVertex,
-    fragment: previewCompile.visualizerFragment
-  });
-  const onBeforeDrawCombined = q$1(() => {
-    const runtimeLoopId = useEngineRuntimeStore.getState().currentLoopId;
-    if (runtimeLoopId !== loopId) return;
-    const result = updatePredictedSampleCount(
-      audioContext,
-      globalSampleCount,
-      {
-        predictedSampleCountRef,
-        lastWallTimeRef,
-        isFirstFrameRef
-      },
-      { isPlaying: isPlaybackRunningForView }
-    );
-    const runtimeLoopIdAfter = useEngineRuntimeStore.getState().currentLoopId;
-    if (runtimeLoopIdAfter !== loopId) return;
-    predictedSampleCountResultRef.current = result;
-    setPredictedSampleCountResult(result);
-    if (showVisualizer) onBeforeDrawLissajous();
-    onBeforeDraw();
-    onBeforeDrawPianoroll();
-    onBeforeDrawTimeline();
-    onBeforeDrawTimelineSequence();
-    onBeforeDrawTram();
-    onBeforeDrawAnalyser();
-    onBeforeDrawCompressor();
-    onBeforeDrawEnvelope();
-    onBeforeDrawFilter();
-    onBeforeDrawReverb();
-    onBeforeDrawSlicer();
-    onBeforeDrawLfo();
-    onBeforeDrawTrig();
-    onBeforeDrawArrayAccess();
-    onBeforeDrawBranch();
-    onBeforeDrawSample();
-  }, [
-    showVisualizer,
-    onBeforeDrawLissajous,
-    onBeforeDraw,
-    onBeforeDrawPianoroll,
-    onBeforeDrawTimeline,
-    onBeforeDrawTimelineSequence,
-    onBeforeDrawTram,
-    onBeforeDrawAnalyser,
-    onBeforeDrawCompressor,
-    onBeforeDrawEnvelope,
-    onBeforeDrawFilter,
-    onBeforeDrawReverb,
-    onBeforeDrawSlicer,
-    onBeforeDrawLfo,
-    onBeforeDrawTrig,
-    onBeforeDrawArrayAccess,
-    onBeforeDrawBranch,
-    onBeforeDrawSample,
-    audioContext,
-    globalSampleCount,
-    isPlaybackRunningForView,
-    loopId
-  ]);
-  const widgets = T$1(() => {
-    if (!showWidgets) return [];
-    return [
-      ...sampleWidgets,
-      ...analyserWidgets,
-      ...compressorWidgets,
-      ...envelopeWidgets,
-      ...filterWidgets,
-      ...reverbWidgets,
-      ...slicerWidgets,
-      ...lfoWidgets,
-      ...trigWidgets,
-      ...timelineWidgets,
-      ...timelineSequenceWidgets,
-      ...tramWidgets,
-      ...pianorollWidgets,
-      ...sequenceWidgets,
-      ...arrayAccessWidgets,
-      ...branchWidgets,
-      ...sliderWidgets,
-      ...knobWidgets
-    ];
-  }, [
-    showWidgets,
-    envelopeWidgets,
-    analyserWidgets,
-    timelineWidgets,
-    timelineSequenceWidgets,
-    pianorollWidgets,
-    tramWidgets,
-    sequenceWidgets,
-    arrayAccessWidgets,
-    branchWidgets,
-    sliderWidgets,
-    sampleWidgets,
-    compressorWidgets,
-    filterWidgets,
-    reverbWidgets,
-    slicerWidgets,
-    lfoWidgets,
-    trigWidgets,
-    knobWidgets
-  ]);
-  const codeEditorKey = T$1(() => {
-    const codeFile = currentLoop?.codeFile;
-    if (!codeFile) return "<none>";
-    const existing = codeFileKeyByFileRef.current.get(codeFile);
-    if (existing) return existing;
-    const next = String(++nextCodeFileKeyRef.current);
-    codeFileKeyByFileRef.current.set(codeFile, next);
-    return next;
-  }, [currentLoop?.codeFile]);
-  const didSeeCodeRef = A$1({ key: "", did: false });
-  if (didSeeCodeRef.current.key !== codeEditorKey) {
-    didSeeCodeRef.current = { key: codeEditorKey, did: false };
-  }
-  if (!didSeeCodeRef.current.did && code.length > 0) {
-    didSeeCodeRef.current.did = true;
-  }
-  const editorGateRef = A$1({ key: "", allow: false });
-  if (editorGateRef.current.key !== codeEditorKey) {
-    editorGateRef.current = { key: codeEditorKey, allow: false };
-  }
-  const isBootingCode = isAwaitingCode && !didSeeCodeRef.current.did;
-  const hasSavedScroll = currentLoop.codeFile.scrollX !== 0 || currentLoop.codeFile.scrollY !== 0;
-  const expectsWidgets = showWidgets && ((widgetCompileState.adRefs?.length ?? 0) > 0 || (widgetCompileState.adsrRefs?.length ?? 0) > 0 || (widgetCompileState.envfollowRefs?.length ?? 0) > 0 || (widgetCompileState.slewRefs?.length ?? 0) > 0 || (widgetCompileState.sampleDefs?.length ?? 0) > 0 || (widgetCompileState.analyserRefs?.length ?? 0) > 0 || (widgetCompileState.compressorRefs?.length ?? 0) > 0 || (widgetCompileState.expanderRefs?.length ?? 0) > 0 || (widgetCompileState.gateRefs?.length ?? 0) > 0 || (widgetCompileState.limiterRefs?.length ?? 0) > 0 || (widgetCompileState.filterRefs?.length ?? 0) > 0 || (widgetCompileState.slicerRefs?.length ?? 0) > 0 || (widgetCompileState.lfoRefs?.length ?? 0) > 0 || (widgetCompileState.everyRefs?.length ?? 0) > 0 || (widgetCompileState.atRefs?.length ?? 0) > 0 || (widgetCompileState.euclidRefs?.length ?? 0) > 0 || (widgetCompileState.arrayLiterals?.length ?? 0) > 0 || (widgetCompileState.branchMarks?.length ?? 0) > 0 || (widgetCompileState.timelineRefs?.length ?? 0) > 0 || (widgetCompileState.sequences?.length ?? 0) > 0 || (widgetCompileState.tramRefs?.length ?? 0) > 0 || (widgetCompileState.numberParams?.length ?? 0) > 0 || knobs.length > 0);
-  const shouldDelayEditorMount = !editorGateRef.current.allow && hasSavedScroll && !hasCompileErrors && !dspError && (isBootingCode || expectsWidgets && widgets.length === 0);
-  if (!editorGateRef.current.allow && !shouldDelayEditorMount) {
-    editorGateRef.current.allow = true;
-  }
-  const showEditor = editorGateRef.current.allow;
-  const handleKeyDown = q$1((e2) => {
-    e2.stopPropagation();
-    const metaKey = e2.ctrlKey || e2.metaKey;
-    if (e2.key === "r" && metaKey) {
-      return false;
-    }
-    if (e2.key === " " && metaKey) {
-      if (docsIsOpen) {
-        return true;
-      }
-      const runtime = useEngineRuntimeStore.getState();
-      const isSameLoop = runtime.playingLoopId === currentLoop?.data.id;
-      if (runtime.playbackState === "running" && isSameLoop) {
-        if (!e2.altKey) runtime.pause();
-        else void restartLoop();
-      } else {
-        (async () => {
-          if (e2.altKey && isSameLoop) {
-            await restartLoop();
-          }
-          if (!runtime.playingLoopId || !isSameLoop) {
-            void useEngineDspStore.getState().playLoop(
-              currentLoop.data.id,
-              currentLoop.codeFile.value,
-              e2.altKey || !runtime.playingLoopId ? 0 : void 0
-            );
-          } else {
-            void useEngineDspStore.getState().playLoop(currentLoop.data.id, currentLoop.codeFile.value, void 0);
-          }
-        })();
-      }
-      return false;
-    }
-    return true;
-  }, [currentLoop, docsIsOpen, restartLoop]);
-  y(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [handleKeyDown]);
-  return /* @__PURE__ */ u$1("div", { className: "flex flex-row gap-2 w-full h-full relative", children: [
-    showVisualizer && /* @__PURE__ */ u$1(
-      "canvas",
-      {
-        ref: lissajousCanvasRef,
-        className: "absolute inset-0 w-full h-full pointer-events-none z-0",
-        "aria-hidden": "true"
-      }
-    ),
-    /* @__PURE__ */ u$1("div", { className: "text-white text-sm w-full h-full", children: [
-      headerErrorText.length > 0 && /* @__PURE__ */ u$1("div", { className: "absolute top-0 left-[37px] right-0 h-[40px] z-50", children: /* @__PURE__ */ u$1("div", { className: "h-full w-full flex items-center gap-2 px-2 bg-[#f00a] border-b border-red-700 text-red-100", children: [
-        /* @__PURE__ */ u$1("button", { title: "Copy error message", className: "py-2 px-1", onClick: () => {
-          navigator.clipboard.writeText(headerErrorText);
-        }, children: /* @__PURE__ */ u$1(e$6, { weight: "regular", size: "16" }) }),
-        /* @__PURE__ */ u$1("div", { className: "shrink-0 text-md font-semibold", children: "Error:" }),
-        /* @__PURE__ */ u$1("div", { className: "flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap text-md", children: headerErrorText })
-      ] }) }),
-      showEditor && /* @__PURE__ */ u$1(
-        CodeEditor,
-        {
-          codeFile: currentLoop?.codeFile,
-          widgets,
-          errors: editorErrors,
-          header: timelineHeader,
-          theme: themeForEditor,
-          tokenizer,
-          keywords: KEYWORDS,
-          hideFunctionSignatures: !showFunctionDefinitions,
-          hideHoverFunctionSignatures: !showFunctionDefinitionsHover,
-          functionDefinitions,
-          isAnimating: true,
-          gutter: true,
-          wordWrap,
-          keyOverride: handleKeyDown,
-          onBeforeDraw: onBeforeDrawCombined
-        },
-        codeEditorKey
-      )
-    ] }),
-    (isBootingCode || isPreloadingSamples || isAwaitingSamples || !showEditor) && !hasCompileErrors && !dspError && /* @__PURE__ */ u$1("div", { className: "absolute inset-0 z-40 pointer-events-none", children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(SpinnerLarge, {}) }) })
-  ] });
-}
-function Admin() {
-  const { navigate } = useRouter();
-  const sessionData = useAppStore((state2) => state2.sessionData);
-  const api = useAppStore((state2) => state2.api);
-  const setSessionData = useAppStore((state2) => state2.setSessionData);
-  const [activeTab, setActiveTab] = d("users");
-  const [users, setUsers] = d([]);
-  const [loops, setLoops] = d([]);
-  const [isLoadingUsers, setIsLoadingUsers] = d(false);
-  const [isLoadingLoops, setIsLoadingLoops] = d(false);
-  const [isImporting, setIsImporting] = d(false);
-  const [importError, setImportError] = d(null);
-  const [importResult, setImportResult] = d(null);
-  const fileInputRef = A$1(null);
-  y(() => {
-    if (!sessionData?.user.isAdmin) {
-      navigate("/");
-      return;
-    }
-  }, [sessionData, navigate]);
-  y(() => {
-    if (activeTab === "users" && users.length === 0 && !isLoadingUsers) {
-      setIsLoadingUsers(true);
-      void api.fetchAdminUsers().then(setUsers).catch((e2) => console.error("Failed to fetch users:", e2)).finally(() => setIsLoadingUsers(false));
-    }
-  }, [activeTab, users.length, isLoadingUsers, api]);
-  y(() => {
-    if (activeTab === "loops" && loops.length === 0 && !isLoadingLoops) {
-      setIsLoadingLoops(true);
-      void api.fetchAdminLoops().then(setLoops).catch((e2) => console.error("Failed to fetch loops:", e2)).finally(() => setIsLoadingLoops(false));
-    }
-  }, [activeTab, loops.length, isLoadingLoops, api]);
-  const handleLoginAs = async (userId) => {
-    try {
-      const session = await api.adminLoginAs(userId);
-      setSessionData(session);
-      navigate("/app");
-    } catch (e2) {
-      alert(e2 instanceof Error ? e2.message : "Failed to login as user");
-    }
-  };
-  const handleSendWelcomeEmail = async (userId) => {
-    try {
-      const res = await api.adminSendWelcomeEmail(userId);
-      setUsers(users.map((u2) => u2.id === userId ? { ...u2, welcomeEmailSent: true } : u2));
-      alert(res.message);
-    } catch (e2) {
-      alert(e2 instanceof Error ? e2.message : "Failed to send welcome email");
-    }
-  };
-  const handleDeleteUser = async (userId) => {
-    if (!confirm("Are you sure you want to delete this user?")) return;
-    try {
-      await api.adminDeleteUser(userId);
-      setUsers(users.filter((u2) => u2.id !== userId));
-    } catch (e2) {
-      alert(e2 instanceof Error ? e2.message : "Failed to delete user");
-    }
-  };
-  const handleDeleteLoop = async (loopId) => {
-    if (!confirm("Are you sure you want to delete this loop?")) return;
-    try {
-      await api.adminDeleteLoop(loopId);
-      setLoops(loops.filter((l2) => l2.id !== loopId));
-    } catch (e2) {
-      alert(e2 instanceof Error ? e2.message : "Failed to delete loop");
-    }
-  };
-  const handleToggleVisibility = async (loopId) => {
-    try {
-      const res = await api.adminToggleLoopVisibility(loopId);
-      setLoops(loops.map((l2) => l2.id === loopId ? { ...l2, isPublic: res.isPublic } : l2));
-    } catch (e2) {
-      alert(e2 instanceof Error ? e2.message : "Failed to toggle visibility");
-    }
-  };
-  const handleFileSelect = async (e2) => {
-    const target = e2.target;
-    const file = target.files?.[0];
-    if (!file) return;
-    setIsImporting(true);
-    setImportError(null);
-    setImportResult(null);
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) {
-        throw new Error("Invalid file format: expected an array");
-      }
-      const result = await api.adminImportV1(data);
-      setImportResult(result);
-      if (result.errors.length > 0) {
-        console.error("Import errors:", result.errors);
-      }
-    } catch (e22) {
-      setImportError(e22 instanceof Error ? e22.message : "Failed to import data");
-    } finally {
-      setIsImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-  if (!sessionData?.user.isAdmin) {
-    return null;
-  }
-  return /* @__PURE__ */ u$1("div", { className: "min-h-screen text-white relative", children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1("div", { className: "relative min-h-screen", children: /* @__PURE__ */ u$1("div", { className: "mx-auto px-6 py-12 min-h-screen flex flex-col", children: [
-    /* @__PURE__ */ u$1("div", { className: "text-center mb-12", children: [
-      /* @__PURE__ */ u$1(Link, { to: "/", children: /* @__PURE__ */ u$1(Logo, { text: "loopmaster", size: "4em" }) }),
-      /* @__PURE__ */ u$1("h1", { className: "text-3xl font-bold text-white mt-6 mb-2", children: "Admin Panel" }),
-      /* @__PURE__ */ u$1("p", { className: "text-neutral-400", children: "Manage users, loops, and import data" })
-    ] }),
-    /* @__PURE__ */ u$1("div", { className: "flex flex-row items-center justify-center gap-2 mb-8", children: [
-      /* @__PURE__ */ u$1(
-        "button",
-        {
-          onClick: () => setActiveTab("users"),
-          className: `px-6 py-3 font-semibold text-sm flex items-center justify-center gap-2 rounded-lg ${activeTab === "users" ? "bg-gradient-to-br from-orange-400 to-red-600 text-white" : "bg-neutral-900 text-neutral-400 hover:text-white border-2 border-neutral-800 hover:border-orange-600"}`,
-          children: [
-            /* @__PURE__ */ u$1(o, { weight: "regular", size: 18 }),
-            /* @__PURE__ */ u$1("span", { children: "Users" })
-          ]
-        }
-      ),
-      /* @__PURE__ */ u$1(
-        "button",
-        {
-          onClick: () => setActiveTab("loops"),
-          className: `px-6 py-3 font-semibold text-sm flex items-center justify-center gap-2 rounded-lg ${activeTab === "loops" ? "bg-gradient-to-br from-orange-400 to-red-600 text-white" : "bg-neutral-900 text-neutral-400 hover:text-white border-2 border-neutral-800 hover:border-orange-600"}`,
-          children: [
-            /* @__PURE__ */ u$1(t$1, { weight: "regular", size: 18 }),
-            /* @__PURE__ */ u$1("span", { children: "Loops" })
-          ]
-        }
-      ),
-      /* @__PURE__ */ u$1(
-        "button",
-        {
-          onClick: () => setActiveTab("import"),
-          className: `px-6 py-3 font-semibold text-sm flex items-center justify-center gap-2 rounded-lg ${activeTab === "import" ? "bg-gradient-to-br from-orange-400 to-red-600 text-white" : "bg-neutral-900 text-neutral-400 hover:text-white border-2 border-neutral-800 hover:border-orange-600"}`,
-          children: [
-            /* @__PURE__ */ u$1(a$2, { weight: "regular", size: 18 }),
-            /* @__PURE__ */ u$1("span", { children: "Import V1" })
-          ]
-        }
-      ),
-      /* @__PURE__ */ u$1("span", { className: "text-neutral-500 mx-2", children: "or" }),
-      /* @__PURE__ */ u$1(
-        Link,
-        {
-          to: "/app",
-          className: "px-6 py-3 font-semibold text-sm flex items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-orange-400 to-red-600 text-white",
-          children: [
-            /* @__PURE__ */ u$1(e$7, { weight: "regular", size: 18 }),
-            /* @__PURE__ */ u$1("span", { children: "Enter App" })
-          ]
-        }
-      )
-    ] }),
-    /* @__PURE__ */ u$1("div", { className: "flex-1", children: [
-      activeTab === "users" && /* @__PURE__ */ u$1("div", { className: "bg-black border-2 border-orange-600 rounded-lg p-6", children: [
-        /* @__PURE__ */ u$1("h2", { className: "text-2xl font-semibold text-white mb-4 flex items-center gap-2", children: [
-          /* @__PURE__ */ u$1(o, { weight: "regular", size: 24 }),
-          "Users"
-        ] }),
-        isLoadingUsers ? /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-8", children: "Loading users..." }) : users.length === 0 ? /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-8", children: "No users found." }) : /* @__PURE__ */ u$1("div", { className: "overflow-x-auto", children: /* @__PURE__ */ u$1("table", { className: "w-full text-left", children: [
-          /* @__PURE__ */ u$1("thead", { children: /* @__PURE__ */ u$1("tr", { className: "border-b-2 border-neutral-800", children: [
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Name" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Email" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Loops" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Likes" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Welcome Email" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Actions" })
-          ] }) }),
-          /* @__PURE__ */ u$1("tbody", { children: users.map((user) => /* @__PURE__ */ u$1("tr", { className: "border-b border-neutral-900", children: [
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-white", children: user.name }),
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-300", children: user.email }),
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400", children: user.loopsCount }),
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400", children: user.likesCount }),
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400", children: user.welcomeEmailSent ? /* @__PURE__ */ u$1("span", { className: "text-green-400", children: "✓ Sent" }) : /* @__PURE__ */ u$1("span", { className: "text-yellow-400", children: "Not sent" }) }),
-            /* @__PURE__ */ u$1("td", { className: "py-3", children: /* @__PURE__ */ u$1("div", { className: "flex gap-2", children: [
-              /* @__PURE__ */ u$1(
-                "button",
-                {
-                  onClick: () => handleLoginAs(user.id),
-                  className: "px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-sm flex items-center gap-1",
-                  title: "Login as user",
-                  children: /* @__PURE__ */ u$1(n, { weight: "regular", size: 14 })
-                }
-              ),
-              /* @__PURE__ */ u$1(
-                "button",
-                {
-                  onClick: () => handleSendWelcomeEmail(user.id),
-                  className: "px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm",
-                  title: "Send welcome email",
-                  children: "Email"
-                }
-              ),
-              /* @__PURE__ */ u$1(
-                "button",
-                {
-                  onClick: () => handleDeleteUser(user.id),
-                  className: "px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm flex items-center gap-1",
-                  title: "Delete user",
-                  children: /* @__PURE__ */ u$1(r$1, { weight: "regular", size: 14 })
-                }
-              )
-            ] }) })
-          ] }, user.id)) })
-        ] }) })
-      ] }),
-      activeTab === "loops" && /* @__PURE__ */ u$1("div", { className: "bg-black border-2 border-orange-600 rounded-lg p-6", children: [
-        /* @__PURE__ */ u$1("h2", { className: "text-2xl font-semibold text-white mb-4 flex items-center gap-2", children: [
-          /* @__PURE__ */ u$1(t$1, { weight: "regular", size: 24 }),
-          "Loops"
-        ] }),
-        isLoadingLoops ? /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-8", children: "Loading loops..." }) : loops.length === 0 ? /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-8", children: "No loops found." }) : /* @__PURE__ */ u$1("div", { className: "overflow-x-auto", children: /* @__PURE__ */ u$1("table", { className: "w-full text-left", children: [
-          /* @__PURE__ */ u$1("thead", { children: /* @__PURE__ */ u$1("tr", { className: "border-b-2 border-neutral-800", children: [
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Title" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "User ID" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Public" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Date" }),
-            /* @__PURE__ */ u$1("th", { className: "pb-3 text-neutral-400 font-semibold", children: "Actions" })
-          ] }) }),
-          /* @__PURE__ */ u$1("tbody", { children: loops.map((loop) => /* @__PURE__ */ u$1("tr", { className: "border-b border-neutral-900", children: [
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-white", children: loop.title }),
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-300 font-mono text-sm", children: loop.userId }),
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400", children: loop.isPublic ? "Yes" : "No" }),
-            /* @__PURE__ */ u$1("td", { className: "py-3 text-neutral-400 text-sm", children: new Date(loop.timestamp).toLocaleDateString() }),
-            /* @__PURE__ */ u$1("td", { className: "py-3", children: /* @__PURE__ */ u$1("div", { className: "flex gap-2", children: [
-              /* @__PURE__ */ u$1(
-                "button",
-                {
-                  onClick: () => handleToggleVisibility(loop.id),
-                  className: "px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm flex items-center gap-1",
-                  title: loop.isPublic ? "Make private" : "Make public",
-                  children: loop.isPublic ? /* @__PURE__ */ u$1(o$d, { weight: "regular", size: 14 }) : /* @__PURE__ */ u$1(o$e, { weight: "regular", size: 14 })
-                }
-              ),
-              /* @__PURE__ */ u$1(
-                "button",
-                {
-                  onClick: () => handleDeleteLoop(loop.id),
-                  className: "px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm flex items-center gap-1",
-                  title: "Delete loop",
-                  children: /* @__PURE__ */ u$1(r$1, { weight: "regular", size: 14 })
-                }
-              )
-            ] }) })
-          ] }, loop.id)) })
-        ] }) })
-      ] }),
-      activeTab === "import" && /* @__PURE__ */ u$1("div", { className: "bg-black border-2 border-orange-600 rounded-lg p-6", children: [
-        /* @__PURE__ */ u$1("h2", { className: "text-2xl font-semibold text-white mb-4 flex items-center gap-2", children: [
-          /* @__PURE__ */ u$1(a$2, { weight: "regular", size: 24 }),
-          "Import User Data from V1"
-        ] }),
-        /* @__PURE__ */ u$1("p", { className: "text-neutral-400 mb-6", children: "Upload a JSON file exported from V1 to migrate user data to the current backend." }),
-        /* @__PURE__ */ u$1("div", { className: "mb-6", children: [
-          /* @__PURE__ */ u$1(
-            "input",
-            {
-              ref: fileInputRef,
-              type: "file",
-              accept: ".json",
-              onChange: handleFileSelect,
-              className: "hidden",
-              id: "import-file"
-            }
-          ),
-          /* @__PURE__ */ u$1(
-            "label",
-            {
-              htmlFor: "import-file",
-              className: "inline-block px-6 py-3 bg-gradient-to-br from-orange-400 to-red-600 text-white font-semibold rounded-lg cursor-pointer hover:opacity-90",
-              children: "Select JSON File"
-            }
-          )
-        ] }),
-        isImporting && /* @__PURE__ */ u$1("div", { className: "text-neutral-400 text-center py-4", children: "Importing data..." }),
-        importError && /* @__PURE__ */ u$1("div", { className: "bg-red-900/50 border-2 border-red-600 rounded-lg p-4 mb-4", children: [
-          /* @__PURE__ */ u$1("div", { className: "flex items-center gap-2 mb-2", children: [
-            /* @__PURE__ */ u$1(e, { weight: "regular", size: 20, className: "text-red-400" }),
-            /* @__PURE__ */ u$1("span", { className: "text-red-400 font-semibold", children: "Import Error" })
-          ] }),
-          /* @__PURE__ */ u$1("p", { className: "text-red-300", children: importError })
-        ] }),
-        importResult && /* @__PURE__ */ u$1("div", { className: "bg-green-900/50 border-2 border-green-600 rounded-lg p-4", children: [
-          /* @__PURE__ */ u$1("div", { className: "flex items-center gap-2 mb-2", children: /* @__PURE__ */ u$1("span", { className: "text-green-400 font-semibold", children: "Import Complete" }) }),
-          /* @__PURE__ */ u$1("div", { className: "text-green-300 space-y-1", children: [
-            /* @__PURE__ */ u$1("p", { children: [
-              "Imported: ",
-              importResult.imported,
-              " users"
-            ] }),
-            /* @__PURE__ */ u$1("p", { children: [
-              "Skipped: ",
-              importResult.skipped,
-              " users"
-            ] }),
-            importResult.errors.length > 0 && /* @__PURE__ */ u$1("div", { className: "mt-3", children: [
-              /* @__PURE__ */ u$1("p", { className: "text-yellow-400 font-semibold mb-1", children: [
-                "Errors (",
-                importResult.errors.length,
-                "):"
-              ] }),
-              /* @__PURE__ */ u$1("ul", { className: "list-disc list-inside text-sm space-y-1", children: [
-                importResult.errors.slice(0, 10).map((error, i2) => /* @__PURE__ */ u$1("li", { className: "text-yellow-300", children: error }, i2)),
-                importResult.errors.length > 10 && /* @__PURE__ */ u$1("li", { className: "text-yellow-300", children: [
-                  "... and ",
-                  importResult.errors.length - 10,
-                  " more"
-                ] })
-              ] })
-            ] })
-          ] })
-        ] })
-      ] })
-    ] })
-  ] }) }) }) });
-}
 var MouseButtons = /* @__PURE__ */ ((MouseButtons2) => {
   MouseButtons2[MouseButtons2["Left"] = 1] = "Left";
   MouseButtons2[MouseButtons2["Right"] = 2] = "Right";
@@ -40515,6 +38542,18 @@ var MouseButton = /* @__PURE__ */ ((MouseButton2) => {
   MouseButton2[MouseButton2["Forward"] = 4] = "Forward";
   return MouseButton2;
 })(MouseButton || {});
+function useRestartLoop() {
+  const loop = useEngineRuntimeStore((state2) => state2.loop);
+  const seekToSampleImmediate = useSeekToSampleImmediate();
+  const restartLoop = q$1(async () => {
+    const isLooping = loop ? Atomics.load(loop, 0) === 1 : false;
+    if (isLooping && loop) await seekToSampleImmediate(Atomics.load(loop, 1));
+    else await seekToSampleImmediate(0);
+    const runtime = useEngineRuntimeStore.getState();
+    if (runtime.playbackState !== "running") await runtime.start();
+  }, [seekToSampleImmediate]);
+  return restartLoop;
+}
 function RestartButton({ canControlPlayback, currentLoop }) {
   const seekToSampleImmediate = useSeekToSampleImmediate();
   const restartLoop = useRestartLoop();
@@ -42135,6 +40174,1967 @@ function BrowseLoop() {
       )) })
     ] })
   ] }) }) }) }) });
+}
+function Modal({
+  isOpen,
+  onClose,
+  title,
+  width = "w-full",
+  maxWidth = "max-w-lg",
+  className = "",
+  contentClassName = "",
+  children
+}) {
+  y(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+  const handleBackdropClick = (e2) => {
+    if (e2.target === e2.currentTarget) {
+      onClose();
+    }
+  };
+  const handleKeyDown = (e2) => {
+    if (e2.key === "Escape") {
+      onClose();
+    }
+  };
+  y(() => {
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [isOpen]);
+  if (!isOpen) return null;
+  return $(
+    /* @__PURE__ */ u$1("div", { className: "fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm", children: /* @__PURE__ */ u$1(
+      "div",
+      {
+        className: `bg-neutral-900 border border-[#333] shadow-xl ${width} ${maxWidth} ${className}`,
+        onClick: handleBackdropClick,
+        children: [
+          title && /* @__PURE__ */ u$1("div", { className: "flex items-center justify-between p-6 border-b border-[#333]", children: [
+            /* @__PURE__ */ u$1("h2", { className: "text-xl font-semibold text-white", children: title }),
+            /* @__PURE__ */ u$1(
+              "button",
+              {
+                onClick: onClose,
+                className: "text-[#888] hover:text-white text-2xl leading-none",
+                "aria-label": "Close modal",
+                children: /* @__PURE__ */ u$1(e, { weight: "light", size: 24 })
+              }
+            )
+          ] }),
+          /* @__PURE__ */ u$1("div", { className: `text-white ${contentClassName}`, children })
+        ]
+      }
+    ) }),
+    document.body
+  );
+}
+function normalize(s2) {
+  return s2.toLowerCase().replace(/\s+/g, " ").trim();
+}
+function scoreSubsequence(q2, t2) {
+  if (!q2) return 0;
+  let qi = 0;
+  let last = -2;
+  let score = 0;
+  for (let ti = 0; ti < t2.length && qi < q2.length; ti++) {
+    if (t2[ti] !== q2[qi]) continue;
+    const consecutive = last === ti - 1;
+    score += consecutive ? 8 : 3;
+    score += Math.max(0, 10 - ti * 0.05);
+    last = ti;
+    qi++;
+  }
+  return qi === q2.length ? score : 0;
+}
+function fuzzyScore(query, text) {
+  const q2 = normalize(query);
+  const t2 = normalize(text);
+  if (!q2) return 0;
+  const parts = q2.split(" ").filter(Boolean);
+  if (parts.length === 0) return 0;
+  let total = 0;
+  for (const p2 of parts) {
+    const s2 = scoreSubsequence(p2, t2);
+    if (s2 <= 0) return 0;
+    total += s2;
+  }
+  return total;
+}
+function parseMarkdown(src, idPrefix) {
+  const out = [];
+  let pos = 0;
+  let codeIndex = 0;
+  while (pos < src.length) {
+    const fenceStart = src.indexOf("```", pos);
+    if (fenceStart === -1) {
+      pushText(src.slice(pos));
+      break;
+    }
+    pushText(src.slice(pos, fenceStart));
+    const fenceEnd = src.indexOf("```", fenceStart + 3);
+    if (fenceEnd === -1) {
+      pushText(src.slice(fenceStart));
+      break;
+    }
+    const raw = src.slice(fenceStart + 3, fenceEnd);
+    const code = raw.replace(/^\w+\n/, "");
+    out.push({ type: "code", code, id: `${idPrefix}:code:${codeIndex++}` });
+    pos = fenceEnd + 3;
+  }
+  return out;
+  function pushText(text) {
+    const lines = text.replace(/\r\n/g, "\n").split("\n");
+    let i2 = 0;
+    while (i2 < lines.length) {
+      while (i2 < lines.length && !lines[i2].trim()) i2++;
+      if (i2 >= lines.length) break;
+      const line = lines[i2];
+      const h2 = line.match(/^(#{1,3})\s+(.*)$/);
+      if (h2) {
+        const level = h2[1].length;
+        out.push({ type: "heading", level, text: h2[2].trim() });
+        i2++;
+        continue;
+      }
+      if (line.trim().startsWith("- ")) {
+        const items = [];
+        while (i2 < lines.length && lines[i2].trim().startsWith("- ")) {
+          items.push(lines[i2].trim().slice(2).trim());
+          i2++;
+        }
+        out.push({ type: "list", items });
+        continue;
+      }
+      const parts = [];
+      while (i2 < lines.length && lines[i2].trim() && !lines[i2].trim().startsWith("- ")) {
+        parts.push(lines[i2].trim());
+        i2++;
+      }
+      out.push({ type: "paragraph", text: parts.join(" ") });
+    }
+  }
+}
+function MarkdownDoc({ idPrefix, markdown }) {
+  const nodes = parseMarkdown(markdown, idPrefix);
+  return /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-3", children: nodes.map((n2, i2) => {
+    if (n2.type === "code") {
+      return /* @__PURE__ */ u$1(InlineEditor, { id: `docs:${n2.id}`, initialCode: n2.code }, `${n2.id}:${i2}`);
+    }
+    if (n2.type === "heading") {
+      const Tag = n2.level === 1 ? "h2" : n2.level === 2 ? "h3" : "h4";
+      const cls = n2.level === 1 ? "text-2xl font-semibold" : n2.level === 2 ? "text-xl font-semibold" : "text-lg font-semibold";
+      return /* @__PURE__ */ u$1(Tag, { className: `${cls} text-white`, children: n2.text }, i2);
+    }
+    if (n2.type === "list") {
+      return /* @__PURE__ */ u$1("ul", { className: "list-disc pl-6 text-neutral-200", children: n2.items.map((it, j2) => /* @__PURE__ */ u$1("li", { children: it }, j2)) }, i2);
+    }
+    return /* @__PURE__ */ u$1("p", { className: "text-neutral-200 leading-relaxed", children: n2.text }, i2);
+  }) });
+}
+function slug(s2) {
+  return s2.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+function hashId(s2) {
+  let h2 = 5381;
+  for (let i2 = 0; i2 < s2.length; i2++) h2 = (h2 << 5) + h2 ^ s2.charCodeAt(i2);
+  return (h2 >>> 0).toString(36);
+}
+function apiId(name) {
+  return `api-${slug(name)}-${hashId(name)}`;
+}
+function functionNameToUrlSlug(name) {
+  return name.replace(/^\[\]\./, "array.").replace(/^#/, "hash-");
+}
+async function fetchJson(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`Failed to fetch ${path}`);
+  return await res.json();
+}
+async function fetchText(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`Failed to fetch ${path}`);
+  return await res.text();
+}
+function titleFromMarkdown(file, md) {
+  const m2 = md.match(/^#\s+(.+)\s*$/m);
+  return m2?.[1]?.trim() || file.replace(/\.md$/i, "");
+}
+function getTokenClass(type) {
+  switch (type) {
+    case "function":
+      return "text-[#ea580c]";
+    // orange-600 from duochrome theme
+    case "parameter":
+      return "text-[#dddddd]";
+    // light gray for parameter names
+    case "argument":
+      return "text-[#dddddd]";
+    // light gray for parameter names in complex signatures
+    case "identifier":
+      return "text-[#aaaaaa]";
+    // darker gray for types
+    case "number":
+      return "text-[#ffff00]";
+    // yellow from duochrome theme
+    case "string":
+      return "text-[#cccccc]";
+    // light gray from duochrome theme
+    case "keyword":
+      return "text-white";
+    case "operator":
+      return "text-[#bbb]";
+    // light gray from duochrome theme
+    case "punctuation":
+      return "text-[#bbbbbb]";
+    // light gray from duochrome theme
+    case "comment":
+      return "text-[#666666]";
+    // dark gray from duochrome theme
+    default:
+      return "text-white";
+  }
+}
+function SignatureHighlight({ signature }) {
+  const tokens = tokenizer(signature, true);
+  return /* @__PURE__ */ u$1("span", { className: "text-sm font-[Space_Mono]", children: tokens.map((token, i2) => /* @__PURE__ */ u$1("span", { className: getTokenClass(token.type), children: token.content }, i2)) });
+}
+function Docs({
+  externalIsOpen = false,
+  externalSelectedId = null,
+  onClose = () => {
+  }
+} = {}) {
+  const [isOpen, setIsOpen] = d(false);
+  const [tutorials, setTutorials] = d([]);
+  const [tutorialError, setTutorialError] = d(null);
+  const [query, setQuery] = d("");
+  const [selectedId, setSelectedId] = d(null);
+  const inputRef = A$1(null);
+  const lastPlayedExampleRef = A$1(null);
+  const effectiveIsOpen = externalIsOpen !== void 0 ? externalIsOpen : isOpen;
+  const effectiveSelectedId = externalSelectedId !== null ? externalSelectedId : selectedId;
+  y(() => {
+    let isCancelled = false;
+    (async () => {
+      try {
+        const files = await fetchJson("/docs/tutorials/index.json");
+        const next = [];
+        for (const file of files) {
+          const markdown = await fetchText(`/docs/tutorials/${file}`);
+          next.push({ file, markdown, title: titleFromMarkdown(file, markdown) });
+        }
+        if (!isCancelled) {
+          setTutorials(next);
+          setTutorialError(null);
+        }
+      } catch (err) {
+        if (!isCancelled) setTutorialError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+  y(() => {
+    if (!effectiveIsOpen) return;
+    const t2 = window.setTimeout(() => inputRef.current?.focus(), 0);
+    return () => window.clearTimeout(t2);
+  }, [effectiveIsOpen]);
+  const handleDocsKeyDown = q$1((e2) => {
+    if (!effectiveIsOpen) return;
+    const metaKey = e2.ctrlKey || e2.metaKey;
+    if (e2.key === " " && metaKey) {
+      e2.preventDefault();
+      e2.stopPropagation();
+      const editors = Array.from(inlineEditorRegistry.entries());
+      if (editors.length === 0) return;
+      let targetEditor;
+      if (lastPlayedExampleRef.current) {
+        targetEditor = editors.find(([id]) => id === lastPlayedExampleRef.current);
+      }
+      if (!targetEditor) {
+        targetEditor = editors[0];
+      }
+      if (targetEditor) {
+        const [editorId, { play }] = targetEditor;
+        play();
+        lastPlayedExampleRef.current = editorId;
+      }
+    }
+  }, [effectiveIsOpen]);
+  y(() => {
+    if (effectiveIsOpen) {
+      window.addEventListener("keydown", handleDocsKeyDown);
+      return () => window.removeEventListener("keydown", handleDocsKeyDown);
+    }
+  }, [effectiveIsOpen, handleDocsKeyDown]);
+  const items = T$1(() => {
+    const out = [];
+    for (const t2 of tutorials) {
+      const fileSlug = t2.file.replace(/\.md$/i, "");
+      const id = `tutorial-${slug(fileSlug)}`;
+      out.push({
+        id,
+        title: t2.title,
+        group: "tutorial",
+        searchText: `${t2.title}
+${t2.markdown}`,
+        fileSlug,
+        render: () => /* @__PURE__ */ u$1(k$2, { children: /* @__PURE__ */ u$1("div", { className: "mt-4", children: /* @__PURE__ */ u$1(MarkdownDoc, { idPrefix: id, markdown: t2.markdown }) }) })
+      });
+    }
+    const names = Object.keys(functionDefinitions).sort((a2, b2) => a2.localeCompare(b2));
+    for (const name of names) {
+      const def = functionDefinitions[name];
+      const id = apiId(name);
+      const params = (def.parameters ?? []).map(
+        (p2) => `${p2.name}:${p2.type}${p2.optional ? "?" : ""}${p2.defaultValue !== void 0 ? `=${p2.defaultValue}` : ""}`
+      ).join(", ");
+      const sig = `${def.name}${def.type === "variable" ? "" : `(${params})`}${def.returnType ? `: ${def.returnType}` : ""}`;
+      (def.examples ?? []).join("\n\n");
+      const searchText = `${def.name}
+${sig}
+${def.description ?? ""}`;
+      out.push({
+        id,
+        title: def.name,
+        group: "api",
+        searchText,
+        functionName: def.name,
+        category: def.category ? functionCategories[def.category] : void 0,
+        render: () => /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-5", children: [
+          /* @__PURE__ */ u$1("h3", { className: "text-2xl font-semibold text-white -mt-4", children: def.name }),
+          /* @__PURE__ */ u$1(SignatureHighlight, { signature: sig }),
+          def.description && /* @__PURE__ */ u$1("p", { className: "text-neutral-200 leading-relaxed whitespace-pre-line", children: def.description }),
+          params.length > 0 && /* @__PURE__ */ u$1("div", { className: "text-sm text-neutral-200", children: /* @__PURE__ */ u$1("table", { className: "w-full border-collapse", children: [
+            /* @__PURE__ */ u$1("thead", { children: /* @__PURE__ */ u$1("tr", { className: "border-b border-neutral-600", children: [
+              /* @__PURE__ */ u$1("th", { className: "text-left py-2 px-2 font-semibold text-white", children: "Parameter" }),
+              /* @__PURE__ */ u$1("th", { className: "text-left py-2 px-2 font-semibold text-white", children: "Type" }),
+              /* @__PURE__ */ u$1("th", { className: "text-left py-2 px-2 font-semibold text-white", children: "Description" })
+            ] }) }),
+            /* @__PURE__ */ u$1("tbody", { children: def.parameters.map((p2, i2) => /* @__PURE__ */ u$1("tr", { className: "border-b border-neutral-700", children: [
+              /* @__PURE__ */ u$1("td", { className: "py-2 px-2", children: [
+                /* @__PURE__ */ u$1("span", { className: "font-[Space_Mono] text-white", children: p2.name }),
+                p2.optional && /* @__PURE__ */ u$1("span", { className: "text-neutral-400 ml-1", children: "(optional)" })
+              ] }),
+              /* @__PURE__ */ u$1("td", { className: "py-2 px-2", children: [
+                /* @__PURE__ */ u$1("span", { className: "font-[Space_Mono] text-neutral-300", children: p2.type }),
+                p2.defaultValue !== void 0 && /* @__PURE__ */ u$1("span", { className: "text-neutral-400 ml-2", children: [
+                  "= ",
+                  String(p2.defaultValue)
+                ] })
+              ] }),
+              /* @__PURE__ */ u$1("td", { className: "py-2 px-2 text-neutral-300", children: p2.description })
+            ] }, i2)) })
+          ] }) }),
+          (def.examples?.length ?? 0) > 0 && /* @__PURE__ */ u$1("div", { className: "mt-1", children: [
+            /* @__PURE__ */ u$1("div", { className: "font-semibold text-white", children: "Examples" }),
+            /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-3", children: def.examples?.map((ex, i2) => {
+              const editorId = `${id}:ex:${i2}`;
+              return /* @__PURE__ */ u$1(InlineEditor, { id: `docs:${editorId}`, initialCode: `
+${ex.split("\n").join("\n\n")}` }, editorId);
+            }) })
+          ] })
+        ] })
+      });
+    }
+    const about = [
+      {
+        id: "about-contact",
+        title: "Contact",
+        text: [
+          "Email: support@loopmaster.app",
+          "Discord: discord.gg/loopmaster",
+          "If you found a bug or have a feature request, include your browser version and a short repro."
+        ].join("\n")
+      },
+      {
+        id: "about-terms",
+        title: "Terms of Service",
+        text: [
+          "By using loopmaster, you agree to these Terms.",
+          "",
+          "You are responsible for any content you create, upload, share, or publish. Do not upload content that infringes copyrights, violates laws, or harms others.",
+          "",
+          "The service is provided “as is” without warranties. We may modify, suspend, or discontinue parts of the service at any time.",
+          "",
+          "To the extent permitted by law, loopmaster is not liable for indirect, incidental, or consequential damages, or loss of data, revenue, or profits.",
+          "",
+          "You may not abuse the service (e.g. attempting to overload systems, bypass access controls, or reverse engineer protected components).",
+          "",
+          "We may terminate or restrict access if we reasonably believe these Terms are violated."
+        ].join("\n")
+      },
+      {
+        id: "about-privacy",
+        title: "Privacy Statement",
+        text: [
+          "loopmaster is built to be privacy-conscious.",
+          "",
+          "We may process basic technical data required to operate the service (e.g. device/browser info, request logs, crash diagnostics).",
+          "",
+          "If you create an account and publish loops, your public profile and published content are visible to others.",
+          "",
+          "We do not sell your personal information. We may share limited data with service providers strictly to operate the app (hosting, analytics, storage).",
+          "",
+          "You can request deletion of your account and associated personal data by contacting support."
+        ].join("\n")
+      }
+    ];
+    for (const a2 of about) {
+      out.push({
+        id: a2.id,
+        title: a2.title,
+        group: "about",
+        searchText: `${a2.title}
+${a2.text}`,
+        render: () => /* @__PURE__ */ u$1(k$2, { children: [
+          /* @__PURE__ */ u$1("h2", { className: "text-2xl font-semibold text-white", children: a2.title }),
+          /* @__PURE__ */ u$1("div", { className: "mt-3 whitespace-pre-wrap text-neutral-200 leading-relaxed", children: a2.text })
+        ] })
+      });
+    }
+    return out;
+  }, [tutorials]);
+  y(() => {
+    const currentSelected = items.find((i2) => i2.id === effectiveSelectedId);
+    if (currentSelected?.group === "tutorial") return;
+    if (externalSelectedId !== null) return;
+    setSelectedId(items[0]?.id ?? null);
+  }, [items, effectiveSelectedId, externalSelectedId]);
+  const filtered = T$1(() => {
+    const q2 = query.trim();
+    if (!q2) {
+      return {
+        list: items,
+        byId: new Map(items.map((it) => [it.id, it]))
+      };
+    }
+    const scored = items.map((it) => ({ it, score: fuzzyScore(q2, it.searchText) })).filter((x2) => x2.score > 0).sort((a2, b2) => b2.score - a2.score).map((x2) => x2.it);
+    return { list: scored, byId: new Map(scored.map((it) => [it.id, it])) };
+  }, [items, query]);
+  const sidebarGroups = T$1(() => {
+    const list = filtered.list;
+    const tutorials2 = list.filter((i2) => i2.group === "tutorial");
+    const api = list.filter((i2) => i2.group === "api");
+    const about = list.filter((i2) => i2.group === "about");
+    const hasQuery = query.trim().length > 0;
+    const apiByCategory = /* @__PURE__ */ new Map();
+    const categoryOrder = [];
+    if (!hasQuery) {
+      for (const item of api) {
+        const category = item.category || "Other";
+        if (!apiByCategory.has(category)) {
+          apiByCategory.set(category, []);
+          categoryOrder.push(category);
+        }
+        apiByCategory.get(category).push(item);
+      }
+      for (const [category, items2] of apiByCategory.entries()) {
+        items2.sort((a2, b2) => a2.title.localeCompare(b2.title));
+      }
+      const predefinedOrder = Object.values(functionCategories);
+      categoryOrder.sort((a2, b2) => {
+        const aIndex = predefinedOrder.indexOf(a2);
+        const bIndex = predefinedOrder.indexOf(b2);
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
+        return a2.localeCompare(b2);
+      });
+    }
+    return { tutorials: tutorials2, api, apiByCategory, categoryOrder, about, hasQuery };
+  }, [filtered.list, query]);
+  const selected = T$1(() => {
+    if (!effectiveSelectedId) return null;
+    return items.find((i2) => i2.id === effectiveSelectedId) ?? null;
+  }, [items, effectiveSelectedId]);
+  return /* @__PURE__ */ u$1(k$2, { children: [
+    !effectiveIsOpen && externalIsOpen === void 0 && /* @__PURE__ */ u$1(
+      "button",
+      {
+        className: "fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full bg-neutral-900 border border-[#333] flex items-center justify-center text-white",
+        onClick: () => setIsOpen(true),
+        "aria-label": "Open documentation",
+        title: "Help & Documentation",
+        children: /* @__PURE__ */ u$1(e$2, { weight: "regular", size: 22 })
+      }
+    ),
+    !effectiveIsOpen && externalIsOpen !== void 0 && /* @__PURE__ */ u$1(
+      Link,
+      {
+        to: "/docs",
+        className: "fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full bg-neutral-900 border border-[#333] flex items-center justify-center text-white",
+        "aria-label": "Open documentation",
+        title: "Help & Documentation",
+        children: /* @__PURE__ */ u$1(e$2, { weight: "regular", size: 22 })
+      }
+    ),
+    /* @__PURE__ */ u$1(
+      Modal,
+      {
+        isOpen: effectiveIsOpen,
+        onClose: () => {
+          if (externalIsOpen !== void 0) {
+            onClose();
+          } else {
+            setIsOpen(false);
+          }
+        },
+        width: "w-[96dvw]",
+        maxWidth: "max-w-none",
+        className: "h-[96dvh] rounded-lg overflow-hidden relative",
+        contentClassName: "h-full",
+        children: /* @__PURE__ */ u$1("div", { className: "h-full w-full flex", onKeyDown: (e2) => e2.stopPropagation(), "data-docs-container": true, children: [
+          /* @__PURE__ */ u$1("main", { className: "flex-1 min-h-0 flex flex-col bg-black", children: [
+            /* @__PURE__ */ u$1("div", { className: "sticky top-0 z-10 px-6 py-2 bg-black border-b border-[#333]", children: /* @__PURE__ */ u$1("div", { className: "flex items-center justify-between gap-4", children: [
+              /* @__PURE__ */ u$1("div", { className: "flex items-center gap-4", children: [
+                /* @__PURE__ */ u$1(Logo, { size: "3em", text: "loopmaster" }),
+                /* @__PURE__ */ u$1("div", { className: "text-neutral-300", children: "Audio programming — docs, tutorials, and playable examples." })
+              ] }),
+              /* @__PURE__ */ u$1(
+                "button",
+                {
+                  className: "w-9 h-9 flex items-center justify-center text-neutral-300 hover:text-white bg-neutral-900 border border-[#333] rounded-full",
+                  onClick: () => {
+                    if (externalIsOpen !== void 0) {
+                      onClose();
+                    } else {
+                      setIsOpen(false);
+                    }
+                  },
+                  "aria-label": "Close documentation",
+                  title: "Close",
+                  children: /* @__PURE__ */ u$1(e, { weight: "light", size: 20 })
+                }
+              )
+            ] }) }),
+            /* @__PURE__ */ u$1("div", { className: "flex-1 min-h-0 overflow-auto", children: /* @__PURE__ */ u$1("div", { className: "max-w-[68rem] mx-auto px-6 py-8 flex flex-col gap-8", children: [
+              filtered.list.length === 0 && query.trim() && /* @__PURE__ */ u$1("div", { className: "text-neutral-300", children: [
+                "No matches for ",
+                /* @__PURE__ */ u$1("span", { className: "text-white font-mono", children: query.trim() }),
+                "."
+              ] }),
+              selected && /* @__PURE__ */ u$1("div", { className: "border border-[#222] bg-neutral-950 rounded-lg p-5", children: /* @__PURE__ */ u$1("div", { className: "mt-3", children: selected.render() }) })
+            ] }) })
+          ] }),
+          /* @__PURE__ */ u$1("aside", { className: "w-auto border-r border-[#333] bg-neutral-950 overflow-auto", children: /* @__PURE__ */ u$1("div", { className: "p-4", children: [
+            /* @__PURE__ */ u$1("div", { className: "flex items-center gap-3 mb-4", children: [
+              /* @__PURE__ */ u$1(o$8, { size: 18, className: "text-neutral-400 shrink-0" }),
+              /* @__PURE__ */ u$1(
+                "input",
+                {
+                  ref: inputRef,
+                  value: query,
+                  onInput: (e2) => setQuery(e2.currentTarget.value),
+                  onKeyDown: (e2) => e2.stopPropagation(),
+                  placeholder: "Search docs…",
+                  className: "flex-1 bg-transparent outline-none text-white placeholder:text-neutral-500"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ u$1("div", { className: "text-xs uppercase tracking-wide text-neutral-500", children: "Navigation" }),
+            tutorialError && /* @__PURE__ */ u$1("div", { className: "mt-2 text-xs text-red-300", children: [
+              "Tutorials failed to load: ",
+              tutorialError
+            ] }),
+            sidebarGroups.tutorials.length > 0 && /* @__PURE__ */ u$1("div", { className: "mt-4", children: [
+              /* @__PURE__ */ u$1("div", { className: "text-sm font-semibold text-white", children: "Tutorials" }),
+              /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-1", children: sidebarGroups.tutorials.map((it) => externalIsOpen !== void 0 && it.fileSlug ? /* @__PURE__ */ u$1(
+                Link,
+                {
+                  to: `/docs/tutorials/${it.fileSlug}`,
+                  className: `block text-left text-sm hover:text-white whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
+                  children: it.title
+                },
+                it.id
+              ) : /* @__PURE__ */ u$1(
+                "button",
+                {
+                  className: `text-left text-sm hover:text-white whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
+                  onClick: () => setSelectedId(it.id),
+                  children: it.title
+                },
+                it.id
+              )) })
+            ] }),
+            sidebarGroups.about.length > 0 && /* @__PURE__ */ u$1("div", { className: "mt-5", children: [
+              /* @__PURE__ */ u$1("div", { className: "text-sm font-semibold text-white", children: "About" }),
+              /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-1", children: sidebarGroups.about.map((it) => {
+                const aboutSlug = it.id.replace("about-", "");
+                return externalIsOpen !== void 0 ? /* @__PURE__ */ u$1(
+                  Link,
+                  {
+                    to: `/docs/about/${aboutSlug}`,
+                    className: `block text-left text-sm hover:text-white whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
+                    children: it.title
+                  },
+                  it.id
+                ) : /* @__PURE__ */ u$1(
+                  "button",
+                  {
+                    className: `text-left text-sm hover:text-white whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
+                    onClick: () => setSelectedId(it.id),
+                    children: it.title
+                  },
+                  it.id
+                );
+              }) })
+            ] }),
+            sidebarGroups.api.length > 0 && /* @__PURE__ */ u$1("div", { className: "mt-5", children: [
+              /* @__PURE__ */ u$1("div", { className: "text-sm font-semibold text-white", children: "API" }),
+              /* @__PURE__ */ u$1("div", { className: "mt-2 flex flex-col gap-3", children: sidebarGroups.hasQuery ? (
+                // Flat list when searching (results already sorted by relevance)
+                /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-1", children: sidebarGroups.api.map((it) => {
+                  const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : "";
+                  return externalIsOpen !== void 0 && it.functionName ? /* @__PURE__ */ u$1(
+                    Link,
+                    {
+                      to: `/docs/api/${urlSlug}`,
+                      className: `block text-left text-sm hover:text-white font-mono whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
+                      children: it.title
+                    },
+                    it.id
+                  ) : /* @__PURE__ */ u$1(
+                    "button",
+                    {
+                      className: `text-left text-sm hover:text-white font-mono whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
+                      onClick: () => setSelectedId(it.id),
+                      children: it.title
+                    },
+                    it.id
+                  );
+                }) })
+              ) : (
+                // Grouped by category when not searching
+                sidebarGroups.categoryOrder.map((category) => {
+                  const items2 = sidebarGroups.apiByCategory.get(category) || [];
+                  if (items2.length === 0) return null;
+                  return /* @__PURE__ */ u$1("div", { children: [
+                    /* @__PURE__ */ u$1("div", { className: "text-xs uppercase tracking-wide text-neutral-500 mb-1", children: category }),
+                    /* @__PURE__ */ u$1("div", { className: "flex flex-col gap-1", children: items2.map((it) => {
+                      const urlSlug = it.functionName ? functionNameToUrlSlug(it.functionName) : "";
+                      return externalIsOpen !== void 0 && it.functionName ? /* @__PURE__ */ u$1(
+                        Link,
+                        {
+                          to: `/docs/api/${urlSlug}`,
+                          className: `block text-left text-sm hover:text-white font-mono whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
+                          children: it.title
+                        },
+                        it.id
+                      ) : /* @__PURE__ */ u$1(
+                        "button",
+                        {
+                          className: `text-left text-sm hover:text-white font-mono whitespace-nowrap ${it.id === effectiveSelectedId ? "text-white" : "text-neutral-300"}`,
+                          onClick: () => setSelectedId(it.id),
+                          children: it.title
+                        },
+                        it.id
+                      );
+                    }) })
+                  ] }, category);
+                })
+              ) })
+            ] })
+          ] }) })
+        ] })
+      }
+    )
+  ] });
+}
+function useIsEditorBusy() {
+  const hasHydrated = useAppStore((state2) => state2.hasHydrated);
+  const isProgramReady = useEngineRuntimeStore((state2) => state2.isProgramReady);
+  const audioContext = useEngineRuntimeStore((state2) => state2.audioContext);
+  return !hasHydrated || !isProgramReady || !audioContext;
+}
+function clamp11(v2) {
+  return v2 < -1 ? -1 : v2 > 1 ? 1 : v2;
+}
+function compileShader(gl, type, source) {
+  const sh = gl.createShader(type);
+  if (!sh) throw new Error("Failed to create shader");
+  gl.shaderSource(sh, source);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(sh) ?? "Unknown shader error";
+    gl.deleteShader(sh);
+    throw new Error(info);
+  }
+  return sh;
+}
+function mainSource(src, fallback) {
+  const s2 = src?.trim();
+  return s2 ? s2 : fallback;
+}
+const DEFAULT_VERTEX_MAIN = `
+gl_Position = vec4(v_pos * 0.9 * u_scale, 0.0, 1.0);
+`.trim();
+const DEFAULT_FRAGMENT_MAIN = `
+gl_FragColor = u_color;
+`.trim();
+function shaderKey(params) {
+  const vertexMain = mainSource(params.vertexMain, DEFAULT_VERTEX_MAIN);
+  const fragmentMain = mainSource(params.fragmentMain, DEFAULT_FRAGMENT_MAIN);
+  return `${vertexMain}
+--
+${fragmentMain}`;
+}
+function createProgram(gl, params) {
+  const vertexMain = mainSource(params.vertexMain, DEFAULT_VERTEX_MAIN);
+  const fragmentMain = mainSource(params.fragmentMain, DEFAULT_FRAGMENT_MAIN);
+  const vsSource = `
+#version 300 es
+precision highp float;
+layout(location = 0) in vec2 a_audio;
+layout(location = 1) in float a_t;
+uniform vec4 u_color;
+uniform vec2 u_scale;
+uniform vec2 u_res;
+uniform float u_time;
+out vec2 v_audio;
+out vec2 v_pos;
+out float v_t;
+void main() {
+  v_audio = a_audio;
+  v_t = a_t;
+  v_pos = vec2(a_audio.y, a_audio.x);
+${vertexMain}
+}
+`.trim();
+  const fsSource = `
+#version 300 es
+precision mediump float;
+uniform vec4 u_color;
+uniform vec2 u_res;
+uniform float u_time;
+in vec2 v_audio;
+in vec2 v_pos;
+in float v_t;
+out vec4 outColor;
+#define gl_FragColor outColor
+void main() {
+  outColor = vec4(0.0);
+${fragmentMain}
+}
+`.trim();
+  const vs = compileShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSource);
+  const prog = gl.createProgram();
+  if (!prog) throw new Error("Failed to create program");
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    const info = gl.getProgramInfoLog(prog) ?? "Unknown program link error";
+    gl.deleteProgram(prog);
+    throw new Error(info);
+  }
+  return {
+    program: prog,
+    uColor: gl.getUniformLocation(prog, "u_color"),
+    uScale: gl.getUniformLocation(prog, "u_scale"),
+    uRes: gl.getUniformLocation(prog, "u_res"),
+    uTime: gl.getUniformLocation(prog, "u_time"),
+    key: shaderKey({ vertexMain, fragmentMain })
+  };
+}
+function ensureProgram(glState, params) {
+  const desiredKey = shaderKey(params);
+  if (glState.programState.key === desiredKey) return true;
+  try {
+    const next = createProgram(glState.gl, params);
+    glState.gl.deleteProgram(glState.programState.program);
+    glState.programState = next;
+    return true;
+  } catch (err) {
+    console.warn("Visualizer shader compile failed:", err);
+    return false;
+  }
+}
+function useVisualizerBackground({
+  program1,
+  ringPos,
+  isLive,
+  sampleRate,
+  pointStride = 8,
+  vertex,
+  fragment
+}) {
+  const canvasRef = A$1(null);
+  const glRef = A$1(null);
+  const vertsRef = A$1(new Float32Array(2048 * 3));
+  const waveRef = A$1(null);
+  if (!waveRef.current) {
+    waveRef.current = {
+      left: { waveform: new WaveformBuffer(), floats: null },
+      right: { waveform: new WaveformBuffer(), floats: null }
+    };
+  }
+  const t0Ref = A$1(performance.now());
+  const onBeforeDraw = q$1(() => {
+    if (!isLive) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const analyserOuts = program1?.program?.analyserOuts;
+    if (!analyserOuts || !ringPos) return;
+    const ringL = analyserOuts[FINAL_OUT_ANALYSER_L_INDEX];
+    const ringR = analyserOuts[FINAL_OUT_ANALYSER_R_INDEX];
+    if (!ringL || !ringR) return;
+    const currentChunkPos = Atomics.load(ringPos, 0);
+    const st = waveRef.current;
+    if (!st) return;
+    const lFloats = st.left.waveform.update(ringL, currentChunkPos);
+    const rFloats = st.right.waveform.update(ringR, currentChunkPos);
+    if (lFloats) st.left.floats = lFloats;
+    if (rFloats) st.right.floats = rFloats;
+    const floatsL = st.left.floats;
+    const floatsR = st.right.floats;
+    if (!floatsL || !floatsR) return;
+    const samplesWanted = 2048;
+    const sr = sampleRate ?? 48e3;
+    const maxDelay = Math.max(0, Math.min(floatsL.length - samplesWanted, floatsR.length - samplesWanted));
+    const delaySamples = Math.max(0, Math.min(maxDelay, Math.floor(sr * 0.1)));
+    const needed = delaySamples + samplesWanted;
+    if (needed <= 0 || floatsL.length < needed || floatsR.length < needed) return;
+    const start = Math.max(0, floatsL.length - needed);
+    const dpr = window.devicePixelRatio || 1;
+    const w2 = canvas.clientWidth | 0;
+    const h2 = canvas.clientHeight | 0;
+    if (w2 <= 1 || h2 <= 1) return;
+    const pxW = Math.max(1, Math.floor(w2 * dpr));
+    const pxH = Math.max(1, Math.floor(h2 * dpr));
+    if (canvas.width !== pxW || canvas.height !== pxH) {
+      canvas.width = pxW;
+      canvas.height = pxH;
+    }
+    const stride = Math.max(1, pointStride | 0);
+    const len = samplesWanted;
+    const pointCount = Math.max(0, Math.floor((len - 1) / stride) + 1);
+    if (pointCount <= 1) return;
+    const floatsNeeded = pointCount * 3;
+    if (vertsRef.current.length < floatsNeeded) {
+      vertsRef.current = new Float32Array(floatsNeeded);
+    }
+    const verts = vertsRef.current;
+    let o2 = 0;
+    const denom = Math.max(1, pointCount - 1);
+    for (let i2 = 0; i2 < pointCount; i2++) {
+      const idx = start + i2 * stride;
+      const l2 = clamp11(floatsL[idx]);
+      const r2 = clamp11(floatsR[idx]);
+      verts[o2++] = l2;
+      verts[o2++] = r2;
+      verts[o2++] = i2 / denom;
+    }
+    let glState = glRef.current;
+    if (!glState || glState.canvas !== canvas) {
+      const gl2 = canvas.getContext("webgl2", {
+        alpha: true,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        premultipliedAlpha: true,
+        preserveDrawingBuffer: false
+      });
+      if (!gl2) return;
+      let programState;
+      try {
+        programState = createProgram(gl2, { vertexMain: vertex, fragmentMain: fragment });
+      } catch (err) {
+        console.warn("Visualizer shader compile failed:", err);
+        return;
+      }
+      const vao = gl2.createVertexArray();
+      const vbo = gl2.createBuffer();
+      if (!vao || !vbo) return;
+      gl2.bindVertexArray(vao);
+      gl2.bindBuffer(gl2.ARRAY_BUFFER, vbo);
+      gl2.bufferData(gl2.ARRAY_BUFFER, verts.byteLength, gl2.DYNAMIC_DRAW);
+      gl2.enableVertexAttribArray(0);
+      gl2.vertexAttribPointer(0, 2, gl2.FLOAT, false, 12, 0);
+      gl2.enableVertexAttribArray(1);
+      gl2.vertexAttribPointer(1, 1, gl2.FLOAT, false, 12, 8);
+      gl2.bindVertexArray(null);
+      glState = { canvas, gl: gl2, programState, vao, vbo, capVerts: pointCount };
+      glRef.current = glState;
+    } else {
+      if (!ensureProgram(glState, { vertexMain: vertex, fragmentMain: fragment })) return;
+      if (glState.capVerts < pointCount) {
+        glState.capVerts = pointCount;
+        glState.gl.bindBuffer(glState.gl.ARRAY_BUFFER, glState.vbo);
+        glState.gl.bufferData(glState.gl.ARRAY_BUFFER, verts.byteLength, glState.gl.DYNAMIC_DRAW);
+      }
+    }
+    const gl = glState.gl;
+    const ps = glState.programState;
+    gl.viewport(0, 0, pxW, pxH);
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(ps.program);
+    const sx = pxW > pxH ? pxH / pxW : 1;
+    const sy = pxH > pxW ? pxW / pxH : 1;
+    if (ps.uRes) gl.uniform2f(ps.uRes, pxW, pxH);
+    if (ps.uTime) gl.uniform1f(ps.uTime, (performance.now() - t0Ref.current) * 1e-3);
+    if (ps.uScale) gl.uniform2f(ps.uScale, sx, sy);
+    if (ps.uColor) gl.uniform4f(ps.uColor, 238 / 255, 238 / 255, 238 / 255, 170 / 255);
+    gl.bindVertexArray(glState.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, glState.vbo);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, verts.subarray(0, floatsNeeded));
+    gl.drawArrays(gl.LINE_STRIP, 0, pointCount);
+    gl.bindVertexArray(null);
+  }, [isLive, program1, ringPos, sampleRate, pointStride, vertex, fragment]);
+  return { canvasRef, onBeforeDraw };
+}
+function DspSourceEditor({
+  timelineHeader,
+  currentLoop,
+  dspError,
+  onDspError,
+  docsIsOpen
+}) {
+  const isEditorBusy = useIsEditorBusy();
+  if (!currentLoop || isEditorBusy) {
+    return /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(SpinnerLarge, {}) });
+  }
+  return /* @__PURE__ */ u$1(
+    DspSourceEditorReady,
+    {
+      timelineHeader,
+      currentLoop,
+      dspError,
+      onDspError,
+      docsIsOpen
+    }
+  );
+}
+function DspSourceEditorReady({
+  timelineHeader,
+  currentLoop,
+  dspError,
+  onDspError,
+  docsIsOpen
+}) {
+  const { navigate } = useRouter();
+  const codeFileKeyByFileRef = A$1(/* @__PURE__ */ new WeakMap());
+  const nextCodeFileKeyRef = A$1(0);
+  const previewTargetRef = A$1(null);
+  const predictedSampleCountResultRef = A$1(null);
+  const predictedSampleCountRef = A$1(null);
+  const lastWallTimeRef = A$1(null);
+  const isFirstFrameRef = A$1(true);
+  if (!previewTargetRef.current) {
+    previewTargetRef.current = {
+      ops: new Int32Array(OPS_COUNT),
+      literals: new Float32Array(LITERALS_COUNT)
+    };
+  }
+  const dspSource = useEngineDspStore((state2) => state2.dspSource);
+  const preloadSamples = useEngineDspStore((state2) => state2.preloadSamples);
+  const updateDspSource = useEngineDspStore((state2) => state2.updateDspSource);
+  const sequences = useEngineDspStore((state2) => state2.sequences);
+  const miniRefs = useEngineDspStore((state2) => state2.miniRefs);
+  const miniPlayBars = useEngineDspStore((state2) => state2.miniPlayBars);
+  const timelineRefs = useEngineDspStore((state2) => state2.timelineRefs);
+  const timelineLabels = useEngineDspStore((state2) => state2.timelineLabels);
+  const bars = useEngineDspStore((state2) => state2.bars);
+  const miniSourceMaps = useEngineDspStore((state2) => state2.miniSourceMaps);
+  const adRefs = useEngineDspStore((state2) => state2.uiAdRefs);
+  const adsrRefs = useEngineDspStore((state2) => state2.uiAdsrRefs);
+  const envfollowRefs = useEngineDspStore((state2) => state2.uiEnvfollowRefs);
+  const slewRefs = useEngineDspStore((state2) => state2.uiSlewRefs);
+  const analyserRefs = useEngineDspStore((state2) => state2.analyserRefs);
+  const compressorRefs = useEngineDspStore((state2) => state2.compressorRefs);
+  const expanderRefs = useEngineDspStore((state2) => state2.expanderRefs);
+  const gateRefs = useEngineDspStore((state2) => state2.gateRefs);
+  const limiterRefs = useEngineDspStore((state2) => state2.limiterRefs);
+  const filterRefs = useEngineDspStore((state2) => state2.filterRefs);
+  const reverbRefs = useEngineDspStore((state2) => state2.reverbRefs);
+  const slicerRefs = useEngineDspStore((state2) => state2.slicerRefs);
+  const lfoRefs = useEngineDspStore((state2) => state2.lfoRefs);
+  const everyRefs = useEngineDspStore((state2) => state2.everyRefs);
+  const atRefs = useEngineDspStore((state2) => state2.atRefs);
+  const euclidRefs = useEngineDspStore((state2) => state2.euclidRefs);
+  const arrayLiterals = useEngineDspStore((state2) => state2.arrayLiterals);
+  const branchMarks = useEngineDspStore((state2) => state2.branchMarks);
+  const numberParams = useEngineDspStore((state2) => state2.numberParams);
+  const sampleDefs = useEngineDspStore((state2) => state2.sampleDefs);
+  const loadedSamples = useEngineDspStore((state2) => state2.loadedSamples);
+  const isPreloadingSamples = useEngineDspStore((state2) => state2.isPreloadingSamples);
+  const isProgramSwapPending = useEngineDspStore((state2) => state2.isProgramSwapPending);
+  const isUpdatingDsp = useEngineDspStore((state2) => state2.isUpdatingDsp);
+  const setUiCompilePreview = useEngineDspStore((state2) => state2.setUiCompilePreview);
+  const restartLoop = useRestartLoop();
+  const isProgramReady = useEngineRuntimeStore((state2) => state2.isProgramReady);
+  const program1 = useEngineRuntimeStore((state2) => state2.program1);
+  const program2 = useEngineRuntimeStore((state2) => state2.program2);
+  const audioContext = useEngineRuntimeStore((state2) => state2.audioContext);
+  const bpmValue = useEngineRuntimeStore((state2) => state2.bpmValue);
+  const ringPos = useEngineRuntimeStore((state2) => state2.ringPos);
+  const playbackState = useEngineRuntimeStore((state2) => state2.playbackState);
+  const setPredictedSampleCountResult = useEngineRuntimeStore((state2) => state2.setPredictedSampleCountResult);
+  const showFunctionDefinitions = useEngineUiStore((state2) => state2.showFunctionDefinitions);
+  const showFunctionDefinitionsHover = useEngineUiStore((state2) => state2.showFunctionDefinitionsHover);
+  const uiShowWidgets = useEngineUiStore((state2) => state2.showWidgets);
+  const showVisualizer = useEngineUiStore((state2) => state2.showVisualizer);
+  const wordWrap = useEngineUiStore((state2) => state2.wordWrap);
+  const theme = useTheme();
+  const themeForEditor = T$1(() => {
+    const withAlpha = (c2, a2) => {
+      if (!c2.startsWith("#")) return c2;
+      const h2 = c2.slice(1);
+      const toByte = (x2) => parseInt(x2, 16);
+      let r2 = 0;
+      let g2 = 0;
+      let b2 = 0;
+      if (h2.length === 3) {
+        r2 = toByte(h2[0] + h2[0]);
+        g2 = toByte(h2[1] + h2[1]);
+        b2 = toByte(h2[2] + h2[2]);
+      } else if (h2.length === 6) {
+        r2 = toByte(h2.slice(0, 2));
+        g2 = toByte(h2.slice(2, 4));
+        b2 = toByte(h2.slice(4, 6));
+      } else {
+        return c2;
+      }
+      return `rgba(${r2}, ${g2}, ${b2}, ${a2})`;
+    };
+    return {
+      ...theme,
+      background: withAlpha(theme.background, 0.55),
+      gutterBackground: withAlpha(theme.gutterBackground, 0.35)
+    };
+  }, [theme]);
+  useCodeFileValue(currentLoop?.codeFile);
+  const code = currentLoop?.codeFile.value ?? "";
+  const isAwaitingCode = currentLoop.data.code == null && code.length === 0;
+  const loopId = currentLoop?.data.id ?? null;
+  const loopBase = useAppStore((state2) => loopId ? state2.bases[loopId]?.code : void 0);
+  const sessionData = useAppStore((state2) => state2.sessionData);
+  const serverLoopsUserId = useAppStore((state2) => state2.serverLoopsUserId);
+  const serverLoopsCache = useAppStore((state2) => state2.serverLoopsCache);
+  const localLoops = useAppStore((state2) => state2.localLoops);
+  const addLocalLoop = useAppStore((state2) => state2.addLocalLoop);
+  const moveBuffer = useAppStore((state2) => state2.moveBuffer);
+  const setSelectedLoopId = useAppStore((state2) => state2.setSelectedLoopId);
+  const { globalSampleCount, isPlayingLoop, isPlaybackRunningForView } = usePlayingState(loopId);
+  const predictedResetRef = A$1({ key: "" });
+  const predictedResetKey = `${loopId ?? ""}:${isPlaybackRunningForView ? "live" : "view"}`;
+  if (predictedResetRef.current.key !== predictedResetKey) {
+    predictedResetRef.current.key = predictedResetKey;
+    predictedSampleCountResultRef.current = null;
+    predictedSampleCountRef.current = null;
+    lastWallTimeRef.current = null;
+    isFirstFrameRef.current = true;
+  }
+  _(() => {
+    predictedSampleCountResultRef.current = null;
+    predictedSampleCountRef.current = null;
+    lastWallTimeRef.current = null;
+    isFirstFrameRef.current = true;
+    if (!audioContext || !globalSampleCount) {
+      setPredictedSampleCountResult(null);
+      return;
+    }
+    const sampleRate = audioContext.sampleRate;
+    const sampleCount = Atomics.load(globalSampleCount, 0) >>> 0;
+    setPredictedSampleCountResult({
+      latencySamples: 0,
+      latencySeconds: 0,
+      deltaTime: 0,
+      sampleRate,
+      sampleCount,
+      timeSeconds: sampleRate > 0 ? sampleCount / sampleRate : 0
+    });
+  }, [audioContext, globalSampleCount, loopId, setPredictedSampleCountResult]);
+  const remixBaselineRef = A$1(null);
+  const remixPrevCodeRef = A$1(null);
+  y(() => {
+    if (!loopId) return;
+    remixBaselineRef.current = null;
+    remixPrevCodeRef.current = null;
+  }, [loopId]);
+  y(() => {
+    if (!loopId) return;
+    if (remixBaselineRef.current?.loopId === loopId) return;
+    if (loopBase == null) return;
+    remixBaselineRef.current = { loopId, base: loopBase };
+    remixPrevCodeRef.current = { loopId, code };
+  }, [code, loopBase, loopId]);
+  y(() => {
+    if (!loopId) return;
+    if (isLocalId(loopId)) return;
+    const baseline = remixBaselineRef.current;
+    if (!baseline || baseline.loopId !== loopId) {
+      remixPrevCodeRef.current = { loopId, code };
+      return;
+    }
+    const prev = remixPrevCodeRef.current;
+    remixPrevCodeRef.current = { loopId, code };
+    if (!prev || prev.loopId !== loopId) return;
+    if (prev.code === code) return;
+    if (code === baseline.base) return;
+    if (serverLoopsCache.some((l2) => l2.id === loopId)) return;
+    if (sessionData?.loops.some((l2) => l2.id === loopId)) return;
+    const ownId = sessionData?.user.id ?? serverLoopsUserId;
+    if (ownId && currentLoop?.data.artistId === ownId) return;
+    const existing = localLoops.find((l2) => l2.remixOfId === loopId || l2.remixOf?.id === loopId);
+    const localId = existing?.id ?? makeLocalId();
+    if (!existing) {
+      addLocalLoop({
+        id: localId,
+        title: currentLoop?.data.title ?? "Untitled",
+        artist: sessionData?.user.name ?? "local",
+        artistId: ownId ?? "local",
+        code: "",
+        likesCount: 0,
+        commentsCount: 0,
+        remixesCount: 0,
+        remixOfId: loopId,
+        remixOf: currentLoop?.data,
+        isPublic: false,
+        timestamp: 0
+      });
+    }
+    moveBuffer(loopId, localId);
+    const runtime = useEngineRuntimeStore.getState();
+    if (runtime.playingLoopId === loopId) {
+      useEngineUiStore.getState().renameLoopId(loopId, localId);
+      runtime.setPlayingLoopId(localId);
+    }
+    setSelectedLoopId(localId);
+    navigate("/app");
+  }, [
+    addLocalLoop,
+    code,
+    currentLoop?.data,
+    localLoops,
+    loopId,
+    moveBuffer,
+    serverLoopsCache,
+    serverLoopsUserId,
+    sessionData?.loops,
+    sessionData?.user.id,
+    sessionData?.user.name,
+    navigate,
+    setSelectedLoopId
+  ]);
+  const previewCompile = T$1(() => {
+    const target = previewTargetRef.current;
+    if (!target) return { errors: [] };
+    target.ops.fill(0);
+    target.literals.fill(0);
+    return encodeLangToVmOps(code, target);
+  }, [code]);
+  const compileErrors = previewCompile.errors ?? [];
+  const hasCompileErrors = compileErrors.length > 0;
+  const lastGoodPreviewRef = A$1(null);
+  y(() => {
+    if (!loopId) return;
+    lastGoodPreviewRef.current = null;
+  }, [loopId]);
+  const showWidgets = uiShowWidgets && (currentLoop != null && (code.length > 0 || dspSource.length > 0) || isUpdatingDsp || hasCompileErrors);
+  const headerErrorText = T$1(() => {
+    const parts = [];
+    if (dspError) parts.push(`runtime: ${dspError}`);
+    for (const err of compileErrors) {
+      const loc = err.line > 0 || err.column > 0 ? ` (${err.line}:${err.column})` : "";
+      parts.push(`${err.message}${loc}`);
+    }
+    return parts.join("  •  ");
+  }, [compileErrors, dspError]);
+  const editorErrors = T$1(() => {
+    const errors = [];
+    if (dspError) {
+      errors.push({
+        line: 0,
+        startColumn: 0,
+        endColumn: 1,
+        message: dspError
+      });
+    }
+    for (const err of compileErrors) {
+      const line = Math.max(0, err.line - 1);
+      const startColumn = Math.max(0, err.column - 1);
+      const endColumn = startColumn + Math.max(1, err.length);
+      errors.push({
+        line,
+        startColumn,
+        endColumn,
+        message: err.message
+      });
+    }
+    return errors;
+  }, [compileErrors, dspError]);
+  const widgetCompileState = T$1(() => {
+    if (code === dspSource) {
+      return {
+        dspSource,
+        sequences,
+        miniRefs,
+        miniPlayBars,
+        tramRefs: previewCompile.tramRefs ?? [],
+        timelineRefs,
+        miniSourceMaps,
+        adRefs,
+        adsrRefs,
+        envfollowRefs,
+        slewRefs,
+        analyserRefs: previewCompile.analyserRefs ?? analyserRefs,
+        compressorRefs: previewCompile.compressorRefs ?? compressorRefs,
+        expanderRefs: previewCompile.expanderRefs ?? expanderRefs,
+        gateRefs: previewCompile.gateRefs ?? gateRefs,
+        limiterRefs: previewCompile.limiterRefs ?? limiterRefs,
+        filterRefs: previewCompile.filterRefs ?? filterRefs,
+        reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
+        slicerRefs: previewCompile.slicerRefs ?? slicerRefs,
+        lfoRefs: previewCompile.lfoRefs ?? lfoRefs,
+        everyRefs: previewCompile.everyRefs ?? everyRefs,
+        euclidRefs: previewCompile.euclidRefs ?? euclidRefs,
+        atRefs: previewCompile.atRefs ?? atRefs,
+        arrayLiterals: previewCompile.arrayLiterals ?? arrayLiterals,
+        branchMarks: previewCompile.branchMarks ?? branchMarks,
+        numberParams: previewCompile.numberParams ?? numberParams,
+        sampleDefs: previewCompile.sampleDefs ?? sampleDefs,
+        errors: []
+      };
+    }
+    if (previewCompile.errors.length) {
+      const prev = lastGoodPreviewRef.current?.widgetCompileState;
+      if (prev) return { ...prev, errors: previewCompile.errors };
+      return {
+        dspSource,
+        sequences,
+        miniRefs,
+        miniPlayBars,
+        tramRefs: previewCompile.tramRefs ?? [],
+        timelineRefs,
+        miniSourceMaps,
+        adRefs,
+        adsrRefs,
+        envfollowRefs,
+        slewRefs,
+        analyserRefs,
+        compressorRefs,
+        expanderRefs,
+        gateRefs,
+        limiterRefs,
+        filterRefs,
+        reverbRefs,
+        slicerRefs,
+        lfoRefs,
+        everyRefs,
+        atRefs,
+        euclidRefs,
+        arrayLiterals,
+        branchMarks,
+        numberParams,
+        sampleDefs,
+        errors: previewCompile.errors
+      };
+    }
+    const previewSequences = previewCompile.miniSequences ?? [];
+    const previewMiniSourceMaps = previewSequences.map((s2) => {
+      const scaleIndex = previewCompile.scale;
+      const compiled = compileMiniNotation(s2, scaleIndex === void 0 ? {} : { defaultScale: { scaleIndex } });
+      return buildMiniSourceMap(s2, compiled.nodes, compiled.bytecode);
+    });
+    return {
+      dspSource: code,
+      sequences: previewSequences,
+      miniRefs: previewCompile.miniRefs ?? [],
+      miniPlayBars: previewCompile.miniPlayBars ?? [],
+      tramRefs: previewCompile.tramRefs ?? [],
+      timelineRefs: previewCompile.timelineRefs ?? [],
+      miniSourceMaps: previewMiniSourceMaps,
+      adRefs: previewCompile.adRefs ?? adRefs,
+      adsrRefs: previewCompile.adsrRefs ?? adsrRefs,
+      envfollowRefs: previewCompile.envfollowRefs ?? envfollowRefs,
+      slewRefs: previewCompile.slewRefs ?? slewRefs,
+      analyserRefs: previewCompile.analyserRefs ?? [],
+      compressorRefs: previewCompile.compressorRefs ?? [],
+      expanderRefs: previewCompile.expanderRefs ?? [],
+      gateRefs: previewCompile.gateRefs ?? [],
+      limiterRefs: previewCompile.limiterRefs ?? [],
+      filterRefs: previewCompile.filterRefs ?? [],
+      reverbRefs: previewCompile.reverbRefs ?? reverbRefs,
+      slicerRefs: previewCompile.slicerRefs ?? [],
+      lfoRefs: previewCompile.lfoRefs ?? [],
+      everyRefs: previewCompile.everyRefs ?? [],
+      atRefs: previewCompile.atRefs ?? [],
+      euclidRefs: previewCompile.euclidRefs ?? [],
+      arrayLiterals: previewCompile.arrayLiterals ?? [],
+      branchMarks: previewCompile.branchMarks ?? [],
+      numberParams: previewCompile.numberParams ?? [],
+      sampleDefs: previewCompile.sampleDefs ?? [],
+      errors: []
+    };
+  }, [
+    code,
+    dspSource,
+    sequences,
+    miniRefs,
+    timelineRefs,
+    miniSourceMaps,
+    analyserRefs,
+    compressorRefs,
+    expanderRefs,
+    gateRefs,
+    filterRefs,
+    slicerRefs,
+    lfoRefs,
+    everyRefs,
+    atRefs,
+    euclidRefs,
+    arrayLiterals,
+    branchMarks,
+    numberParams,
+    sampleDefs,
+    previewCompile
+  ]);
+  const earlyDataForView = T$1(() => {
+    if (code === dspSource || hasCompileErrors) return { timelineLabels, bars };
+    const previewBars = previewCompile.bars;
+    const previewLabels = previewCompile.timelineLabels ?? [];
+    return {
+      timelineLabels: buildTimelineLabels(previewLabels, previewBars),
+      bars: previewBars
+    };
+  }, [
+    bars,
+    code,
+    dspSource,
+    hasCompileErrors,
+    previewCompile.bars,
+    previewCompile.timelineLabels,
+    timelineLabels
+  ]);
+  const timelineLabelsForView = T$1(() => {
+    if (code === dspSource) return timelineLabels;
+    if (hasCompileErrors) return lastGoodPreviewRef.current?.timelineLabelsForView ?? timelineLabels;
+    return earlyDataForView.timelineLabels;
+  }, [code, dspSource, earlyDataForView.timelineLabels, hasCompileErrors, timelineLabels]);
+  const barsForView = T$1(() => {
+    if (code === dspSource) return bars;
+    if (hasCompileErrors) return lastGoodPreviewRef.current?.barsForView ?? bars;
+    return earlyDataForView.bars;
+  }, [bars, code, dspSource, earlyDataForView.bars, hasCompileErrors]);
+  y(() => {
+    if (code === dspSource) return;
+    if (hasCompileErrors) return;
+    lastGoodPreviewRef.current = {
+      widgetCompileState,
+      timelineLabelsForView,
+      barsForView
+    };
+  }, [barsForView, code, dspSource, hasCompileErrors, timelineLabelsForView, widgetCompileState]);
+  y(() => {
+    if (isUpdatingDsp || isProgramSwapPending) return;
+    setUiCompilePreview({
+      source: widgetCompileState.dspSource,
+      sequences: widgetCompileState.sequences,
+      miniRefs: widgetCompileState.miniRefs,
+      miniPlayBars: widgetCompileState.miniPlayBars,
+      timelineRefs: widgetCompileState.timelineRefs,
+      timelineLabels: timelineLabelsForView,
+      bars: barsForView,
+      miniSourceMaps: widgetCompileState.miniSourceMaps,
+      analyserRefs: widgetCompileState.analyserRefs ?? [],
+      compressorRefs: widgetCompileState.compressorRefs ?? [],
+      expanderRefs: widgetCompileState.expanderRefs ?? [],
+      gateRefs: widgetCompileState.gateRefs ?? [],
+      filterRefs: widgetCompileState.filterRefs ?? [],
+      reverbRefs: widgetCompileState.reverbRefs ?? [],
+      slicerRefs: widgetCompileState.slicerRefs ?? [],
+      lfoRefs: widgetCompileState.lfoRefs ?? [],
+      everyRefs: widgetCompileState.everyRefs ?? [],
+      atRefs: widgetCompileState.atRefs ?? [],
+      euclidRefs: widgetCompileState.euclidRefs ?? [],
+      arrayLiterals: widgetCompileState.arrayLiterals ?? [],
+      branchMarks: widgetCompileState.branchMarks ?? [],
+      numberParams: widgetCompileState.numberParams ?? [],
+      sampleDefs: widgetCompileState.sampleDefs ?? []
+    });
+  }, [
+    barsForView,
+    isProgramSwapPending,
+    isUpdatingDsp,
+    setUiCompilePreview,
+    timelineLabelsForView,
+    widgetCompileState
+  ]);
+  const isAwaitingSamples = T$1(() => {
+    if (hasCompileErrors) return false;
+    const defs = widgetCompileState.sampleDefs ?? [];
+    if (defs.length === 0) return false;
+    for (const d2 of defs) {
+      if (d2.provider !== "freesound") continue;
+      if (loadedSamples[d2.sampleIndex]?.url !== d2.url) return true;
+    }
+    return false;
+  }, [hasCompileErrors, loadedSamples, widgetCompileState.sampleDefs]);
+  const didRequestPreviewSamplesRef = A$1(null);
+  _(() => {
+    if (!audioContext) return;
+    if (!isAwaitingSamples) return;
+    if (!code) return;
+    const loopId2 = currentLoop.data.id;
+    const prev = didRequestPreviewSamplesRef.current;
+    if (prev?.loopId === loopId2 && prev.source === code) return;
+    didRequestPreviewSamplesRef.current = { loopId: loopId2, source: code };
+    void preloadSamples(code);
+  }, [audioContext, code, currentLoop.data.id, isAwaitingSamples, preloadSamples]);
+  const runtimeProgram = isProgramSwapPending ? program2 : program1;
+  const handleApply = async () => {
+    if (!isProgramReady) return;
+    if (hasCompileErrors) return;
+    const requested = code;
+    try {
+      onDspError(void 0);
+      const target = previewTargetRef.current;
+      const vm = target && previewCompile.errors.length === 0 ? {
+        source: requested,
+        ops: new Int32Array(target.ops),
+        literals: new Float32Array(target.literals),
+        result: previewCompile
+      } : void 0;
+      await updateDspSource(requested, vm);
+    } catch (err) {
+      onDspError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const isLive = isPlayingLoop && playbackState === "running";
+  _(() => {
+    if (currentLoop && currentLoop.data.code == null && code.length === 0) return;
+    if (!isLive) return;
+    void handleApply();
+  }, [currentLoop, isProgramReady, isLive]);
+  y(() => {
+    if (!isProgramReady) return;
+    if (!currentLoop) return;
+    if (!isLive) return;
+    if (hasCompileErrors) return;
+    if (code === dspSource) return;
+    void handleApply();
+  }, [code, currentLoop?.data.id, dspSource, hasCompileErrors, isProgramReady, isLive]);
+  const frameRef = A$1([]);
+  const controlStateRef = A$1(/* @__PURE__ */ new Map());
+  const playingLoopId = useEngineRuntimeStore((state2) => state2.playingLoopId);
+  const lastPlayingLoopIdRef = A$1(null);
+  y(() => {
+    if (playingLoopId != null) lastPlayingLoopIdRef.current = playingLoopId;
+  }, [playingLoopId]);
+  const isLiveView = loopId != null && loopId === (playingLoopId ?? lastPlayingLoopIdRef.current);
+  const resetKey = `${currentLoop?.data.id ?? ""}:${playingLoopId ?? ""}`;
+  const gridOwnerByLine = T$1(() => {
+    const byLine = /* @__PURE__ */ new Map();
+    const consider = (owner) => {
+      const existing = byLine.get(owner.line);
+      if (!existing || owner.column < existing.column) byLine.set(owner.line, owner);
+    };
+    for (const ref of widgetCompileState.timelineRefs ?? []) {
+      consider({
+        kind: "timeline",
+        seqIndex: ref.seqIndex,
+        line: ref.loc.line,
+        column: ref.loc.column,
+        length: ref.loc.length
+      });
+    }
+    for (const ref of widgetCompileState.miniRefs ?? []) {
+      consider({
+        kind: "pianoroll",
+        seqIndex: ref.seqIndex,
+        line: ref.loc.line,
+        column: ref.loc.column,
+        length: ref.loc.length
+      });
+    }
+    return byLine;
+  }, [widgetCompileState.miniRefs, widgetCompileState.timelineRefs]);
+  const { widgets: sequenceWidgets, onBeforeDraw } = useSequenceWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    sequences: widgetCompileState.sequences,
+    miniSourceMaps: widgetCompileState.miniSourceMaps,
+    miniRefs: widgetCompileState.miniRefs,
+    miniPlayBars: widgetCompileState.miniPlayBars,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    resetKey,
+    frameRef,
+    controlStateRef,
+    bpmValue
+  });
+  const { widgets: pianorollWidgets, onBeforeDraw: onBeforeDrawPianoroll } = usePianorollWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    sequences: widgetCompileState.sequences,
+    miniSourceMaps: widgetCompileState.miniSourceMaps,
+    miniRefs: widgetCompileState.miniRefs,
+    miniPlayBars: widgetCompileState.miniPlayBars,
+    timelineLabels: timelineLabelsForView,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    resetKey,
+    gridOwnerByLine
+  });
+  const { widgets: timelineWidgets, onBeforeDraw: onBeforeDrawTimeline } = useTimelineWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    timelineRefs: widgetCompileState.timelineRefs,
+    timelineLabels: timelineLabelsForView,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    isLive,
+    resetKey,
+    gridOwnerByLine
+  });
+  const { widgets: timelineSequenceWidgets, onBeforeDraw: onBeforeDrawTimelineSequence } = useTimelineSequenceWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    timelineRefs: widgetCompileState.timelineRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    isLive,
+    resetKey
+  });
+  const { widgets: tramWidgets, onBeforeDraw: onBeforeDrawTram } = useTramWidget({
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    tramRefs: widgetCompileState.tramRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isPlaying: isPlaybackRunningForView,
+    resetKey
+  });
+  const { widgets: analyserWidgets, onBeforeDraw: onBeforeDrawAnalyser } = useAnalyserWidget({
+    program1: runtimeProgram,
+    ringPos,
+    analyserRefs: widgetCompileState.analyserRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isLiveView,
+    playbackState,
+    sampleRate: audioContext?.sampleRate
+  });
+  const { widgets: compressorWidgets, onBeforeDraw: onBeforeDrawCompressor } = useCompressorWidget({
+    program1: runtimeProgram,
+    ringPos,
+    compressorRefs: widgetCompileState.compressorRefs,
+    expanderRefs: widgetCompileState.expanderRefs,
+    gateRefs: widgetCompileState.gateRefs,
+    limiterRefs: widgetCompileState.limiterRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive: isLiveView,
+    playbackState,
+    sampleRate: audioContext?.sampleRate
+  });
+  const { widgets: filterWidgets, onBeforeDraw: onBeforeDrawFilter } = useFilterWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    filterRefs: widgetCompileState.filterRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive,
+    playbackState
+  });
+  const { widgets: reverbWidgets, onBeforeDraw: onBeforeDrawReverb } = useReverbWidget({
+    program1: runtimeProgram,
+    reverbRefs: widgetCompileState.reverbRefs,
+    showWidgets,
+    isLive,
+    playbackState
+  });
+  const { widgets: slicerWidgets, onBeforeDraw: onBeforeDrawSlicer } = useSlicerWidget({
+    slicerRefs: widgetCompileState.slicerRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    sampleDefs: widgetCompileState.sampleDefs,
+    playbackState
+  });
+  const { widgets: lfoWidgets, onBeforeDraw: onBeforeDrawLfo } = useLfoWidget({
+    program1: runtimeProgram,
+    audioContext,
+    bpmValue,
+    globalSampleCount,
+    lfoRefs: widgetCompileState.lfoRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive,
+    playbackState
+  });
+  const { widgets: trigWidgets, onBeforeDraw: onBeforeDrawTrig } = useTrigWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    everyRefs: widgetCompileState.everyRefs,
+    atRefs: widgetCompileState.atRefs,
+    euclidRefs: widgetCompileState.euclidRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive,
+    playbackState
+  });
+  const { widgets: arrayAccessWidgets, onBeforeDraw: onBeforeDrawArrayAccess } = useArrayAccessWidget({
+    program1: runtimeProgram,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets: showWidgets && isPlayingLoop,
+    arrayLiterals: widgetCompileState.arrayLiterals
+  });
+  const { widgets: branchWidgets, onBeforeDraw: onBeforeDrawBranch } = useBranchWidget({
+    program1: runtimeProgram,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets: showWidgets && isPlayingLoop,
+    branchMarks: widgetCompileState.branchMarks
+  });
+  const { widgets: sampleWidgets, onBeforeDraw: onBeforeDrawSample } = useSampleWidget({
+    program1: runtimeProgram,
+    audioContext,
+    globalSampleCount,
+    sampleDefs: widgetCompileState.sampleDefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    playbackState,
+    isLive
+  });
+  const { widgets: envelopeWidgets, onBeforeDraw: onBeforeDrawEnvelope } = useEnvelopeWidget({
+    program1: runtimeProgram,
+    adRefs: widgetCompileState.adRefs,
+    adsrRefs: widgetCompileState.adsrRefs,
+    envfollowRefs: widgetCompileState.envfollowRefs,
+    slewRefs: widgetCompileState.slewRefs,
+    dspSource: widgetCompileState.dspSource,
+    showWidgets,
+    isLive,
+    playbackState
+  });
+  const { knobs, knobLocKeys } = T$1(() => {
+    const out = [];
+    const knobLocKeys2 = /* @__PURE__ */ new Set();
+    const addKnobsFromRef = (ref) => {
+      const functionName = String(ref?.functionName ?? "");
+      if (!functionName) return;
+      const config2 = getKnobConfig(functionName);
+      if (!config2) return;
+      for (const p2 of ref?.knobParams ?? []) {
+        const param = getKnobParamConfig(config2, String(p2?.name ?? ""));
+        if (!param) continue;
+        const loc = p2?.valueLoc;
+        if (!loc) continue;
+        knobLocKeys2.add(`${loc.line}:${loc.column}`);
+        out.push({
+          line: loc.line,
+          column: loc.column,
+          length: loc.length,
+          value: Number(p2?.value ?? 0),
+          min: param.min,
+          max: param.max,
+          precision: param.precision,
+          mode: param.mode,
+          stepPerPx: param.stepPerPx
+        });
+      }
+    };
+    const refs = [
+      ...widgetCompileState.compressorRefs ?? [],
+      ...widgetCompileState.expanderRefs ?? [],
+      ...widgetCompileState.gateRefs ?? [],
+      ...widgetCompileState.limiterRefs ?? [],
+      ...widgetCompileState.filterRefs ?? [],
+      ...widgetCompileState.reverbRefs ?? [],
+      ...widgetCompileState.lfoRefs ?? [],
+      ...widgetCompileState.adRefs ?? [],
+      ...widgetCompileState.adsrRefs ?? [],
+      ...widgetCompileState.envfollowRefs ?? [],
+      ...widgetCompileState.slewRefs ?? []
+    ];
+    for (const ref of refs) addKnobsFromRef(ref);
+    return { knobs: out, knobLocKeys: knobLocKeys2 };
+  }, [
+    widgetCompileState.compressorRefs,
+    widgetCompileState.expanderRefs,
+    widgetCompileState.gateRefs,
+    widgetCompileState.limiterRefs,
+    widgetCompileState.filterRefs,
+    widgetCompileState.reverbRefs,
+    widgetCompileState.lfoRefs,
+    widgetCompileState.adRefs,
+    widgetCompileState.adsrRefs,
+    widgetCompileState.envfollowRefs,
+    widgetCompileState.slewRefs
+  ]);
+  const { widgets: knobWidgets } = useKnobWidget({
+    showWidgets,
+    knobs,
+    theme,
+    codeFile: currentLoop?.codeFile
+  });
+  const sliderNumberParams = T$1(() => {
+    const params = widgetCompileState.numberParams ?? [];
+    if (params.length === 0) return params;
+    if (knobLocKeys.size === 0) return params;
+    return params.filter((p2) => !knobLocKeys.has(`${p2.line}:${p2.column}`));
+  }, [knobLocKeys, widgetCompileState.numberParams]);
+  const { widgets: sliderWidgets } = useSliderWidget({
+    showWidgets,
+    numberParams: sliderNumberParams,
+    theme,
+    codeFile: currentLoop?.codeFile
+  });
+  const { canvasRef: lissajousCanvasRef, onBeforeDraw: onBeforeDrawLissajous } = useVisualizerBackground({
+    program1: runtimeProgram,
+    ringPos,
+    isLive: isLiveView && playbackState === "running" && showVisualizer,
+    sampleRate: audioContext?.sampleRate,
+    pointStride: 1,
+    vertex: previewCompile.visualizerVertex,
+    fragment: previewCompile.visualizerFragment
+  });
+  const onBeforeDrawCombined = q$1(() => {
+    const runtimeLoopId = useEngineRuntimeStore.getState().currentLoopId;
+    if (runtimeLoopId !== loopId) return;
+    const result = updatePredictedSampleCount(
+      audioContext,
+      globalSampleCount,
+      {
+        predictedSampleCountRef,
+        lastWallTimeRef,
+        isFirstFrameRef
+      },
+      { isPlaying: isPlaybackRunningForView }
+    );
+    const runtimeLoopIdAfter = useEngineRuntimeStore.getState().currentLoopId;
+    if (runtimeLoopIdAfter !== loopId) return;
+    predictedSampleCountResultRef.current = result;
+    setPredictedSampleCountResult(result);
+    if (showVisualizer) onBeforeDrawLissajous();
+    onBeforeDraw();
+    onBeforeDrawPianoroll();
+    onBeforeDrawTimeline();
+    onBeforeDrawTimelineSequence();
+    onBeforeDrawTram();
+    onBeforeDrawAnalyser();
+    onBeforeDrawCompressor();
+    onBeforeDrawEnvelope();
+    onBeforeDrawFilter();
+    onBeforeDrawReverb();
+    onBeforeDrawSlicer();
+    onBeforeDrawLfo();
+    onBeforeDrawTrig();
+    onBeforeDrawArrayAccess();
+    onBeforeDrawBranch();
+    onBeforeDrawSample();
+  }, [
+    showVisualizer,
+    onBeforeDrawLissajous,
+    onBeforeDraw,
+    onBeforeDrawPianoroll,
+    onBeforeDrawTimeline,
+    onBeforeDrawTimelineSequence,
+    onBeforeDrawTram,
+    onBeforeDrawAnalyser,
+    onBeforeDrawCompressor,
+    onBeforeDrawEnvelope,
+    onBeforeDrawFilter,
+    onBeforeDrawReverb,
+    onBeforeDrawSlicer,
+    onBeforeDrawLfo,
+    onBeforeDrawTrig,
+    onBeforeDrawArrayAccess,
+    onBeforeDrawBranch,
+    onBeforeDrawSample,
+    audioContext,
+    globalSampleCount,
+    isPlaybackRunningForView,
+    loopId
+  ]);
+  const widgets = T$1(() => {
+    if (!showWidgets) return [];
+    return [
+      ...sampleWidgets,
+      ...analyserWidgets,
+      ...compressorWidgets,
+      ...envelopeWidgets,
+      ...filterWidgets,
+      ...reverbWidgets,
+      ...slicerWidgets,
+      ...lfoWidgets,
+      ...trigWidgets,
+      ...timelineWidgets,
+      ...timelineSequenceWidgets,
+      ...tramWidgets,
+      ...pianorollWidgets,
+      ...sequenceWidgets,
+      ...arrayAccessWidgets,
+      ...branchWidgets,
+      ...sliderWidgets,
+      ...knobWidgets
+    ];
+  }, [
+    showWidgets,
+    envelopeWidgets,
+    analyserWidgets,
+    timelineWidgets,
+    timelineSequenceWidgets,
+    pianorollWidgets,
+    tramWidgets,
+    sequenceWidgets,
+    arrayAccessWidgets,
+    branchWidgets,
+    sliderWidgets,
+    sampleWidgets,
+    compressorWidgets,
+    filterWidgets,
+    reverbWidgets,
+    slicerWidgets,
+    lfoWidgets,
+    trigWidgets,
+    knobWidgets
+  ]);
+  const codeEditorKey = T$1(() => {
+    const codeFile = currentLoop?.codeFile;
+    if (!codeFile) return "<none>";
+    const existing = codeFileKeyByFileRef.current.get(codeFile);
+    if (existing) return existing;
+    const next = String(++nextCodeFileKeyRef.current);
+    codeFileKeyByFileRef.current.set(codeFile, next);
+    return next;
+  }, [currentLoop?.codeFile]);
+  const didSeeCodeRef = A$1({ key: "", did: false });
+  if (didSeeCodeRef.current.key !== codeEditorKey) {
+    didSeeCodeRef.current = { key: codeEditorKey, did: false };
+  }
+  if (!didSeeCodeRef.current.did && code.length > 0) {
+    didSeeCodeRef.current.did = true;
+  }
+  const editorGateRef = A$1({ key: "", allow: false });
+  if (editorGateRef.current.key !== codeEditorKey) {
+    editorGateRef.current = { key: codeEditorKey, allow: false };
+  }
+  const isBootingCode = isAwaitingCode && !didSeeCodeRef.current.did;
+  const hasSavedScroll = currentLoop.codeFile.scrollX !== 0 || currentLoop.codeFile.scrollY !== 0;
+  const expectsWidgets = showWidgets && ((widgetCompileState.adRefs?.length ?? 0) > 0 || (widgetCompileState.adsrRefs?.length ?? 0) > 0 || (widgetCompileState.envfollowRefs?.length ?? 0) > 0 || (widgetCompileState.slewRefs?.length ?? 0) > 0 || (widgetCompileState.sampleDefs?.length ?? 0) > 0 || (widgetCompileState.analyserRefs?.length ?? 0) > 0 || (widgetCompileState.compressorRefs?.length ?? 0) > 0 || (widgetCompileState.expanderRefs?.length ?? 0) > 0 || (widgetCompileState.gateRefs?.length ?? 0) > 0 || (widgetCompileState.limiterRefs?.length ?? 0) > 0 || (widgetCompileState.filterRefs?.length ?? 0) > 0 || (widgetCompileState.slicerRefs?.length ?? 0) > 0 || (widgetCompileState.lfoRefs?.length ?? 0) > 0 || (widgetCompileState.everyRefs?.length ?? 0) > 0 || (widgetCompileState.atRefs?.length ?? 0) > 0 || (widgetCompileState.euclidRefs?.length ?? 0) > 0 || (widgetCompileState.arrayLiterals?.length ?? 0) > 0 || (widgetCompileState.branchMarks?.length ?? 0) > 0 || (widgetCompileState.timelineRefs?.length ?? 0) > 0 || (widgetCompileState.sequences?.length ?? 0) > 0 || (widgetCompileState.tramRefs?.length ?? 0) > 0 || (widgetCompileState.numberParams?.length ?? 0) > 0 || knobs.length > 0);
+  const shouldDelayEditorMount = !editorGateRef.current.allow && hasSavedScroll && !hasCompileErrors && !dspError && (isBootingCode || expectsWidgets && widgets.length === 0);
+  if (!editorGateRef.current.allow && !shouldDelayEditorMount) {
+    editorGateRef.current.allow = true;
+  }
+  const showEditor = editorGateRef.current.allow;
+  const handleKeyDown = q$1((e2) => {
+    e2.stopPropagation();
+    const metaKey = e2.ctrlKey || e2.metaKey;
+    if (e2.key === "r" && metaKey) {
+      return false;
+    }
+    if (e2.key === " " && metaKey) {
+      if (docsIsOpen) {
+        return true;
+      }
+      const runtime = useEngineRuntimeStore.getState();
+      const isSameLoop = runtime.playingLoopId === currentLoop?.data.id;
+      if (runtime.playbackState === "running" && isSameLoop) {
+        if (!e2.altKey) runtime.pause();
+        else void restartLoop();
+      } else {
+        (async () => {
+          if (e2.altKey && isSameLoop) {
+            await restartLoop();
+          }
+          if (!runtime.playingLoopId || !isSameLoop) {
+            void useEngineDspStore.getState().playLoop(
+              currentLoop.data.id,
+              currentLoop.codeFile.value,
+              e2.altKey || !runtime.playingLoopId ? 0 : void 0
+            );
+          } else {
+            void useEngineDspStore.getState().playLoop(currentLoop.data.id, currentLoop.codeFile.value, void 0);
+          }
+        })();
+      }
+      return false;
+    }
+    return true;
+  }, [currentLoop, docsIsOpen, restartLoop]);
+  y(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleKeyDown]);
+  return /* @__PURE__ */ u$1("div", { className: "flex flex-row gap-2 w-full h-full relative", children: [
+    showVisualizer && /* @__PURE__ */ u$1(
+      "canvas",
+      {
+        ref: lissajousCanvasRef,
+        className: "absolute inset-0 w-full h-full pointer-events-none z-0",
+        "aria-hidden": "true"
+      }
+    ),
+    /* @__PURE__ */ u$1("div", { className: "text-white text-sm w-full h-full", children: [
+      headerErrorText.length > 0 && /* @__PURE__ */ u$1("div", { className: "absolute top-0 left-[37px] right-0 h-[40px] z-50", children: /* @__PURE__ */ u$1("div", { className: "h-full w-full flex items-center gap-2 px-2 bg-[#f00a] border-b border-red-700 text-red-100", children: [
+        /* @__PURE__ */ u$1("button", { title: "Copy error message", className: "py-2 px-1", onClick: () => {
+          navigator.clipboard.writeText(headerErrorText);
+        }, children: /* @__PURE__ */ u$1(e$6, { weight: "regular", size: "16" }) }),
+        /* @__PURE__ */ u$1("div", { className: "shrink-0 text-md font-semibold", children: "Error:" }),
+        /* @__PURE__ */ u$1("div", { className: "flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap text-md", children: headerErrorText })
+      ] }) }),
+      showEditor && /* @__PURE__ */ u$1(
+        CodeEditor,
+        {
+          codeFile: currentLoop?.codeFile,
+          widgets,
+          errors: editorErrors,
+          header: timelineHeader,
+          theme: themeForEditor,
+          tokenizer,
+          keywords: KEYWORDS,
+          hideFunctionSignatures: !showFunctionDefinitions,
+          hideHoverFunctionSignatures: !showFunctionDefinitionsHover,
+          functionDefinitions,
+          isAnimating: true,
+          gutter: true,
+          wordWrap,
+          keyOverride: handleKeyDown,
+          onBeforeDraw: onBeforeDrawCombined
+        },
+        codeEditorKey
+      )
+    ] }),
+    (isBootingCode || isPreloadingSamples || isAwaitingSamples || !showEditor) && !hasCompileErrors && !dspError && /* @__PURE__ */ u$1("div", { className: "absolute inset-0 z-40 pointer-events-none", children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(SpinnerLarge, {}) }) })
+  ] });
 }
 const exampleCode = `tb303=(hz,cutoff,q,k,sat,trig)->
 
@@ -46065,45 +46065,42 @@ function useLoopView(loopId) {
   }, [viewGlobalSampleCount, viewSampleCount]);
   return viewSampleCount;
 }
-function Intro({
-  isFadingOut = false,
-  isFadingIn = true,
-  audioContextState,
-  onResumeClick
-}) {
+const Intro = D(({ isFadingOut = false, isFadingIn = true, audioContextState, onResumeClick }, ref) => {
   const needsUserInteraction = audioContextState && audioContextState !== "running";
-  return /* @__PURE__ */ u$1(
-    "div",
-    {
-      className: `z-[99999999999] fixed inset-0 w-[100dvw] h-[100dvh] transition-opacity duration-[1000ms] ease-in-out ${isFadingOut ? "opacity-0 pointer-events-none" : "opacity-100"}`,
-      onClick: needsUserInteraction ? onResumeClick : void 0,
-      children: /* @__PURE__ */ u$1("div", { className: "w-full h-full bg-black flex items-center justify-center", children: /* @__PURE__ */ u$1(
-        "div",
-        {
-          className: `w-full h-full transition-opacity duration-[800ms] ease-in-out ${isFadingIn ? "opacity-0" : "opacity-100"}`,
-          children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(
-            "div",
-            {
-              className: `flex w-full h-full items-center justify-center transition-all ease-in-out ${isFadingOut ? "duration-[1000ms] scale-y-[1.15] scale-x-[1.25] -translate-y-2.5" : isFadingIn && !isFadingOut ? "duration-[700ms] opacity-0 scale-y-[1.025] scale-x-[1.1] translate-y-1" : "duration-[700ms] opacity-100 scale-100 translate-0"}`,
-              children: /* @__PURE__ */ u$1("div", { className: "absolute w-full h-full inset-0 z-10 flex flex-col gap-1 items-center justify-center", children: [
-                /* @__PURE__ */ u$1(Logo, { size: "3.5em", text: "loopmaster" }),
-                needsUserInteraction ? /* @__PURE__ */ u$1("div", { className: "text-white text-lg mt-2", children: "Click anywhere to start" }) : /* @__PURE__ */ u$1(SpinnerLarge, {})
-              ] })
-            }
-          ) })
-        }
-      ) })
-    }
+  console.log({ isFadingOut, isFadingIn, audioContextState, needsUserInteraction });
+  return $(
+    /* @__PURE__ */ u$1(
+      "div",
+      {
+        ref,
+        className: `z-[99999999999] fixed inset-0 w-[100dvw] h-[100dvh] transition-opacity duration-[1000ms] ease-in-out ${isFadingOut ? "opacity-0 pointer-events-none" : "opacity-100"}`,
+        onPointerDown: needsUserInteraction ? onResumeClick : void 0,
+        children: /* @__PURE__ */ u$1("div", { className: "w-full h-full bg-black flex items-center justify-center", children: /* @__PURE__ */ u$1(
+          "div",
+          {
+            className: `w-full h-full ${isFadingIn ? "opacity-0" : "transition-opacity duration-[800ms] ease-in-out opacity-100"}`,
+            children: /* @__PURE__ */ u$1(RadialGradient, { children: /* @__PURE__ */ u$1(
+              "div",
+              {
+                className: `flex w-full h-full items-center justify-center scale-100 translate-0 ${isFadingOut ? "transition-all ease-in-out duration-[1000ms] scale-y-[1.15] scale-x-[1.25] -translate-y-2.5" : isFadingIn && !isFadingOut ? "opacity-0 scale-y-[1.025] scale-x-[1.1] translate-y-1 " : "transition-all ease-in-out duration-[700ms] opacity-100 "}`,
+                children: /* @__PURE__ */ u$1("div", { className: "absolute w-full h-full inset-0 z-10 flex flex-col gap-1 items-center justify-center", children: [
+                  /* @__PURE__ */ u$1(Logo, { size: "3.5em", text: "loopmaster" }),
+                  needsUserInteraction ? /* @__PURE__ */ u$1("div", { className: "text-white text-lg mt-2", children: "Click anywhere to start" }) : /* @__PURE__ */ u$1(SpinnerLarge, {})
+                ] })
+              }
+            ) })
+          }
+        ) })
+      }
+    ),
+    document.getElementById("intro")
   );
-}
+});
 function SyncSampleCount({ currentLoop }) {
   useLoopView(currentLoop?.data.id ?? null);
   return null;
 }
 function AppContent({
-  showIntro,
-  isFadingIn,
-  isFadingOut,
   timelineWindowRef,
   currentLoop,
   dspError,
@@ -46113,9 +46110,7 @@ function AppContent({
   docsIsOpen,
   setDocsIsOpen,
   docsSelectedId,
-  setDocsSelectedId,
-  audioContextState,
-  onResumeClick
+  setDocsSelectedId
 }) {
   const { navigate } = useRouter();
   const previousUrlRef = A$1("/");
@@ -46123,9 +46118,6 @@ function AppContent({
     /* @__PURE__ */ u$1(
       RouterContent,
       {
-        showIntro,
-        isFadingIn,
-        isFadingOut,
         timelineWindowRef,
         currentLoop,
         dspError,
@@ -46136,9 +46128,7 @@ function AppContent({
         setDocsIsOpen,
         docsSelectedId,
         setDocsSelectedId,
-        previousUrlRef,
-        audioContextState,
-        onResumeClick
+        previousUrlRef
       }
     ),
     /* @__PURE__ */ u$1(
@@ -46156,9 +46146,6 @@ function AppContent({
   ] });
 }
 function RouterContent({
-  showIntro,
-  isFadingIn,
-  isFadingOut,
   timelineWindowRef,
   currentLoop,
   dspError,
@@ -46169,9 +46156,7 @@ function RouterContent({
   setDocsIsOpen,
   docsSelectedId,
   setDocsSelectedId,
-  previousUrlRef,
-  audioContextState,
-  onResumeClick
+  previousUrlRef
 }) {
   const { pathname, navigate } = useRouter();
   const loopIdFromUrl = T$1(() => {
@@ -46243,97 +46228,42 @@ function RouterContent({
   const isBrowseLoopRoute = pathname.match(/^\/browse\/loop\/([^/]+)$/);
   const isBrowseArtistRoute = pathname.startsWith("/browse/artist/") && pathname.match(/^\/browse\/artist\/[^/]+\//);
   if (showLanding) {
-    return /* @__PURE__ */ u$1(k$2, { children: [
-      showIntro && /* @__PURE__ */ u$1(
-        Intro,
-        {
-          isFadingIn,
-          isFadingOut,
-          audioContextState,
-          onResumeClick
-        }
-      ),
-      /* @__PURE__ */ u$1(Landing, {})
-    ] });
+    return /* @__PURE__ */ u$1(Landing, {});
   }
   if (isAdminRoute) {
     return /* @__PURE__ */ u$1(Admin, {});
   }
   if (isBrowseLoopRoute) {
-    return /* @__PURE__ */ u$1(k$2, { children: [
-      showIntro && /* @__PURE__ */ u$1(
-        Intro,
-        {
-          isFadingIn,
-          isFadingOut,
-          audioContextState,
-          onResumeClick
-        }
-      ),
-      /* @__PURE__ */ u$1(BrowseLoop, {})
-    ] });
+    return /* @__PURE__ */ u$1(BrowseLoop, {});
   }
   if (isBrowseArtistRoute) {
-    return /* @__PURE__ */ u$1(k$2, { children: [
-      showIntro && /* @__PURE__ */ u$1(
-        Intro,
-        {
-          isFadingIn,
-          isFadingOut,
-          audioContextState,
-          onResumeClick
-        }
-      ),
-      /* @__PURE__ */ u$1(BrowseArtist, {})
-    ] });
+    return /* @__PURE__ */ u$1(BrowseArtist, {});
   }
   if (isBrowseRoute) {
-    return /* @__PURE__ */ u$1(k$2, { children: [
-      showIntro && /* @__PURE__ */ u$1(
-        Intro,
-        {
-          isFadingIn,
-          isFadingOut,
-          audioContextState,
-          onResumeClick
-        }
-      ),
-      /* @__PURE__ */ u$1(Browse, {})
-    ] });
+    return /* @__PURE__ */ u$1(Browse, {});
   }
-  return /* @__PURE__ */ u$1(k$2, { children: [
-    showIntro && /* @__PURE__ */ u$1(
-      Intro,
+  return /* @__PURE__ */ u$1("div", { className: "flex flex-col", children: [
+    /* @__PURE__ */ u$1(SyncSampleCount, { currentLoop }),
+    /* @__PURE__ */ u$1(
+      Nav,
       {
-        isFadingIn,
-        isFadingOut,
-        audioContextState,
-        onResumeClick
+        timelineWindowRef,
+        currentLoop,
+        onDspError
       }
     ),
-    /* @__PURE__ */ u$1("div", { className: "flex flex-col", children: [
-      /* @__PURE__ */ u$1(SyncSampleCount, { currentLoop }),
+    /* @__PURE__ */ u$1("div", { className: "flex flex-row h-[calc(100dvh-61px)]", children: [
+      /* @__PURE__ */ u$1(Sidebar, {}),
       /* @__PURE__ */ u$1(
-        Nav,
+        DspSourceEditor,
         {
-          timelineWindowRef,
+          timelineHeader,
           currentLoop,
-          onDspError
+          dspError,
+          onDspError,
+          docsIsOpen
         }
-      ),
-      /* @__PURE__ */ u$1("div", { className: "flex flex-row h-[calc(100dvh-61px)]", children: [
-        /* @__PURE__ */ u$1(Sidebar, {}),
-        /* @__PURE__ */ u$1(
-          DspSourceEditor,
-          {
-            timelineHeader,
-            currentLoop,
-            dspError,
-            onDspError,
-            docsIsOpen
-          }
-        )
-      ] })
+      )
     ] })
   ] });
 }
@@ -46348,13 +46278,23 @@ function EngineUI() {
   const isEditorBusy = useIsEditorBusy();
   const fontsLoaded = useFontsLoaded();
   useSeekToSampleImmediate();
+  const [pathname, setPathname] = d(() => window.location.pathname || "/");
+  y(() => {
+    const updatePathname = () => setPathname(window.location.pathname || "/");
+    window.addEventListener("popstate", updatePathname);
+    const interval = setInterval(updatePathname, 50);
+    return () => {
+      window.removeEventListener("popstate", updatePathname);
+      clearInterval(interval);
+    };
+  }, []);
   const routeLoopId = T$1(() => {
-    const pathname = window.location.pathname || "/";
     const match = pathname.match(/^\/app\/browse\/loop\/([^/]+)$/);
     return match ? match[1] : null;
-  }, []);
+  }, [pathname]);
   const isRouteLoopReady = routeLoopId == null ? true : currentLoop?.data.id === routeLoopId;
-  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext || !currentLoop || !isRouteLoopReady || isLoopLoading || isEditorBusy;
+  const needsCurrentLoop = !(pathname === "/" || pathname === "/admin" || pathname.startsWith("/browse") || pathname.startsWith("/docs"));
+  const shouldWait = !isInitialized || !hasHydrated || !isProgramReady || !audioContext || needsCurrentLoop && (!currentLoop || !isRouteLoopReady) || isLoopLoading || isEditorBusy;
   const [showIntro, setShowIntro] = d(true);
   const [isFadingIn, setIsFadingIn] = d(true);
   const [isFadingOut, setIsFadingOut] = d(false);
@@ -46377,6 +46317,17 @@ function EngineUI() {
     updateState();
     return () => audioContext.removeEventListener("statechange", updateState);
   }, [audioContext]);
+  const playIntroLoop = async () => {
+    for (let i2 = 0; i2 < 100; i2++) {
+      const audioContext2 = useEngineRuntimeStore.getState().audioContext;
+      if (!audioContext2 || audioContext2.state !== "running") {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        continue;
+      }
+      await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_PROGRAM);
+      break;
+    }
+  };
   const handleResumeClick = async () => {
     if (!audioContext) return;
     if (didStartIntroExitRef.current) return;
@@ -46391,17 +46342,7 @@ function EngineUI() {
           setShowIntro(false);
         }, 2e3);
       }, deltaTime < 700 ? 700 - deltaTime + (3e3 - 700) : 3e3);
-      (async () => {
-        for (let i2 = 0; i2 < 100; i2++) {
-          const audioContext2 = useEngineRuntimeStore.getState().audioContext;
-          if (!audioContext2 || audioContext2.state !== "running") {
-            await new Promise((resolve) => setTimeout(resolve, 100));
-            continue;
-          }
-          await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_PROGRAM);
-          break;
-        }
-      })();
+      void playIntroLoop();
     }
   };
   y(() => {
@@ -46439,39 +46380,35 @@ function EngineUI() {
       }, 2e3);
       return () => window.clearTimeout(t2);
     }, deltaTime < 700 ? 700 - deltaTime + (3e3 - 700) : 3e3);
-    (async () => {
-      for (let i2 = 0; i2 < 100; i2++) {
-        const audioContext2 = useEngineRuntimeStore.getState().audioContext;
-        if (!audioContext2 || audioContext2.state !== "running") {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          continue;
-        }
-        await useEngineDspStore.getState().playLoop(Math.random().toString(), INTRO_PROGRAM);
-        break;
-      }
-    })();
+    void playIntroLoop();
     return () => window.clearTimeout(t1);
   }, [shouldWait, showIntro, audioContext]);
-  return /* @__PURE__ */ u$1(RouterProvider, { children: /* @__PURE__ */ u$1(
-    AppContent,
-    {
-      showIntro,
-      isFadingIn,
-      isFadingOut,
-      timelineWindowRef,
-      currentLoop,
-      dspError,
-      timelineHeader,
-      hasHydrated,
-      onDspError: setDspError,
-      docsIsOpen,
-      setDocsIsOpen,
-      docsSelectedId,
-      setDocsSelectedId,
-      audioContextState,
-      onResumeClick: handleResumeClick
-    }
-  ) });
+  return /* @__PURE__ */ u$1(RouterProvider, { children: [
+    showIntro && /* @__PURE__ */ u$1(
+      Intro,
+      {
+        isFadingIn,
+        isFadingOut,
+        audioContextState,
+        onResumeClick: handleResumeClick
+      }
+    ),
+    /* @__PURE__ */ u$1(
+      AppContent,
+      {
+        timelineWindowRef,
+        currentLoop,
+        dspError,
+        timelineHeader,
+        hasHydrated,
+        onDspError: setDspError,
+        docsIsOpen,
+        setDocsIsOpen,
+        docsSelectedId,
+        setDocsSelectedId
+      }
+    )
+  ] });
 }
 function App() {
   return /* @__PURE__ */ u$1("div", { className: "min-h-screen text-white bg-black", children: /* @__PURE__ */ u$1(EngineUI, {}) });
@@ -46480,4 +46417,4 @@ const root = createRoot(document.getElementById("root"));
 root.render(
   /* @__PURE__ */ u$1(App, {})
 );
-//# sourceMappingURL=index-oXXIqXtM.js.map
+//# sourceMappingURL=index-B2hzUBkY.js.map
