@@ -24,7 +24,7 @@ trig=every(1/16) tb303([#1*o2,#1*o2,#7*o2,#5*o3].glide(1/8,10),
 
 cutoff:100+(300 (0 5k) +2k*fractal(6)**3)*ad(.01,3,30,trig),
 
-q:.91,k:.002,sat:1.15,trig)*.4+drums() |> limiter($) |> out($)`
+q:.91,k:.002,sat:1.15,trig)*.2+drums() |> limiter($) |> out($)`
 
 export const KEYWORDS = [
   'do',

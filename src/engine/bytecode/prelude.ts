@@ -391,23 +391,9 @@ bdsynth=(
 //   sampler(trig,sample:kicksample)
 // }
 
-bd=(
-  base=#1*o2,
-  punch=25000k,
-  offset=0.0006,
-  cutoff=5k,
-  q=.25,
-  amp=trig->ad(.0001,.5,40,trig),
-  fm=trig->ad(.00008,.013,900,trig),
-  filter=trig->ad(.000147,.25,50.000,trig),
-  trig=tram('x-x-x-x-'),
-)->{
-  bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig)
-}
-
 hhsynth=(width=.4,trig)->{
   env=adsr(.06,.05 ,.950 ,.1 ,32,trig)
-  oversample(32,()->[205.3,369.6,304.4,522.7,800,540].map(x->pwm(x,width)).avg()*env
+  oversample(4,()->[205.3,369.6,304.4,522.7,800,540].map(x->pwm(x,width)).avg()*env
   |> bp($,8000,.85)|>bp($,10k,.85)|>hp($,11k,.85)) |> tanh($*6)
 }
 
@@ -421,16 +407,6 @@ hhsynth=(width=.4,trig)->{
 //     slicer(trig,sample:hhsample)*(v>.65?v:v*2)*(v>.65?ad(0.0001,.0173+.5*v,trig):ad(0.0001,.01+.15*v,4,trig))
 //   })
 // }
-
-ch=(width=.01,trig=tram('xx-x',1/4))->{
-  hhsynth(width,trig)*ad(0.0001,.01+.15,4,trig)
-}
-
-oh=(width=.4,trig=tram('-x',1/4))->{
-  hhsynth(width,trig)*ad(0.0001,.0173+.5,trig)
-}
-
-hh=()->ch()+oh()
 
 snaresynth=(seed=7,base=#5*o2,trig=step(1-phasor(1),.9))->{
   amp=ad(.0001,1.7366,20,trig)
@@ -450,8 +426,32 @@ snaresynth=(seed=7,base=#5*o2,trig=step(1-phasor(1),.9))->{
 //   sampler(snaresample,trig)
 // }
 
-sd=(seed=7,base=#5*o2,trig=tram('-x',1/2))->{
-  snaresynth(seed,base,trig)
+bd=(
+  base=#1*o2,
+  punch=25000k,
+  offset=0.0006,
+  cutoff=5k,
+  q=.25,
+  amp=trig->ad(.0001,.5,40,trig),
+  fm=trig->ad(.00008,.013,900,trig),
+  filter=trig->ad(.000147,.25,50.000,trig),
+  trig=tram('x-x-x-x-'),
+)->{
+  bdsynth(base,punch,offset,cutoff,q,amp,fm,filter,trig)
+}
+
+ch=(width=.02,trig=tram('xxxx',1/4))->{
+  hhsynth(width,trig)*ad(0.0001,.5,3,trig)*.7
+}
+
+oh=(width=.4,trig=tram('-x',1/4))->{
+  hhsynth(width,trig)*ad(0.0001,.9,trig)
+}
+
+hh=()->ch()+oh()
+
+sd=(seed=7,base=#5*o2,seq=mini('[~ 1]*2;.2'))->{
+  play(seq,(trig)->snaresynth(seed,base,trig))
 }
 
 drums=()->bd()+hh()+sd()

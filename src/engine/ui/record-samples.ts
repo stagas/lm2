@@ -68,6 +68,8 @@ export function syncRecordSamplesForWidgets(args: {
   recordFetch: Map<number, RecordFetchState>
   offline: RecordOfflineState
 }) {
+  return
+
   if (!args.showWidgets) return
 
   const { worklet, bpmValue } = useEngineRuntimeStore.getState()
@@ -109,13 +111,21 @@ export function syncRecordSamplesForWidgets(args: {
           bpm,
           sampleDefs: recordDefs,
           loadedSamples: loaded,
-        }).then(prepared => {
+        }).then(async prepared => {
           args.offline.pending = false
           args.offline.nextAt = (typeof performance !== 'undefined' ? performance.now() : Date.now()) + 250
           if (!prepared.size) return
 
           const defByIndex = new Map<number, SampleDef>()
           for (const d of recordDefs) defByIndex.set(d.sampleIndex, d)
+
+          const currentWorklet = useEngineRuntimeStore.getState().worklet
+          if (currentWorklet) {
+            for (const [idx, s] of prepared.entries()) {
+              const bufferCopy = s.ch0Buffer.slice()
+              await currentWorklet.setSample(idx, s.sampleRate, s.length, bufferCopy)
+            }
+          }
 
           useEngineDspStore.setState(prev => {
             const next = prev.loadedSamples.slice()
