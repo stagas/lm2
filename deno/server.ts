@@ -1,9 +1,9 @@
-import { compare, hash } from 'bcrypt'
-import { Hono } from 'hono'
-import type { Context } from 'hono'
-import { serveStatic } from 'hono/deno'
-import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { z, type ZodError, type ZodIssue } from 'zod'
+import { compare, hash } from '@da/bcrypt'
+import { Hono } from '@hono/hono'
+import type { Context } from '@hono/hono'
+import { serveStatic } from '@hono/hono/deno'
+import type { ContentfulStatusCode } from '@hono/hono/utils/http-status'
+import { z, type ZodError } from '@zod/zod'
 import { clearSessionCookie, getSessionKvByToken, getSessionToken, setSessionCookie } from './auth.ts'
 import { newId } from './id.ts'
 import { getKv, k, type LoopKv, type LoopSummaryKv, type PublicLoopKv, type SessionKv, type UserKv } from './kv.ts'
@@ -62,7 +62,7 @@ const fieldLabel: Record<string, string> = {
   content: 'Comment',
 }
 
-function zodIssueMessage(issue: ZodIssue): string {
+function zodIssueMessage(issue: z.core.$ZodIssue): string {
   const key = typeof issue.path?.[0] === 'string' ? issue.path[0] : null
   const label = (key && fieldLabel[key]) || (key ? `${key[0]?.toUpperCase()}${key.slice(1)}` : 'Request')
 
