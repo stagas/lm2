@@ -1,6 +1,6 @@
-import { hash, verify } from '@felix/bcrypt'
-import { Hono } from '@hono/hono'
+import { hash, verify } from '@bronti/bcrypt'
 import type { Context } from '@hono/hono'
+import { Hono } from '@hono/hono'
 import { serveStatic } from '@hono/hono/deno'
 import type { ContentfulStatusCode } from '@hono/hono/utils/http-status'
 import { z, type ZodError } from '@zod/zod'
@@ -40,7 +40,7 @@ async function hashPasswordSha256(password: string): Promise<string> {
 }
 
 async function validatePassword(password: string, passwordHash: string): Promise<boolean> {
-  const bcryptOk = await verify(password, passwordHash).catch(() => false)
+  const bcryptOk = verify(password, passwordHash)
   if (bcryptOk) return true
   const sha256Hash = await hashPasswordSha256(password)
   return sha256Hash === passwordHash
@@ -713,7 +713,7 @@ app.post('/api/auth/register', async c => {
   const name = parsed.data.artistName.trim()
   const email = parsed.data.email.trim().toLowerCase()
   const password = parsed.data.password
-  const pw = await hash(password)
+  const pw = hash(password)
   for (let i = 0; i < 5; i++) {
     const userId = newId(6)
     const token = newId(6)
@@ -780,7 +780,7 @@ app.post('/api/auth/login', async c => {
 
     const needsBcryptUpgrade = !user.passwordHash.startsWith('$2')
     if (needsBcryptUpgrade) {
-      const newHash = await hash(password)
+      const newHash = hash(password)
       await kv.set(k.user(userId), { ...user, passwordHash: newHash })
     }
 

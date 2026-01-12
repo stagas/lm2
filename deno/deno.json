@@ -1,6 +1,6 @@
 {
   "imports": {
-    "@felix/bcrypt": "jsr:@felix/bcrypt@^1.0.8",
+    "@bronti/bcrypt": "jsr:@bronti/bcrypt@^1.0.3",
     "@hono/hono": "jsr:@hono/hono@^4.11.1",
     "@hono/hono/cookie": "jsr:@hono/hono@^4.11.1/cookie",
     "@zod/zod": "jsr:@zod/zod@^4.3.5"

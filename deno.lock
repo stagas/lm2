@@ -1,57 +1,16 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@denosaurs/plug@^1.1.0": "1.1.0",
-    "jsr:@felix/bcrypt@^1.0.8": "1.0.8",
+    "jsr:@bronti/bcrypt@^1.0.3": "1.0.3",
     "jsr:@hono/hono@^4.11.1": "4.11.1",
-    "jsr:@std/encoding@1": "1.0.10",
-    "jsr:@std/fmt@1": "1.0.8",
-    "jsr:@std/fs@1": "1.0.21",
-    "jsr:@std/internal@^1.0.12": "1.0.12",
-    "jsr:@std/path@1": "1.1.4",
-    "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@zod/zod@^4.3.5": "4.3.5"
   },
   "jsr": {
-    "@denosaurs/plug@1.1.0": {
-      "integrity": "eb2f0b7546c7bca2000d8b0282c54d50d91cf6d75cb26a80df25a6de8c4bc044",
-      "dependencies": [
-        "jsr:@std/encoding",
-        "jsr:@std/fmt",
-        "jsr:@std/fs",
-        "jsr:@std/path@1"
-      ]
-    },
-    "@felix/bcrypt@1.0.8": {
-      "integrity": "59c41160fc027882479c512db5d53792c4d91aadcd49467c85caa2f1679046f2",
-      "dependencies": [
-        "jsr:@denosaurs/plug"
-      ]
+    "@bronti/bcrypt@1.0.3": {
+      "integrity": "2768fdc727b957d1c039d0da5942aae1c0397d3d364af98dee15df0264554602"
     },
     "@hono/hono@4.11.1": {
       "integrity": "28bb28c7322a1379e7132af05ef76aef09f86bb8cdd7077c67e004dea288ac0d"
-    },
-    "@std/encoding@1.0.10": {
-      "integrity": "8783c6384a2d13abd5e9e87a7ae0520a30e9f56aeeaa3bdf910a3eaaf5c811a1"
-    },
-    "@std/fmt@1.0.8": {
-      "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
-    },
-    "@std/fs@1.0.21": {
-      "integrity": "d720fe1056d78d43065a4d6e0eeb2b19f34adb8a0bc7caf3a4dbf1d4178252cd",
-      "dependencies": [
-        "jsr:@std/internal",
-        "jsr:@std/path@^1.1.4"
-      ]
-    },
-    "@std/internal@1.0.12": {
-      "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
-    },
-    "@std/path@1.1.4": {
-      "integrity": "1d2d43f39efb1b42f0b1882a25486647cb851481862dc7313390b2bb044314b5",
-      "dependencies": [
-        "jsr:@std/internal"
-      ]
     },
     "@zod/zod@4.3.5": {
       "integrity": "3d14553f025d6e3d1a836b9c56e366bbce27d942301e8c7c1ac4c365df5f8085"
@@ -78,7 +37,7 @@
     "members": {
       "deno": {
         "dependencies": [
-          "jsr:@felix/bcrypt@^1.0.8",
+          "jsr:@bronti/bcrypt@^1.0.3",
           "jsr:@hono/hono@^4.11.1",
           "jsr:@zod/zod@^4.3.5"
         ]
