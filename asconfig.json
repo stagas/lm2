@@ -12,9 +12,9 @@
     "release": {
       "outFile": "as/build/index.wasm",
       "textFile": "as/build/index.wat",
-      "optimizeLevel": 0,
-      "shrinkLevel": 0,
-      "converge": false,
+      "optimizeLevel": 3,
+      "shrinkLevel": 2,
+      "converge": true,
       "sourceMap": true,
       "debug": true,
       "noAssert": true

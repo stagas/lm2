@@ -1,7 +1,6 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@da/bcrypt@^1.0.1": "1.0.1",
     "jsr:@denosaurs/plug@^1.1.0": "1.1.0",
     "jsr:@felix/bcrypt@^1.0.8": "1.0.8",
     "jsr:@hono/hono@^4.11.1": "4.11.1",
@@ -14,9 +13,6 @@
     "jsr:@zod/zod@^4.3.5": "4.3.5"
   },
   "jsr": {
-    "@da/bcrypt@1.0.1": {
-      "integrity": "d2172d3acbcff52e0465557a1a48b1ff1c92df08c90712dae5372255a8c45eb3"
-    },
     "@denosaurs/plug@1.1.0": {
       "integrity": "eb2f0b7546c7bca2000d8b0282c54d50d91cf6d75cb26a80df25a6de8c4bc044",
       "dependencies": [
@@ -62,10 +58,26 @@
     }
   },
   "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@phosphor-icons/react@^2.1.10",
+        "npm:@preact/preset-vite@^2.10.2",
+        "npm:@types/audioworklet@^0.0.88",
+        "npm:@types/bun@^1.3.5",
+        "npm:assemblyscript@~0.28.9",
+        "npm:concurrently@^9.2.1",
+        "npm:preact@^10.28.1",
+        "npm:react-social-icons@^6.25.0",
+        "npm:typescript@^5.9.3",
+        "npm:visitor-as@~0.11.4",
+        "npm:vite@^7.3.0",
+        "npm:zod@^3.25.76",
+        "npm:zustand@^5.0.9"
+      ]
+    },
     "members": {
       "deno": {
         "dependencies": [
-          "jsr:@da/bcrypt@^1.0.1",
           "jsr:@felix/bcrypt@^1.0.8",
           "jsr:@hono/hono@^4.11.1",
           "jsr:@zod/zod@^4.3.5"
