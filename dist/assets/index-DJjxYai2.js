@@ -25494,10 +25494,7 @@ const PIANOROLL_BAR_COLOR_ODD = "rgba(255, 255, 255, 0.09)";
 const PIANOROLL_BAR_COLOR_EVEN = "rgba(255, 255, 255, 0.12)";
 const SCROLL_SMOOTHING = 0.17;
 const DEFAULT_SEQUENCES = ["c4 e4 [g4 a4]*2", "a3 c4 [d4 f4 a4]*2"];
-const DEFAULT_DSP_SOURCE = `mini('c4 e4 [g4 a4]*2', (trig, velocity, hz) -> {
-  env = adsr(attack:0.01, decay:0.3, sustain:0.2, release:0.4, trig)
-  sine(hz, trig) * env * velocity * 0.25
-}) |> analyser(%) |> out(%)`;
+const DEFAULT_DSP_SOURCE = `sine(a4) |> out($)`;
 const KEYWORDS = [
   "do",
   "case",
@@ -46483,4 +46480,4 @@ const root = createRoot(document.getElementById("root"));
 root.render(
   /* @__PURE__ */ u$1(App, {})
 );
-//# sourceMappingURL=index-DpmbCOKo.js.map
+//# sourceMappingURL=index-DJjxYai2.js.map
