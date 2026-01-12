@@ -1,12 +1,11 @@
-import { ChatIcon, CodeIcon, HeartIcon, PlayIcon, RepeatIcon, StopIcon, UserIcon } from '@phosphor-icons/react'
+import { ChatIcon, CodeIcon, HeartIcon, PauseIcon, PlayIcon, RepeatIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LoopData } from '../../../deno/types.ts'
 import { useAppStore } from '../../app/store.ts'
-import { RadialGradient } from '../../components/RadialGradient.tsx'
-import { SpinnerSmall } from '../../components/Spinner.tsx'
+import { SpinnerLarge, SpinnerSmall } from '../../components/Spinner.tsx'
 import { useEngineDspStore, useEngineRuntimeStore } from '../store.ts'
-import { InlineEditor } from './docs/InlineEditor.tsx'
-import { Link, useRouter } from './router.tsx'
+import { EditorWithTimeline } from './EditorWithTimeline.tsx'
+import { Link } from './router.tsx'
 import { toSlug } from './util.ts'
 
 const ITEMS_PER_PAGE = 5
@@ -31,7 +30,7 @@ export function BrowseList(
   const toggleLike = useAppStore(state => state.toggleLike)
   const getPublicLoopCode = useAppStore(state => state.getPublicLoopCode)
   const playLoop = useEngineDspStore(state => state.playLoop)
-  const stop = useEngineRuntimeStore(state => state.stop)
+  const pause = useEngineRuntimeStore(state => state.pause)
   const playbackState = useEngineRuntimeStore(state => state.playbackState)
   const playingLoopId = useEngineRuntimeStore(state => state.playingLoopId)
   const [loopCodes, setLoopCodes] = useState<Record<string, string>>({})
@@ -41,7 +40,6 @@ export function BrowseList(
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const loopCodesRef = useRef<Record<string, string>>({})
   const loadingCodesRef = useRef<Set<string>>(new Set())
-  const { navigate } = useRouter()
 
   const userId = sessionData?.user.id ?? null
   const likedLoopIds = useMemo(() => (sessionData?.likedLoopIds ?? []), [sessionData])
@@ -125,10 +123,8 @@ export function BrowseList(
   if (loops.length === 0) {
     if (isLoading) {
       return (
-        <div className="flex h-full items-center justify-center py-20">
-          <RadialGradient>
-            <SpinnerSmall />
-          </RadialGradient>
+        <div className="flex items-center justify-center py-40">
+          <SpinnerLarge />
         </div>
       )
     }
@@ -147,14 +143,14 @@ export function BrowseList(
         const code = loopCodes[loop.id] ?? ''
         const isLoadingCode = loadingCodes.has(loop.id)
 
-        const editorId = `browse-${loop.id}`
+        const editorId = `browse-loop-${loop.id}`
         const loopId = `docs:${editorId}`
         const isPlaying = playingLoopId === loopId && playbackState === 'running'
         const isActive = playingLoopId === loopId
 
         const handlePlay = async () => {
           if (isPlaying) {
-            stop()
+            pause()
             return
           }
           if (!code) return
@@ -169,7 +165,7 @@ export function BrowseList(
         return (
           <div
             key={loop.id}
-            className="flex flex-col gap-4 border-2 border-orange-600 bg-black rounded-lg p-6 hover:border-yellow-400"
+            className="flex flex-col gap-4 h-[80dvh] border-2 border-orange-600 bg-black rounded-lg p-6 hover:border-yellow-400"
           >
             <div className="flex flex-row items-center gap-4">
               <button
@@ -183,7 +179,7 @@ export function BrowseList(
                 aria-label={isPlaying ? 'Stop' : 'Play'}
                 title={isPlaying ? 'Stop' : code ? 'Play' : 'Loading...'}
               >
-                {isPlaying ? <StopIcon weight="fill" size={24} /> : <PlayIcon weight="fill" size={24} />}
+                {isPlaying ? <PauseIcon weight="fill" size={24} /> : <PlayIcon weight="fill" size={24} />}
               </button>
               <div className="flex flex-col gap-2 flex-1 min-w-0">
                 <div className="flex flex-row items-center gap-2 flex-wrap">
@@ -234,27 +230,19 @@ export function BrowseList(
             </div>
             {isLoadingCode
               ? (
-                <div className="flex items-center justify-center py-12">
-                  <RadialGradient>
-                    <SpinnerSmall />
-                  </RadialGradient>
+                <div className="h-full flex items-center justify-center py-12">
+                  <SpinnerLarge />
                 </div>
               )
               : code
-              ? (
-                <div className="h-[400px] w-full">
-                  <InlineEditor id={editorId} initialCode={code} autoHeight={false} hidePlayButton={true} />
-                </div>
-              )
+              ? <EditorWithTimeline loopId={loopId} code={code} />
               : null}
           </div>
         )
       })}
       {hasMore && (
         <div ref={loadMoreRef} className="flex items-center justify-center py-8">
-          <RadialGradient>
-            <SpinnerSmall />
-          </RadialGradient>
+          <SpinnerSmall />
         </div>
       )}
       {!hasMore && loops.length > 0 && (

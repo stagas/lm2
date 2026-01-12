@@ -228,7 +228,7 @@ export function useTimelineHeader(currentLoopId: string | null) {
 
         const runtime = useEngineRuntimeStore.getState()
         const isPredValidForLoop = isPlaybackRunningForViewRef.current
-          && runtime.currentLoopId === currentLoopIdRef.current
+          && (runtime.currentLoopId === currentLoopIdRef.current || runtime.playingLoopId === currentLoopIdRef.current)
         const predSeconds = isPredValidForLoop ? runtime.predictedSampleCountResult?.timeSeconds : undefined
         const targetSeconds = predSeconds ?? sampleSeconds
 

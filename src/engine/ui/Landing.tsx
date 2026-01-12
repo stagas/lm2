@@ -1,10 +1,18 @@
-import { ChartLineIcon, CodeIcon, GlobeIcon, LightningIcon, MusicNoteIcon, MusicNotesIcon } from '@phosphor-icons/react'
-import { useCallback } from 'preact/hooks'
+import {
+  ChartLineIcon,
+  CodeIcon,
+  GlobeIcon,
+  LightningIcon,
+  MusicNoteIcon,
+  MusicNotesIcon,
+  RepeatIcon,
+  ShareIcon,
+  UserCircleIcon,
+} from '@phosphor-icons/react'
 import { Logo } from '../../components/Logo.tsx'
 import { RadialGradient } from '../../components/RadialGradient.tsx'
 import { InlineEditor } from './docs/InlineEditor.tsx'
-import { Link, useRouter } from './router.tsx'
-
+import { Link } from './router.tsx'
 const exampleCode = `tb303=(hz,cutoff,q,k,sat,trig)->
 
   diodeladder(ramp(hz),cutoff,q,k,sat) |> tanh($*6)*.5 |> dc($)
@@ -51,10 +59,28 @@ const features = [
   },
 ]
 
+const communityFeatures = [
+  {
+    title: 'Artist Page',
+    description: 'Showcase your unique sound and creations with your own artist page.',
+    icon: UserCircleIcon,
+  },
+  {
+    title: 'Publish Your Loops',
+    description: 'Share your audio code with the community. Let others discover and learn from your work.',
+    icon: ShareIcon,
+  },
+  {
+    title: 'Remix Loops',
+    description: 'Take inspiration from others and make it your own. Build upon the community\'s creativity.',
+    icon: RepeatIcon,
+  },
+]
+
 const testimonials = [
   {
     quote: 'The most intuitive audio programming environment I\'ve used. The live coding experience is incredible.',
-    author: 'Alex M.',
+    author: 'Carl C.',
     role: 'Electronic Music Producer',
   },
   {
@@ -70,35 +96,27 @@ const testimonials = [
   },
 ]
 
-function EnterAppButton({ className = '' }: { className?: string }) {
-  const { navigate } = useRouter()
-  const handleClick = useCallback(() => {
-    navigate('/app')
-  }, [navigate])
-
+export function EnterAppButton({ className = '' }: { className?: string }) {
   return (
-    <button
-      onClick={handleClick}
-      className={`px-8 py-4 bg-gradient-to-br from-orange-400 to-red-600 text-white font-semibold rounded-lg ${className}`}
+    <Link
+      to="/app"
+      className={`flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-br from-orange-400 to-red-600 text-white font-semibold rounded-lg ${className}`}
     >
-      Enter App
-    </button>
+      <CodeIcon weight="regular" size={24} />
+      <span>Enter App</span>
+    </Link>
   )
 }
 
 function BrowseLoopsButton({ className = '' }: { className?: string }) {
-  const { navigate } = useRouter()
-  const handleClick = useCallback(() => {
-    navigate('/browse')
-  }, [navigate])
-
   return (
-    <button
-      onClick={handleClick}
-      className={`px-8 py-4 bg-gradient-to-br from-orange-400 to-red-600 text-white font-semibold rounded-lg ${className}`}
+    <Link
+      to="/browse"
+      className={`flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-br from-orange-400 to-red-600 text-white font-semibold rounded-lg ${className}`}
     >
-      Browse Loops
-    </button>
+      <GlobeIcon weight="regular" size={24} />
+      <span>Browse Loops</span>
+    </Link>
   )
 }
 
@@ -129,7 +147,7 @@ export function Landing() {
                   <p className="text-neutral-400">Edit the code below and press play to hear your changes</p>
                 </div>
                 <div className="bg-black">
-                  <InlineEditor id="landing-example" initialCode={`${exampleCode}`} />
+                  <InlineEditor id="docs:landing-example" initialCode={`${exampleCode}`} />
                 </div>
               </div>
             </div>
@@ -161,10 +179,34 @@ export function Landing() {
                   )
                 })}
               </div>
-              <div className="mt-12 text-center flex gap-4 justify-center items-center flex-wrap">
-                <EnterAppButton />
-                <span className="text-neutral-500">or</span>
-                <BrowseLoopsButton />
+            </div>
+          </section>
+
+          {/* Join a Community Section */}
+          <section className="py-20 relative overflow-hidden">
+            <div className="max-w-7xl mx-auto px-6 relative z-10">
+              <div className="text-center mb-16">
+                <h2 className="text-4xl font-bold text-white mb-4">Join a Community</h2>
+                <p className="text-xl text-neutral-400 max-w-2xl mx-auto">
+                  Connect with creators, share your work, and collaborate
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {communityFeatures.map((feature, i) => {
+                  const IconComponent = feature.icon
+                  return (
+                    <div
+                      key={i}
+                      className="p-6 border-2 border-orange-600 bg-black rounded-lg hover:border-yellow-400 transition-colors"
+                    >
+                      <div className="mb-4 text-yellow-400">
+                        <IconComponent weight="regular" size={48} />
+                      </div>
+                      <h3 className="text-xl font-semibold text-white mb-2">{feature.title}</h3>
+                      <p className="text-neutral-400 leading-relaxed">{feature.description}</p>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </section>
@@ -180,7 +222,7 @@ export function Landing() {
                 {testimonials.map((testimonial, i) => (
                   <div
                     key={i}
-                    className="p-6 border-2 border-orange-600 bg-black rounded-lg"
+                    className="flex flex-col justify-between p-6 border-2 border-orange-600 bg-black rounded-lg"
                   >
                     <p className="text-neutral-300 leading-relaxed mb-4 italic">"{testimonial.quote}"</p>
                     <div className="pt-4 border-t-2 border-yellow-400">
@@ -197,8 +239,8 @@ export function Landing() {
           <section className="py-20 relative overflow-hidden">
             <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
               <h2 className="text-4xl font-bold text-white mb-4">Ready to create?</h2>
-              <p className="text-xl text-neutral-300 mb-8 max-w-2xl mx-auto">
-                Start coding your sounds right now. No signup required, no installation needed.
+              <p className="text-xl text-neutral-400 mb-8 max-w-2xl mx-auto">
+                Start coding your sounds right now.<br />No signup required, no installation needed.
               </p>
               <div className="flex gap-4 justify-center items-center flex-wrap">
                 <EnterAppButton />

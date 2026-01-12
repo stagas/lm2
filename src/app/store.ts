@@ -172,7 +172,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       api: new API(async (input, init) => {
-        // await new Promise(resolve => setTimeout(resolve, 3000))
+        await new Promise(resolve => setTimeout(resolve, 2000))
         const res = await fetch(input, { ...init, credentials: 'include' })
         if (res.status === 401) {
           queueMicrotask(() => get().setSessionData(null))

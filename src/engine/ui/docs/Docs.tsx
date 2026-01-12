@@ -287,7 +287,7 @@ export function Docs({
                   {def.examples?.map((ex, i) => {
                     const editorId = `${id}:ex:${i}`
                     return (
-                      <InlineEditor key={editorId} id={editorId} initialCode={`\n${ex.split('\n').join('\n\n')}`} />
+                      <InlineEditor key={editorId} id={`docs:${editorId}`} initialCode={`\n${ex.split('\n').join('\n\n')}`} />
                     )
                   })}
                 </div>

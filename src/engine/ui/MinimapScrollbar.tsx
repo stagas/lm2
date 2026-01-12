@@ -51,12 +51,16 @@ export function MinimapScrollbar({
   const clearLoop = useEngineRuntimeStore(state => state.clearLoop)
   const animationManager = useEngineRuntimeStore(state => state.animationManager)
   const currentLoop = useEngineRuntimeStore(state => state.currentLoop)
+  const playbackState = useEngineRuntimeStore(state => state.playbackState)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
   const timelineRefsRef = useRef<TimelineSequenceRef[] | undefined>(timelineRefs)
   const timelineLabelsRef = useRef<TimelineLabel[] | undefined>(timelineLabels)
   const barsRef = useRef<number | undefined>(bars)
+  const hasPropsRefsRef = useRef(timelineRefs !== undefined)
+  const hasPropsLabelsRef = useRef(timelineLabels !== undefined)
+  const hasPropsBarsRef = useRef(bars !== undefined)
   const timelineCacheRef = useRef<Map<number, {
     sequence: string
     width: number
@@ -72,34 +76,45 @@ export function MinimapScrollbar({
   const canvasDimsRef = useRef({ width: 0, height: 0, pixelRatio: 1 })
   const isValidRef = useRef(false)
   const drawMinimapRef = useRef<(() => void) | null>(null)
+  const isRegisteredRef = useRef(false)
 
   useEffect(() => {
+    hasPropsRefsRef.current = timelineRefs !== undefined
     timelineRefsRef.current = timelineRefs
   }, [timelineRefs])
 
   useEffect(() => {
+    hasPropsLabelsRef.current = timelineLabels !== undefined
     timelineLabelsRef.current = timelineLabels
   }, [timelineLabels])
 
   useEffect(() => {
+    hasPropsBarsRef.current = bars !== undefined
     barsRef.current = bars
   }, [bars])
 
   useEffect(() => {
     const unsub = useEngineDspStore.subscribe(state => {
-      const nextRefs = state.uiTimelineRefs
-      if (timelineRefsRef.current !== nextRefs) {
-        timelineRefsRef.current = nextRefs
+      // Only update from store if props are not provided
+      if (!hasPropsRefsRef.current) {
+        const nextRefs = state.uiTimelineRefs
+        if (timelineRefsRef.current !== nextRefs) {
+          timelineRefsRef.current = nextRefs
+        }
       }
 
-      const nextLabels = state.uiTimelineLabels
-      if (timelineLabelsRef.current !== nextLabels) {
-        timelineLabelsRef.current = nextLabels
+      if (!hasPropsLabelsRef.current) {
+        const nextLabels = state.uiTimelineLabels
+        if (timelineLabelsRef.current !== nextLabels) {
+          timelineLabelsRef.current = nextLabels
+        }
       }
 
-      const nextBars = state.uiBars
-      if (barsRef.current !== nextBars) {
-        barsRef.current = nextBars
+      if (!hasPropsBarsRef.current) {
+        const nextBars = state.uiBars
+        if (barsRef.current !== nextBars) {
+          barsRef.current = nextBars
+        }
       }
     })
     return unsub
@@ -170,6 +185,10 @@ export function MinimapScrollbar({
     }
   }, [audioContext, bpmValue, canControlPlayback, clearLoop, globalSampleCount, loop, seekToSample, setLoop])
 
+  const drawMinimapFrame = useCallback(() => {
+    drawMinimapRef.current?.()
+  }, [])
+
   const handlePointerDown = useCallback((event: preact.TargetedPointerEvent<HTMLCanvasElement>) => {
     event.preventDefault()
 
@@ -179,6 +198,10 @@ export function MinimapScrollbar({
     }
 
     isDraggingRef.current = true
+    if (animationManager && !isRegisteredRef.current) {
+      animationManager.register(drawMinimapFrame)
+      isRegisteredRef.current = true
+    }
     seekFromPointer(event.clientX)
     const listener = (e: PointerEvent) => {
       handlePointerMove(e)
@@ -187,8 +210,16 @@ export function MinimapScrollbar({
     window.addEventListener('pointerup', () => {
       window.removeEventListener('pointermove', listener)
       isDraggingRef.current = false
+      if (animationManager && isRegisteredRef.current) {
+        const currentPlaybackState = useEngineRuntimeStore.getState().playbackState
+        const shouldAnimate = currentPlaybackState === 'running'
+        if (!shouldAnimate) {
+          animationManager.unregister(drawMinimapFrame)
+          isRegisteredRef.current = false
+        }
+      }
     }, { once: true })
-  }, [canControlPlayback, seekFromPointer, toggleLoopFromPointer])
+  }, [canControlPlayback, seekFromPointer, toggleLoopFromPointer, animationManager, drawMinimapFrame])
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
     if (!isDraggingRef.current) return
@@ -452,10 +483,6 @@ export function MinimapScrollbar({
 
   drawMinimapRef.current = drawMinimap
 
-  const drawMinimapFrame = useCallback(() => {
-    drawMinimapRef.current?.()
-  }, [])
-
   useEffect(() => {
     if (typeof window === 'undefined') return
     const release = () => {
@@ -492,12 +519,29 @@ export function MinimapScrollbar({
 
   useEffect(() => {
     if (!animationManager) return
-    animationManager.register(drawMinimapFrame)
-    drawMinimapFrame()
-    return () => {
+
+    const shouldAnimate = playbackState === 'running' || isDraggingRef.current
+    const isRegistered = isRegisteredRef.current
+
+    if (shouldAnimate && !isRegistered) {
+      animationManager.register(drawMinimapFrame)
+      isRegisteredRef.current = true
+      drawMinimapFrame()
+    } else if (!shouldAnimate && isRegistered) {
       animationManager.unregister(drawMinimapFrame)
+      isRegisteredRef.current = false
+      drawMinimapFrame()
+    } else if (shouldAnimate && isRegistered) {
+      drawMinimapFrame()
     }
-  }, [animationManager, drawMinimapFrame])
+
+    return () => {
+      if (isRegisteredRef.current) {
+        animationManager.unregister(drawMinimapFrame)
+        isRegisteredRef.current = false
+      }
+    }
+  }, [animationManager, drawMinimapFrame, playbackState])
 
   return (
     <div className="flex flex-row w-full h-full">

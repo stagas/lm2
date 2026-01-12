@@ -14,6 +14,7 @@ import type { VmCompileSnapshot } from '../../dsp/program.ts'
 import { buildTimelineLabels } from '../../dsp/timeline-labels.ts'
 import { useEngineDspStore, useEngineRuntimeStore, useEngineUiStore } from '../../store.ts'
 import { functionDefinitions } from '../function-definitions.ts'
+import type { GridOwner, GridOwnerByLine } from '../grid-owner.ts'
 import { useTheme } from '../theme.ts'
 import { tokenizer } from '../tokenizer.ts'
 import { updatePredictedSampleCount } from '../update-predicted-sample-count.ts'
@@ -44,6 +45,8 @@ type InlineEditorProps = {
   onPlayRequest?: () => void
   autoHeight?: boolean
   hidePlayButton?: boolean
+  header?: EditorHeader
+  noMargin?: boolean
 }
 
 const inlineHeader: EditorHeader = {
@@ -174,8 +177,10 @@ function buildWidgetCompileState(code: string, preview: ReturnType<typeof encode
   }
 }
 
-export function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButton = false }: InlineEditorProps) {
-  const loopId = `docs:${id}`
+export function InlineEditor(
+  { id, initialCode, autoHeight = true, hidePlayButton = false, header, noMargin = false }: InlineEditorProps,
+) {
+  const loopId = id
   const codeFileRef = useRef<{ id: string; file: CodeFile } | null>(null)
   if (!codeFileRef.current || codeFileRef.current.id !== loopId) {
     codeFileRef.current = { id: loopId, file: new CodeFile(initialCode) }
@@ -212,35 +217,6 @@ export function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButto
   const showWidgets = true
 
   const theme = useTheme()
-  const themeForEditor = useMemo(() => {
-    const withAlpha = (c: string, a: number): string => {
-      if (!c.startsWith('#')) return c
-      const h = c.slice(1)
-      const toByte = (x: string) => parseInt(x, 16)
-      let r = 0
-      let g = 0
-      let b = 0
-      if (h.length === 3) {
-        r = toByte(h[0]! + h[0]!)
-        g = toByte(h[1]! + h[1]!)
-        b = toByte(h[2]! + h[2]!)
-      }
-      else if (h.length === 6) {
-        r = toByte(h.slice(0, 2))
-        g = toByte(h.slice(2, 4))
-        b = toByte(h.slice(4, 6))
-      }
-      else {
-        return c
-      }
-      return `rgba(${r}, ${g}, ${b}, ${a})`
-    }
-    return {
-      ...theme,
-      background: withAlpha(theme.background, 0.35),
-      gutterBackground: withAlpha(theme.gutterBackground, 0.2),
-    }
-  }, [theme])
 
   const wasLiteralOnlyRef = useRef(false)
   const literalUpdatesRef = useRef<Array<{ index: number; value: number }>>([])
@@ -419,6 +395,36 @@ export function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButto
   const controlStateRef = useRef<Map<number, any>>(new Map())
   const resetKey = `${loopId}:${playingLoopId ?? ''}:${playbackState}`
 
+  const gridOwnerByLine = useMemo((): GridOwnerByLine => {
+    const byLine = new Map<number, GridOwner>()
+    const consider = (owner: GridOwner) => {
+      const existing = byLine.get(owner.line)
+      if (!existing || owner.column < existing.column) byLine.set(owner.line, owner)
+    }
+
+    for (const ref of widgetCompileState.timelineRefs ?? []) {
+      consider({
+        kind: 'timeline',
+        seqIndex: ref.seqIndex,
+        line: ref.loc.line,
+        column: ref.loc.column,
+        length: ref.loc.length,
+      })
+    }
+
+    for (const ref of widgetCompileState.miniRefs ?? []) {
+      consider({
+        kind: 'pianoroll',
+        seqIndex: ref.seqIndex,
+        line: ref.loc.line,
+        column: ref.loc.column,
+        length: ref.loc.length,
+      })
+    }
+
+    return byLine
+  }, [widgetCompileState.miniRefs, widgetCompileState.timelineRefs])
+
   const { widgets: sequenceWidgets, onBeforeDraw: onBeforeDrawSequence } = useSequenceWidget({
     program1: runtimeProgram,
     audioContext,
@@ -449,6 +455,7 @@ export function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButto
     dspSource: widgetCompileState.dspSource,
     showWidgets,
     isPlaying: isPlaybackRunningForView,
+    gridOwnerByLine,
     resetKey,
   })
 
@@ -463,6 +470,7 @@ export function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButto
     showWidgets,
     isPlaying: isPlaybackRunningForView,
     isLive: isPlaying,
+    gridOwnerByLine,
     resetKey,
   })
 
@@ -786,7 +794,7 @@ export function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButto
   ])
 
   return (
-    <div className="my-3 w-full h-full border border-[#333] bg-neutral-950 rounded-md overflow-hidden"
+    <div className={`${noMargin ? '' : 'my-3'} w-full h-full border border-[#333] bg-black rounded-md overflow-hidden`}
       data-inline-editor={id}
     >
       <div className="w-full h-full relative">
@@ -821,8 +829,8 @@ export function InlineEditor({ id, initialCode, autoHeight = true, hidePlayButto
           codeFile={codeFile}
           widgets={widgets}
           errors={editorErrors}
-          header={inlineHeader}
-          theme={themeForEditor}
+          header={header ?? inlineHeader}
+          theme={theme}
           tokenizer={tokenizer}
           keywords={KEYWORDS}
           functionDefinitions={functionDefinitions}

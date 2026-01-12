@@ -74,7 +74,7 @@ export function MarkdownDoc({ idPrefix, markdown }: { idPrefix: string; markdown
     <div className="flex flex-col gap-3">
       {nodes.map((n, i) => {
         if (n.type === 'code') {
-          return <InlineEditor key={`${n.id}:${i}`} id={n.id} initialCode={n.code} />
+          return <InlineEditor key={`${n.id}:${i}`} id={`docs:${n.id}`} initialCode={n.code} />
         }
         if (n.type === 'heading') {
           const Tag = (n.level === 1 ? 'h2' : n.level === 2 ? 'h3' : 'h4') as any

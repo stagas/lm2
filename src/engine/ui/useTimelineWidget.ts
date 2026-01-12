@@ -40,7 +40,7 @@ type UseTimelineParams = {
   showWidgets: boolean
   isPlaying: boolean
   isLive: boolean
-  gridOwnerByLine?: GridOwnerByLine
+  gridOwnerByLine: GridOwnerByLine
   resetKey?: string | number | null
 }
 
